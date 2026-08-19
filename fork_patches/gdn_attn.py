@@ -1,5 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+#
+# Modified by the v100-skinny contributors, 2026, from 1Cat-vLLM 1.2.2
+# (https://github.com/1CatAI/1Cat-vLLM). Licensed under Apache-2.0.
+# Changes: adds a chain-MTP fast metadata build
+# (VLLM_SM70_GDN_CHAIN_SPEC_FAST_BUILD, -1.4 ms/step, byte-identical
+# output) and env-gated slot-debug instrumentation.
 """Backend for GatedDeltaNet attention."""
 
 import json

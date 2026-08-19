@@ -1,428 +1,656 @@
 # v100-skinny
 
-**Four Tesla V100 cards serve Qwen3.6-27B at up to 366 tokens each second.**
+**Blackwell gets NVFP4 support in silicon. Volta gets it from software.**
 
-| Domain | tok/s | Profile |
-|---|---:|---|
-| extraction | **366.0** | k=15 |
-| json | **243.4** | k=15 |
-| csv | **204.0** | k=7 |
-| math | **185.1** | k=7 |
-| code | **170.6** | k=7 |
-| prose | **88.1** | k=7 |
+v100-skinny runs Qwen3.8-27B's **published mixed NVFP4/FP8 weight
+representation unchanged** on four Tesla V100-SXM2-16GB. In the release's
+main decode and k≤7 verification regime, NVFP4 regions run through **QPN2**
+(W4A16) and FP8 regions through **QPN8** (W8A16), both hand-written around
+Volta's `mma.sync.m8n8k4`. No FP8→FP4 requantization. No persistent FP16
+weight copy. FP16 activations and FP16 KV cache. OpenAI-compatible serving —
+a usable Qwen3.8 endpoint, not a kernel demo.
 
-On structured output these four cards equal one **NVIDIA RTX 5090**. This stack gives **243.4 tok/s**
-on the json domain. [ninfer](https://github.com/Neroued/ninfer), a purpose-built C++ engine on that
-card, gives a published **243.1 tok/s**. The RTX 5090 has **native FP4 tensor cores**. The V100 has
-**no 4-bit hardware at all**.
+The GPUs cost about **A$600 used**. *(That is the accelerators only — not the
+server, not the rest of the build.)*
 
-The stock NVFP4 path on SM70 falls back to the Marlin dequant kernel, and it gets **12%** of the
-memory bandwidth of the card. The kernels in this project get **69%**.
+[Quick start](#quick-start) · [Results](#result) · [How QPN works](#how-qpn-works) ·
+[Reproduction](#reproduction) · [Limitations](#hardware-cost-power-limitations)
 
-This project supplies hand-written CUDA kernels for W4A16 NVFP4, and a serving stack with chain-MTP
-speculation. The stack runs the Qwen3.6-27B NVFP4 checkpoint from NVIDIA bit-native. It is faster
-than the reference serving stack for this hardware in **5 of the 6 domains**, and the largest lead is
-**2.33×**.
+---
 
-The kernels and the serving profiles are the work here. They sit on
-**[1Cat-vLLM](https://github.com/1CatAI/1Cat-vLLM)**, the vLLM fork that carries Volta support. That
-fork supplies the SM70 NVFP4 route, the `FLASH_ATTN_V100` attention backend and the chain-MTP
-speculative machinery. Every measurement here runs on all three
-([Acknowledgements](#acknowledgements)).
+## Result
 
-| Component | Served |
-|---|---|
-| Model | Qwen3.6-27B (`nvidia/Qwen3.6-27B-NVFP4`) |
-| Quantization | NVFP4 W4A16 — fp16 activations, fp32 accumulation |
-| Hardware | 4× Tesla V100-SXM2-16GB (SM70, Volta) |
-| Tensor parallel | 4 |
-| Serving checkpoint | ~19.2 GB compressed-tensors + the 1.9 GB source lm_head shard (~22 GB resident) |
+**AIME 2026 Problem 1, five seeds, both engines run in our lab through one
+harness, each at its own best measured native-MTP depth.** The RTX 5090 was
+running **NInfer**, a specialist engine built for maximum performance on this
+exact model family rather than a weak generic baseline. Sampling is NInfer's
+published profile applied identically to both: temperature 0.6, top-p 0.95,
+top-k 20, presence penalty 1.0, thinking on, `reasoning_effort` medium, seeds
+1001–5005.
 
-*Bit-native* is a specific claim. The sampled backbone MLP layers are **bit-equal** to the source
-checkpoint, tensor for tensor. The lm_head reads the original 4-bit codes and scales of NVIDIA at
-runtime, with zero requantization. The one exception is the FP8 attention and the FP8 GDN
-projections, which the conversion down-converts because Volta has no FP8 hardware
-([`docs/lmhead_provenance.md`](docs/lmhead_provenance.md)).
-
-## The kernels
-
-The table below shows the effective memory bandwidth of the W4A16 NVFP4 GEMM at **M=1 (decode)**. The
-figure is the aggregate over the five real per-rank shapes of Qwen3.6-27B at tensor parallel 4. The
-reference is the measured memcpy ceiling of this card, 825 GB/s. The data is in
-[`results/kernel_bandwidth_20260811.csv`](results/kernel_bandwidth_20260811.csv), and the Marlin
-reference is in [`results/nvfp4_flatness_results.csv`](results/nvfp4_flatness_results.csv):
-
-| NVFP4 GEMM kernel | Effective bandwidth | % of memcpy ceiling |
-|---|---|---|
-| **This project (skinny SIMT)** | **565.2 GB/s** | **69%** |
-| Stock Marlin (the NVFP4 fallback) | 96.0 GB/s | 12% |
-| | **5.9× faster** | |
-
-Marlin thus leaves **88%** of the memory bandwidth of the card unused.
-
-Three kernels serve three M bands in the production dispatch: SIMT at M≤3, QPN at M=4–16, and WMMA at
-M=17–64. The bandwidth of Marlin is almost flat with M: 96.0 at M=1, 94.4 at M=16, 92.9 at M=32 and
-86.2 at M=64. Thus the ratio column uses its M=1 value of 96.0. The benchmark is
-[`benchmarks/kernel_bw_bench.py`](benchmarks/kernel_bw_bench.py):
-
-| M | Band | Kernel | Effective GB/s | % of ceiling | vs Marlin |
-|---:|---|---|---:|---:|---:|
-| 1 | decode | SIMT | 565.2 | 69% | 5.9× |
-| 3 | decode | SIMT | 416.9 | 51% | 4.3× |
-| 8 | spec verify (k≤7) | QPN m8n8k4 | 430.7 | 52% | 4.5× |
-| 16 | spec verify (k≤15) | QPN m8n8k4 | 298.2 | 36% | 3.1× |
-| 32 | batch | WMMA | 183.0 | 22% | 1.9× |
-| 64 | batch | WMMA | 105.8 | 13% | 1.1× |
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/m_sweep_dark.svg">
-  <img alt="Effective bandwidth versus batch rows M for the SIMT, QPN m8n8k4 and WMMA NVFP4 GEMM kernels on Tesla V100. SIMT starts at 611.7 GB/s at M=1 and decays to 250.2 at M=8, where it stops because it is compiled for M under 9. QPN is nearly flat from 480.2 at M=1 to 441.3 at M=8, steps down to 344.4 at M=9 where it pads to two 8-row tiles, and reaches 311.8 at M=16. WMMA is flat and low across the whole range, 258.5 down to 242.0. SIMT and QPN cross at M=3." src="docs/assets/m_sweep_light.svg">
-</picture>
-
-The three curves have different shapes, and each kernel is the fastest in the band where its dataflow
-is best. SIMT carries one row for each warp, and its bandwidth decreases when the activation
-reuse decreases. QPN holds a flat bandwidth across its band. WMMA is flat and low, but it is the only
-kernel that serves M>16. The measurements cover every kernel at every M in
-[`results/kernel_m_sweep_20260812.csv`](results/kernel_m_sweep_20260812.csv), and
-[`benchmarks/plot_m_sweep.py`](benchmarks/plot_m_sweep.py) draws the figure. The sweep is a later run
-than the table above, on the tuned box, and it reads 2–14% higher; both CSVs record the difference.
-
-**That flat band is what makes deep speculation pay on this hardware.** A k=7 round verifies 8
-candidate tokens in one GEMM with 8 rows. The kernel moves the same weight bytes for 1 row and for 8
-rows. The effective bandwidth falls only from **475.8 GB/s at M=3 to 441.3 GB/s at M=8**. The verify
-GEMM of a full round thus costs about **8% more time than a single-token decode**, and it commits up
-to 8 tokens. Every serving figure in this document rests on that property, because a kernel whose
-cost grew with M would give the speculation nothing to win.
-
-TurboMind is faster in the batch band above M=16. Three independent kernel efforts showed that the
-WMMA plateau of the V100 is structural
-([`docs/twin_race_notes.md`](docs/twin_race_notes.md)).
-
-### The SIMT kernel: 69% of the copy ceiling at M=1
-
-The SIMT path serves plain decode, and it is the fastest kernel here at M=1. Its shape is simple: 8
-warps for each block, and one output row for each warp. For narrow K it gives each warp two rows
-instead of one. At M=1 the GEMM only streams weights, so the problem is memory and not math.
-
-**SIMT saturates both Volta issue pipes.** The nibble decode is integer work, and the MACs are fp16
-HFMA2. Volta issues those on separate pipes, so the decode runs beside the MACs and not in front of
-them. That overlap is why a kernel which dequantizes every weight still reaches 69% of the copy
-ceiling. An int8 `dp4a` variant puts the MACs and their own unpack on the same pipe, and it loses
-50–140% ([`docs/twin_race_notes.md`](docs/twin_race_notes.md)).
-
-The decoder also matters. A shift-and-rebias decoder derived from TurboMind beats a PRMT lookup table
-by about 28% at M=1. It has a shorter dependency chain and fewer INT-pipe operations for each value.
-The first version of this kernel overflowed fp16 on real activation outliers. The fix folds the
-global scale into the group scales in the kernel, and the kernel flushes to fp32 for each 16
-elements.
-
-### The QPN kernel: the one Volta tensor-core instruction, split on N
-
-**The constraint.** Volta supplies exactly one FP16 tensor-core instruction, `mma.sync.m8n8k4`, and
-it is difficult to feed. The warp splits into four quadpairs. Each quadpair does an independent 8×8×4
-MMA against a fragment map that is local to the quadpair. Later architectures replaced the
-instruction completely.
-
-A skinny decode GEMM has a small M, and it is memory-bound on the weights. For that shape the
-conventional WMMA path pads M to 16, and it becomes LSU-bound on the fragment loads.
-
-**The insight: split N, not K.** The obvious decomposition gives each quadpair a slice of K, and it
-reduces the four results at the end. QPN splits **N** instead. The A-fragment map depends only on the
-lane position *inside* the quadpair. Thus the sibling lanes across the four quadpairs hold identical
-A registers. One warp instruction thus issues four independent MMAs against the same 8×4 activation
-fragment — an 8×32×4 step.
-
-```
-one warp, one mma.sync.m8n8k4 issue    (A = the 8-row activation tile)
-  K-split (the killed B_ring)            N-split (QPN, shipped)
-  QP0  A[·, k0:4 ] · B[k0:4 , n0:8]      QP0  A[·, k0:4] · B[k0:4, n0:8 ]
-  QP1  A[·, k4:8 ] · B[k4:8 , n0:8]      QP1  A[·, k0:4] · B[k0:4, n8:16]
-  QP2  A[·, k8:12] · B[k8:12, n0:8]      QP2  A[·, k0:4] · B[k0:4, n16:24]
-  QP3  A[·, k12:16] · B[k12:16, n0:8]    QP3  A[·, k0:4] · B[k0:4, n24:32]
-       4 A fragments, re-read 4×              1 A fragment, register-stationary
-```
-
-**What the N-split buys.** The activation traffic for each weight byte decreases **4×**. At M≤8 the
-tile is a few kilobytes. Thus it moves from the L1/L2-resident global memory into the registers, and
-it stays there. The main loop uses **no shared memory and no barriers at all**. The one barrier is
-the K-reduction across the warps at the output.
-
-**Two details keep the loop free of extra work.** The offline prepack interleaves the weight nibbles.
-The `(i, i+4)` output of the dequantizer then lands exactly on the B-fragment register pair for the
-adjacent k values, which the MMA expects. The loop needs **zero pack instructions**, against 8 for
-each decode window when the kernel packs B-fragments at runtime. One FP8 group-scale register also
-serves exactly the four MMAs of its group, because k=4 × 4 quadpairs is the group-16 quantization
-granularity. The kernel uses **56 registers with zero spills**, and the grid (N/32) limits the
-residency, not the kernel.
-
-**The result: 1.94× the best previous kernel at M=8**, for 5 of 5 shapes, and 1.44× at M=5
-([`results/qpn_race_20260810.csv`](results/qpn_race_20260810.csv)). Those figures are single-shape
-race peaks without the dispatch overhead. The production figure is the aggregate above, 431–455 GB/s
-across M=4–8, and the flat curve in the figure is this kernel.
-
-**The instruction was written off once.** The v1 register-fragment path measured 200–360 GB/s. Its
-postmortem named two causes: the DRAM scatter of the 8 rows, and a serial MMA chain. A direct test
-examined both mechanisms and disproved them
-([`kernels/research/register_gate.cu`](kernels/research/register_gate.cu)). The quadpair-N
-decomposition is what made the instruction competitive. Full mechanics are in
-[`docs/qpn_race_notes.md`](docs/qpn_race_notes.md).
-
-## Serving
-
-The measurements below use a single stream, and they decode only. The flagship profile is **k=7
-chain-MTP, QPN dispatch, the native NVFP4 lm_head and a greedy drafter**. The structured endpoints
-and the extraction endpoints use the k=15 profile. **τ** is the number of draft tokens that the stack
-accepts in each speculative round. A round commits `1 + τ` tokens, and the round latency =
-`(1 + τ) ÷ tok/s`.
-
-| Cell | Plain (k=0) | **k=7 flagship** | τ | Round ms | k=15 profile | τ | Round ms |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| prose (thinking off) | 91.2 | **88.1** | 1.48 | 28.2 | 60.4 | 1.40 | 39.8 |
-| math (thinking on, 2048-capped) | 90.9 | **185.1** | 4.40 | 29.1 | 150.9 | 5.18 | 40.9 |
-| code (thinking off) | 91.2 | **170.6** | 3.81 | 28.2 | 136.6 | 4.45 | 39.9 |
-| json (thinking off) | 91.1 | **231.8** | 5.60 | 28.3 | **243.4** | 8.83 | 40.1 |
-| csv (thinking off) | 91.2 | **204.0** | 4.79 | 28.2 | 188.6 | 6.60 | 39.9 |
-| extraction (thinking off) | 90.9 | **263.7** | 6.92 | 29.9 | **366.0** | 14.61 | 42.4 |
-
-These rows are greedy, and they use temperature 0. The sampling that Qwen recommends (temp 0.6, top-p
-0.95, top-k 20) costs 8–16% by domain
-([`results/temp_sweep_20260812.csv`](results/temp_sweep_20260812.csv)). The rows are the NUMA-pinned
-launch anchors: the TP workers and their memory bind to socket 0, where all four GPUs connect. This
-bind removed a ±3% change of the round time between boots, and it improved on the best earlier
-sitting in every k=7 cell.
-
-The measured rows, the served configuration and the boot gates for this anchor are in
-[`results/launch_anchors_pinned_20260812.csv`](results/launch_anchors_pinned_20260812.csv).
-
-## Evaluation
-
-**[1Cat](https://github.com/1CatAI/1Cat-vLLM)** is the reference serving stack for this hardware, and
-it is also the fork that this project builds on ([Acknowledgements](#acknowledgements)). It runs
-QuantTrio/Qwen3.6-27B-AWQ through the TurboMind SM70 production route, at the k=4 MTP profile that it
-ships. Both columns therefore run on
-the same fork, and the table compares two routes inside one codebase:
-
-| Domain | This stack | Profile | 1Cat (AWQ, k=4) | Lead |
-|---|---:|---|---:|---:|
-| prose | 88.1 | k=7 | 86.3 | 1.02× (τ-band 0.95–1.02×) |
-| math | **185.1** | k=7 | 126.9 | **1.46×** |
-| code | **170.6** | k=7 | 133.0 | **1.28×** |
-| json | **243.4** | k=15 | 150.6 | **1.62×** |
-| csv | **204.0** | k=7 | 118.8 | **1.72×** |
-| extraction | **366.0** | k=15 | 156.9 | **2.33×** |
-
-This stack wins five of the six domains. Prose is the domain with the lowest acceptance, so a deep
-speculative round gives almost no gain there. Its near-tie band contains the 1Cat number.
-
-Two backstops remove the profile advantage. At a matched k=7, with an fp16-class lm_head on both
-sides, this stack wins 3 domains, ties 2 and loses 1. With no speculation on either side, plain
-decode is **86.6 tok/s against 70.7 tok/s**
-([`results/broad_flagship_compare.csv`](results/broad_flagship_compare.csv),
-[`results/plain_decode_compare.csv`](results/plain_decode_compare.csv)).
-
-### Against ninfer, on a single RTX 5090
-
-[ninfer](https://github.com/Neroued/ninfer) is a purpose-built C++ inference engine. It runs the
-**same Qwen3.6-27B NVFP4 model** on one 32 GB RTX 5090, a consumer Blackwell card with native FP4
-tensor cores. Both sides use the same conventions: decode-only tok/s, and acceptance = accepted ÷
-drafted.
-
-Four V100 cards hold parity on the decode path:
-
-- **Structured decode**: **243.4 tok/s** at k=15 on json, against a published **243.1 tok/s**.
-  Extraction at **366.0 tok/s** belongs to this stack only. ninfer reports no such cell.
-- **Plain decode**: **86.6–91.2 tok/s**, against a published **86.4 tok/s**.
-- **Acceptance at a matched configuration**: at k=3 with an fp16 lm_head, seeded ×3 on the fixtures
-  of ninfer, f01 gives **83.4 ± 0.6%** against **80.8 ± 1.8%**.
-
-ninfer wins the prefill by **~4×**, from native FP4 W4A4 flops. It also wins the long reasoning,
-where this stack runs at **0.79×** its rate. Those rows use the thinking mode and sampling, not the
-greedy regime of the tables above:
-
-| aime26_01 | This stack (k=7, native lm_head) | ninfer (MTP3, n=5) |
+| | 4× V100-SXM2-16GB (2017) | 1× RTX 5090 (2025) |
 |---|---:|---:|
-| Decode tok/s | 175.5 (replicated 174.8) | **222.7 ± 3.4** |
-| Tokens for each round (1 + τ) | **5.31** | 3.43 |
-| Round latency (derived) | 30.3 ms | **15.4 ms** |
-| Acceptance | 61.6% at k=7 | 80.8 ± 1.8% at k=3 |
-| Completion length | 8000–8073 tok | 11717 ± 477 tok |
+| Engine | v100-skinny on 1Cat-vLLM, k=7 | NInfer, `--draft-tokens 5` |
+| Decode | **219.1 ± 5.9 tok/s** | **214.7 ± 9.2 tok/s** |
+| Tokens committed / round | 5.89 | 4.27 |
+| Round latency | 26.9 ms | 19.9 ms |
+| Time to correct answer | 6.90 ± 0.30 s | **6.56 ± 1.34 s** |
+| Completion tokens | 1,513 ± 44 | 1,403 ± 253 |
+| Correct answer (277) | **5/5** | **5/5** |
+| Published quantization | RadixArk | NInfer artifact, Unsloth-derived |
 
-**The speculation here commits more tokens for each round than ninfer, 5.31 against 3.43, and this
-stack is still slower.** The engine of ninfer turns a round in **15.4 ms**, and this stack needs
-**30.3 ms**. The deficit is engine round latency, which is the host orchestration of the drafter
-chain. It is not the acceptance, and it is not the matrix throughput. Only aime26_01 is a clean
-comparison, because the longer fixtures exceed the serving context here.
+This is a **same-lab system comparison on the same Qwen3.8 base model**, not a
+same-weight causal engine A/B: the two engines use different published NVFP4
+artifacts. NInfer depth 5 is its maximum exposed depth and its best measured
+setting on this fixture; v100-skinny's best measured setting is k=7.
 
-[`docs/benchmarks.md`](docs/benchmarks.md) holds the full matrices, the AIME 2026 fixtures, the batch
-crossover and the thinking-mode matrix. Every harness prints the losslessness diff against plain
-decode at a matched configuration, together with the throughput. The acceptance metrics alone cannot
-show the difference between speed and corruption.
+**This is parity — 1.02×, intervals overlapping.** We do not claim a win, and
+the result is not universal: their prefill is roughly 4× ours. The decode
+result is an exact cancellation — **our round is 35% longer (26.9 vs 19.9 ms)
+and we commit 38% more tokens per round (5.89 vs 4.27); 1.38 / 1.35 = 1.02.**
+QPN makes the wider k=7 verification batch cheap enough for the model's native
+MTP depth to pay.
 
-## Requirements
+**Why depth is the lever.** `mma.sync.m8n8k4` issues an 8-row tile whether or
+not all 8 rows carry work, and QPN2 holds **71% of read roofline at M=8** —
+the k=7 verification width. On the measured stack, verification costs
+**+0.383 ms per extra draft row** against **+0.817 ms per sequential drafter
+step**. The 5090 completes a round much faster; Volta compensates by extracting
+more useful tokens from each round.
 
-- 4× Tesla V100-SXM2-16GB (SM70) or equivalent, tensor parallel 4
-- CUDA 12.8 (`CUDA_HOME=/usr/local/cuda-12.8`, `TORCH_CUDA_ARCH_LIST=7.0`)
-- torch **2.10.0+cu128**
-- **[1Cat-vLLM](https://github.com/1CatAI/1Cat-vLLM) 1.2.2**, from a wheel install (no source checkout)
-- `tilelang` / `apache-tvm-ffi` at **0.1.10** — this version has the SM70 TileLang compile fix
-- conda (the reference env is `1cat-vllm-122`, Python 3.12)
-- ~22 GB disk for the serving checkpoint and the source lm_head shard
-- The harness deps in [`requirements.txt`](requirements.txt): `torch>=2.10`, `safetensors>=0.4`, `numpy>=1.26`
+---
 
-## Install
+## What v1.1 changes
 
-Copy the fork changes onto the wheel install. Keep a backup of each file that you replace. Never edit
-an installed file in place.
+**The published mixed weight allocation is now directly executable on Volta.**
+ModelOpt's
+native mixed FP8/NVFP4 path was gated above Volta — the FP8 regions had no
+SM70 path at all. **v1.0 created the first practical bridge:** it down-converted
+those protected FP8 layers to FP4 and served the resulting derivative through
+the new W4A16 stack. **v1.1 adds QPN8, lowers the mixed-path gate to SM70, and
+retires the conversion that v1.0 had made necessary.** The boot gate verifies
+the QPN2/QPN8 route census and zero reference fallbacks on every start.
+Across four ranks, all **512/512 protected FP8 module instances** are eligible
+for QPN8, the checkpoint's own `lm_head` routes to QPN2, and reference fallback
+calls remain zero.
 
-```bash
-SP=~/miniconda3/envs/1cat-vllm-122/lib/python3.12/site-packages
-cp $SP/vllm/model_executor/kernels/linear/nvfp4/marlin.py{,.orig}   # keep the backup
-cp fork_patches/marlin.py           $SP/vllm/model_executor/kernels/linear/nvfp4/
-cp fork_patches/gdn_attn.py         $SP/vllm/v1/attention/backends/
-cp fork_patches/gpu_model_runner.py $SP/vllm/v1/worker/
-cp kernels/skinny_kernels.cu        ~/flatness-run/
+Also in v1.1:
+
+- **QPN8 (W8A16 FP8)** — the FP8 half of the checkpoint, 718.6 GB/s at M=1,
+  82% of read roofline. Packed QPN8 routes cover M≤96; above that, the
+  v100-skinny dispatch uses a transient prefill reconstruction rather than a
+  persistent FP16 representation. Its MT=2 two-tile dispatch ships default-on
+  for M 9–16. **MT=2 exists for FP8 only** — the NVFP4 M 9–16 band still
+  runs the first-generation QPN kernel; see the gap noted under kernel
+  benchmarks.
+- **FP16-KV policy.** The checkpoint declares FP8 KV cache, which is sensible
+  on hardware with an efficient FP8-attention path. On SM70, honouring that
+  directive silently forced scalar paged attention. The measured cost was
+  **+4.82 ms/round**, so v1.1 deliberately uses FP16 KV.
+- **GDN speculative-state contract.** Boolean-mask indexing on the target
+  verify path cost 21 device syncs and ~70 copies per step; the fast path
+  removes them with byte-identical output. (Landed pre-v1.1 and measured on
+  the previous model generation — the mechanism carries forward, the step
+  times do not, so they are not quoted here.)
+- **Greedy MTP drafting.** The SM70 default was `probabilistic` — the drafter
+  *sampled* its proposals. Switching to greedy with local-argmax reduction is
+  worth **10–25 acceptance points** on sampled serving.
+- **Decode-partition fix.** `--max-model-len ≥ 32768` taxed every speculative
+  round for capacity it never used. Pinning the partition size recovers
+  **0.7–2.6 ms/round** and took AIME from 206.8 to 219.1 tok/s.
+- **Graph-mode tuning and zero-fallback route validation** — every decode and
+  verify call accounted to a QPN route, no silent Marlin fallbacks.
+
+---
+
+## End-to-end benchmarks
+
+**Serving configuration.** TP4, GMU 0.88, FP16 KV, decode partition pinned,
+MT=2 on, MTP with greedy drafting and local-argmax reduction,
+`--max-num-seqs 1` (single stream). NUMA-pinned to socket 0, application
+clocks pinned.
+
+The domain table below was run at `--max-model-len 32768`; the AIME rows were
+run at 98,304. Before the decode-partition fix that difference changed short-
+context round latency. On the shipping path, declared MML is timing-neutral;
+the two values are retained here as measurement provenance, not as performance
+tuning. The same AIME configuration reads 206.8 tok/s without the pin and
+219.1 tok/s with it.
+
+**Sampling — the domain table.** Fully greedy and fully specified; no field is
+left for the server to fill from a model card:
+
+```
+temperature 0.0 · top_p 1.0 · top_k disabled
+presence_penalty 0.0 · frequency_penalty 0.0 · seed 1001
+thinking off (except the math cell, which is thinking-on)
 ```
 
-The CUDA kernels JIT-compile from [`kernels/skinny_kernels.cu`](kernels/skinny_kernels.cu) at the
-first boot. Set `VLLM_SKINNY_NVFP4_SRC` to the path of that file. There is no build step, and the
-first three eager calls check themselves numerically against Marlin.
-[`fork_patches/README.md`](fork_patches/README.md) gives the install targets and the backup names.
-[`docs/REPRODUCE.md`](docs/REPRODUCE.md) gives the full procedure.
+**Sampling — the AIME rows.** ninfer's published profile, applied identically
+to both engines:
 
-## Download and convert the model
-
-```bash
-huggingface-cli download nvidia/Qwen3.6-27B-NVFP4 --local-dir ~/models/Qwen3.6-27B-NVFP4
+```
+temperature 0.6 · top_p 0.95 · top_k 20
+presence_penalty 1.0 · frequency_penalty 0.0
+thinking on · reasoning_effort medium
+five fixed seeds: 1001, 2002, 3003, 4004, 5005
 ```
 
-Volta cannot serve the NVIDIA export in its published form. Its FP8 attention and its FP8 GDN
-projections have no hardware path on SM70, and the skinny dispatch connects to the W4A16 scheme of
-compressed-tensors. Thus one conversion down-converts those layers to NVFP4, and it writes the
-checkpoint again as compressed-tensors:
+`reasoning_effort` is set explicitly rather than defaulted: the chat template
+defaults to `xhigh`, which injects a system message and costs 4.0–11.0% at
+matched output length, while `medium` injects none and matches the prompt
+ninfer's converter produces.
+
+**Metric.** Throughput is `(generated − (τ+1)) / decode_seconds` — we subtract
+a whole speculative round. The convention that subtracts a single token reads
+higher by exactly τ/generated: 0.4–0.7% on the cells below, more at k=15 where
+τ is larger. Every figure here uses ours, the more conservative one.
+
+| Cell | k=3 | τ | k=7 | τ | k=15 | τ | best |
+|---|---:|---:|---:|---:|---:|---:|:--|
+| doc2json (invoice → JSON) | 195.1 | 3.00 | 309.5 | 6.83 | **392.1** | 13.88 | k=15 |
+| log2json (logs → records) | 195.6 | 3.00 | 307.1 | 6.81 | **391.4** | 13.94 | k=15 |
+| json (generate records) | 184.9 | 2.77 | 268.6 | 5.73 | **270.3** | 8.93 | k=15 (tie) |
+| mergesort | 175.3 | 2.56 | **226.9** | 4.71 | 197.7 | 6.27 | k=7 |
+| code (red-black tree) | 173.1 | 2.52 | **197.1** | 3.93 | 155.0 | 4.67 | k=7 |
+| math (thinking on) | 161.6 | 2.30 | **187.0** | 3.75 | 147.0 | 4.46 | k=7 |
+| prose | **113.9** | 1.32 | 101.7 | 1.55 | 68.5 | 1.49 | k=3 |
+
+Round latency is nearly constant within each depth — **20.3–20.5 ms at k=3,
+25.0–25.4 at k=7, 36.4–38.1 at k=15** — so cells differ almost entirely in how
+many drafted tokens survive verification. (The k=15 band is the loosest: the
+two extraction cells sit ~1.5 ms above prose there, which is the M=16 NVFP4
+kernel gap below showing up end-to-end.)
+
+**The ~392 tok/s figures are workload-specific, not headline throughput.**
+Extraction is the best case for speculation: at k=3 both extraction cells pin
+at τ = 3.00 — every draft accepted, the ceiling of that depth — and depth is
+what breaks the ceiling. Free-form prose runs at 113.9 and *prefers k=3*. The
+optimal depth is a property of the workload, not of the engine, which is why
+every column names its depth. Depth is a boot-time setting in v1.1.
+
+**Recommended release profiles** (concrete commands in
+[Quick start](#depth-profiles)): k=7 for general short/medium-context work,
+k=3 for long-context serving (65k measured), and k=15 only for highly
+predictable structured/extraction workloads where its wider verification
+actually pays.
+
+### Declared context is free
+
+`--max-model-len` used to cost real time: the decode partition geometry is
+derived from it, so declaring a large window taxed every speculative round
+even at short live context. With the pin, that is gone across the whole
+supported range — eleven boots, 4,096 to 262,144, a **64× range of declared
+context**, ms/round:
+
+| MML | mergesort | json | log2json |
+|---:|---:|---:|---:|
+| 4,096 | 25.14 | 25.18 | 25.40 |
+| 8,192 | 25.10 | 25.17 | 25.42 |
+| 16,384 | 25.06 | 25.10 | 25.36 |
+| 32,768 | 25.13 | 25.23 | 25.44 |
+| 65,536 | 25.05 | 25.10 | 25.36 |
+| 98,304 | 25.13 | 25.17 | 25.47 |
+| 131,072 | 25.20 | 25.22 | 25.51 |
+| 163,840 | 25.14 | 25.19 | 25.48 |
+| 196,608 | 25.17 | 25.14 | 25.51 |
+| 244,608 | 25.08 | 25.13 | 25.53 |
+| 262,144 | 25.15 | 25.19 | 25.61 |
+
+**Flat to within 0.25 ms**, with τ identical in every arm (4.71 / 5.73 / 6.81),
+so all eleven did byte-identical work. The only hint of a trend is log2json,
+the longest cell, drifting ~0.2 ms across the full 64× range — under 1%, and
+absent from the other two. Unpinned at the same 32,768 the figures
+are **25.84 / 26.50 / 28.03** — the pin recovers up to 2.59 ms (−9.2% on
+log2json), and the penalty it removes grows with live context.
+
+There is no "fastest" `--max-model-len`. **Declare the window you need within
+the KV capacity reported at boot**; 244,608 is reliable on both measured memory
+profiles, while 262,144 is marginal
+([`results/mml_speed_20260819.csv`](results/mml_speed_20260819.csv)).
+
+**Declaring a large window is free; filling it is not.** Every arm above
+generates at short *live* context — what is flat is the cost of having
+declared a large window, not the cost of having filled one. Decode does slow
+as the cache fills: at k=7, ~127 tok/s at short context against ~55 at 65k.
+Ordinary conversation stays in the fast regime, and long documents want the
+k=3 profile ([Depth profiles](#depth-profiles)), which is ~40% faster than
+k=7 at 65k. The measured curve is in
+[Limitations](#hardware-cost-power-limitations).
+
+**Seconds to answer**, AIME f01, decode only, n=5 — published including where
+it goes against us:
+
+| | seconds | completion tokens |
+|---|---:|---:|
+| ours, k=7 | 6.90 ± 0.30 | 1,513 ± 44 |
+| NInfer, draft 5 | **6.56 ± 1.34** | 1,403 ± 253 |
+| NInfer, draft 3 (their published default) | 7.73 ± 1.40 | 1,464 ± 238 |
+
+Their point estimate is 4.9% ahead at their best depth; we are 10.7% ahead of
+their published configuration; our latency variance is 4.5× tighter. This
+excludes prefill, which is theirs by ~4×, so a full end-to-end figure would
+favour them by more than 5%.
+
+---
+
+## Quick start
+
+Requires 4× SM70 GPUs, CUDA 12.8+, and the
+[1Cat-vLLM](https://github.com/1CatAI/1Cat-vLLM) 1.2.2 wheel. The bootstrap
+pins **`tilelang==0.1.10` and `apache-tvm-ffi==0.1.10`** together. Earlier
+tilelang does not build on Volta and fails later inside GDN attention where it
+looks like a kernel bug; and tilelang does not pin its own `apache-tvm-ffi`,
+so a machine built today otherwise resolves a newer one that **aborts on
+import** (`tvm::ffi::Error: TypeAttr __ffi_repr__ is already registered`).
+
+pip will print a red dependency-conflict block during this step, because the
+1Cat-vLLM 1.2.2 wheel declares the 0.1.9 versions of both. **That is expected
+and the bootstrap says so** — the install is correct, and the bootstrap now
+fails loudly if `import tilelang` does not work afterwards.
 
 ```bash
-CONV_OUT=~/models/Qwen3.6-27B-NVFP4-CTfull CONV_DEV=cuda:0 \
-  python scripts/convert_modelopt_to_ct.py
+# Reproducible path: no overrides. The wheel URL and its SHA256 are pinned in
+# the script, and the digest is verified before installation.
+bash scripts/bootstrap-sm70.sh
+
+# The checkpoint is pinned to an immutable revision. Any other revision is a
+# different set of weights and the published numbers do not describe it.
+hf download RadixArk/Qwen3.8-27B-NVFP4 \
+  --revision 554ebba9b5f1b79dc11246341960360e6ef05ef4 \
+  --local-dir ./Qwen3.8-27B-NVFP4
+
+bash scripts/serve-qwen38-native.sh ./Qwen3.8-27B-NVFP4
 ```
 
-The converter supplies its own CT config template
-([`scripts/ct_config_template.json`](scripts/ct_config_template.json)). Thus you need only the NVIDIA
-checkpoint and this repository. After the conversion, the runtime reads only
-`model-00003-of-00003.safetensors` (1.9 GB) of the source. The native lm_head reads the original
-4-bit codes and scales of NVIDIA from that file at every boot, so keep this one file. The other two
-source shards (18.6 GB) are input to the conversion only, and you can remove them. The serving
-footprint is ~22 GB.
+Supplying your own `VLLM_WHEEL` requires `VLLM_WHEEL_SHA256` with it — the
+bootstrap fails closed on an unverified wheel rather than installing it. The
+serve script accepts any directory containing a `config.json`, which is a
+convenience for local experiments; **it is not the reproducible path**, and
+results from an unpinned checkpoint are not comparable to the ones here.
 
-If you move the shard, set `VLLM_SKINNY_LMHEAD_NATIVE` to its new path.
+### Depth profiles
 
-## Run the server
+Speculation depth is a **boot-time** setting in v1.1 (per-request selection is
+v1.2 work). `K` and `MML` are environment overrides the launcher already
+honours, so each profile below is a real command rather than a suggestion —
+and the boot gate verifies that the depth you asked for is the depth the
+engine served, so a profile that fails to take exits non-zero instead of
+quietly serving k=7:
 
 ```bash
-VLLM_SKINNY_NVFP4=1 VLLM_SKINNY_QPN=1 VLLM_SKINNY_LMHEAD=1 VLLM_SKINNY_LMHEAD_NATIVE=1 \
-VLLM_SM70_MTP_DYNAMIC_DRAFT_VOCAB_DEFAULT=0 VLLM_SM70_GDN_CHAIN_SPEC_FAST_BUILD=1 \
-MNS=1 GMU=0.93 MBT=4096 \
-EXTRA_VLLM_ARGS='--default-chat-template-kwargs {"enable_thinking":true} --reasoning-parser qwen3
-  --enable-auto-tool-choice --tool-call-parser hermes
-  --compilation-config {"cudagraph_capture_sizes":[8,16]}
-  --speculative-config {"method":"mtp","num_speculative_tokens":7,"draft_sample_method":"greedy","use_local_argmax_reduction":true}' \
-bash scripts/launch_qwen36_ctfull_mtp.sh
+CKPT=/path/to/Qwen3.8-27B-NVFP4
+
+# general, short/medium context — the default, and what the benchmarks use
+bash scripts/serve-qwen38-native.sh $CKPT
+
+# long context — k=3 measures 76.3 tok/s at ~65k against k=7's 54.7 (+39%),
+# and beats speculation-off (65.5) too. Declaring the larger window is free.
+K=3 MML=196608 bash scripts/serve-qwen38-native.sh $CKPT
+
+# structured extraction, short context only — k=15 wins on high-acceptance
+# cells (doc2json 392.1 tok/s) and loses badly on prose. Do not use it as a
+# general default, and do not use it at long context.
+K=15 bash scripts/serve-qwen38-native.sh $CKPT
 ```
 
-The OpenAI-compatible endpoint answers on `:8000`:
+**Pick k by context length, not by taste.** The drafter runs k sequential
+steps per round and each one reads the whole KV cache, so a step costs ~0.817
+ms at short context but ~3.65 ms at 65k — while the tokens it wins barely
+improve (1.55 accepted/round at k=3 against 1.63 at k=7). Deep speculation
+stops paying as context grows, which is why the long-context profile is
+shallower rather than off.
+
+`bootstrap-sm70.sh` installs the pinned engine, deploys the fork patches with
+backups, and builds the kernels. It refuses a wheel that is not 1Cat-vLLM
+1.2.2 — every published number here was measured on it — and verifies
+`VLLM_WHEEL_SHA256`. Overriding the wheel without a digest is refused.
+
+`serve-qwen38-native.sh` starts an OpenAI-compatible server on port 8000,
+**bound to 127.0.0.1**. The server has no authentication, so reaching it from
+another machine should be an SSH tunnel:
 
 ```bash
-curl http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"qwen3.6-27b-nvfp4-skinny",
-       "messages":[{"role":"user","content":"Extract every date and amount from this invoice."}],
-       "temperature":0}'
+ssh -N -L 8000:127.0.0.1:8000 you@your-box
 ```
 
-The structured endpoints and the extraction endpoints use the k=15 profile instead. Set
-`num_speculative_tokens=15`. Set `cudagraph_capture_sizes=[16,32,64]`. Set `VLLM_SKINNY_DROP_CT=1`.
-Set the thinking mode to off. [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) is the authority on the
-launch config, the environment flags, the memory envelopes, the profile for each domain and the gates
-after the boot.
+Binding a public interface requires saying so explicitly
+(`HOST=0.0.0.0 I_UNDERSTAND_THIS_IS_UNAUTHENTICATED=1 …`), and even then it
+belongs behind a firewall — vLLM's own security guidance is that its API keys
+do not protect every endpoint. It aborts before boot if the GPUs are
+occupied, then **refuses to report success unless the release gates pass**:
+served depth equals requested `k`; `lm_head` is served from the checkpoint's own codes; no
+`lm_head` repack fallback occurs; the resolved KV storage is FP16; the fast
+XQA/tensor-core decode-attention route is observed with zero `scalar_paged`
+calls; and the expected QPN2/QPN8 decode routes are present. A mis-booted
+server exits non-zero rather than quietly producing unquotable numbers.
 
-## Capabilities
+---
 
-- An OpenAI-compatible server: `/v1/chat/completions` and `/v1/completions`, streaming, TP4
-- Chain-MTP speculative decoding at k ≤ 15, with greedy (argmax) drafter proposals
-- The thinking mode with the `qwen3` reasoning parser — set it for each endpoint, each request or each chat
-- Tool calls through the `hermes` parser with `--enable-auto-tool-choice`
-- The native NVFP4 lm_head: the stack reads the original NVIDIA codes and scales for each rank, with zero requantization
-- A serving profile for each domain — k=7 for general work, k=15 for structured output and extraction
+## How QPN works
 
-## Current limits
+The naive approach to low-bit weights on old hardware is: dequantize a tile to
+FP16 in memory, then call a GEMM. That spends HBM bandwidth on the format you
+were trying to avoid.
 
-- `num_speculative_tokens ≤ 15` is a hard limit. The cause is the 16-query tile of the V100
-  flash-decode. At k ≥ 16 the output is degenerate every time
-  ([`docs/mtp_width_findings.md`](docs/mtp_width_findings.md))
-- TurboMind is faster in the batch band above M=16, which is 8 or more concurrent streams. The
-  crossover is at ~4–8 streams
-- The native speculative round with one launch is complete and safe for the output, but it is inert.
-  The captured graph does not keep the recurrent state of the drafter, the stack rejects the drafts,
-  and the gain of ~5 ms stays unrealized
-- The conversion down-converts the attention `q/k/v/o` (16 layers) and the GDN `out_proj` (~48
-  layers) from the FP8 of NVIDIA to NVFP4. Those layers are thus a derivative with more
-  quantization, because the V100 has no FP8 hardware
-- The fp16 activations with the fp32 accumulation are not a native FP8 execution. This arithmetic is
-  stronger than the checkpoint intends, and it is numerically different from it
-- τ changes between runs on the high-entropy domains (prose 1.33–1.48, math 4.40–4.41, json
-  5.56–5.60). Thus the prose decode changes between 82 and 88 tok/s
+The QPN decode and verification paths do not do that. **Packed low-bit weights
+stay compressed through HBM and are decoded only at the point of consumption**,
+directly into the FP16 register operands `mma.sync.m8n8k4` requires. On those
+paths, the weight stream exists in FP16 only in registers for the instant it
+is consumed. Large-M FP8 prefill above the packed-kernel range is a separate,
+transient reconstruction path described below.
 
-## Documentation
+The mapping is the hard part. `m8n8k4` is the one FP16 tensor-core op Volta
+exposes and it is notoriously difficult to feed. QPN puts **all four quadpairs
+on the N dimension, sharing one activation tile**: a single warp instruction
+issues four independent 8×8×4 MMAs against the same 8×4 activation fragment,
+so activation traffic per weight byte drops 4×. Weights are pre-permuted at
+load time into fragment order — nibble-interleaved so the decoder's output
+register pair *is* the B-fragment the instruction wants, with no shuffle in
+the inner loop. No shared memory in the main loop, one barrier total, 56
+registers, zero spills
+([`docs/qpn_race_notes.md`](docs/qpn_race_notes.md)).
 
-- [`docs/benchmarks.md`](docs/benchmarks.md) — the full benchmark matrices and the head-to-head comparisons
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — the launch config, the flags, the profiles, the ops hardening
-- [`docs/REPRODUCE.md`](docs/REPRODUCE.md) — how to measure every headline number again
-- [`docs/ab_report.md`](docs/ab_report.md) — NVFP4 + skinny against AWQ + TurboMind
-- [`docs/acceptance_gap_notes.md`](docs/acceptance_gap_notes.md) — the acceptance fix for the greedy drafter
-- [`docs/lmhead_provenance.md`](docs/lmhead_provenance.md) — the weight provenance and the FP8 deviation
-- [`docs/mtp_width_findings.md`](docs/mtp_width_findings.md) — the correctness wall at the k ≤ 15 verify width
-- [`docs/qpn_race_notes.md`](docs/qpn_race_notes.md) — the Volta-native `m8n8k4` tensor-core path
-- [`docs/twin_race_notes.md`](docs/twin_race_notes.md) — why the batch band stays closed
-- [`docs/native_round_design.md`](docs/native_round_design.md) — the speculative round in one CUDA graph
-- [`docs/decode_residual_ledger.md`](docs/decode_residual_ledger.md) — the decode cost for each step
-- [`docs/hardware_audit.md`](docs/hardware_audit.md) — the NUMA placement, the clocks, the C-state findings
-- [`docs/terminology_audit.md`](docs/terminology_audit.md) — the lm_head / mtp_head / backbone vocabulary
+**QPN2** is the NVFP4 (e2m1 + FP8 group-16 scale) instantiation. **QPN8**
+generalizes the same execution architecture to FP8 e4m3 — one contiguous byte
+stream, a simpler decoder, and the same quadpair-on-N geometry. **MT=2** issues
+two 8-row tiles against a single weight pass, which is what makes the FP8
+M 9–16 band viable for k=15. It exists for QPN8 only: there is no
+`gemm_qpn2_mt2`, so NVFP4 at M 9–16 falls back to the first-generation
+`gemm_qpn`.
 
-The code is in [`kernels/`](kernels), [`fork_patches/`](fork_patches),
-[`benchmarks/`](benchmarks), [`scripts/`](scripts) and [`tests/`](tests). The retired experiments are
-in `kernels/research/`. Every headline number comes from a committed CSV in [`results/`](results).
+One lesson worth recording: the first correct-looking version overflowed FP16
+on real activation outliers. Only real-weight, real-activation tests exposed
+it. The fix folds the global scale into the group scales in-kernel with a
+per-16-element FP32 flush.
 
-## Acknowledgements
+---
 
-**This is not a standalone engine.** It is a set of CUDA kernels and a serving configuration on top
-of **[1Cat-vLLM](https://github.com/1CatAI/1Cat-vLLM)**, the
-[vLLM](https://github.com/vllm-project/vllm) fork that carries Volta (SM70) support. This repository
-is separate, and it is not a GitHub fork, so nothing in the interface shows that lineage.
+## Native mixed-precision checkpoint path
 
-The fork supplies the SM70 NVFP4 route, and the kernels here only replace the GEMM inside it. It also
-supplies the chain-MTP machinery that every speculative figure runs on, and the fast path that
-[`fork_patches/`](fork_patches) extends. The `FLASH_ATTN_V100` backend is theirs as well, and it
-serves the attention in every measurement here. That backend builds in turn on
-[flash-attention-v100](https://github.com/ai-bond/flash-attention-v100), an implementation of
-FlashAttention-2 for the V100. The acceptance flag `draft_sample_method=greedy` came from the fork
-too, and this project measured what it was worth rather than building it.
+The checkpoint is served as published, which requires the loader to do three
+things it previously would not:
 
-Thanks also to NVIDIA and Qwen for the
-[checkpoint](https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4). TurboMind / LMDeploy supplied the
-`cvt_f16x8_e2m1` decoder, which [`kernels/skinny_kernels.cu`](kernels/skinny_kernels.cu) derives from
-under Apache-2.0. QuantTrio supplied the AWQ checkpoint of the reference arm.
-[ninfer](https://github.com/Neroued/ninfer) published numbers and fixtures that another project can
-reproduce.
+1. **Dispatch per region, and the two regions have different reach.**
 
-## Provenance
+   | M | NVFP4 regions (MLP trunk) | FP8 regions (attention projections) |
+   |---|---|---|
+   | 1–8 | `qpn2` | `qpn8` |
+   | 9–16 | `qpn` | `qpn8-mt2` (two 8-row tiles, one weight pass) |
+   | 17–96 | Marlin | `qpn8-chunked` |
+   | > 96 | Marlin | `qpn8-prefill-reconstruct` |
 
-This repository is a curated release. The work happened in a private research archive. At the
-release, the final state of that archive is 103 commits (2026-08-10 → 2026-08-12) with the HEAD
-`089407ae92e2afd431eae3628b6b5bf97bb33925`. Those commits sit on top of the earlier on-box
-measurement campaigns that the CSVs in `results/` record. A git commit hash is a cryptographic
-commitment to the complete history behind it. Thus the author can supply the archive for verification
-without a public release.
+   **FP8 stays on packed QPN8 kernels through M=96; above that it remains under
+   v100-skinny dispatch but uses transient reconstruction. NVFP4 hands off at
+   M=17.** The asymmetry is deliberate on one side and a consequence on the
+   other. For FP8, chunking was measured to beat transient reconstruction
+   all the way to M≈112 — by 3.1× on all three protected shapes — so the
+   boundary sits at 96. Above it, weights are reconstructed transiently from
+   the packed codes and never persisted.
 
-## License
+   For NVFP4 the WMMA path that nominally covers 17–64 requires the
+   checkpoint-native code stash, and production drops that stash
+   (`VLLM_SKINNY_DROP_CT=1`) once the QPN prepack exists, to reclaim its
+   memory. So M ≥ 17 falls to Marlin — a memory decision with a routing
+   consequence, not a designed handoff at 17. Decode and speculative verify
+   never enter that band.
 
-MIT for this repository ([`LICENSE`](LICENSE)). The files in [`fork_patches/`](fork_patches) modify
-vLLM and 1Cat-vLLM sources. They stay under **Apache-2.0** and keep their SPDX headers.
+   Every route is logged and counted, and the census is checked for fallbacks
+   after every boot.
+   The FP8 regions are **the attention projections of every layer, two per
+   layer, 128 modules per rank**: 48 GDN layers contributing
+   `linear_attn.in_proj_qkvz` and `linear_attn.out_proj`, and 16
+   full-attention layers contributing `self_attn.qkv_proj` and
+   `self_attn.o_proj`. They are not 128 transformer layers — the model has 64.
+   Everything else, the MLP trunk and `lm_head`, is NVFP4.
+
+2. **Lower the capability gate.** `ModelOptMixedPrecisionConfig` — the config
+   that governs this checkpoint — declares a minimum compute capability of
+   **89**, and `ModelOptFp8Config` the same; a V100 reports 70. QPN8 is what
+   makes SM70 admissible, and the prepack is verified invertible and
+   byte-identical against the source weights per shape before the original is
+   freed.
+3. **Override the KV directive for SM70.** The checkpoint requests FP8 KV
+   cache. On this Volta backend that selects scalar paged attention rather
+   than the tensor-core XQA route, costing 4.82 ms per round — more than four
+   times the measured cost of preserving the FP8 weight regions themselves.
+   v1.1 therefore resolves the KV cache to FP16 on SM70.
+
+`lm_head` is served by QPN2 straight from the checkpoint's own 4-bit codes;
+there is no separate FP16 head and nothing is borrowed from another
+checkpoint.
+
+**What is actually resident.** NVFP4 layers hold two packed 4-bit copies — the
+QPN prepack in fragment order for M≤16 and the Marlin repack that serves
+prefill; the checkpoint-native staging copy is freed once the prepack exists
+(`VLLM_SKINNY_DROP_CT=1`). FP8 layers hold one persistent packed 8-bit copy,
+with the source tensor freed after the prepack is verified invertible. **There
+is no persistent FP16 weight representation.** Decode and verification expand
+weights only on-chip; M>96 FP8 prefill may materialize a transient FP16
+workspace for the duration of that call.
+
+---
+
+## Kernel benchmarks
+
+Both arms measured over one set of weights, one process, one sitting, on the
+real per-rank shapes. Ceilings measured in the same harness: **read-only
+879 GB/s, copy 822 GB/s.** Percentages use the **read** ceiling — these GEMMs
+stream weights in and write a tiny M×N result, while a memcpy touches DRAM
+twice, so a copy-rate denominator overstates them.
+
+**NVFP4 trunk** (six per-rank projections; `lm_head` reported separately):
+
+| M | route | v100-skinny | % of read ceiling | 1Cat-vLLM Marlin backport | ratio |
+|--:|---|---:|---:|---:|---:|
+| 1 | qpn2 | **679.5 GB/s** | **77%** | 145.6 GB/s | **4.67×** |
+| 4 | qpn2 | 676.6 | 77% | 143.2 | 4.72× |
+| 8 | qpn2 | 619.8 | 71% | 139.8 | 4.43× |
+| 16 | qpn *(no MT=2)* | 301.9 | **34%** | 138.5 | 2.18× |
+
+**The M=16 row is a known gap, not a Volta limit.** NVFP4 at M 9–16 runs
+`gemm_qpn`, the first-generation kernel — there is no `gemm_qpn2_mt2`, so it
+gets neither the QPN2 geometry nor MT=2. The FP8 side at the same M does get
+MT=2, and the difference is stark:
+
+| at M=16 | route | GB/s | % of read ceiling |
+|---|---|---:|---:|
+| NVFP4 | `qpn` | 301.9 | 34% |
+| FP8 | `qpn8-mt2` | 558.5 | **64%** |
+
+**1.85× apart on the same card at the same M**, purely because one has two
+tiles per weight pass and the other does not. This is the largest identified
+kernel gap in the stack and it is scoped work, not a research question:
+porting MT=2 to QPN2 is estimated at ~3.7 ms/round at k=15, where verification
+width *is* M=16. It is v1.2 work and is not in v1.1.
+
+**FP8 attention projections:**
+
+| M | route | v100-skinny | % of read ceiling |
+|--:|---|---:|---:|
+| 1–4 | qpn8 | **718.6–720.5 GB/s** | **82%** |
+| 8 | qpn8 | 712.4 | 81% |
+| 16 | qpn8-mt2 | 558.5 | 64% |
+
+`lm_head` (5120 × 62,080) is excluded from the trunk aggregate — at ~179 MB
+packed it would dominate any byte-weighted mean, and it is evaluated once per
+token while the trunk projections are evaluated once per layer, 64 layers
+deep. On its own it is the fastest shape at
+**842.9 GB/s, 96% of read ceiling**, but only 2.14× the fallback, because
+large-N is where Marlin is least weak.
+
+The comparison is against the **1Cat-vLLM SM70 Marlin backport** — the
+fallback QPN replaces. It is not a comparison against upstream vLLM: upstream
+declares a minimum compute capability of 75 for both of its NVFP4 entry points
+and raises `ValueError: … Minimum capability: 75. Current capability: 70.` at
+engine construction on a V100. There is no upstream number on this hardware in
+either direction.
+
+---
+
+## Correctness and quality
+
+- **AIME 2026 f01, five seeds, both engines: 5/5 correct**, scored against
+  independently derived ground truth (277).
+- **Matched-depth acceptance diagnostic.** A separate k=3 diagnostic using the
+  FP16-head control path, seeded ×3 on NInfer's verbatim fixtures, measured
+  **f01 83.4 ± 0.6% for v100-skinny against NInfer's published 80.8 ± 1.8%**.
+  This is not the shipping QPN2 `lm_head` path; it is retained only as a
+  matched-depth acceptance control and should not be read against any k=7 or
+  k=15 figure elsewhere in this document.
+- **Prepack invertibility.** "Weights unchanged" means the stored FP4/FP8 code
+  values and scales are preserved without arithmetic requantization; the loader
+  only permutes their addresses into fragment order. The QPN8 permutation is
+  inverted and asserted byte-identical against the source weights, per shape,
+  before the original is freed — the packed buffer is the only persistent copy,
+  so a silent corruption would be unrecoverable.
+- **Kernel numerics** validated against a dequantized reference at 2.75e-4
+  across 30 cases ([`results/mixed_regression_closed_20260818.md`](results/mixed_regression_closed_20260818.md)).
+- **Byte-identical output** under greedy decoding across the GDN fast-path
+  change and the MML sweep — the `--max-model-len` ladder produced identical
+  token counts and identical τ in all eleven arms, which is what makes its
+  timing deltas interpretable.
+
+---
+
+## Hardware, cost, power, limitations
+
+Four Tesla V100-SXM2-16GB, TP4, NUMA-pinned to socket 0, application clocks
+pinned. The GPUs are roughly **A$600 of used silicon** — that is the
+accelerators alone and not the cost of the machine around them. V100-SXM2
+cards are rated for 300 W each; this is not a low-power configuration, and the
+case for it is capability and price, not efficiency.
+
+**Known limitations:**
+
+- **The full 262,144 window is reachable but marginal.** "Available KV cache
+  memory" is bimodal across boots of an identical configuration — 4.68 GiB or
+  4.34 GiB, unrelated to `--max-model-len`. A 262,144-token sequence needs
+  4.63 GiB, so it clears a high boot by 0.05 GiB and is refused on a low one,
+  where vLLM estimates 244,608 instead. **244,608 is the largest window that
+  boots on both profiles**; 262,144 boots on the higher-memory profile and does
+  not tax short-context round latency, but expect an occasional startup
+  refusal. Any of this is possible only because Qwen3.8 is
+  hybrid — 48 of its 64 layers are linear-attention and hold recurrent state
+  rather than a KV cache, so only 16 layers pay per-token KV
+  ([`results/mml_ceiling_20260819.csv`](results/mml_ceiling_20260819.csv)).
+- **Decode slows with live context, and fixed k=7 becomes the wrong depth.**
+  Declared context is free (above); live context is a different axis.
+  Measured with [llama-benchy](https://github.com/eugr/llama-benchy), k=7
+  falls from **127.4 tok/s at ~0.5k to 54.7 at ~65k**. Plain decode falls only
+  **86.3 → 65.5**, but the correct conclusion is not "disable speculation":
+  at ~65k, **k=3 reaches 76.3 tok/s**, beating both. The extra k=7 drafter
+  steps each traverse the long-context state (~3.65 ms/step at 65k versus
+  0.817 ms shallow), while accepted tokens barely increase (1.55 per round at
+  k=3 versus 1.63 at k=7). This is a **depth-economics problem, not a QPN
+  weight-kernel regression**. v1.1 selects depth at boot: use k=7 for short
+  and medium contexts and the k=3 profile for long-context serving. Automatic
+  per-request depth selection is deferred to v1.2. The decode-partition pin
+  remains equal or better than the unpinned selector at every tested depth
+  ≥65k ([`results/ctx_depth_20260819.md`](results/ctx_depth_20260819.md)).
+- **Prefill is roughly 4× slower than a 5090.** Much of that gap is
+  architectural: decode is the bandwidth-bound GEMV regime, where a
+  weight-stream kernel at 77–82% of roofline is most of the battle, while
+  prefill is the compute-bound large-M GEMM regime and Volta has no FP4 or FP8
+  Tensor Cores. The large-M software path also retains headroom documented
+  below, so v1.1 does not claim the entire 4× gap is irreducible. The release
+  claims are about single-user decode.
+- **Domain benchmark cells are n=1**; the AIME results are n=5.
+- **Checkpoints are not matched in the head-to-head** — we serve RadixArk,
+  NInfer's artifact is built from an unsloth NVFP4 revision that no longer
+  exists upstream and cannot be reproduced.
+
+### Known headroom
+
+Not caveats — these do not qualify any figure above. They are measured gaps
+between what the stack does and what it could do, and the numbers reported
+here would *improve* if they were closed.
+
+- **NVFP4 has no MT=2 at M 9–16.** 301.9 GB/s against FP8's 558.5 at the same
+  M, because `gemm_qpn2_mt2` does not exist. M=16 is the k=15 verification
+  width, so this is the band k=15 runs in: porting MT=2 to QPN2 is estimated
+  at ~3.7 ms/round at k=15. The k=7 results are untouched — they verify at
+  M=8. Largest identified gap in the stack.
+- **NVFP4 above M = 16 runs on Marlin.** The WMMA path covering 17–64 needs
+  the checkpoint-native code stash, which production frees rather than hold
+  two packed copies of every weight. Prefill band only; the V100 WMMA plateau
+  there is structural anyway. FP8 is unaffected — `qpn8-chunked` covers 17–96.
+- **The FP8 chunked path re-reads the weight stream once per 8 rows**, so
+  useful bandwidth at M=32 is about a quarter of the M ≤ 8 figure — time is
+  linear in M (113.1 µs at M=32, 223.5 at M=64, i.e. 4 and 8
+  chunks). Prefill band, not decode. Extending MT=2 up the M range is the same lever as the first item.
+
+---
+
+## Reproduction
+
+Every number in this document is traceable to a committed file in
+[`results/`](results/), which is the canonical source; this README restates
+rather than redefines.
+
+| claim | file | harness |
+|---|---|---|
+| kernel bandwidth, both arms | [`results/kernel_matched_20260819.csv`](results/kernel_matched_20260819.csv) | [`benchmarks/kernel_matched_bench.py`](benchmarks/kernel_matched_bench.py) |
+| launch table, three depths | [`results/v11_shipped_table_20260819.md`](results/v11_shipped_table_20260819.md) | [`benchmarks/v11_suite.py`](benchmarks/v11_suite.py) |
+| AIME + seconds to answer | [`results/aime_partfix_20260819.md`](results/aime_partfix_20260819.md) | [`benchmarks/ninfer_repro.py`](benchmarks/ninfer_repro.py) |
+| head-to-head vs NInfer | [`results/headtohead_5090_20260819.md`](results/headtohead_5090_20260819.md) | [`benchmarks/v11_suite.py`](benchmarks/v11_suite.py) |
+| speculation depth economics | [`results/depth_curve_ours_20260819.md`](results/depth_curve_ours_20260819.md) | — |
+| decode-partition fix | [`results/partition_fix_20260819.md`](results/partition_fix_20260819.md) | [`benchmarks/v11_suite.py`](benchmarks/v11_suite.py) |
+| decode vs live context | [`results/ctx_depth_20260819.md`](results/ctx_depth_20260819.md) | [llama-benchy](https://github.com/eugr/llama-benchy) |
+| FP16-KV policy (+4.82 ms/round) | [`results/mixed_regression_closed_20260818.md`](results/mixed_regression_closed_20260818.md) | [`benchmarks/v11_suite.py`](benchmarks/v11_suite.py) |
+
+The harnesses above are portable and take their paths from the environment.
+The per-experiment boot drivers that orchestrated these runs are
+machine-specific and are not shipped; `serve-qwen38-native.sh` is the
+supported way to bring up the configuration they used.
+
+Both engines are driven through the same harness and the same metric
+definitions. Sampling fields are always sent explicitly — neither engine is
+left to fill defaults from its own model card — and streaming reads both
+`reasoning` and `reasoning_content`, since reading only one places
+time-to-first-token after the entire reasoning phase.
+
+---
+
+## Credits and lineage
+
+```
+vLLM  ->  1Cat-vLLM (SM70)  ->  v100-skinny
+```
+
+**[1Cat AI](https://github.com/1CatAI/1Cat-vLLM)** made modern vLLM run on
+Volta. Their distribution also ships `flash_attn_v100`, a native
+FlashAttention for SM70 — 15 MB of compiled `sm_70` device code, with paged
+KV, split-KV prefill, XQA and WMMA decode paths and quantized-KV decode.
+Upstream FlashAttention requires *"Ampere, Ada, or Hopper"*; Turing is served
+only by a separate third-party partial port; Volta is a generation below that
+and is not listed at all. **Every attention number here depends on their work,
+and there would be no stack to build on without it.**
+
+**[vLLM](https://github.com/vllm-project/vllm)** is the engine both forks
+derive from.
+
+**v100-skinny** contributes the QPN execution architecture — QPN2, QPN8 and
+MT=2 — the native mixed-checkpoint loader and dispatch path that makes the
+published representation executable on SM70, and the serving fixes above. The
+files in [`fork_patches/`](fork_patches/) are 1Cat-vLLM's, carrying our edits,
+and remain Apache-2.0.
+
+**License:** MIT for the kernels, harnesses, scripts, docs and results;
+Apache-2.0 for [`fork_patches/`](fork_patches/). See
+[`LICENSE`](LICENSE), [`LICENSE-APACHE-2.0`](LICENSE-APACHE-2.0) and
+[`NOTICE`](NOTICE).
+
+---
+
+## Citation
+
+```bibtex
+@software{vertzyas_v100skinny_2026,
+  author  = {Vertzyas, Dennis},
+  title   = {v100-skinny: native mixed NVFP4/FP8 LLM inference on NVIDIA Volta},
+  version = {1.1},
+  year    = {2026},
+  url     = {https://github.com/dnv2003/v100-skinny}
+}
+```

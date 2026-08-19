@@ -6,20 +6,22 @@ weights, 2000 random hidden states + 200 adversarial near-tie rows
 after applying the lowest-index tie rule to both paths.
 """
 import os
+
+# Portable defaults: derive from this file's location, never a box path.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO = os.path.dirname(_HERE)
+_SRC = os.environ.get("SKINNY_KERNELS_SRC",
+                      os.path.join(_REPO, "kernels", "skinny_kernels.cu"))
 import torch
 
 os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "7.0")
 from torch.utils.cpp_extension import load  # noqa: E402
-import os as _os
-import sys as _sys
-_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
-from _paths import kernel_src, out_csv, fixtures_dir  # noqa: E402
 
 dev = "cuda:0"
 torch.manual_seed(7)
 HOME = os.path.expanduser("~")
 ext = load(name="skinny_nvfp4_v11",
-           sources=[kernel_src("skinny_kernels.cu")],
+           sources=[_SRC],
            extra_cuda_cflags=["-O3", "--use_fast_math", "-lineinfo",
                               "-gencode=arch=compute_70,code=sm_70"],
            verbose=False)

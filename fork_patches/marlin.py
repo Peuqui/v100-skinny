@@ -32,7 +32,10 @@ logger = init_logger(__name__)
 _SKINNY_ENABLED = os.environ.get("VLLM_SKINNY_NVFP4", "0") == "1"
 _SKINNY_SRC = os.environ.get(
     "VLLM_SKINNY_NVFP4_SRC",
-    os.path.expanduser("~/flatness-run/skinny_kernels.cu"),
+    # Default: the kernel source shipped alongside this checkout. Set
+    # VLLM_SKINNY_NVFP4_SRC to override. Never a machine-specific path.
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                 "kernels", "skinny_kernels.cu"),
 )
 import os as _os
 
@@ -51,6 +54,32 @@ _QPN_ENABLED = os.environ.get("VLLM_SKINNY_QPN", "1") == "1"
 # weight footprint (fp32 GDN state then fits). M1-3 route to
 # gemm_qpn_simt (qpn-layout SIMT), M17+ to marlin (conceded band).
 _QPN_DROP_CT = os.environ.get("VLLM_SKINNY_DROP_CT", "0") == "1"
+# QPN2: geometry-winner kernel for M 4..8 (qpn_matrix/qpn_msweep
+# 2026-08-17: weighted 637 GB/s vs 441; -30.7% QPN time). Same prepack,
+# same bytes — kernel and launch geometry only. VLLM_SKINNY_QPN2=0
+# restores the fixed-4-warp kernel.
+_QPN2_ENABLED = os.environ.get("VLLM_SKINNY_QPN2", "1") == "1"
+# (K, N) -> (splitk, nacc), measured winners; heuristic covers the rest.
+# graph-mode winners (qpn_graphmatrix 2026-08-17): captured-replay is
+# the serving regime and reshuffles two cells vs the eager matrix.
+_QPN2_TABLE = {(1536, 5120): (16, 2), (4352, 5120): (16, 2),
+               (5120, 8704): (8, 2), (5120, 4096): (16, 2),
+               (5120, 2048): (32, 2), (5120, 62080): (8, 1),
+               (5120, 3584): (16, 2)}
+
+
+def _qpn2_cfg(k: int, n: int):
+    cfg = _QPN2_TABLE.get((k, n))
+    if cfg is not None and (k // 16) % cfg[0] == 0:
+        return cfg
+    # smallest split that puts ~640+ warps in flight (80 SMs x 8)
+    for s in (8, 16, 32):
+        if (k // 16) % s == 0 and (n // 32) * s >= 640:
+            return (s, 2 if s >= 16 else 1)
+    for s in (16, 8):
+        if (k // 16) % s == 0:
+            return (s, 2 if s >= 16 else 1)
+    return None
 _SELF_CHECK_CALLS = 3
 _SELF_CHECK_TOL = 3e-2
 
@@ -175,21 +204,30 @@ def _skinny_linear(x: torch.Tensor, codes: torch.Tensor, scales: torch.Tensor,
     has_ct = codes.numel() > 0
     use_qpn = qpn_codes.numel() > 0 and 4 <= m <= 16 \
         and k % 64 == 0 and n % 32 == 0
+    # qpn2 owns M 1..8 (msweep: 550-800 GB/s at M=1 vs qpn1/simt);
+    # eligibility mirrors use_qpn's shape checks without its m >= 4.
+    qpn2_ok = (_QPN2_ENABLED and qpn_codes.numel() > 0 and 1 <= m <= 8
+               and k % 64 == 0 and n % 32 == 0)
+    qpn2_cfg = _qpn2_cfg(k, n) if qpn2_ok else None
     use_qpn1 = (not has_ct) and qpn_codes.numel() > 0 and 1 <= m <= 3 \
         and k % 64 == 0 and n % 32 == 0
     use_simt = has_ct and (not use_qpn) and 1 <= m <= 7 \
         and k % 128 == 0 and n % 8 == 0
     use_wmma = has_ct and (not use_qpn) and (not use_simt) \
         and m <= _SKINNY_MAX_M and k % 128 == 0 and n % 64 == 0
-    route = "qpn" if use_qpn else "qpn1" if use_qpn1 \
+    route = "qpn2" if qpn2_cfg is not None else "qpn" if use_qpn \
+        else "qpn1" if use_qpn1 \
         else "simt" if use_simt else "wmma" if use_wmma else "marlin"
     # Route map: the op body runs at capture/compile/eager time, so one
     # line per unique (route, M) documents what each graph replays.
-    key = (route, m)
+    key = (route, m, n, k)
     _bump_route_count(route, m)
     if key not in _route_log_seen:
         _route_log_seen.add(key)
         logger.info("Skinny route map: M=%d N=%d K=%d -> %s", m, n, k, route)
+    if _skinny_ok and qpn2_cfg is not None:
+        return _get_skinny_ext().gemm_qpn2(
+            x, qpn_codes, qpn_scales, gscale, n, qpn2_cfg[0], qpn2_cfg[1])
     if _skinny_ok and use_qpn:
         return _get_skinny_ext().gemm_qpn(x, qpn_codes, qpn_scales, gscale, n)
     if _skinny_ok and use_qpn1:
@@ -343,8 +381,46 @@ _LMHEAD_ENABLED = os.environ.get("VLLM_SKINNY_LMHEAD", "0") == "1"
 # nibbles, value = e2m1 * fp8_scale * weight_scale_2, bf16-exact vs the
 # CT rendering on all sampled rows. Requires VLLM_SKINNY_LMHEAD=1.
 _LMHEAD_NATIVE = os.environ.get("VLLM_SKINNY_LMHEAD_NATIVE", "")
-_LMHEAD_NATIVE_DEFAULT = os.path.expanduser(
-    "~/models/Qwen3.6-27B-NVFP4/model-00003-of-00003.safetensors")
+
+
+def _lmhead_resolve_native_path():
+    """Resolve native lm_head codes from the SERVED checkpoint.
+
+    NEVER falls back to another model's checkpoint: vocab sizes commonly
+    match across a family, so a hardcoded path loads a foreign head with no
+    shape error. Returns None when the served checkpoint has no native
+    NVFP4 lm_head, and the caller then packs from the model's own weights.
+    """
+    import glob
+    import json
+    try:
+        from vllm.config import get_current_vllm_config
+        model_dir = get_current_vllm_config().model_config.model
+    except Exception as exc:
+        logger.warning("Native lm_head: cannot resolve served model dir (%s); "
+                       "packing from the model's own weights instead", exc)
+        return None
+    if not os.path.isdir(model_dir):
+        return None
+    idx = os.path.join(model_dir, "model.safetensors.index.json")
+    if os.path.exists(idx):
+        try:
+            wm = json.load(open(idx))["weight_map"]
+        except Exception:
+            wm = {}
+        for key in wm:
+            if key.endswith("lm_head.weight_scale"):
+                return os.path.join(model_dir, wm[key])
+        return None
+    for cand in sorted(glob.glob(os.path.join(model_dir, "*.safetensors"))):
+        try:
+            from safetensors import safe_open
+            with safe_open(cand, "pt") as f:
+                if any(k.endswith("lm_head.weight_scale") for k in f.keys()):
+                    return cand
+        except Exception:
+            continue
+    return None
 
 if _LMHEAD_ENABLED:
     _E2M1_MAGS = None
@@ -406,11 +482,28 @@ if _LMHEAD_ENABLED:
         from safetensors import safe_open
         from vllm.distributed import get_tensor_model_parallel_rank
         path = (_LMHEAD_NATIVE if _LMHEAD_NATIVE != "1"
-                else _LMHEAD_NATIVE_DEFAULT)
+                else _lmhead_resolve_native_path())
+        if not path or not os.path.exists(path):
+            logger.warning(
+                "Native lm_head: served checkpoint has no native NVFP4 "
+                "lm_head; packing from the model's own weights (no foreign "
+                "checkpoint is ever borrowed).")
+            _lmhead_pack(layer)
+            return
+        logger.info("Native lm_head source: %s", path)
         n, k = layer.weight.shape
         off = get_tensor_model_parallel_rank() * n
         with safe_open(path, "pt") as f:
-            total = f.get_slice("lm_head.weight").get_shape()[0]
+            _lmk = "lm_head.weight"
+            if _lmk not in f.keys():
+                _cand = [k for k in f.keys() if k.endswith("lm_head.weight")]
+                if not _cand:
+                    logger.warning("Native lm_head: no lm_head.weight in %s; "
+                                   "packing from the model's own weights", path)
+                    _lmhead_pack(layer)
+                    return
+                _lmk = _cand[0]
+            total = f.get_slice(_lmk).get_shape()[0]
             if off + n > total:
                 logger.warning(
                     "Native lm_head shard [%d:%d] exceeds source rows %d "
@@ -418,9 +511,9 @@ if _LMHEAD_ENABLED:
                     off, off + n, total)
                 _lmhead_pack(layer)
                 return
-            codes = f.get_slice("lm_head.weight")[off:off + n]
-            scales = f.get_slice("lm_head.weight_scale")[off:off + n]
-            g = float(f.get_tensor("lm_head.weight_scale_2").float().item())
+            codes = f.get_slice(_lmk)[off:off + n]
+            scales = f.get_slice(_lmk + "_scale")[off:off + n]
+            g = float(f.get_tensor(_lmk + "_scale_2").float().item())
         dev = layer.weight.device
         layer.skinny_lm_codes = codes.to(torch.uint8).to(dev).contiguous()
         layer.skinny_lm_scales = (scales.view(torch.uint8).to(dev)
@@ -457,20 +550,30 @@ if _LMHEAD_ENABLED:
         # kernel than the drafter's M=1 path flips 4-bit-head near-ties —
         # measured 2026-08-10: extraction acceptance 82% (vs 97-100) and
         # 2/4 losslessness diffs failed. Trunk QPN is unaffected.
-        use_qpn = (os.environ.get("VLLM_SKINNY_QPN_LMHEAD", "0") == "1"
-                   and _QPN_ENABLED and 4 <= m <= 16
-                   and w.shape[1] % 64 == 0 and w.shape[0] % 32 == 0)
-        if use_qpn:
+        # 2026-08-17: with qpn2 the historical blocker inverts. The
+        # 2026-08-10 failure (extraction acceptance 82%) came from the
+        # drafter (M=1, simt) and verifier (M=8, qpn) computing logits
+        # through DIFFERENT kernels whose near-ties disagree. qpn2's
+        # reduction order is M-independent, so routing M 1..8 through it
+        # gives both sides bit-identical logits per row.
+        lm_cfg = None
+        if (os.environ.get("VLLM_SKINNY_QPN_LMHEAD", "1") == "1"
+                and _QPN2_ENABLED and 1 <= m <= 8
+                and w.shape[1] % 64 == 0 and w.shape[0] % 32 == 0):
+            lm_cfg = _qpn2_cfg(w.shape[1], w.shape[0])
+        if lm_cfg is not None:
             if not hasattr(layer, "skinny_lm_qpn_codes"):
                 qc, qs = _qpn_prepack(layer.skinny_lm_codes,
                                       layer.skinny_lm_scales)
                 layer.skinny_lm_qpn_codes = qc
                 layer.skinny_lm_qpn_scales = qs
-            use_qpn = layer.skinny_lm_qpn_codes is not None
-        if use_qpn:
-            y = ext.gemm_qpn(x2.contiguous(), layer.skinny_lm_qpn_codes,
-                             layer.skinny_lm_qpn_scales,
-                             layer.skinny_lm_gscale, w.shape[0])
+            if layer.skinny_lm_qpn_codes is None:
+                lm_cfg = None
+        if lm_cfg is not None:
+            y = ext.gemm_qpn2(x2.contiguous(), layer.skinny_lm_qpn_codes,
+                              layer.skinny_lm_qpn_scales,
+                              layer.skinny_lm_gscale, w.shape[0],
+                              lm_cfg[0], lm_cfg[1])
         else:
             fn = ext.gemm_simt if m <= 7 else ext.gemm_wmma
             y = fn(x2.contiguous(), layer.skinny_lm_codes,

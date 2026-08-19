@@ -1380,7 +1380,520 @@ torch::Tensor skinny_gemm_qpn(torch::Tensor x, torch::Tensor qcodes,
   return y;
 }
 
+
+// ---------------------------------------------------------------------------
+// QPN2 (2026-08-17): the qpn_matrix/qpn_msweep geometry winner. Same QP-N
+// architecture and prepacked fragment layout as skinny_nvfp4_qpn, with
+// SPLITK (warps per CTA splitting K on one N=32 tile) and NACC
+// (independent accumulator fragments across the four k-slice mma.sync
+// ops) as template knobs. Measured frontier (results/
+// qpn_matrix_20260817.csv): split16 for N*K small/mid shapes, split8 for
+// gate_up, split32 for N=2048 — weighted 637 GB/s at M=8 vs 441 for the
+// fixed-4-warp kernel; near-flat in M (704 GB/s weighted at M=1).
+// M <= 8 only; M 9..16 stays on skinny_nvfp4_qpn<2>.
+template <int SPLITK, int NACC>
+__global__ void skinny_nvfp4_qpn2(const uint8_t *__restrict__ bcodes,
+                                  const uint8_t *__restrict__ bscales,
+                                  const half *__restrict__ x,
+                                  half *__restrict__ y, int N, int K, int M,
+                                  float gscale) {
+  __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 256 : 1];
+
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int tile = blockIdx.x;
+  const int qp = (lane >> 2) & 3;
+  const int r = (lane & 3) + ((lane & 16) ? 4 : 0);
+  const int G = K >> 4, Gq = G / SPLITK;
+  const int g0 = warp * Gq;
+  const uint2 *cb = reinterpret_cast<const uint2 *>(bcodes) +
+                    (size_t)tile * G * 32 + lane;
+  const uint8_t *sb = bscales + (size_t)tile * G * 32 + lane;
+
+  const half2 gm2 = __float2half2_rn(gscale * 16384.f);
+  float c[NACC][8];
+#pragma unroll
+  for (int a = 0; a < NACC; a++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[a][i] = 0.f;
+
+#pragma unroll 4
+  for (int g = g0; g < g0 + Gq; g++) {
+    const uint2 q2 = __ldcs(cb + (size_t)g * 32);
+    const half2 sc2 =
+        __hmul2(fp8e4m3_to_half2(__ldg(sb + (size_t)g * 32)), gm2);
+    half2 b[8];
+    dequant8_tm(q2.x, sc2, b + 0);
+    dequant8_tm(q2.y, sc2, b + 4);
+    const unsigned *B = reinterpret_cast<const unsigned *>(b);
+    uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
+    if (r < M) {
+      const half *xrow = x + (size_t)r * K;
+      a01 = *reinterpret_cast<const uint4 *>(xrow + g * 16);
+      a23 = *reinterpret_cast<const uint4 *>(xrow + g * 16 + 8);
+    }
+    const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+    const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+    MMA_8N8K4(c[0], A0[0], A0[1], B[0], B[1]);
+    MMA_8N8K4(c[1 % NACC], A0[2], A0[3], B[2], B[3]);
+    MMA_8N8K4(c[2 % NACC], A1[0], A1[1], B[4], B[5]);
+    MMA_8N8K4(c[3 % NACC], A1[2], A1[3], B[6], B[7]);
+  }
+
+#pragma unroll
+  for (int a = 1; a < NACC; a++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[0][i] += c[a][i];
+
+  if (SPLITK == 1) {
+#pragma unroll
+    for (int i = 0; i < 8; i++) {
+      const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+      const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+      if (row < M)
+        y[(size_t)row * N + (size_t)tile * 32 + qp * 8 + col] =
+            __float2half(c[0][i]);
+    }
+    return;
+  }
+
+#pragma unroll
+  for (int i = 0; i < 8; i++) {
+    const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+    const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+    cs[warp][row * 32 + qp * 8 + col] = c[0][i];
+  }
+  __syncthreads();
+  for (int e = threadIdx.x; e < 256; e += blockDim.x) {
+    float v = 0.f;
+#pragma unroll
+    for (int w = 0; w < SPLITK; w++) v += cs[w][e];
+    const int row = e >> 5, col = e & 31;
+    if (row < M)
+      y[(size_t)row * N + (size_t)tile * 32 + col] = __float2half(v);
+  }
+}
+
+torch::Tensor skinny_gemm_qpn2(torch::Tensor x, torch::Tensor qcodes,
+                               torch::Tensor qscales, double gscale,
+                               int64_t n, int64_t splitk, int64_t nacc) {
+  const int64_t m = x.size(0), k = x.size(1);
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(qscales.is_cuda() && qscales.dtype() == torch::kUInt8 &&
+              qscales.is_contiguous());
+  TORCH_CHECK(m >= 1 && m <= 8, "qpn2 supports M 1..8, got ", m);
+  TORCH_CHECK(k % 64 == 0 && (k / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(n % 32 == 0, "N % 32");
+  TORCH_CHECK(qcodes.numel() == n * (k >> 1), "qpn codes size");
+  TORCH_CHECK(qscales.numel() == n * (k >> 4), "qpn scales size");
+  auto y = torch::empty({m, n}, x.options());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_QPN2(SPv, NAv)                                                 skinny_nvfp4_qpn2<SPv, NAv>                                                     <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                           qcodes.data_ptr<uint8_t>(), qscales.data_ptr<uint8_t>(),                    reinterpret_cast<const half *>(x.data_ptr<at::Half>()),                     reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n,                   (int)k, (int)m, (float)gscale)
+
+  const int key = (int)(splitk * 10 + nacc);
+  switch (key) {
+    case 81: LAUNCH_QPN2(8, 1); break;
+    case 82: LAUNCH_QPN2(8, 2); break;
+    case 161: LAUNCH_QPN2(16, 1); break;
+    case 162: LAUNCH_QPN2(16, 2); break;
+    case 321: LAUNCH_QPN2(32, 1); break;
+    case 322: LAUNCH_QPN2(32, 2); break;
+    default: TORCH_CHECK(false, "qpn2 splitk in {8,16,32}, nacc in {1,2}");
+  }
+#undef LAUNCH_QPN2
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return y;
+}
+
+
+// ---------------------------------------------------------------------------
+// QPN8: FP8 (E4M3) weight codec feeding the identical QPN2 dataflow.
+//
+// Same quadpair mapping, same N ownership, same split-K, same accumulators,
+// same m8n8k4, same reduction. Only the storage width (1 byte/weight instead
+// of a nibble) and the decoder change.
+//
+// The shift trick below is the one already used for NVFP4's group scales,
+// exhaustively verified against PyTorch on all 256 byte patterns: exact for
+// every finite E4M3 value including all 14 denormals (only the two NaN
+// encodings map to +-480, which weights never contain). It reproduces
+// value/256; that factor is folded into the per-tile epilogue scale, so the
+// K loop carries no multiply at all -- strictly less work than dequant8_tm.
+//
+// Pairing mirrors dequant8_tm's (i, i+4) interleave so the SAME prepack
+// permutation (korder) serves both codecs.
+DEV_INLINE void fp8x8_to_half2x4(const uint2 q, half2 out[4]) {
+#pragma unroll
+  for (int i = 0; i < 4; i++) {
+    const unsigned b0 = (q.x >> (8 * i)) & 0xFFu;
+    const unsigned b1 = (q.y >> (8 * i)) & 0xFFu;
+    const unsigned h0 = ((b0 & 0x80u) << 8) | ((b0 & 0x7Fu) << 7);
+    const unsigned h1 = ((b1 & 0x80u) << 8) | ((b1 & 0x7Fu) << 7);
+    const unsigned p = h0 | (h1 << 16);
+    out[i] = *reinterpret_cast<const half2 *>(&p);
+  }
+}
+
+// Word-parallel E4M3 decode, mirroring dequant8_tm's style: one PRMT spreads
+// two bytes into 0x00b1_00b0, then a single shift/mask pair per field builds
+// both fp16 lanes at once. 6 ops per half2 vs 14 for the per-byte loop.
+// Requires NATURAL k order in the packed bytes (adjacent-k pairs), i.e. the
+// prepack must use identity korder rather than the (i, i+4) interleave.
+// Word-parallel e4m3 -> fp16 decode.
+//
+// Two things this has to get right, and the original got both wrong:
+//
+//  1. e4m3 is S EEEE MMM, so exp+mantissa is SEVEN bits and occupies fp16
+//     bits 7..13 after the <<7 (the resulting 2^-8 is folded into the
+//     epilogue scale). The mask must stop at bit 13 -- 0x3F80, not 0x7F80.
+//     With 0x7F80, bit 14 catches the SIGN, which lands in the fp16
+//     exponent: every negative weight overflowed to inf and accumulated
+//     to NaN.
+//  2. The consumer expects the SAME pairing the scalar decoder produces,
+//     out[i] = (q.x byte i, q.y byte i) -- the (i, i+4) interleave that
+//     cancels the prepack's korder. Pairing sequentially within a word
+//     instead ((x0,x1),(x2,x3),...) decodes every value correctly and
+//     still gives a garbage GEMM.
+//
+// Only bits 0..7 and 16..23 of the permuted word are read (the shifts and
+// masks ignore the rest), so the two unused byte lanes need no zeroing.
+DEV_INLINE void fp8x8_to_half2x4_fast(const uint2 q, half2 out[4]) {
+  constexpr unsigned S = 0x80008000u, EM = 0x3F803F80u;
+  unsigned p[4];
+  p[0] = __byte_perm(q.x, q.y, 0x0400);   // x0 at b0, y0 at b2
+  p[1] = __byte_perm(q.x, q.y, 0x0501);
+  p[2] = __byte_perm(q.x, q.y, 0x0602);
+  p[3] = __byte_perm(q.x, q.y, 0x0703);
+#pragma unroll
+  for (int i = 0; i < 4; i++) {
+    const unsigned v = ((p[i] << 8) & S) | ((p[i] << 7) & EM);
+    out[i] = *reinterpret_cast<const half2 *>(&v);
+  }
+}
+
+template <int SPLITK, int NACC, bool FASTDEC = false>
+__global__ void skinny_fp8_qpn8(const uint8_t *__restrict__ bcodes,
+                                const float *__restrict__ tscale,
+                                const half *__restrict__ x,
+                                half *__restrict__ y, int N, int K, int M) {
+  __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 256 : 1];
+
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int tile = blockIdx.x;
+  const int qp = (lane >> 2) & 3;
+  const int r = (lane & 3) + ((lane & 16) ? 4 : 0);
+  const int G = K >> 4, Gq = G / SPLITK;
+  const int g0 = warp * Gq;
+  // 16 bytes per lane per group (vs 8 for FP4): one 128-bit load.
+  const uint4 *cb = reinterpret_cast<const uint4 *>(bcodes) +
+                    (size_t)tile * G * 32 + lane;
+  // CTA-uniform: slice boundaries are 64-aligned so a tile never straddles.
+  const float ws = __ldg(tscale + tile);
+
+  float c[NACC][8];
+#pragma unroll
+  for (int a = 0; a < NACC; a++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[a][i] = 0.f;
+
+#pragma unroll 4
+  for (int g = g0; g < g0 + Gq; g++) {
+    const uint4 q4 = __ldcs(cb + (size_t)g * 32);
+    half2 b[8];
+    if (FASTDEC) {
+      fp8x8_to_half2x4_fast(make_uint2(q4.x, q4.y), b + 0);
+      fp8x8_to_half2x4_fast(make_uint2(q4.z, q4.w), b + 4);
+    } else {
+      fp8x8_to_half2x4(make_uint2(q4.x, q4.y), b + 0);
+      fp8x8_to_half2x4(make_uint2(q4.z, q4.w), b + 4);
+    }
+    const unsigned *B = reinterpret_cast<const unsigned *>(b);
+    uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
+    if (r < M) {
+      const half *xrow = x + (size_t)r * K;
+      a01 = *reinterpret_cast<const uint4 *>(xrow + g * 16);
+      a23 = *reinterpret_cast<const uint4 *>(xrow + g * 16 + 8);
+    }
+    const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+    const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+    MMA_8N8K4(c[0], A0[0], A0[1], B[0], B[1]);
+    MMA_8N8K4(c[1 % NACC], A0[2], A0[3], B[2], B[3]);
+    MMA_8N8K4(c[2 % NACC], A1[0], A1[1], B[4], B[5]);
+    MMA_8N8K4(c[3 % NACC], A1[2], A1[3], B[6], B[7]);
+  }
+
+#pragma unroll
+  for (int a = 1; a < NACC; a++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) c[0][i] += c[a][i];
+
+  if (SPLITK == 1) {
+#pragma unroll
+    for (int i = 0; i < 8; i++) {
+      const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+      const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+      if (row < M)
+        y[(size_t)row * N + (size_t)tile * 32 + qp * 8 + col] =
+            __float2half(c[0][i] * ws);
+    }
+    return;
+  }
+
+#pragma unroll
+  for (int i = 0; i < 8; i++) {
+    const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+    const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+    cs[warp][row * 32 + qp * 8 + col] = c[0][i];
+  }
+  __syncthreads();
+  for (int e = threadIdx.x; e < 256; e += blockDim.x) {
+    float v = 0.f;
+#pragma unroll
+    for (int w = 0; w < SPLITK; w++) v += cs[w][e];
+    const int row = e >> 5, col = e & 31;
+    if (row < M)
+      y[(size_t)row * N + (size_t)tile * 32 + col] = __float2half(v * ws);
+  }
+}
+
+// ---- MT=2: two m8n8k4 row-tiles against ONE weight stream ----------------
+// m8n8k4 issues 8 rows per tile, so M=9..16 needs two of them. The chunked
+// path runs the whole kernel twice and therefore streams the weights TWICE --
+// that, not the tile quantisation, is what makes the k<=15 verify band cost
+// ~2x the k<=7 band (298 vs 431 GB/s on the production dispatch curve).
+//
+// The kernel is DRAM-bound at M=8 (741 GB/s against ~800 GB/s achievable
+// read, and faster than a pure torch streaming read of the same bytes), so a
+// second row-tile that adds no weight traffic should ride the existing
+// stream. This variant loads the B fragment once and issues both row-tiles
+// against it.
+//
+// Costs: a second accumulator set (2*NACC*8 floats/lane) and a doubled
+// split-K staging buffer (SPLITK*512 floats = 32 KB at SPLITK=16, inside the
+// 48 KB static limit -- which is why SPLITK=32 is not instantiated here).
+template <int SPLITK, int NACC, bool FASTDEC = false>
+__global__ void skinny_fp8_qpn8_mt2(const uint8_t *__restrict__ bcodes,
+                                    const float *__restrict__ tscale,
+                                    const half *__restrict__ x,
+                                    half *__restrict__ y, int N, int K,
+                                    int M) {
+  __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 512 : 1];
+
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int tile = blockIdx.x;
+  const int qp = (lane >> 2) & 3;
+  const int r = (lane & 3) + ((lane & 16) ? 4 : 0);
+  const int G = K >> 4, Gq = G / SPLITK;
+  const int g0 = warp * Gq;
+  const uint4 *cb = reinterpret_cast<const uint4 *>(bcodes) +
+                    (size_t)tile * G * 32 + lane;
+  const float ws = __ldg(tscale + tile);
+
+  float c[2][NACC][8];
+#pragma unroll
+  for (int t = 0; t < 2; t++)
+#pragma unroll
+    for (int a = 0; a < NACC; a++)
+#pragma unroll
+      for (int i = 0; i < 8; i++) c[t][a][i] = 0.f;
+
+#pragma unroll 4
+  for (int g = g0; g < g0 + Gq; g++) {
+    const uint4 q4 = __ldcs(cb + (size_t)g * 32);
+    half2 b[8];
+    if (FASTDEC) {
+      fp8x8_to_half2x4_fast(make_uint2(q4.x, q4.y), b + 0);
+      fp8x8_to_half2x4_fast(make_uint2(q4.z, q4.w), b + 4);
+    } else {
+      fp8x8_to_half2x4(make_uint2(q4.x, q4.y), b + 0);
+      fp8x8_to_half2x4(make_uint2(q4.z, q4.w), b + 4);
+    }
+    const unsigned *B = reinterpret_cast<const unsigned *>(b);
+#pragma unroll
+    for (int t = 0; t < 2; t++) {
+      const int rr = r + (t << 3);
+      uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
+      if (rr < M) {
+        const half *xrow = x + (size_t)rr * K;
+        a01 = *reinterpret_cast<const uint4 *>(xrow + g * 16);
+        a23 = *reinterpret_cast<const uint4 *>(xrow + g * 16 + 8);
+      }
+      const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+      const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+      MMA_8N8K4(c[t][0], A0[0], A0[1], B[0], B[1]);
+      MMA_8N8K4(c[t][1 % NACC], A0[2], A0[3], B[2], B[3]);
+      MMA_8N8K4(c[t][2 % NACC], A1[0], A1[1], B[4], B[5]);
+      MMA_8N8K4(c[t][3 % NACC], A1[2], A1[3], B[6], B[7]);
+    }
+  }
+
+#pragma unroll
+  for (int t = 0; t < 2; t++)
+#pragma unroll
+    for (int a = 1; a < NACC; a++)
+#pragma unroll
+      for (int i = 0; i < 8; i++) c[t][0][i] += c[t][a][i];
+
+  if (SPLITK == 1) {
+#pragma unroll
+    for (int t = 0; t < 2; t++)
+#pragma unroll
+      for (int i = 0; i < 8; i++) {
+        const int row =
+            ((i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1)) + (t << 3);
+        const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+        if (row < M)
+          y[(size_t)row * N + (size_t)tile * 32 + qp * 8 + col] =
+              __float2half(c[t][0][i] * ws);
+      }
+    return;
+  }
+
+#pragma unroll
+  for (int t = 0; t < 2; t++)
+#pragma unroll
+    for (int i = 0; i < 8; i++) {
+      const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+      const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+      cs[warp][(t << 8) + row * 32 + qp * 8 + col] = c[t][0][i];
+    }
+  __syncthreads();
+  for (int e = threadIdx.x; e < 512; e += blockDim.x) {
+    float v = 0.f;
+#pragma unroll
+    for (int w = 0; w < SPLITK; w++) v += cs[w][e];
+    const int t = e >> 8, rem = e & 255;
+    const int row = (rem >> 5) + (t << 3), col = rem & 31;
+    if (row < M)
+      y[(size_t)row * N + (size_t)tile * 32 + col] = __float2half(v * ws);
+  }
+}
+
+torch::Tensor skinny_gemm_qpn8_mt2(torch::Tensor x, torch::Tensor qcodes,
+                                   torch::Tensor tscale, int64_t n,
+                                   int64_t splitk, int64_t nacc) {
+  const int64_t m = x.size(0), k = x.size(1);
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(tscale.is_cuda() && tscale.dtype() == torch::kFloat &&
+              tscale.is_contiguous());
+  TORCH_CHECK(m >= 1 && m <= 16, "qpn8_mt2 supports M 1..16, got ", m);
+  TORCH_CHECK(k % 64 == 0 && (k / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(n % 32 == 0, "N % 32");
+  TORCH_CHECK(qcodes.numel() == n * k, "qpn8 codes size");
+  TORCH_CHECK(tscale.numel() == n / 32, "qpn8 needs one scale per N=32 tile");
+  auto y = torch::empty({m, n}, x.options());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_MT2_F(SPv, NAv)                                                \
+  skinny_fp8_qpn8_mt2<SPv, NAv, true>                                         \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m)
+
+#define LAUNCH_MT2(SPv, NAv)                                                  \
+  skinny_fp8_qpn8_mt2<SPv, NAv>                                               \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m)
+
+  const int key = (int)(splitk * 10 + nacc);
+  switch (key) {
+    case 43: LAUNCH_MT2_F(4, 1); break;
+    case 44: LAUNCH_MT2_F(4, 2); break;
+    case 83: LAUNCH_MT2_F(8, 1); break;
+    case 84: LAUNCH_MT2_F(8, 2); break;
+    case 163: LAUNCH_MT2_F(16, 1); break;
+    case 164: LAUNCH_MT2_F(16, 2); break;
+    case 41: LAUNCH_MT2(4, 1); break;
+    case 42: LAUNCH_MT2(4, 2); break;
+    case 81: LAUNCH_MT2(8, 1); break;
+    case 82: LAUNCH_MT2(8, 2); break;
+    case 161: LAUNCH_MT2(16, 1); break;
+    case 162: LAUNCH_MT2(16, 2); break;
+    default:
+      TORCH_CHECK(false,
+                  "qpn8_mt2 splitk in {4,8,16} (32 would need 64 KB of "
+                  "shared), nacc in {1,2} (+2 selects the fast decoder)");
+  }
+#undef LAUNCH_MT2_F
+#undef LAUNCH_MT2
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return y;
+}
+
+torch::Tensor skinny_gemm_qpn8(torch::Tensor x, torch::Tensor qcodes,
+                               torch::Tensor tscale, int64_t n,
+                               int64_t splitk, int64_t nacc) {
+  const int64_t m = x.size(0), k = x.size(1);
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(tscale.is_cuda() && tscale.dtype() == torch::kFloat &&
+              tscale.is_contiguous());
+  TORCH_CHECK(m >= 1 && m <= 8, "qpn8 supports M 1..8, got ", m);
+  TORCH_CHECK(k % 64 == 0 && (k / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(n % 32 == 0, "N % 32");
+  TORCH_CHECK(qcodes.numel() == n * k, "qpn8 codes size");
+  TORCH_CHECK(tscale.numel() == n / 32, "qpn8 needs one scale per N=32 tile");
+  auto y = torch::empty({m, n}, x.options());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_QPN8_F(SPv, NAv)                                               \
+  skinny_fp8_qpn8<SPv, NAv, true>                                             \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m)
+
+#define LAUNCH_QPN8(SPv, NAv)                                                 \
+  skinny_fp8_qpn8<SPv, NAv>                                                   \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m)
+
+  const int key = (int)(splitk * 10 + nacc);
+  switch (key) {
+    case 43: LAUNCH_QPN8_F(4, 1); break;
+    case 83: LAUNCH_QPN8_F(8, 1); break;
+    case 84: LAUNCH_QPN8_F(8, 2); break;
+    case 163: LAUNCH_QPN8_F(16, 1); break;
+    case 164: LAUNCH_QPN8_F(16, 2); break;
+    case 323: LAUNCH_QPN8_F(32, 1); break;
+    case 324: LAUNCH_QPN8_F(32, 2); break;
+    case 41: LAUNCH_QPN8(4, 1); break;
+    case 42: LAUNCH_QPN8(4, 2); break;
+    case 81: LAUNCH_QPN8(8, 1); break;
+    case 82: LAUNCH_QPN8(8, 2); break;
+    case 161: LAUNCH_QPN8(16, 1); break;
+    case 162: LAUNCH_QPN8(16, 2); break;
+    case 321: LAUNCH_QPN8(32, 1); break;
+    case 322: LAUNCH_QPN8(32, 2); break;
+    default: TORCH_CHECK(false, "qpn8 splitk in {4,8,16,32}, nacc in {1,2} (+2 selects the fast decoder)");
+  }
+#undef LAUNCH_QPN8
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return y;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
+  m.def("gemm_qpn8", &skinny_gemm_qpn8,
+        "skinny FP8 E4M3 GEMM (QPN8, M<=8)");
+  m.def("gemm_qpn8_mt2", &skinny_gemm_qpn8_mt2,
+        "skinny FP8 E4M3 GEMM (QPN8 MT=2, two row-tiles, one weight stream, "
+        "M<=16)");
+  m.def("gemm_qpn2", &skinny_gemm_qpn2,
+        "skinny NVFP4 GEMM (QP-N geometry winner, M<=8)");
   m.def("gemm_qpn", &skinny_gemm_qpn,
         "skinny NVFP4 GEMM (QP-N mma.m8n8k4, prepacked weights, M<=16)");
   m.def("gemm_qpn_simt", &skinny_gemm_qpn_simt,

@@ -1,0 +1,57 @@
+# Largest --max-model-len this configuration can boot. Measured, not derived.
+# 4x V100-SXM2-16GB, TP4, GMU 0.88, K=7, decode partition pinned.
+#
+# SUPERSEDES this file's first version, which reported a ceiling of 244,608
+# and said the model's declared 262,144 was "NOT reachable on this hardware".
+# That was wrong. 262,144 boots and serves at full speed. The correction and
+# its cause are below.
+#
+# Qwen3.8-27B is HYBRID: layer_types = 48 linear_attention + 16 full_attention
+# (full_attention_interval 4). Only the 16 full-attention layers hold a KV
+# cache; the 48 GDN layers carry recurrent state instead. That is why a 27B
+# model on 64 GB can hold ~264k tokens of KV at all.
+#
+# THE REAL VARIABLE IS NOT MML -- IT IS THE MEMORY PROFILE.
+# "Available KV cache memory" is BIMODAL across boots of an identical
+# configuration, landing on either 4.68 GiB or 4.34 GiB. It does not track
+# max_model_len; the same MML lands on either value on different boots. The
+# original probe happened to draw the low value where the sweep drew the high
+# one, and the whole apparent MML-dependence of the pool was that difference:
+#
+#   MML 196,608: probe 239,057 tokens (4.34 GiB) vs sweep 257,675 (4.68 GiB)
+#   ratio 239057/257675 = 0.9277 against 4.34/4.68 = 0.9274 -- an exact match.
+#
+# Two of the nine speed-sweep arms (8,192 and 65,536) also drew 4.34 GiB, so
+# the KV pool column in results/mml_speed_20260819.csv mixes both profiles and
+# is NOT a clean function of MML. Round latency is unaffected: those two arms
+# are indistinguishable from the 4.68 GiB arms, which is a useful control.
+#
+# WHAT ACTUALLY BOOTS
+MML,profile_GiB,boots,kv_cache_tokens,kv_over_MML
+98304,4.68,yes,232967,2.37
+131072,4.68,yes,245140,1.87
+163840,4.68,yes,253074,1.54
+196608,4.68,yes,257675,1.31
+244608,4.34,yes,244608,1.00
+262144,4.68,yes,264436,1.01
+262144,4.34,NO,,0.91
+# 262,144 refusal on a LOW-profile boot, verbatim:
+#   ValueError: To serve at least one request with the model's max seq len
+#   (262144), 4.63 GiB KV cache is needed, which is larger than the available
+#   KV cache memory (4.34 GiB). Based on the available memory, the estimated
+#   maximum model length is 244608.
+#
+# So 262,144 needs 4.63 GiB. A 4.68 GiB boot clears it by 0.05 GiB (vLLM
+# reports "Maximum concurrency for 262,144 tokens per request: 1.01x"); a
+# 4.34 GiB boot does not, and the engine refuses with its own estimate of
+# 244,608 -- which is exactly what MML 244,608 then delivers on a low boot.
+#
+# CONCLUSION
+#   262,144 -- the model's full declared context -- IS reachable, and serves
+#   at the same speed as every other window (25.15/25.19/25.61 ms, tau
+#   4.71/5.73/6.81, identical to all nine sweep arms). It is MARGINAL: it
+#   depends on the boot drawing the 4.68 GiB profile.
+#   244,608 boots on BOTH profiles and is the largest window that does.
+#
+# Probe: scripts/mml_ceiling_probe.sh. Re-test and speed: the same driver as
+# the speed sweep, scripts/mml_speed_sweep.sh with MMLS="262144 244608".

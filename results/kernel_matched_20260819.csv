@@ -1,0 +1,49 @@
+# MATCHED kernel bandwidth — the arms we dispatch, the shapes we serve.
+#
+# One process, one sitting. Harness benchmarks/kernel_matched_bench.py imports
+# the SHIPPED _qpn_prepack / _qpn2_cfg / _sm70_qpn8_prepack from the installed
+# shim, so what is measured is what runs. Driver scripts/kernel_matched_rerun.sh.
+#
+# DENOMINATOR. Both ceilings are measured in-harness. Percentages use the
+# READ ceiling: these GEMMs stream weights in and write a tiny MxN result, so
+# they are read-dominated, while a memcpy touches DRAM twice per element.
+# Quoting a read-dominated kernel against a copy rate overstates it — the
+# earlier copy-ceiling percentages were ~7% high and lm_head read "102%".
+#
+# lm_head (5120x62080) is reported SEPARATELY and excluded from the trunk
+# aggregate: at ~179 MB packed against a few MB per trunk projection, a
+# byte-weighted aggregate including it is essentially the lm_head number.
+# It is also not a target shape — it runs once per token, the trunk 64 times.
+#
+# Dispatch (fork_patches/marlin.py:209, modelopt.py:629-650, confirmed against
+# a production route census):
+#   NVFP4: qpn2 M 1-8 · qpn M 9-16 · marlin M>=17 (conceded by design)
+#   FP8:   qpn8 M 1-8 · qpn8-mt2 M 9-16 · qpn8-chunked M 17-96
+#
+# Marlin is the FORK's fallback, reached on SM70 only via
+# VLLM_SM70_QUANT_BACKEND=marlin. Upstream vLLM declines NVFP4 below compute
+# capability 75 and raises at engine construction, so no upstream number
+# exists on this hardware.
+#
+# SUPERSEDES 5.9x / 5.36x / 4.28x / 2.91x. In order, those were: two numbers
+# never measured together; a matched pair on a geometry we do not serve; the
+# gemm_simt kernel, which is not dispatched; and an aggregate dominated by
+# lm_head. Only this file measures the serving arms on the serving shapes.
+# measured ceilings: read-only 879 GB/s, copy(read+write) 822 GB/s
+trunk,1,qpn2,679.5,77%,145.6,17%,4.67
+trunk,2,qpn2,679.7,77%,144.0,16%,4.72
+trunk,4,qpn2,676.6,77%,143.2,16%,4.72
+trunk,8,qpn2,619.8,71%,139.8,16%,4.43
+trunk,16,qpn,301.9,34%,138.5,16%,2.18
+lm_head,1,qpn2,842.9,96%,393.9,45%,2.14
+lm_head,2,qpn2,829.8,94%,394.9,45%,2.10
+lm_head,4,qpn2,816.6,93%,388.5,44%,2.10
+lm_head,8,qpn2,777.8,89%,379.5,43%,2.05
+lm_head,16,qpn,457.8,52%,374.4,43%,1.22
+fp8,1,qpn8,718.6,82%
+fp8,2,qpn8,718.7,82%
+fp8,4,qpn8,720.5,82%
+fp8,8,qpn8,712.4,81%
+fp8,16,qpn8-mt2,558.5,64%
+fp8,32,qpn8-chunked,159.4,18%
+fp8,64,qpn8-chunked,83.2,9%

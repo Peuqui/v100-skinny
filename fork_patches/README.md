@@ -1,30 +1,34 @@
-# Fork patches ([1Cat-vLLM](https://github.com/1CatAI/1Cat-vLLM) 1.2.2)
+# Fork patches (1Cat-vLLM 1.2.2)
 
-Reviewable, version-controlled copies of every fork change, tracked here so
-the work is diffable and reversible outside the installed package. The fork
-is a wheel install (no source checkout), so changes land under
-`~/miniconda3/envs/1cat-vllm-122/lib/python3.12/site-packages/` on
-c4130-local. **Apply by copying the tracked file over the target once and
-keeping the `.pre_*`/`.orig` backup; never hand-edit the installed file.**
-Deep/experimental changes are kept as unified-diff `.patch` files rather
-than full-file copies, and are meant to be developed in a proper source
-checkout, not hot-applied to a live server.
+**These files are derivative works of [vLLM](https://github.com/vllm-project/vllm),
+Copyright contributors to the vLLM project, licensed under Apache-2.0** — not
+under this repository's MIT default. Each states its modifications in its
+header as Apache-2.0 §4(b) requires. See [`../LICENSE-APACHE-2.0`](../LICENSE-APACHE-2.0)
+and [`../NOTICE`](../NOTICE).
 
-| File | Install path (under site-packages) | Our changes |
+They are complete upstream sources carrying local edits, tracked here so the
+changes are diffable and reversible outside the installed package. The engine
+is installed as a wheel (no source checkout), so the patched files are copied
+over the corresponding paths under the environment's `site-packages/`.
+
+**Install them with [`../scripts/bootstrap-sm70.sh`](../scripts/bootstrap-sm70.sh)**,
+which resolves the target paths, keeps a `.pre_bootstrap` backup of every file
+it replaces, and verifies the kernel extension afterwards. Never hand-edit an
+installed file: the tracked copy here is the reviewable source of truth.
+
+| File | Install path (under `site-packages/`) | What we changed |
 |---|---|---|
-| `gdn_attn.py` | `vllm/v1/attention/backends/` | Chain-MTP GDN fast metadata build (`VLLM_SM70_GDN_CHAIN_SPEC_FAST_BUILD`, −1.4 ms/step, byte-identical) + env-gated slot-debug instrumentation. Box backup: `.pre_chainfast`. |
-| `gpu_model_runner.py` | `vllm/v1/worker/` | Env-gated think-only draft gate (off; blocked on async-scheduler contract) + slot-debug instrumentation. Box backup: `.pre_thinkonly`. |
-| `marlin.py` | `vllm/model_executor/kernels/linear/nvfp4/marlin.py` | Skinny-kernel dispatch shim + QPN dispatch/loader-prepack (`VLLM_SKINNY_NVFP4`, `VLLM_SKINNY_QPN`, `VLLM_SKINNY_DROP_CT`, `VLLM_SKINNY_MAX_M`, 4-bit lm_head policy). Box backup: `marlin.py.orig`. |
-| `sm70_native_round.py` | *not installed* — lives in `~/flatness-run/`, file-imported | Native speculative-round executor (drafter chain as one CUDA graph). **Experimental, not in production.** |
-| `llm_base_proposer.native_round.patch` | unified diff vs `.pre_native` | The proposer hook that selects the native round. **Reverted from the live env** (proposer restored to pristine); kept as a patch for proper source-checkout development. See `../native_round_design.md`. |
+| `marlin.py` | `vllm/model_executor/kernels/linear/nvfp4/marlin.py` | The skinny NVFP4 dispatch: QPN2 geometry winners own decode M 1–8 including `lm_head`, per-shape (split, nacc) table, shape-aware route map; legacy QPN for M 9–16; Marlin above that. |
+| `modelopt.py` | `vllm/model_executor/layers/quantization/modelopt.py` | The QPN8 FP8 W8A16 path (`mma.sync.m8n8k4`, incl. the MT=2 two-tile variant), lowers the ModelOpt minimum compute capability from SM89 to SM70, adds route/census logging. **This is what lets a published mixed FP8+NVFP4 checkpoint load on Volta at all.** |
+| `torch_utils.py` | `vllm/utils/torch_utils.py` | KV-dtype policy: a checkpoint's `kv_cache_quant_algo` describes how its *weights* were made and is no longer honoured as a KV-cache directive below SM80. Without this the verbatim checkpoint silently booted an FP8 KV cache and lost the tensor-core decode route (+4.82 ms/round). |
+| `attention.py` | `vllm/model_executor/layers/attention/attention.py` | The same policy on the compressed-tensors re-apply path. |
+| `gpu_model_runner.py` | `vllm/v1/worker/gpu_model_runner.py` | Persistent-metadata speculative round, a per-phase GPU profiler, and NVTX phase brackets for per-kernel attribution. |
+| `gdn_attn.py` | `vllm/v1/attention/backends/gdn_attn.py` | Chain-MTP GDN fast metadata build (−1.4 ms/step, byte-identical output). |
+| `custom_all_reduce.py` | `vllm/distributed/device_communicators/custom_all_reduce.py` | All-reduce residency instrumentation, default off. Measurement tool, dormant in production. |
 
-## Status of the native-round work (2026-08-11)
+Not installed:
 
-Built and validated (byte-identical output vs the Python path, all cells)
-but **inert**: served drafts are rejected (τ≈0) because the captured graph
-does not correctly persist the drafter's recurrent state across rounds —
-the session-8 "full-graph drafter" hazard in a new form. The live env is
-back on the stock Python proposer; the flag (`VLLM_SM70_NATIVE_SPEC_ROUND`)
-does nothing until the patch is re-applied. Next step belongs in a source
-checkout with an editable install and a debugger, not live hot-patching —
-design and options in `../native_round_design.md`.
+| File | Why |
+|---|---|
+| `sm70_native_round.py` | Original work (not derived from vLLM), offered under Apache-2.0 so it can combine with the engine. Experimental: built and validated byte-identical, but inert — the captured graph does not persist the drafter's recurrent state across rounds, so served drafts are rejected. |
+| `llm_base_proposer.native_round.patch` | The proposer hook that would select the above. Reverted; kept as a diff for development in a proper source checkout. |

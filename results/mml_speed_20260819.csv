@@ -1,0 +1,50 @@
+# MML vs SPEED at the shipped configuration (decode partition pinned).
+#
+# Answers: is there a fastest --max-model-len, and does the pin hold across
+# the whole supported range? No, and yes.
+#
+# 4x V100-SXM2-16GB, TP4, GMU 0.88, K=7, MNS 1, MT=2 on, greedy, thinking off.
+# Throughput is (gen-(tau+1))/decode_s. tau identical in every arm
+# (4.71/5.73/6.81), so all arms did byte-identical work.
+#
+# Harness benchmarks/v11_suite.py, driver scripts/mml_speed_sweep.sh.
+MML,kv_tokens,mergesort_tok_s,mergesort_ms,json_tok_s,json_ms,log2json_tok_s,log2json_ms
+4096,44288,226.0,25.14,267.6,25.18,306.9,25.40
+8192,71071,226.3,25.10,267.7,25.17,306.7,25.42
+16384,120614,226.7,25.06,268.4,25.10,307.4,25.36
+32768,169219,226.1,25.13,267.1,25.23,306.5,25.44
+65536,198462,226.7,25.05,268.4,25.10,307.4,25.36
+98304,232967,226.1,25.13,267.7,25.17,306.2,25.47
+131072,245140,225.5,25.20,267.1,25.22,305.6,25.51
+163840,253074,226.0,25.14,267.4,25.19,305.9,25.48
+196608,257675,225.7,25.17,267.9,25.14,305.7,25.51
+244608,244608,226.5,25.08,268.1,25.13,305.4,25.53
+262144,264436,225.9,25.15,267.5,25.19,304.4,25.61
+#
+# SPREAD across 4,096 -> 262,144 (a 64x range of declared context):
+#   mergesort 25.05-25.20 ms   (0.15)
+#   json      25.10-25.23 ms   (0.13)
+#   log2json  25.36-25.61 ms   (0.25)
+# The only hint of a trend is log2json, the longest cell (gen 1536), drifting
+# ~+0.2 ms from the small windows to 262,144 -- under 1%, and not present in
+# the other two cells.
+#
+# CONCLUSION: with the pin, --max-model-len is FREE across the entire
+# supported range. There is no fastest MML -- the plateau extends below
+# production's 32,768, so nothing is being left on the table there, and it
+# extends to 262,144, the model's full declared context, so declaring a large
+# window costs nothing either.
+#
+# UNPINNED, for contrast (results/mml_ladder_20260819.md, same cells):
+#   MML 32,768 -> 25.84 / 26.50 / 28.03 ms. The pin recovers up to 2.59 ms
+#   (-9.2% on log2json), and the penalty it removes GROWS with live context.
+#
+# NOTE ON THE kv_tokens COLUMN -- IT IS CONFOUNDED, READ IT WITH CARE.
+# "Available KV cache memory" is bimodal across boots of an identical config
+# (4.68 or 4.34 GiB) and does not track MML. The 8,192 and 65,536 arms drew
+# 4.34 GiB; every other arm drew 4.68. So this column mixes two memory
+# profiles and is NOT a clean function of MML. See
+# results/mml_ceiling_20260819.csv for the full accounting -- it is also why
+# that file's original 244,608 "ceiling" was wrong.
+# The LATENCY columns are unaffected, and the two low-profile arms serve as a
+# control: they are indistinguishable from the high-profile ones.

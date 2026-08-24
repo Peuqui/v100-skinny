@@ -213,7 +213,37 @@ Zahlen siehe UPDATE-Block oben. Beide Patches liegen in der venv;
    es NICHT). Rank-0-Spec-Empfang füllt auf sm75 nur noch die
    Akzeptanz-Puffer statt des Fork-Align-Postprocess (Runner,
    `_pp_receive_spec_decode_state`).
-   Alles NUR in der venv — fork_patches-Sync + Commit ausstehend.
+   Committed als 6dd5854 (Branch pp-mtp-merge, inkl. Bootstrap-Deploy).
+
+   **Repro heterogenes 2×2 (aktueller Stand, K=0 kohärent nur mit eager):**
+   ```bash
+   cd /home/mp/Projekte/v100-skinny
+   SNAP=$(ls -d /home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/*/)
+   TP=2 PP=2 PORT=8020 K=0 ATTN_BACKEND=AUTO EXTRA_ARGS="--enforce-eager" \
+   DISABLE_CAR=1 NCCL_P2P_DISABLE=1 ASYNC_SCHED=1 \
+   CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0,2,1,4 \
+   CUDA_HOME=$PWD/.cuda-nvcc-deb/usr/local/cuda-12.8 \
+   LOG=$PWD/serve-2x2.log bash scripts/serve-qwen38-mini.sh "$SNAP"
+   # 0,2 = RTX-Stufe 0 · 1,4 = V100-Stufe 1 · GPU 3 bleibt frei (VLM/TTS)
+   # K=7: zusätzlich VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS=0 — liefert derzeit
+   # deterministischen Wortsalat (Restbaustelle 2). Kleinster Repro der
+   # Restbaustellen: TP=1 PP=2 CUDA_VISIBLE_DEVICES=0,1.
+   ```
+   **Einstiegspunkte Restbaustelle 1 (CUDA-Graphs):** gdn_attn_sm75.py
+   `build()` allokiert via async_tensor_h2d/torch.tensor pro Step neue
+   GPU-Tensoren (chunk_indices/offsets, spec_sequence_masks …) — für
+   FULL-Graph-Replay müssen die in persistente Puffer (Vorbild: upstream
+   nutzt build_for_cudagraph_capture; Fork-Runner ruft nur build()).
+   **Einstiegspunkte Restbaustelle 2 (K>0 heterogen):** Wortsalat ab
+   Token 1 auch eager ⇒ schon der Prefill der RTX-Stufe kippt, sobald
+   Spec aktiv ist. Verdächtige: (a) uninitialisierte
+   num_accepted/num_decode_draft_tokens-Puffer, die der Runner dem
+   sm75-Builder in Runde 0 reicht (Zeile ~6290 _build_attn_group_metadata);
+   (b) get_state_shape/num_spec-Slot-Layout upstream vs Fork (abstract.py
+   num_speculative_blocks); (c) VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS=0-Effekte
+   aufs Weight-Loading der Stufe 0. Diagnose-Hebel: K=7 auf RTX-SOLO
+   (TP=2, letzte Stufe = Drafter lokal) testen — läuft dort Spec mit den
+   sm75-Layern korrekt, liegt es an der PP-Naht, sonst an sm75+Spec selbst.
    Ursprünglicher Plan dazu: SM75-Prefill-Pfade aus upstream 0.27
    (`/home/mp/Projekte/vllm-bench/.venv/.../vllm/`) in den Fork zurückportieren
    (Fork rechnet mit Triton-Prefill auf Turing UND Volta falsch — Mojibake) und

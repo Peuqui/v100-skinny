@@ -120,9 +120,20 @@ cleanup_on_fail() {
 }
 trap 'cleanup_on_fail' INT TERM
 
+# ATTN_BACKEND=AUTO: kein globales --attention-backend — jeder Worker
+# waehlt per lokaler Prioritaetsliste (heterogenes PP: RTX-Stufe braucht
+# ein anderes Backend als die V100-Stufe). Der Drafter lebt nur auf der
+# letzten Stufe (V100) und behaelt FLASH_ATTN_V100.
+SPEC_ATTN="${ATTN_BACKEND:-FLASH_ATTN_V100}"
+[ "$SPEC_ATTN" = "AUTO" ] && SPEC_ATTN=FLASH_ATTN_V100
+if [ "${ATTN_BACKEND:-FLASH_ATTN_V100}" = "AUTO" ]; then
+  ATTN_ARGS=()
+else
+  ATTN_ARGS=(--attention-backend "${ATTN_BACKEND:-FLASH_ATTN_V100}")
+fi
 if [ "$K" -gt 0 ]; then
   SPEC_ARGS=(--compilation-config "{\"cudagraph_capture_sizes\":[$K1,$K2]}"
-             --speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$K,\"attention_backend\":\"${ATTN_BACKEND:-FLASH_ATTN_V100}\",\"draft_sample_method\":\"greedy\",\"use_local_argmax_reduction\":true}")
+             --speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$K,\"attention_backend\":\"$SPEC_ATTN\",\"draft_sample_method\":\"greedy\",\"use_local_argmax_reduction\":true}")
 else
   SPEC_ARGS=()
 fi
@@ -151,7 +162,8 @@ setsid $NUMA_PREFIX "$PY" -m vllm.entrypoints.openai.api_server \
   --served-model-name qwen3.8-27b \
   --trust-remote-code \
   --dtype float16 \
-  --attention-backend "${ATTN_BACKEND:-FLASH_ATTN_V100}" \
+  "${ATTN_ARGS[@]}" \
+  ${EXTRA_ARGS:-} \
   --additional-config "{\"gdn_prefill_backend\":\"${GDN_PREFILL:-auto}\"}" \
   --tensor-parallel-size "$TP" \
   ${DISABLE_CAR:+--disable-custom-all-reduce} \

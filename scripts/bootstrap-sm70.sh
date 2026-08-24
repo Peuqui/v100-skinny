@@ -197,6 +197,23 @@ deploy torch_utils.py       vllm/utils/torch_utils.py
 deploy attention.py         vllm/model_executor/layers/attention/attention.py
 deploy custom_all_reduce.py vllm/distributed/device_communicators/custom_all_reduce.py
 deploy qwen3_5_mtp.py       vllm/model_executor/models/qwen3_5_mtp.py
+deploy qwen3_5.py           vllm/model_executor/models/qwen3_5.py
+deploy cuda.py              vllm/platforms/cuda.py
+deploy_new() {  # like deploy, but the target may not exist in the wheel yet
+  local src="$REPO_ROOT/fork_patches/$1" dst="$SP/$2"
+  [ -f "$src" ] || die "missing tracked patch: $src"
+  cp -p "$src" "$dst"
+  echo "    $1 -> $2 (new)"
+}
+deploy_new qwen_gdn_linear_attn_sm75.py vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn_sm75.py
+deploy_new gdn_attn_sm75.py vllm/v1/attention/backends/gdn_attn_sm75.py
+deploy tilelang_target.py   tilelang/utils/target.py
+# sm75 pair needs the UNMODIFIED upstream FLA triton ops under their
+# upstream path (the fork's layers/fla/ops are modified and wrong on sm75).
+say "deploying upstream flash_linear_attention tree (sm75 GDN pair)"
+mkdir -p "$SP/vllm/third_party/flash_linear_attention"
+cp -r "$REPO_ROOT/fork_patches/flash_linear_attention/." \
+      "$SP/vllm/third_party/flash_linear_attention/"
 # sm70_native_round.py is deliberately NOT installed — experimental, inert.
 
 # ------------------------------------------------------------------ kernels

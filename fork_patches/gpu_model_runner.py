@@ -6275,6 +6275,10 @@ class GPUModelRunner(
         ) -> None:
             attn_group = self.attn_groups[kv_cache_gid][attn_gid]
             builder = attn_group.get_metadata_builder(ubid or 0)
+            # SM75 workers build their GDN groups with the upstream builder
+            # (gdn_attn_sm75); it takes the standard spec-decode arguments
+            # but none of the fork-only ones.
+            is_gdn_sm75_builder = type(builder).__module__.endswith("gdn_attn_sm75")
             kv_cache_spec = kv_cache_groups[kv_cache_gid].kv_cache_spec
             if isinstance(kv_cache_spec, UniformTypeKVCacheSpecs):
                 kv_cache_spec = kv_cache_spec.kv_cache_specs[attn_group.layer_names[0]]
@@ -6287,8 +6291,12 @@ class GPUModelRunner(
             )
 
             extra_attn_metadata_args = {}
-            if use_spec_decode and isinstance(
-                builder, (Mamba2AttentionMetadataBuilder, GDNAttentionMetadataBuilder)
+            if use_spec_decode and (
+                isinstance(
+                    builder,
+                    (Mamba2AttentionMetadataBuilder, GDNAttentionMetadataBuilder),
+                )
+                or is_gdn_sm75_builder
             ):
                 assert ubid is None, "UBatching not supported with GDN yet"
                 extra_attn_metadata_args = dict(
@@ -10400,7 +10408,25 @@ class GPUModelRunner(
                 "PP spec decode: missing stashed scheduler_output for the "
                 "hybrid state update on a non-last rank."
             )
-        self._update_states_after_model_execute(sampled, scheduler_output)
+        if torch.cuda.get_device_capability(torch.cuda.current_device()) == (7, 5):
+            # SM75 stage: the upstream GDN layers roll their speculative
+            # states forward inside their own forward, driven by the
+            # num_accepted_tokens metadata — only the buffers feeding that
+            # metadata must be filled here. The fork's align postprocess
+            # would shuffle states it does not own.
+            num_r = self.input_batch.num_reqs
+            self.num_accepted_tokens.gpu[:num_r] = valid_counts
+            self.spec_state_slot_selectors.gpu[:num_r] = valid_counts
+            self.input_batch.num_accepted_tokens_cpu_tensor[:num_r].copy_(
+                valid_counts, non_blocking=True
+            )
+            self.input_batch.spec_num_accepted_tokens_cpu_tensor[:num_r].copy_(
+                valid_counts, non_blocking=True
+            )
+            if self.num_accepted_tokens_event is not None:
+                self.num_accepted_tokens_event.record()
+        else:
+            self._update_states_after_model_execute(sampled, scheduler_output)
 
     def _pp_receive_prev_sampled_token_ids_to_input_batch(self) -> None:
         """Receive sampled token ids broadcast from last PP stage"""

@@ -152,7 +152,69 @@ Zahlen siehe UPDATE-Block oben. Beide Patches liegen in der venv;
 
 1. ~~GDN-Spec-Commit über PP lösen → PP2+k7 auf V100s messen~~ **ERLEDIGT
    (Session 2): 79,8 tok/s math / 58,6 code auf 2× V100.**
-2. Heterogener Fall: SM75-Prefill-Pfade aus upstream 0.27
+2. **Heterogener Fall — Befunde aus dem ersten 2×2-Versuch (Session 2):**
+   Boot 2×RTX (Stufe 0) + 2×V100 (Stufe 1) scheitert an zwei Stellen mit
+   einer Wurzel:
+   - V100-Stufe: TileLang-JIT kompiliert die GDN-Kernel mit dem Target des
+     falschen Devices (RTX/sm75 vorn in CUDA_VISIBLE_DEVICES) →
+     `CUDA_ERROR_NO_BINARY_FOR_GPU` beim Laden auf sm70.
+   - RTX-Stufe: FlashQLA-SM70-GDN braucht 86016 B dynamic shared memory —
+     Volta kann 96 KB, **Turing nur 64 KB** → `tvm.error.InternalError`.
+     Der sm70-Pfad ist auf Turing hardwareseitig unmöglich; trotzdem mappt
+     `_resolve_gdn_prefill_backend` bei „auto" auch sm75 auf flashqla_sm70
+     (qwen_gdn_linear_attn.py ~1520: `capability.minor in (0, 5)`).
+   - RTX-Solo-Gegenprobe (TP=2, GDN_PREFILL=triton, ATTN_BACKEND=TRITON_ATTN,
+     K=0): bootet, generiert aber Müll (temp 0 → nur „." und EOS) — der
+     Fork-Triton-Zweig ist inhaltlich kaputt, wie vermutet.
+   - Rückport-Basis: beide venvs sind vLLM **0.27.1**; `layers/fla/` ist
+     zwischen Fork und upstream IDENTISCH — der Bruch liegt allein in den
+     zwei Fork-Dateien qwen_gdn_linear_attn.py (7013 vs. 1748 Zeilen) und
+     v1/attention/backends/gdn_attn.py (2029 vs. 538). Upstream 0.27.1 lief
+     auf den RTX nachweislich korrekt (Kampagne: 42 tok/s plain TP=2).
+   **Session 3 (24.08. nachts): sm75-Paket gebaut — heterogenes PP läuft
+   inhaltlich korrekt (K=0, eager); zwei Restbaustellen.**
+   Umsetzung „Per-Stufe-Dispatch auf validierten Code":
+   - `qwen_gdn_linear_attn_sm75.py` + `gdn_attn_sm75.py` = unveränderte
+     upstream-0.27.1-Kopien als in sich geschlossenes Paar (Querverweise
+     aufeinander umgebogen); dazu upstream-FLA-Ops unverändert unter ihrem
+     Originalpfad `vllm/third_party/flash_linear_attention/` (548 KB) —
+     WICHTIG: die Fork-FLA-Ops (`layers/fla/ops`) sind INHALTLICH verändert
+     (mutmaßliche Mojibake-Quelle des Fork-Triton-Pfads), daher upstream-Baum.
+   - Registry-Entschärfungen in den Kopien: torch-Op
+     `qwen_gdn_attention_core→…_sm75`, `CustomOp.register` chunk_gated_
+     delta_rule/fused_rms_norm_gated →`…_sm75`, `PluggableLayer.register`
+     →`…_sm75`; AWQ-Import auf Fork-`awq.AWQConfig` gemappt; lokaler
+     `async_tensor_h2d` mit upstream-Semantik in gdn_attn_sm75 (Fork-Helper
+     hat inkompatible Signatur). Doppel-Import-Smoke-Test beider Varianten
+     in einem Prozess ist der Regressionstest dafür.
+   - Einzige Weiche: qwen3_5.py instanziiert bei lokaler capability (7,5)
+     `QwenGatedDeltaNetAttentionForkCall` (Adapter: Fork-Konvention
+     `forward(hidden_states, output=buffer)` → upstream-Return, eine Kopie);
+     die sm75-Layer-Klasse überschreibt `get_attn_backend` → sm75-Backend.
+   - Runner: `is_gdn_sm75_builder`-Guard — Standard-Spec-Args ja,
+     Fork-only-Args (spec_state_slot_selectors, ddtree, current_state_
+     block_ids) nein.
+   - cuda.py: Backend-Wahl nutzt lokales Worker-Device statt Device 0;
+     sm75-Prioritätsliste hart auf [TRITON_ATTN, FLEX] (FLASHINFER-Prefill
+     stirbt auf sm75 mit invalid argument). tilelang/utils/target.py:
+     Compile-Target = current_device statt Device 0. Serve-Script:
+     ATTN_BACKEND=AUTO (kein globales Backend) + EXTRA_ARGS-Durchreicher.
+   **Testmatrix (Qwen3.8-27B-NVFP4):** RTX-solo TP2 K0 ✓ kohärent (auch
+   NVFP4-Skinny-Kernel auf sm75 rechnen korrekt!); het PP2 (RTX+V100) K0
+   mit CUDA-Graphs ✗ deterministisch degradiert, mit `--enforce-eager`
+   ✓ KOHÄRENT → Restbaustelle 1: Fork-Graph-Capture verträgt die
+   upstream-GDN-Builder nicht (Metadata-Tensoren pro Step neu allokiert,
+   Replay friert alte Adressen ein). K=7 heterogen (auch eager) ✗
+   Wortsalat ab Token 1, deterministisch; K=0 kohärent → Restbaustelle 2
+   sitzt in der Spec-Interaktion mit dem upstream-Builder schon im
+   Prefill (Verdacht: uninitialisierte num_accepted/Spec-Metadata-Puffer
+   in Runde 0, oder Spec-State-Slot-Layout-Differenz upstream vs Fork;
+   Page-Geometrie ist über alle Worker identisch, 832/1,71 % — das ist
+   es NICHT). Rank-0-Spec-Empfang füllt auf sm75 nur noch die
+   Akzeptanz-Puffer statt des Fork-Align-Postprocess (Runner,
+   `_pp_receive_spec_decode_state`).
+   Alles NUR in der venv — fork_patches-Sync + Commit ausstehend.
+   Ursprünglicher Plan dazu: SM75-Prefill-Pfade aus upstream 0.27
    (`/home/mp/Projekte/vllm-bench/.venv/.../vllm/`) in den Fork zurückportieren
    (Fork rechnet mit Triton-Prefill auf Turing UND Volta falsch — Mojibake) und
    **Per-Stufe-Attention-Backend** bauen (PP-Stufen sind getrennte Prozesse,

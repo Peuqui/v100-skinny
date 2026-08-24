@@ -196,6 +196,7 @@ deploy modelopt.py          vllm/model_executor/layers/quantization/modelopt.py
 deploy torch_utils.py       vllm/utils/torch_utils.py
 deploy attention.py         vllm/model_executor/layers/attention/attention.py
 deploy custom_all_reduce.py vllm/distributed/device_communicators/custom_all_reduce.py
+deploy qwen3_5_mtp.py       vllm/model_executor/models/qwen3_5_mtp.py
 # sm70_native_round.py is deliberately NOT installed — experimental, inert.
 
 # ------------------------------------------------------------------ kernels

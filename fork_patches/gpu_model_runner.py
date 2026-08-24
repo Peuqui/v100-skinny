@@ -2347,6 +2347,10 @@ class GPUModelRunner(
         # NOTE(Jiayi): currently we put the entire draft model on
         # the last PP rank. This is not ideal if there are many
         # layers in the draft model.
+        # PP-Fix (Mini 2026-08-24): Nicht-letzte Ranks bekommen drafter=None,
+        # damit isinstance()-Pruefungen ohne AttributeError ins Leere laufen.
+        if self.speculative_config and not get_pp_group().is_last_rank:
+            self.drafter = None  # type: ignore[assignment]
         if self.speculative_config and get_pp_group().is_last_rank:
             self.drafter: (
                 NgramProposer  # noqa: F823
@@ -11761,7 +11765,7 @@ class GPUModelRunner(
             else:
                 hidden_states = outputs
 
-            if self.speculative_config and (
+            if self.speculative_config and get_pp_group().is_last_rank and (
                 self.speculative_config.use_eagle()
                 or self.speculative_config.uses_draft_model()
                 or self.speculative_config.uses_extract_hidden_states()
@@ -11835,7 +11839,7 @@ class GPUModelRunner(
         )
         _sm70_profile_trace(
             "_dummy_run return hidden_shape=%s sampled_count=%s",
-            tuple(hidden_states.shape),
+            tuple(hidden_states.shape) if hasattr(hidden_states, "shape") else "<IntermediateTensors>",
             len(logit_indices),
         )
         return hidden_states, hidden_states[logit_indices_device]
@@ -12108,8 +12112,8 @@ class GPUModelRunner(
         )
         _sm70_profile_trace(
             "profile_run dummy_run exit hidden_shape=%s last_hidden_shape=%s",
-            tuple(hidden_states.shape),
-            tuple(last_hidden_states.shape),
+            tuple(hidden_states.shape) if hasattr(hidden_states, "shape") else "<IntermediateTensors>",
+            tuple(last_hidden_states.shape) if hasattr(last_hidden_states, "shape") else "<IntermediateTensors>",
         )
         if get_pp_group().is_last_rank:
             if self.is_pooling_model:
@@ -12731,7 +12735,7 @@ class GPUModelRunner(
         self.calculate_reorder_batch_threshold()
 
         # Initialize drafter attention backend
-        if self.speculative_config and (
+        if self.speculative_config and get_pp_group().is_last_rank and (
             self.speculative_config.use_eagle()
             or self.speculative_config.uses_draft_model()
         ):
@@ -12784,7 +12788,7 @@ class GPUModelRunner(
         )
 
         # Initialize drafter's cudagraph dispatcher if using spec decode.
-        if self.speculative_config and (
+        if self.speculative_config and get_pp_group().is_last_rank and (
             self.speculative_config.use_eagle()
             or self.speculative_config.uses_extract_hidden_states()
         ):

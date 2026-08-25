@@ -24,6 +24,7 @@ installed file: the tracked copy here is the reviewable source of truth.
 | `attention.py` | `vllm/model_executor/layers/attention/attention.py` | The same policy on the compressed-tensors re-apply path. |
 | `gpu_model_runner.py` | `vllm/v1/worker/gpu_model_runner.py` | Persistent-metadata speculative round, a per-phase GPU profiler, and NVTX phase brackets for per-kernel attribution. |
 | `gdn_attn.py` | `vllm/v1/attention/backends/gdn_attn.py` | Chain-MTP GDN fast metadata build (−1.4 ms/step, byte-identical output). |
+| `vllm_config.py` | `vllm/config/vllm.py` | The SM70 baseline env defaults (GDN decode FlashQLA, the GDN/FLA schedules, packed recurrent decode, the 0DOT3 compile graph) are decided by whether ANY visible device is SM70 instead of by device 0. This block runs once in the parent process and its `os.environ` defaults are inherited by every worker, so on a heterogeneous pipeline the V100 stage silently lost its entire tuning whenever device 0 was a Turing card — output stayed grammatical but degraded, and MTP acceptance collapsed. |
 | `custom_all_reduce.py` | `vllm/distributed/device_communicators/custom_all_reduce.py` | All-reduce residency instrumentation, default off. Measurement tool, dormant in production. |
 
 Not installed:

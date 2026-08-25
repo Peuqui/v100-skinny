@@ -3,6 +3,14 @@
 Stand: 2026-08-24 spätabends · Vorarbeit-Session: Benchmark-Kampagne (siehe
 `/home/mp/Projekte/vllm-bench/RESULTS.md` — Methodik, alle Zahlen, Plattform-Fixe).
 
+> **UPDATE (Session 4, 24.08. nachts): DAS 2×2-GITTER LÄUFT — Ziel erreicht.**
+> TP=2 auf der RTX-Stufe + TP=2 auf der V100-Stufe, PP über die
+> Generationsgrenze, MTP k=7, CUDA-Graphs an, alle elf Boot-Gates grün:
+> **math 85,0 ± 1,1 tok/s, code 56,3 ± 1,1 tok/s** (bench.py, n=3, gleiche
+> Methodik). Beide „Restbaustellen" der Session 3 hatten **eine** gemeinsame
+> Wurzel und sind erledigt — Diagnose in Abschnitt „Session 4" unten.
+> V100-PP2-Regression unverändert bei 79,8 tok/s.
+>
 > **UPDATE (gleicher Abend, Folgesession): PP=2 + MTP k=7 LÄUFT.**
 > Der „GDN-Spec-Commit-Deadlock" unten war eine Fehldiagnose zweiter Ordnung —
 > die echten Ursachen waren (a) fehlender Draft-Token-Transport zur ersten
@@ -148,11 +156,121 @@ Skip symmetrisch ✓), 2× 4096-Token-Läufe, Mathe korrekt, Send=Recv exakt.
 Zahlen siehe UPDATE-Block oben. Beide Patches liegen in der venv;
 **fork_patches-Sync + Git-Commit standen bei Sessionende noch aus.**
 
+## Session 4 (24.08. nachts): eine Wurzel für beide Restbaustellen
+
+**Befund vorweg:** Weder der sm75-GDN-Code noch die PP-Naht waren defekt.
+Beide Restbaustellen der Session 3 gingen auf **eine einzige, global auf
+Device 0 getroffene Konfigurationsentscheidung** zurück.
+
+### Die Messmatrix, die es eingekreist hat
+
+Alle Läufe Qwen3.8-27B-NVFP4, K=7, TP=1 PP=2 sofern nicht anders vermerkt:
+
+| Stufe 0 | Stufe 1 | Modus | Ergebnis |
+|---|---|---|---|
+| RTX (sm75) | – (solo, TP=1 und TP=2) | eager | ✓ kohärent |
+| RTX (sm75) | RTX (sm75) | eager | ✓ kohärent |
+| V100 (fork) | V100 (fork) | Graphs, Backend explizit | ✓ 79,8 tok/s |
+| RTX | V100 | eager | ✗ Wortsalat, Akzeptanz 55 % |
+| V100 | RTX | eager | ✗ Wortsalat |
+| V100 | V100 | eager, ATTN_BACKEND=AUTO | ✗ Wortsalat, Akzeptanz 2 % |
+| RTX | V100 | Graphs, vor dem Fix | ✗ degradiert, Akzeptanz 9 % |
+| RTX | V100 | Graphs, nach dem Fix | ✓ 74,8 tok/s |
+
+Die vorletzte Zeile ist der Schlüssel: das Problem war **nie** die
+Heterogenität — eine reine V100-Pipeline zerfällt genauso, sobald ihr die
+V100-Baseline fehlt.
+
+### Wurzel: `config/vllm.py`, SM70-Baseline an Device 0 gekoppelt
+
+`vllm/config/vllm.py` setzt für SM70 acht bis neun `os.environ`-Defaults
+(`VLLM_SM70_GDN_DECODE_FLASHQLA`, die GDN/FLA-Schedules,
+`VLLM_ENABLE_FLA_PACKED_RECURRENT_DECODE`, `…_0DOT3_COMPILE_GRAPH` …). Der
+Block läuft **einmal im Elternprozess**; die Defaults erben alle Worker.
+Seine Bedingung war `current_platform.is_device_capability((7, 0))` — und das
+fragt ausschliesslich **Device 0** der Sichtbarkeitsliste. Im 2×2-Gitter steht
+dort eine RTX 8000 (7.5) ⇒ der ganze Block wurde übersprungen ⇒ die
+V100-Stufe lief ohne ihre komplette Abstimmung. Gemessen: 0 statt 9
+`Auto-setting VLLM_SM70_*`-Zeilen im Log.
+
+Fix (`fork_patches/vllm_config.py`, neu in der Deploy-Liste): die Entscheidung
+fällt über **alle sichtbaren Geräte** (`_any_visible_device_has_capability`).
+Die Defaults sind an ihrer Verwendungsstelle ohnehin SM70-gegated, die
+Turing-Stufe ignoriert sie also. Homogene Setups verhalten sich unverändert
+(V100-only: Device 0 ist die V100; RTX-only: kein SM70 sichtbar).
+
+### Zweiter Teil derselben Wurzel: `--enforce-eager` war ein Eigentor
+
+Das `--enforce-eager` aus Session 3 (Notbehelf gegen die vermeintlich
+graph-untaugliche sm75-Metadata) kostet die V100-Stufe den
+**XQA-Pfad des MTP-Verifiers** — und der Ersatzpfad rechnet bei q>1 falsch.
+Genau dafür existiert Gate 5 im Serve-Script; es wurde aber übersprungen,
+weil es an der Startvariablen `ATTN_BACKEND` hing statt an der tatsächlich
+gewählten Backend-Klasse. Unter `ATTN_BACKEND=AUTO` (seit Session 3 nötig)
+war das Gate damit auf jedem heterogenen Boot blind.
+
+Gegenprobe: sm75 verträgt FULL-CUDA-Graphs einwandfrei — RTX solo und
+RTX+RTX-PP mit K=7 und Graphs sind kohärent (Akzeptanz 21 %, identisch zum
+Solo-Lauf). Restbaustelle 1 („Fork-Graph-Capture verträgt die
+upstream-GDN-Builder nicht") reproduziert nicht mehr; sie war dieselbe
+fehlende V100-Baseline, nur an K=0 beobachtet.
+
+### Änderungen am Serve-Script
+
+- `SPEC_ATTN` separat überschreibbar: der Drafter lebt auf der **letzten**
+  Stufe, deren Architektur nicht die des globalen Backends sein muss
+  (Solo-Boots auf der RTX brauchen `SPEC_ATTN=TRITON_ATTN`, sonst stirbt der
+  Drafter mit „Kernel supports only Volta GPUs").
+- `CUDAGRAPH_MODE` trennt torch.compile von der Graph-Aufzeichnung
+  (`--enforce-eager` schaltet beides ab). Diagnostisch wertvoll; für den
+  Produktivbetrieb **nicht** setzen.
+- XQA-Gate prüft jetzt die beobachtete Backend-Wahl statt der Startvariablen.
+- `GATE_SOFT=1` lässt einen durchgefallenen Boot zur Fehlersuche stehen.
+  Messwerte aus so einem Boot bleiben unzitierbar.
+
+### Geprüft und bewusst NICHT geändert
+
+Der sm75-Sonderweg in `_pp_receive_spec_decode_state` (Rank-0-Spec-Empfang
+füllt nur die Akzeptanz-Puffer statt des Fork-Align-Postprocess) wurde
+verdächtigt und im A/B gemessen: 1481-Token-Lauf über mehrere
+Mamba-Block-Übertritte, **byte-identischer Output** mit und ohne. Grund: den
+Übertritt erledigt ohnehin `preprocess_mamba` auf jedem Rang; der
+Align-Postprocess ist dort nur die frühere GPU-Variante desselben Kopiervorgangs.
+Der Zweig bleibt unangetastet.
+
+### Verifikation Session 4
+
+- 2×2 (`CUDA_VISIBLE_DEVICES=0,2,1,4`, TP=2 PP=2, K=7, Graphs): elf Gates
+  grün inkl. XQA und Zensus 256; math 85,0 ± 1,1 / code 56,3 ± 1,1 tok/s;
+  4096-Token-Prosalauf 78,2 tok/s; 2731-Token-Prompt (Chunked Prefill)
+  korrekt zusammengefasst; 1481-Token-Aufsatz kohärent bis zum Schluss.
+- Heterogen TP=1 PP=2 (RTX+V100): 74,8 ± 0,9 tok/s.
+- Regression V100-PP2 (1,4): 79,8 ± 1,2 / 55,8 ± 1,4 tok/s — unverändert.
+
+### Repro 2×2 (aktueller Stand)
+
+```bash
+cd /home/mp/Projekte/v100-skinny
+SNAP=$(ls -d /home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/*/)
+TP=2 PP=2 PORT=8020 K=7 ATTN_BACKEND=AUTO \
+VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS=0 \
+DISABLE_CAR=1 NCCL_P2P_DISABLE=1 ASYNC_SCHED=1 \
+CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=0,2,1,4 \
+CUDA_HOME=$PWD/.cuda-nvcc-deb/usr/local/cuda-12.8 \
+LOG=$PWD/serve-2x2.log bash scripts/serve-qwen38-mini.sh "$SNAP"
+# 0,2 = RTX-Stufe 0 · 1,4 = V100-Stufe 1 · GPU 3 bleibt frei (VLM/TTS)
+# KEIN --enforce-eager: das kostet die V100-Stufe den XQA-Verifier-Pfad.
+```
+
+
 ## Danach (Reihenfolge)
 
 1. ~~GDN-Spec-Commit über PP lösen → PP2+k7 auf V100s messen~~ **ERLEDIGT
    (Session 2): 79,8 tok/s math / 58,6 code auf 2× V100.**
-2. **Heterogener Fall — Befunde aus dem ersten 2×2-Versuch (Session 2):**
+2. ~~Heterogener Fall (RTX-Stufe + V100-Stufe) mit MTP~~ **ERLEDIGT
+   (Session 4): 74,8 tok/s bei TP=1 PP=2. Beide Restbaustellen der Session 3
+   waren dieselbe device-0-gekoppelte SM70-Baseline — siehe Abschnitt
+   „Session 4" oben. Der Verlauf bis dahin bleibt als Historie stehen:**
    Boot 2×RTX (Stufe 0) + 2×V100 (Stufe 1) scheitert an zwei Stellen mit
    einer Wurzel:
    - V100-Stufe: TileLang-JIT kompiliert die GDN-Kernel mit dem Target des
@@ -250,8 +368,18 @@ Zahlen siehe UPDATE-Block oben. Beide Patches liegen in der venv;
    **Per-Stufe-Attention-Backend** bauen (PP-Stufen sind getrennte Prozesse,
    keine Attention über Stufengrenzen → chirurgisch machbar; „Triton überall"
    ist als Ausweg tot).
-3. Gitter 2×2 (TP2-RTX-Stufe + TP2-V100-Stufe), ungleiche Layer-Partition via
-   `VLLM_PP_LAYER_PARTITION`.
+3. ~~Gitter 2×2 (TP2-RTX-Stufe + TP2-V100-Stufe)~~ **ERLEDIGT (Session 4):
+   85,0 ± 1,1 tok/s math / 56,3 ± 1,1 code, alle elf Gates grün.** Offen
+   geblieben und lohnend: ungleiche Layer-Partition via
+   `VLLM_PP_LAYER_PARTITION` — die RTX-Stufe ist die schnellere Hälfte und
+   könnte mehr als 32 der 64 Schichten tragen. Bisher ist die Partition
+   50/50, das Gitter ist also am langsameren Ast ausgerichtet.
 4. Zielmodell-Support prüfen (DeepSeek-V4-Ops sind in der Fork-Basis vorhanden).
-5. Erkenntnisse als Issue/PR an 1Cat & v100-skinny (Autor bittet explizit um
+5. Zwei Fork-Bugs, die eine Meldung wert sind (beide in Session 4 belegt):
+   (a) die SM70-Baseline in `config/vllm.py` fragt Device 0 statt aller
+   sichtbaren Geräte — trifft jedes heterogene Deployment; (b) ohne den
+   XQA-Pfad rechnet der MTP-Verifier auf SM70 bei q>1 **still falsch**
+   statt zu scheitern (kohärent aussehender, aber degradierender Output).
+   (b) ist der gefährlichere Befund.
+6. Erkenntnisse als Issue/PR an 1Cat & v100-skinny (Autor bittet explizit um
    Reproduktionen; unsere PCIe/TP2/P2P-Befunde sind neu).

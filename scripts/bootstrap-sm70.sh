@@ -199,6 +199,7 @@ deploy custom_all_reduce.py vllm/distributed/device_communicators/custom_all_red
 deploy qwen3_5_mtp.py       vllm/model_executor/models/qwen3_5_mtp.py
 deploy qwen3_5.py           vllm/model_executor/models/qwen3_5.py
 deploy cuda.py              vllm/platforms/cuda.py
+deploy vllm_config.py       vllm/config/vllm.py
 deploy_new() {  # like deploy, but the target may not exist in the wheel yet
   local src="$REPO_ROOT/fork_patches/$1" dst="$SP/$2"
   [ -f "$src" ] || die "missing tracked patch: $src"

@@ -124,18 +124,29 @@ trap 'cleanup_on_fail' INT TERM
 # waehlt per lokaler Prioritaetsliste (heterogenes PP: RTX-Stufe braucht
 # ein anderes Backend als die V100-Stufe). Der Drafter lebt nur auf der
 # letzten Stufe (V100) und behaelt FLASH_ATTN_V100.
-SPEC_ATTN="${ATTN_BACKEND:-FLASH_ATTN_V100}"
+# SPEC_ATTN ist separat ueberschreibbar: der Drafter lebt auf der LETZTEN
+# PP-Stufe, deren Architektur nicht die des globalen Backends sein muss.
+# Solo-Boots auf der RTX-Stufe brauchen z. B. TRITON_ATTN, waehrend die
+# V100-Stufe FLASH_ATTN_V100 behaelt.
+SPEC_ATTN="${SPEC_ATTN:-${ATTN_BACKEND:-FLASH_ATTN_V100}}"
 [ "$SPEC_ATTN" = "AUTO" ] && SPEC_ATTN=FLASH_ATTN_V100
 if [ "${ATTN_BACKEND:-FLASH_ATTN_V100}" = "AUTO" ]; then
   ATTN_ARGS=()
 else
   ATTN_ARGS=(--attention-backend "${ATTN_BACKEND:-FLASH_ATTN_V100}")
 fi
+# CUDAGRAPH_MODE trennt torch.compile von der Graph-Aufzeichnung:
+# --enforce-eager schaltet BEIDES ab, und ohne compile verliert die
+# V100-Stufe den XQA-Pfad des MTP-Verifiers (rechnet dann bei q>1 falsch).
+# CUDAGRAPH_MODE=NONE behaelt compile und laesst nur die Graphen weg.
+CG_MODE_JSON=""
+[ -n "${CUDAGRAPH_MODE:-}" ] && CG_MODE_JSON=",\"cudagraph_mode\":\"$CUDAGRAPH_MODE\""
 if [ "$K" -gt 0 ]; then
-  SPEC_ARGS=(--compilation-config "{\"cudagraph_capture_sizes\":[$K1,$K2]}"
+  SPEC_ARGS=(--compilation-config "{\"cudagraph_capture_sizes\":[$K1,$K2]$CG_MODE_JSON}"
              --speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$K,\"attention_backend\":\"$SPEC_ATTN\",\"draft_sample_method\":\"greedy\",\"use_local_argmax_reduction\":true}")
 else
   SPEC_ARGS=()
+  [ -n "$CG_MODE_JSON" ] && SPEC_ARGS=(--compilation-config "{\"cudagraph_mode\":\"$CUDAGRAPH_MODE\"}")
 fi
 rm -f "$LOG"
 echo "==> serving $CKPT  (k=$K, GMU=$GMU, MML=$MML, partition=$DECODE_PARTITION)"
@@ -268,7 +279,12 @@ SCALAR=$(grep -c "scalar_paged" "$LOG" || true)
 
 # The tensor-core decode-attention path announces itself once, on first use.
 # Only meaningful when speculation is on; k=0 has no verifier.
-if [ "$K" -gt 0 ] 2>/dev/null && [ "${ATTN_BACKEND:-FLASH_ATTN_V100}" = "FLASH_ATTN_V100" ]; then
+# Gate on what the workers ACTUALLY selected, not on the launch variable:
+# under ATTN_BACKEND=AUTO each worker picks its own backend, and keying the
+# check on the variable skipped it on every heterogeneous boot. That is how
+# an --enforce-eager V100 stage (no XQA -> wrong MTP verify at q>1) passed
+# the gate and produced word salad.
+if [ "$K" -gt 0 ] 2>/dev/null && grep -qE "Using (AttentionBackendEnum\.)?FLASH_ATTN_V100( attention)? backend" "$LOG"; then
   grep -q "XQA path active" "$LOG" \
     && gate "XQA tensor-core decode attention active" ok \
     || gate "XQA tensor-core decode attention active" fail "XQA path never announced"
@@ -307,6 +323,13 @@ if [ "$FAIL" = 0 ]; then
 else
   echo "==> BOOT GATE FAILED — measurements from this server are NOT quotable." >&2
   echo "    stop it with:  kill -TERM \$(cat $PIDFILE)" >&2
+  # GATE_SOFT=1 laesst den Server fuer die Fehlersuche stehen. Messwerte aus
+  # einem solchen Boot bleiben unzitierbar — der Schalter ist ausschliesslich
+  # fuer Diagnose da (z. B. "rechnet die Stufe ohne XQA ueberhaupt richtig?").
+  if [ "${GATE_SOFT:-0}" = 1 ]; then
+    echo "==> GATE_SOFT=1: server stays up on port $PORT for diagnosis only." >&2
+    exit 0
+  fi
   cleanup_on_fail
   exit 1
 fi

@@ -200,6 +200,21 @@ deploy qwen3_5_mtp.py       vllm/model_executor/models/qwen3_5_mtp.py
 deploy qwen3_5.py           vllm/model_executor/models/qwen3_5.py
 deploy cuda.py              vllm/platforms/cuda.py
 deploy vllm_config.py       vllm/config/vllm.py
+deploy linear_init.py       vllm/model_executor/kernels/linear/__init__.py
+deploy fp8.py               vllm/model_executor/layers/quantization/fp8.py
+deploy compressed_tensors.py vllm/model_executor/layers/quantization/compressed_tensors/compressed_tensors.py
+deploy deepseek_v4_nvidia_model.py vllm/models/deepseek_v4/nvidia/model.py
+deploy nvfp4_moe_oracle.py  vllm/model_executor/layers/fused_moe/oracle/nvfp4.py
+deploy nvfp4_emulation_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4_emulation_moe.py
+deploy sparse_attn_indexer.py vllm/model_executor/layers/sparse_attn_indexer.py
+deploy mhc_tilelang.py      vllm/model_executor/kernels/mhc/tilelang.py
+deploy deepseek_v4_attention.py vllm/models/deepseek_v4/attention.py
+deploy dsv4_compressor.py   vllm/models/deepseek_v4/compressor.py
+deploy dsv4_cache_utils.py  vllm/models/deepseek_v4/common/ops/cache_utils.py
+deploy dsv4_fused_compress_quant_cache.py vllm/models/deepseek_v4/common/ops/fused_compress_quant_cache.py
+deploy rocm_aiter_mla_sparse.py vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
+deploy import_utils.py      vllm/utils/import_utils.py
+deploy sparse_swa.py        vllm/v1/attention/backends/mla/sparse_swa.py
 deploy_new() {  # like deploy, but the target may not exist in the wheel yet
   local src="$REPO_ROOT/fork_patches/$1" dst="$SP/$2"
   [ -f "$src" ] || die "missing tracked patch: $src"
@@ -208,6 +223,7 @@ deploy_new() {  # like deploy, but the target may not exist in the wheel yet
 }
 deploy_new qwen_gdn_linear_attn_sm75.py vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn_sm75.py
 deploy_new gdn_attn_sm75.py vllm/v1/attention/backends/gdn_attn_sm75.py
+deploy_new qpn8_blk.py      vllm/model_executor/kernels/linear/scaled_mm/qpn8_blk.py
 deploy tilelang_target.py   tilelang/utils/target.py
 # sm75 pair needs the UNMODIFIED upstream FLA triton ops under their
 # upstream path (the fork's layers/fla/ops are modified and wrong on sm75).
@@ -235,7 +251,8 @@ from vllm.model_executor.kernels.linear.nvfp4.marlin import _get_skinny_ext
 mod = _get_skinny_ext()
 if mod is None:
     sys.exit("skinny extension failed to build (see nvcc output above)")
-missing = [f for f in ("gemm_qpn2", "gemm_qpn8", "gemm_qpn8_mt2")
+missing = [f for f in ("gemm_qpn2", "gemm_qpn8", "gemm_qpn8_mt2",
+                       "gemm_qpn8_blk", "gemm_qpn8_blk_mt2")
            if not hasattr(mod, f)]
 if missing:
     sys.exit(f"kernel built but missing entry points: {missing}")

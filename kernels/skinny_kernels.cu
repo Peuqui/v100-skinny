@@ -1573,11 +1573,24 @@ DEV_INLINE void fp8x8_to_half2x4_fast(const uint2 q, half2 out[4]) {
   }
 }
 
-template <int SPLITK, int NACC, bool FASTDEC = false>
+// BLOCKED variant: block-scaled FP8 checkpoints ([BN, BK] scale raster,
+// typically 128x128) carry a K-VARYING scale, so the epilogue trick of the
+// per-tile path no longer applies. The scale moves to the decode point as a
+// half2 multiply per 16-k group -- the exact pattern the NVFP4 codec uses,
+// just coarser. Two geometry facts keep it cheap and warp-uniform:
+//   * an N=32 tile always sits inside ONE BN-row-block (BN % 32 == 0), so
+//     the scale per (tile, k-block) is a scalar, no lane raster needed;
+//   * a 16-k group always sits inside ONE BK-column-block (BK % 16 == 0),
+//     so it is one broadcast __ldg per group (4 B against 512 B of codes).
+// tscale is then the raster [ceil(N/BN)][kblocks] fp32, and the decoded
+// weights sit at their TRUE magnitude in the mma (the 2^8 decoder factor is
+// folded into sc2), so the epilogue writes the fp32 sum unscaled.
+template <int SPLITK, int NACC, bool FASTDEC = false, bool BLOCKED = false>
 __global__ void skinny_fp8_qpn8(const uint8_t *__restrict__ bcodes,
                                 const float *__restrict__ tscale,
                                 const half *__restrict__ x,
-                                half *__restrict__ y, int N, int K, int M) {
+                                half *__restrict__ y, int N, int K, int M,
+                                int kb_groups, int nb_tiles, int kblocks) {
   __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 256 : 1];
 
   const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
@@ -1590,7 +1603,8 @@ __global__ void skinny_fp8_qpn8(const uint8_t *__restrict__ bcodes,
   const uint4 *cb = reinterpret_cast<const uint4 *>(bcodes) +
                     (size_t)tile * G * 32 + lane;
   // CTA-uniform: slice boundaries are 64-aligned so a tile never straddles.
-  const float ws = __ldg(tscale + tile);
+  const float ws = BLOCKED ? 1.f : __ldg(tscale + tile);
+  const int row_off = BLOCKED ? (tile / nb_tiles) * kblocks : 0;
 
   float c[NACC][8];
 #pragma unroll
@@ -1608,6 +1622,12 @@ __global__ void skinny_fp8_qpn8(const uint8_t *__restrict__ bcodes,
     } else {
       fp8x8_to_half2x4(make_uint2(q4.x, q4.y), b + 0);
       fp8x8_to_half2x4(make_uint2(q4.z, q4.w), b + 4);
+    }
+    if (BLOCKED) {
+      const half2 sc2 = __float2half2_rn(
+          __ldg(tscale + row_off + g / kb_groups) * 256.f);
+#pragma unroll
+      for (int i = 0; i < 8; i++) b[i] = __hmul2(b[i], sc2);
     }
     const unsigned *B = reinterpret_cast<const unsigned *>(b);
     uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
@@ -1673,12 +1693,13 @@ __global__ void skinny_fp8_qpn8(const uint8_t *__restrict__ bcodes,
 // Costs: a second accumulator set (2*NACC*8 floats/lane) and a doubled
 // split-K staging buffer (SPLITK*512 floats = 32 KB at SPLITK=16, inside the
 // 48 KB static limit -- which is why SPLITK=32 is not instantiated here).
-template <int SPLITK, int NACC, bool FASTDEC = false>
+template <int SPLITK, int NACC, bool FASTDEC = false, bool BLOCKED = false>
 __global__ void skinny_fp8_qpn8_mt2(const uint8_t *__restrict__ bcodes,
                                     const float *__restrict__ tscale,
                                     const half *__restrict__ x,
                                     half *__restrict__ y, int N, int K,
-                                    int M) {
+                                    int M, int kb_groups, int nb_tiles,
+                                    int kblocks) {
   __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 512 : 1];
 
   const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
@@ -1689,7 +1710,8 @@ __global__ void skinny_fp8_qpn8_mt2(const uint8_t *__restrict__ bcodes,
   const int g0 = warp * Gq;
   const uint4 *cb = reinterpret_cast<const uint4 *>(bcodes) +
                     (size_t)tile * G * 32 + lane;
-  const float ws = __ldg(tscale + tile);
+  const float ws = BLOCKED ? 1.f : __ldg(tscale + tile);
+  const int row_off = BLOCKED ? (tile / nb_tiles) * kblocks : 0;
 
   float c[2][NACC][8];
 #pragma unroll
@@ -1709,6 +1731,12 @@ __global__ void skinny_fp8_qpn8_mt2(const uint8_t *__restrict__ bcodes,
     } else {
       fp8x8_to_half2x4(make_uint2(q4.x, q4.y), b + 0);
       fp8x8_to_half2x4(make_uint2(q4.z, q4.w), b + 4);
+    }
+    if (BLOCKED) {
+      const half2 sc2 = __float2half2_rn(
+          __ldg(tscale + row_off + g / kb_groups) * 256.f);
+#pragma unroll
+      for (int i = 0; i < 8; i++) b[i] = __hmul2(b[i], sc2);
     }
     const unsigned *B = reinterpret_cast<const unsigned *>(b);
 #pragma unroll
@@ -1794,7 +1822,7 @@ torch::Tensor skinny_gemm_qpn8_mt2(torch::Tensor x, torch::Tensor qcodes,
           qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
           reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
           reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
-          (int)m)
+          (int)m, 0, 0, 0)
 
 #define LAUNCH_MT2(SPv, NAv)                                                  \
   skinny_fp8_qpn8_mt2<SPv, NAv>                                               \
@@ -1802,7 +1830,7 @@ torch::Tensor skinny_gemm_qpn8_mt2(torch::Tensor x, torch::Tensor qcodes,
           qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
           reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
           reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
-          (int)m)
+          (int)m, 0, 0, 0)
 
   const int key = (int)(splitk * 10 + nacc);
   switch (key) {
@@ -1852,7 +1880,7 @@ torch::Tensor skinny_gemm_qpn8(torch::Tensor x, torch::Tensor qcodes,
           qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
           reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
           reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
-          (int)m)
+          (int)m, 0, 0, 0)
 
 #define LAUNCH_QPN8(SPv, NAv)                                                 \
   skinny_fp8_qpn8<SPv, NAv>                                                   \
@@ -1860,7 +1888,7 @@ torch::Tensor skinny_gemm_qpn8(torch::Tensor x, torch::Tensor qcodes,
           qcodes.data_ptr<uint8_t>(), tscale.data_ptr<float>(),               \
           reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
           reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
-          (int)m)
+          (int)m, 0, 0, 0)
 
   const int key = (int)(splitk * 10 + nacc);
   switch (key) {
@@ -1886,9 +1914,378 @@ torch::Tensor skinny_gemm_qpn8(torch::Tensor x, torch::Tensor qcodes,
   return y;
 }
 
+// Block-scaled entries: bscale is the checkpoint's fp32 scale raster
+// [ceil(N/bn)][ceil(K/bk)] (weight_block_size = [bn, bk], 128x128 for the
+// DeepSeek-class checkpoints). Same prepacked code layout, same dispatch
+// keys as the per-tile path; only the scale transport differs (see the
+// BLOCKED comment on skinny_fp8_qpn8).
+static void check_blk_scale(const torch::Tensor &bscale, int64_t n, int64_t k,
+                            int64_t bn, int64_t bk) {
+  TORCH_CHECK(bscale.is_cuda() && bscale.dtype() == torch::kFloat &&
+              bscale.is_contiguous());
+  TORCH_CHECK(bn % 32 == 0, "bn must be a multiple of 32 (tile rows)");
+  TORCH_CHECK(bk % 16 == 0, "bk must be a multiple of 16 (group depth)");
+  TORCH_CHECK(bscale.dim() == 2 && bscale.size(0) == (n + bn - 1) / bn &&
+                  bscale.size(1) == (k + bk - 1) / bk,
+              "bscale must be [ceil(N/bn), ceil(K/bk)], got ",
+              bscale.size(0), "x", bscale.size(1));
+}
+
+// ---------------------------------------------------------------------------
+// WMMA-BLK: tensor-core prefill kernel reading the QPN8-PACKED layout.
+//
+// The decode band (M<=16) is served by the qpn8/mt2 register kernels above;
+// their chunked/reconstruct extensions lose 2-10x to a tiled kernel once M
+// grows past ~16 (fp8_blk_backend_bench). This kernel closes that band from
+// the SAME resident buffer -- no second weight format: a CTA owns one packed
+// 32-column tile, stages KC-deep dequantized weights to smem straight from
+// fragment order (lane -> column via the QPN8 col map; korder makes the fast
+// decoder emit adjacent-k half2 pairs, so smem writes are linear), and feeds
+// nvcuda::wmma 16x16x16 fragments exactly like skinny_nvfp4_wmma. Block
+// scales (raster [ceil(N/bn)][ceil(K/bk)]) are applied at the decode point;
+// an N=32 tile never straddles a BN block, so the lookup is lane-uniform.
+// Grid: (N/32, ceil(M/MT)) -- full K per CTA, fp32 accumulate.
+// ---------------------------------------------------------------------------
+template <int WM, int KC>
+__global__ void skinny_fp8_wmma_blk(const uint8_t *__restrict__ bcodes,
+                                    const float *__restrict__ bscale,
+                                    const half *__restrict__ x,
+                                    half *__restrict__ y, int N, int K,
+                                    int m_real, int kb_groups, int nb_tiles,
+                                    int kblocks) {
+  constexpr int WN = 2, NT = 32, MT = WM * 16;
+  constexpr int PW = KC + 16, PX = KC + 16;
+  constexpr int NTHREADS = WN * WM * 32;
+  constexpr int CSEG = NT * (KC / 16) / NTHREADS;  // packed uint4 per thread
+  constexpr int XSEG = MT * (KC / 8) / NTHREADS;   // x uint4 per thread
+  static_assert(CSEG * NTHREADS == NT * (KC / 16), "code seg split");
+  static_assert(XSEG * NTHREADS == MT * (KC / 8), "x seg split");
+
+  extern __shared__ char smem_raw[];
+  half *ws = reinterpret_cast<half *>(smem_raw);  // [NT][PW]
+  half *xs = ws + NT * PW;                        // [MT][PX]
+
+  const int tid = threadIdx.x;
+  const int warp = tid >> 5, lane = tid & 31;
+  const int wn = warp % WN, wm = warp / WN;
+  const int tile = blockIdx.x;
+  const int m0 = blockIdx.y * MT;
+  const int G = K >> 4;
+  const uint4 *cb = reinterpret_cast<const uint4 *>(bcodes) +
+                    (size_t)tile * G * 32;
+  const int row_off = (tile / nb_tiles) * kblocks;
+
+  uint4 st_c[CSEG];
+  float st_s[CSEG];
+  uint4 st_x[XSEG];
+
+  auto load_stage = [&](int k0) {
+#pragma unroll
+    for (int i = 0; i < CSEG; i++) {
+      const int idx = tid + i * NTHREADS;
+      const int gg = idx >> 5, lp = idx & 31;
+      const int g = (k0 >> 4) + gg;
+      st_c[i] = __ldcs(cb + (size_t)g * 32 + lp);
+      st_s[i] = __ldg(bscale + row_off + g / kb_groups) * 256.f;
+    }
+#pragma unroll
+    for (int i = 0; i < XSEG; i++) {
+      const int idx = tid + i * NTHREADS;
+      const int m = m0 + idx / (KC / 8), j4 = idx % (KC / 8);
+      st_x[i] = (m < m_real)
+                    ? *reinterpret_cast<const uint4 *>(x + (size_t)m * K + k0 +
+                                                       j4 * 8)
+                    : make_uint4(0, 0, 0, 0);
+    }
+  };
+
+  auto store_stage = [&]() {
+#pragma unroll
+    for (int i = 0; i < CSEG; i++) {
+      const int idx = tid + i * NTHREADS;
+      const int gg = idx >> 5, lp = idx & 31;
+      // QPN8 col map: which output column this lane's bytes belong to.
+      const int col = ((lp >> 2) & 3) * 8 + (lp & 3) + ((lp & 16) ? 4 : 0);
+      const half2 sc2 = __float2half2_rn(st_s[i]);
+      half2 b[8];
+      fp8x8_to_half2x4_fast(make_uint2(st_c[i].x, st_c[i].y), b + 0);
+      fp8x8_to_half2x4_fast(make_uint2(st_c[i].z, st_c[i].w), b + 4);
+      half2 *wrow = reinterpret_cast<half2 *>(ws + col * PW + gg * 16);
+#pragma unroll
+      for (int j = 0; j < 8; j++) wrow[j] = __hmul2(b[j], sc2);
+    }
+#pragma unroll
+    for (int i = 0; i < XSEG; i++) {
+      const int idx = tid + i * NTHREADS;
+      const int m = idx / (KC / 8), j4 = idx % (KC / 8);
+      *reinterpret_cast<uint4 *>(xs + m * PX + j4 * 8) = st_x[i];
+    }
+  };
+
+  wmma::fragment<wmma::accumulator, 16, 16, 16, float> cfrag;
+  wmma::fill_fragment(cfrag, 0.f);
+
+  load_stage(0);
+  for (int k0 = 0; k0 < K; k0 += KC) {
+    __syncthreads();
+    store_stage();
+    __syncthreads();
+    if (k0 + KC < K) load_stage(k0 + KC);
+
+    wmma::fragment<wmma::matrix_a, 16, 16, 16, half, wmma::row_major> a[2];
+    wmma::fragment<wmma::matrix_b, 16, 16, 16, half, wmma::col_major> b[2];
+    wmma::load_matrix_sync(a[0], ws + wn * 16 * PW, PW);
+    wmma::load_matrix_sync(b[0], xs + wm * 16 * PX, PX);
+#pragma unroll
+    for (int kk = 0; kk < KC / 16; kk++) {
+      const int cur = kk & 1, nxt = cur ^ 1;
+      if (kk + 1 < KC / 16) {
+        wmma::load_matrix_sync(a[nxt], ws + wn * 16 * PW + (kk + 1) * 16, PW);
+        wmma::load_matrix_sync(b[nxt], xs + wm * 16 * PX + (kk + 1) * 16, PX);
+      }
+      wmma::mma_sync(cfrag, a[cur], b[cur], cfrag);
+    }
+  }
+
+  __syncthreads();  // reuse smem for the fp32 epilogue stage
+  float *cs = reinterpret_cast<float *>(smem_raw) + warp * 256;
+  wmma::store_matrix_sync(cs, cfrag, 16, wmma::mem_row_major);
+  __syncwarp();
+  for (int e = lane; e < 256; e += 32) {
+    const int i = e >> 4, j = e & 15;  // i: n within warp tile, j: m
+    const int gm = m0 + wm * 16 + j;
+    const int gn = tile * 32 + wn * 16 + i;
+    if (gm < m_real) y[(size_t)gm * N + gn] = __float2half(cs[e]);
+  }
+}
+
+torch::Tensor skinny_gemm_qpn8_blk_wmma(torch::Tensor x, torch::Tensor qcodes,
+                                        torch::Tensor bscale, int64_t n,
+                                        int64_t bn, int64_t bk) {
+  const int64_t m = x.size(0), k = x.size(1);
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(k % 128 == 0, "K must be a multiple of 128");
+  TORCH_CHECK(n % 32 == 0, "N % 32");
+  TORCH_CHECK(qcodes.numel() == n * k, "qpn8 codes size");
+  check_blk_scale(bscale, n, k, bn, bk);
+  const int kbg = (int)(bk / 16), nbt = (int)(bn / 32);
+  const int kbl = (int)bscale.size(1);
+  auto y = torch::empty({m, n}, x.options());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_WMMA_BLK(WM)                                                   \
+  do {                                                                        \
+    constexpr int KC = 128, NT = 32, MT = WM * 16;                            \
+    const int smem = (NT + MT) * (KC + 16) * (int)sizeof(half);               \
+    const dim3 grid((int)(n / 32), (int)((m + MT - 1) / MT));                 \
+    skinny_fp8_wmma_blk<WM, KC><<<grid, dim3(2 * WM * 32), smem, stream>>>(   \
+        qcodes.data_ptr<uint8_t>(), bscale.data_ptr<float>(),                 \
+        reinterpret_cast<const half *>(x.data_ptr<at::Half>()),               \
+        reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,     \
+        (int)m, kbg, nbt, kbl);                                               \
+  } while (0)
+
+  if (m <= 32) LAUNCH_WMMA_BLK(2);
+  else LAUNCH_WMMA_BLK(4);
+#undef LAUNCH_WMMA_BLK
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return y;
+}
+
+// Fast transient dequant for the large-M band: packed QPN8 bytes + scale
+// raster -> fp16 [N, K] (checkpoint row order), one 16-byte read and one
+// 32-byte write per thread-group entry. The caller feeds the result to
+// cuBLAS hgemm; at prefill M the GEMM dominates and the pair matches a
+// dedicated tiled kernel without keeping a second weight format resident
+// (fp8_blk_backend_bench: torch-indexing unpack made reconstruct 2-10x
+// slower than TurboMind; this kernel removes that overhead).
+__global__ void skinny_fp8_dequant_blk(const uint8_t *__restrict__ bcodes,
+                                       const float *__restrict__ bscale,
+                                       half *__restrict__ out, int N, int K,
+                                       int kb_groups, int nb_tiles,
+                                       int kblocks) {
+  const int G = K >> 4;
+  const long long total = (long long)(N >> 5) * G * 32;
+  const long long idx = (long long)blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx >= total) return;
+  const int lane = (int)(idx & 31);
+  const long long tg = idx >> 5;
+  const int g = (int)(tg % G);
+  const int tile = (int)(tg / G);
+  const int col = ((lane >> 2) & 3) * 8 + (lane & 3) + ((lane & 16) ? 4 : 0);
+  const uint4 q4 = __ldcs(reinterpret_cast<const uint4 *>(bcodes) +
+                          ((size_t)tile * G + g) * 32 + lane);
+  const float ws =
+      __ldg(bscale + (tile / nb_tiles) * kblocks + g / kb_groups);
+  const half2 sc2 = __float2half2_rn(ws * 256.f);
+  half2 b[8];
+  fp8x8_to_half2x4_fast(make_uint2(q4.x, q4.y), b + 0);
+  fp8x8_to_half2x4_fast(make_uint2(q4.z, q4.w), b + 4);
+#pragma unroll
+  for (int j = 0; j < 8; j++) b[j] = __hmul2(b[j], sc2);
+  half2 *orow = reinterpret_cast<half2 *>(
+      out + (size_t)(tile * 32 + col) * K + g * 16);
+#pragma unroll
+  for (int j = 0; j < 8; j++) orow[j] = b[j];
+}
+
+torch::Tensor skinny_qpn8_blk_dequant(torch::Tensor qcodes,
+                                      torch::Tensor bscale, int64_t n,
+                                      int64_t k, int64_t bn, int64_t bk) {
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(k % 16 == 0 && n % 32 == 0, "qpn8 geometry");
+  TORCH_CHECK(qcodes.numel() == n * k, "qpn8 codes size");
+  check_blk_scale(bscale, n, k, bn, bk);
+  auto out = torch::empty(
+      {n, k}, bscale.options().dtype(torch::kHalf));
+  const long long total = (n >> 5) * (k >> 4) * 32;
+  const int threads = 256;
+  const long long blocks = (total + threads - 1) / threads;
+  auto stream = at::cuda::getCurrentCUDAStream();
+  skinny_fp8_dequant_blk<<<(unsigned)blocks, threads, 0, stream>>>(
+      qcodes.data_ptr<uint8_t>(), bscale.data_ptr<float>(),
+      reinterpret_cast<half *>(out.data_ptr<at::Half>()), (int)n, (int)k,
+      (int)(bk / 16), (int)(bn / 32), (int)bscale.size(1));
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return out;
+}
+
+torch::Tensor skinny_gemm_qpn8_blk(torch::Tensor x, torch::Tensor qcodes,
+                                   torch::Tensor bscale, int64_t n,
+                                   int64_t bn, int64_t bk, int64_t splitk,
+                                   int64_t nacc) {
+  const int64_t m = x.size(0), k = x.size(1);
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(m >= 1 && m <= 8, "qpn8_blk supports M 1..8, got ", m);
+  TORCH_CHECK(k % 64 == 0 && (k / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(n % 32 == 0, "N % 32");
+  TORCH_CHECK(qcodes.numel() == n * k, "qpn8 codes size");
+  check_blk_scale(bscale, n, k, bn, bk);
+  const int kbg = (int)(bk / 16), nbt = (int)(bn / 32);
+  const int kbl = (int)bscale.size(1);
+  auto y = torch::empty({m, n}, x.options());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_QPN8_BLK_F(SPv, NAv)                                           \
+  skinny_fp8_qpn8<SPv, NAv, true, true>                                       \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), bscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m, kbg, nbt, kbl)
+
+#define LAUNCH_QPN8_BLK(SPv, NAv)                                             \
+  skinny_fp8_qpn8<SPv, NAv, false, true>                                      \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), bscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m, kbg, nbt, kbl)
+
+  const int key = (int)(splitk * 10 + nacc);
+  switch (key) {
+    case 43: LAUNCH_QPN8_BLK_F(4, 1); break;
+    case 83: LAUNCH_QPN8_BLK_F(8, 1); break;
+    case 84: LAUNCH_QPN8_BLK_F(8, 2); break;
+    case 163: LAUNCH_QPN8_BLK_F(16, 1); break;
+    case 164: LAUNCH_QPN8_BLK_F(16, 2); break;
+    case 323: LAUNCH_QPN8_BLK_F(32, 1); break;
+    case 324: LAUNCH_QPN8_BLK_F(32, 2); break;
+    case 41: LAUNCH_QPN8_BLK(4, 1); break;
+    case 42: LAUNCH_QPN8_BLK(4, 2); break;
+    case 81: LAUNCH_QPN8_BLK(8, 1); break;
+    case 82: LAUNCH_QPN8_BLK(8, 2); break;
+    case 161: LAUNCH_QPN8_BLK(16, 1); break;
+    case 162: LAUNCH_QPN8_BLK(16, 2); break;
+    case 321: LAUNCH_QPN8_BLK(32, 1); break;
+    case 322: LAUNCH_QPN8_BLK(32, 2); break;
+    default: TORCH_CHECK(false, "qpn8_blk splitk in {4,8,16,32}, nacc in "
+                                "{1,2} (+2 selects the fast decoder)");
+  }
+#undef LAUNCH_QPN8_BLK_F
+#undef LAUNCH_QPN8_BLK
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return y;
+}
+
+torch::Tensor skinny_gemm_qpn8_blk_mt2(torch::Tensor x, torch::Tensor qcodes,
+                                       torch::Tensor bscale, int64_t n,
+                                       int64_t bn, int64_t bk, int64_t splitk,
+                                       int64_t nacc) {
+  const int64_t m = x.size(0), k = x.size(1);
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(m >= 1 && m <= 16, "qpn8_blk_mt2 supports M 1..16, got ", m);
+  TORCH_CHECK(k % 64 == 0 && (k / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(n % 32 == 0, "N % 32");
+  TORCH_CHECK(qcodes.numel() == n * k, "qpn8 codes size");
+  check_blk_scale(bscale, n, k, bn, bk);
+  const int kbg = (int)(bk / 16), nbt = (int)(bn / 32);
+  const int kbl = (int)bscale.size(1);
+  auto y = torch::empty({m, n}, x.options());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_MT2_BLK_F(SPv, NAv)                                            \
+  skinny_fp8_qpn8_mt2<SPv, NAv, true, true>                                   \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), bscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m, kbg, nbt, kbl)
+
+#define LAUNCH_MT2_BLK(SPv, NAv)                                              \
+  skinny_fp8_qpn8_mt2<SPv, NAv, false, true>                                  \
+      <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                   \
+          qcodes.data_ptr<uint8_t>(), bscale.data_ptr<float>(),               \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),             \
+          reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n, (int)k,   \
+          (int)m, kbg, nbt, kbl)
+
+  const int key = (int)(splitk * 10 + nacc);
+  switch (key) {
+    case 43: LAUNCH_MT2_BLK_F(4, 1); break;
+    case 44: LAUNCH_MT2_BLK_F(4, 2); break;
+    case 83: LAUNCH_MT2_BLK_F(8, 1); break;
+    case 84: LAUNCH_MT2_BLK_F(8, 2); break;
+    case 163: LAUNCH_MT2_BLK_F(16, 1); break;
+    case 164: LAUNCH_MT2_BLK_F(16, 2); break;
+    case 41: LAUNCH_MT2_BLK(4, 1); break;
+    case 42: LAUNCH_MT2_BLK(4, 2); break;
+    case 81: LAUNCH_MT2_BLK(8, 1); break;
+    case 82: LAUNCH_MT2_BLK(8, 2); break;
+    case 161: LAUNCH_MT2_BLK(16, 1); break;
+    case 162: LAUNCH_MT2_BLK(16, 2); break;
+    default:
+      TORCH_CHECK(false,
+                  "qpn8_blk_mt2 splitk in {4,8,16} (32 would need 64 KB of "
+                  "shared), nacc in {1,2} (+2 selects the fast decoder)");
+  }
+#undef LAUNCH_MT2_BLK_F
+#undef LAUNCH_MT2_BLK
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return y;
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("gemm_qpn8", &skinny_gemm_qpn8,
         "skinny FP8 E4M3 GEMM (QPN8, M<=8)");
+  m.def("qpn8_blk_dequant", &skinny_qpn8_blk_dequant,
+        "packed QPN8 bytes + scale raster -> fp16 [N,K] (transient, for the "
+        "cuBLAS prefill band)");
+  m.def("gemm_qpn8_blk_wmma", &skinny_gemm_qpn8_blk_wmma,
+        "skinny block-scaled FP8 GEMM (tensor-core tiles from the packed "
+        "layout, prefill band)");
+  m.def("gemm_qpn8_blk", &skinny_gemm_qpn8_blk,
+        "skinny block-scaled FP8 GEMM (QPN8 + [bn,bk] scale raster, M<=8)");
+  m.def("gemm_qpn8_blk_mt2", &skinny_gemm_qpn8_blk_mt2,
+        "skinny block-scaled FP8 GEMM (QPN8 MT=2 + [bn,bk] scale raster, "
+        "M<=16)");
   m.def("gemm_qpn8_mt2", &skinny_gemm_qpn8_mt2,
         "skinny FP8 E4M3 GEMM (QPN8 MT=2, two row-tiles, one weight stream, "
         "M<=16)");

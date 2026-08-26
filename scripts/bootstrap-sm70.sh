@@ -204,6 +204,7 @@ deploy linear_init.py       vllm/model_executor/kernels/linear/__init__.py
 deploy fp8.py               vllm/model_executor/layers/quantization/fp8.py
 deploy compressed_tensors.py vllm/model_executor/layers/quantization/compressed_tensors/compressed_tensors.py
 deploy deepseek_v4_nvidia_model.py vllm/models/deepseek_v4/nvidia/model.py
+deploy deepseek_v4_mtp.py    vllm/models/deepseek_v4/nvidia/mtp.py
 deploy nvfp4_moe_oracle.py  vllm/model_executor/layers/fused_moe/oracle/nvfp4.py
 deploy nvfp4_emulation_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4_emulation_moe.py
 deploy nvfp4_skinny_moe.py  vllm/model_executor/layers/fused_moe/experts/nvfp4_skinny_moe.py

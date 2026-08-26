@@ -612,3 +612,153 @@ Wer hier weiterarbeitet, sollte zuerst prüfen, ob der gesuchte Pfad schon als
 4. **`quality.py`-Duplikat**: `scripts/deepseek_coherence.py` hat einen
    eigenen HTTP-Chat-Helfer, den vierten in `vllm-bench` (bench.py,
    quality.py, quality_kl.py). Konsolidieren.
+
+## SCHRITT 2 NEU BEWERTET (2026-08-25 nachts): kein Grouped-Kernel noetig
+
+Die Uebergabe plante einen Grouped-NVFP4-MoE-CUDA-Kernel als „grosses
+Projekt, einzige realistische Chance die Latte zu schlagen". **Das ist fuer
+das Decode-Band nicht noetig.** Der vorhandene `skinny_gemm_qpn` bedient
+einen Experten direkt.
+
+**Belegt** (`scripts/nvfp4_expert_gemm_test.py`, echte Checkpoint-Bytes aus
+`layers.5.ffn.experts.0`, V100): 10/10 Faelle, rel_err ~6e-4 gegen
+`dequantize_to_dtype` + matmul. Geprueft bei M = 1, 2, 6, 8, 16 fuer w1
+(N=2048, K=4096) und w2 (N=4096, K=2048).
+
+### Warum es passt
+
+Das Checkpoint-Layout pro Experte IST die Kernel-Signatur:
+
+| Kernel erwartet | Checkpoint liefert |
+|---|---|
+| `codes` uint8 [N][K/2] | `w1.weight_packed` [2048, 2048] uint8 |
+| `scales` uint8 [N][K/16] fp8-e4m3 | `w1.weight_scale` [2048, 256] F8_E4M3 |
+| `gscale` ein Skalar | `w1.weight_global_scale` [1] fp32 |
+| M 1..16 | Decode: jeder aktive Experte sieht 1-8 Token |
+
+Ein Expertenschnitt ist zusammenhaengend, also ohne Kopie nutzbar.
+
+### Zwei Fallstricke, beide gekostet
+
+1. **`weight_global_scale` ist der KEHRWERT.** Der Checkpoint speichert
+   21504.0; dequantisiert wird mit 1/21504 = 4,65e-5. Mit dem Rohwert
+   laeuft der Gewichts-Absmax auf `inf` und alles wird NaN.
+2. **`gemm_qpn` will die Fragment-Reihenfolge, nicht die rohen Bytes.** Der
+   Dateikopf von `skinny_kernels.cu` beschreibt das LOGISCHE Format; der
+   Kernel erwartet die Permutation aus `_qpn_prepack`
+   (`kernels/linear/nvfp4/marlin.py:87`). Ohne Prepack: rel_err ~1,3.
+   Der Prepack ist eine reine Permutation — **kein Speicherzuwachs**.
+
+### Was daraus folgt
+
+Schritt 2 ist ein **Per-Experten-Dispatch-Adapter**, kein Kernel-Projekt:
+pro aktivem Experten `gemm_qpn` fuer gate/up, SwiGLU (clamp 10.0!), dann
+`gemm_qpn` fuer down, Ergebnis gewichtet aufaddieren. Als eigene
+`FusedMoEExperts`-Klasse vor EMULATION in `fused_moe/oracle/nvfp4.py`.
+
+Grobe Rechnung: 6 aktive Experten x 2 GEMMs x 43 Layer = 516 Kernel-Starts
+pro Token, verteilt auf 5 PP-Stufen. Traffic ~3,6 GB/Token gegen ~700 GB/s
+=> einige ms; Startkosten bei ~10 us dominieren. Groessenordnung 30-60
+tok/s, also die 40er-Latte in Reichweite — ohne eine Zeile CUDA.
+
+### Offen fuer die Umsetzung
+
+1. **Prepack-Kosten beim Laden**: 256 Experten x 3 Matrizen x 43 Layer =
+   ~33.000 `_qpn_prepack`-Aufrufe. Der Prepack chunkt intern schon gegen
+   int64-Spitzen; Laufzeit messen, ggf. ueber die Experten-Dimension
+   vektorisieren.
+2. **Prefill-Band**: `gemm_qpn` deckt M<=16. Darueber `gemm_wmma` (M<=64)
+   oder Token-Chunking; alternativ Prefill weiter ueber die Emulation.
+3. **SwiGLU-Clamp 10.0** nicht vergessen (swiglu_limit im Config).
+4. **gate/up sind getrennte Tensoren** (`w1`/`w3`), nicht fusioniert —
+   entweder zwei GEMM-Aufrufe oder beim Laden konkatenieren (`gemm_qpn`
+   hat kein `gated_silu`-Flag; `nvfp4_gemm_sm70_out` haette eines).
+
+## SCHRITT 2 UMGESETZT (2026-08-26): Per-Experten-Skinny-MoE — 11x, jetzt CPU-bound
+
+### Was gebaut wurde (alles Kleben, kein neuer Kernel, kein Prepack)
+
+Die Neubewertung oben plante `gemm_qpn` + `_qpn_prepack`. Beim Umsetzen
+zeigte sich eine noch kleinere Loesung: **`gemm_simt` (M<=7) und
+`gemm_wmma` (M<=64) lesen das Checkpoint-Layout DIREKT** — genau die
+Slices, die der Expertentest als layoutgleich bewiesen hat. Damit
+entfallen Prepack (offener Punkt 1) und jede Layout-Mutation ersatzlos;
+die Gewichte bleiben wie geladen.
+
+- **`fork_patches/nvfp4_skinny_moe.py`** (deployt nach
+  `fused_moe/experts/nvfp4_skinny_moe.py`, Bootstrap-Zeile ergaenzt):
+  `Nvfp4SkinnySm70Experts` erbt von der gechunkten Emulationsklasse,
+  ueberschreibt nur `apply`. Kern ist die modulglobale, testbare Funktion
+  `skinny_moe_forward`: ein Host-Sync pro Layer (`topk_ids.cpu()`), dann
+  pro aktivem Experten Gather -> gemm(w13-Slice) -> geerbter
+  `activation()`-Helper (SwiGLU-Clamp 10.0 inklusive, offener Punkt 3)
+  -> gemm(w2-Slice) -> gewichteter `index_add_`. M-Dispatch nach der
+  vermessenen Linear-Frontier: simt <=7, wmma <=64, darueber 64er-Chunks
+  (offener Punkt 2). Punkt 4 (w1/w3 getrennt) erledigt vLLM selbst: der
+  Loader fusioniert zu w13; bei abweichenden w1/w3-Globalscales gilt
+  dieselbe [:,0]-Reduktion (+Warnung) wie ueberall.
+- **Aktivierungen bleiben fp16 (w4a16)** — bewusste Abweichung von der
+  Emulations-QDQ, konsistent mit allen NVFP4-Linears des Forks.
+- **Oracle** (`nvfp4_moe_oracle.py`): Backend `SM70_SKINNY` vor
+  EMULATION, in der Clamp-Liste, `moe_backend="sm70_skinny"` explizit
+  waehlbar, Rollback `VLLM_SM70_NVFP4_MOE_SKINNY=0`. Der
+  Konvertierungs-Branch ist bewusst leer (Checkpoint-Layout ==
+  Kernel-Layout); Quant-Config = w4a16-Bauart + `gemm1_clamp_limit`.
+- Gate auf lokales Worker-Device (Session-4-Lektion), sm70 UND sm75 —
+  die Skinny-NVFP4-Kernel sind RTX-solo-verifiziert.
+
+### Validierung
+
+- `scripts/nvfp4_skinny_moe_test.py` (echte Checkpoint-Bytes, Layer 5,
+  12 Experten): **7/7 auf V100 UND RTX 8000**, rel_err <= 2,1e-3 —
+  Decode, MTP-Batch, Prefill-Baender, erzwungenes m_e=400-Chunking,
+  Doppel-Slot-Routing.
+- Boot: Oracle waehlt `SM70_SKINNY`; Kohaerenzprobe **identisch zur
+  Schritt-1-Tabelle** (7/8, gleiche count-Abweichung).
+
+### Tempo-Befund: MoE ist nicht mehr der Engpass
+
+- Serving: **1,3-4,1 tok/s** (vorher 0,07-0,36 — Faktor ~11).
+- MoE-only-Mikrobench (M=1, topk=8, echte Bytes): 1,08 ms/Layer ->
+  46 ms/Token -> 21,5 tok/s waeren MoE-seitig drin. Davon nur ~0,15 ms
+  Kernel — der Rest Python-/Launch-Overhead des eager-Loops.
+- Torch-Profil (`--profiler-config.profiler=torch`, Traces in
+  `profiles/`): auf den V100-Stufen war der groesste GPU-Einzelposten
+  der **Shared-Experts-Pfad ueber TurboMind** (`nvfp4_gemm_sm70_out`,
+  ~1,15 ms Self-CUDA je GEMM ~ 4-5 ms/Layer), waehrend die RTX-Stufen
+  dieselben GEMMs ueber `sm70_marlin` in 129 us fahren (sm70_turbomind.py
+  waehlt TurboMind nur auf exakt sm70).
+- **`VLLM_SM70_QUANT_BACKEND=marlin`** (vorhandener Schalter) beseitigt
+  den Posten — Kohaerenz identisch, **Tokenrate unveraendert ~4 tok/s**.
+  Beleg: das System ist CPU-Dispatch-bound. Die NCCL-Broadcast-Kernel
+  „spinnen" 87-95 % der CUDA-Zeit (Pipeline-Warten), und die Breite aus
+  tausenden 1-5-us-Kerneln der Torch-Referenzpfade (Lightning-Indexer,
+  mHC-fp16, Referenz-O-Pfad, Referenz-KV-Schreiber) plus deren
+  Python-Dispatch dominiert die 244 ms/Token auf jeder Stufe.
+
+### Naechstes Paket (gross, eigene Session): Referenzpfade eindampfen
+
+Die 40er-Latte faellt nicht durch MoE-Feintuning (brachte rechnerisch
+4,1 -> 4,4), sondern nur durch Angriff auf die Breite:
+
+1. **Torch-Referenzpfade durch kompakte Kernel ersetzen — wieder erst
+   Landkarte:** die ROCm-Triton-Seite (`rocm_aiter_mla_sparse.py`,
+   `fused_compress_quant_cache.py`) hat fusionierte Kernel fuer Indexer
+   und KV-Schreibseite, die die importierte Sparse-Attention schon
+   nutzt; pruefen, welche der 2026-08-25-Referenzpfade (Indexer-Q-Quant,
+   mHC, O-Pfad) dort ebenfalls fertige Zwillinge haben.
+2. **CUDA-Graphen**: eager kostet auf JEDER Stufe Dispatch; die
+   Referenzpfade sind nicht graph-tauglich (Handover-Punkt 3) — nach 1.
+   neu bewerten. Der MoE-Loop selbst ist wegen dynamischem Routing +
+   Host-Sync nicht graph-faehig; fuer Decode (M=1, topk fix) waere eine
+   graph-taugliche Variante ueber einen Grouped-Dispatch denkbar —
+   NACH 1. messen, ob noetig.
+3. Danach erst bench.py gegen die Latte (40,4/42,8); die 4 tok/s sind
+   indikativ aus der Kohaerenzprobe, KEINE Kampagnen-Messung, deshalb
+   nicht in RESULTS.md.
+
+Betriebsnotiz: Server-Repro unveraendert (serve-deepseek-mini.sh, GMU
+0,90, eager); optional `VLLM_SM70_QUANT_BACKEND=marlin` (Shared-Experts/
+Dense-Linears auf V100 ueber Marlin statt TurboMind — GPU-Zeit runter,
+tok/s bei eager unveraendert). Logs: deepseek-skinny-moe.log,
+deepseek-skinny-marlin.log; Profile: profiles/.

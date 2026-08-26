@@ -206,6 +206,7 @@ deploy compressed_tensors.py vllm/model_executor/layers/quantization/compressed_
 deploy deepseek_v4_nvidia_model.py vllm/models/deepseek_v4/nvidia/model.py
 deploy nvfp4_moe_oracle.py  vllm/model_executor/layers/fused_moe/oracle/nvfp4.py
 deploy nvfp4_emulation_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4_emulation_moe.py
+deploy nvfp4_skinny_moe.py  vllm/model_executor/layers/fused_moe/experts/nvfp4_skinny_moe.py
 deploy sparse_attn_indexer.py vllm/model_executor/layers/sparse_attn_indexer.py
 deploy mhc_tilelang.py      vllm/model_executor/kernels/mhc/tilelang.py
 deploy deepseek_v4_attention.py vllm/models/deepseek_v4/attention.py

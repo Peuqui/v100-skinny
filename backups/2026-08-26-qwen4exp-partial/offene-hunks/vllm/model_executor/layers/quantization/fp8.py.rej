@@ -1,0 +1,19 @@
+--- vllm/model_executor/layers/quantization/fp8.py
++++ vllm/model_executor/layers/quantization/fp8.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ 
++import math
+ from typing import TYPE_CHECKING, Any, Literal
+ 
+ import torch
+@@ -28,6 +29,8 @@
+     FusedMoEQuantConfig,
+ )
+ from vllm.model_executor.layers.fused_moe.oracle.fp8 import (
++    Fp8MoeBackend,
++    backend_to_kernel_cls,
+     convert_to_fp8_moe_kernel_format,
+     make_fp8_moe_kernel,
+     make_fp8_moe_quant_config,

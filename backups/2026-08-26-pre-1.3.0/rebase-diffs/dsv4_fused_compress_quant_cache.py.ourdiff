@@ -1,0 +1,80 @@
+--- dsv4_fused_compress_quant_cache.py.122	2026-08-26 20:12:25.757260637 +0200
++++ /home/mp/Projekte/v100-skinny/fork_patches/dsv4_fused_compress_quant_cache.py	2026-08-25 20:35:43.636829918 +0200
+@@ -25,6 +25,10 @@
+ 
+ from vllm.triton_utils import tl, triton
+ 
++# fork: pre-SM89 Triton has no fp8e4nv (sm70 and sm75 alike). Reuse vLLM's
++# own capability gate from the turboquant path instead of duplicating it.
++from vllm.v1.attention.ops.triton_turboquant_decode import _use_fp8_e4b15
++
+ from .fused_indexer_q import _fp32x2_to_fp4x2
+ 
+ 
+@@ -101,6 +105,11 @@
+         TOKEN_STRIDE=token_stride,
+         SCALE_DIM=scale_dim,
+         KV_BLOCK_STRIDE=kv_cache.stride(0),
++        FP8_E4B15=_use_fp8_e4b15(
++            torch.cuda.current_device()
++            if kv_cache.device.index is None
++            else kv_cache.device.index
++        ),
+         num_warps=num_warps,
+         **pdl_kwargs,
+     )
+@@ -144,6 +153,8 @@
+     TOKEN_STRIDE: tl.constexpr,  # 576 for DeepseekV4
+     SCALE_DIM: tl.constexpr,  # 8 for DeepseekV4 (7 real + 1 pad)
+     KV_BLOCK_STRIDE: tl.constexpr,
++    FP8_E4B15: tl.constexpr,  # fork: pre-SM89 fp8 substitute
++                              # (unused on the MXFP4 kernel)
+ ):
+     """Fused compress → RMSNorm → FP8 quant (nope) → RoPE → bf16 store (rope).
+ 
+@@ -251,7 +262,12 @@
+     inv_scales_col = tl.reshape(inv_scales, (N_QUANT_BLOCKS, 1))
+     x_scaled = quant_2d * inv_scales_col
+     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
+-    x_fp8 = x_clamped.to(tl.float8e4nv)
++    # fork: e4b15 shares e4m3fn's 1-4-3 layout and differs only in exponent
++    # bias (15 vs 7), so scaling by 2**-8 first gives byte-identical output.
++    if FP8_E4B15:
++        x_fp8 = (x_clamped * (1.0 / 256.0)).to(tl.float8e4b15)
++    else:
++        x_fp8 = x_clamped.to(tl.float8e4nv)
+     x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+     x_uint8_flat = tl.reshape(x_uint8, (TRITON_BLOCK_SIZE,))
+ 
+@@ -334,6 +350,8 @@
+     TOKEN_STRIDE: tl.constexpr,  # 128 for indexer
+     SCALE_DIM: tl.constexpr,  # 4 for indexer (1 float32)
+     KV_BLOCK_STRIDE: tl.constexpr,
++    FP8_E4B15: tl.constexpr,  # fork: pre-SM89 fp8 substitute
++                              # (unused on the MXFP4 kernel)
+ ):
+     """Fused compress → RMSNorm → RoPE → FP8 quant → store.
+ 
+@@ -463,7 +481,12 @@
+ 
+     x_scaled = result_bf16 * inv_scale
+     x_clamped = tl.clamp(x_scaled, -FP8_MAX, FP8_MAX)
+-    x_fp8 = x_clamped.to(tl.float8e4nv)
++    # fork: e4b15 shares e4m3fn's 1-4-3 layout and differs only in exponent
++    # bias (15 vs 7), so scaling by 2**-8 first gives byte-identical output.
++    if FP8_E4B15:
++        x_fp8 = (x_clamped * (1.0 / 256.0)).to(tl.float8e4b15)
++    else:
++        x_fp8 = x_clamped.to(tl.float8e4nv)
+     x_uint8 = x_fp8.to(tl.uint8, bitcast=True)
+ 
+     tl.store(fp8_ptr + block, x_uint8, mask=mask)
+@@ -511,6 +534,8 @@
+     TOKEN_STRIDE: tl.constexpr,  # HEAD_SIZE // 2 = 64 packed bytes/token
+     SCALE_DIM: tl.constexpr,  # HEAD_SIZE // QUANT_BLOCK = 4 ue8m0 bytes/token
+     KV_BLOCK_STRIDE: tl.constexpr,
++    FP8_E4B15: tl.constexpr,  # fork: pre-SM89 fp8 substitute
++                              # (unused on the MXFP4 kernel)
+ ):
+     """Fused compress → RMSNorm → RoPE → MXFP4 quant → store.
+ 

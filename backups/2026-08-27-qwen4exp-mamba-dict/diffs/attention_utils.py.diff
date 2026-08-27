@@ -1,0 +1,21 @@
+--- /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/orig/utils.py_v1_attention_backends	2026-08-26 22:57:49.368587938 +0200
++++ /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/new/utils.py	2026-08-26 22:57:49.398774109 +0200
+@@ -1,7 +1,6 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ import functools
+-import functools
+ from collections.abc import Callable
+ from dataclasses import dataclass, field, fields, make_dataclass
+ from typing import (
+@@ -1012,6 +1011,10 @@
+         return block_table
+     else:
+         assert isinstance(kv_cache_spec, MambaSpec)
++        if HAS_TRITON and block_table.is_cuda and seq_lens.is_cuda:
++            return mamba_get_block_table_tensor_triton(
++                block_table, seq_lens, kv_cache_spec
++            )
+         # NOTE: For 0-length requests in CUDA graph, use a start_index of 0
+         # to handle the invalid block table.
+         start_indices = torch.clamp(

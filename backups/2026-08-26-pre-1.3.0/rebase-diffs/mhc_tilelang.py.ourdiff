@@ -1,0 +1,122 @@
+--- mhc_tilelang.py.122	2026-08-26 20:12:22.917310249 +0200
++++ /home/mp/Projekte/v100-skinny/fork_patches/mhc_tilelang.py	2026-08-25 15:49:48.624114017 +0200
+@@ -5,6 +5,69 @@
+ from vllm.utils.torch_utils import direct_register_custom_op
+ 
+ 
++# ---------------------------------------------------------------------------
++# fork: fp16 torch reference path for the mHC block. The TileLang kernels
++# are written for bf16, which Volta does not have; on fp16 models every
++# public entry below routes into these implementations (math mirrors
++# kernels/mhc/torch.py resp. the hc_head_fuse_tilelang two-pass kernel,
++# fp32 internally, outputs in the residual dtype). Eager-only concern-free:
++# plain torch ops.
++# ---------------------------------------------------------------------------
++
++
++def _mhc_pre_torch_generic(residual, fn, hc_scale, hc_base, rms_eps,
++                           hc_pre_eps, hc_sinkhorn_eps, hc_post_mult_value,
++                           sinkhorn_repeat, norm_weight=None, norm_eps=1e-6):
++    hc_mult, hidden = residual.shape[-2], residual.shape[-1]
++    outer = residual.shape[:-2]
++    rf = residual.reshape(-1, hc_mult, hidden)
++    t = rf.shape[0]
++    x = rf.reshape(t, hc_mult * hidden).to(torch.float32)
++    mixes = x @ fn.t()
++    sqrsum = x.square().sum(-1, keepdim=True)
++    mixes = mixes * torch.rsqrt(sqrsum / (hc_mult * hidden) + rms_eps)
++    pre = (torch.sigmoid(mixes[:, :hc_mult] * hc_scale[0]
++                         + hc_base[:hc_mult]) + hc_pre_eps)
++    post = (torch.sigmoid(mixes[:, hc_mult:2 * hc_mult] * hc_scale[1]
++                          + hc_base[hc_mult:2 * hc_mult])
++            * hc_post_mult_value)
++    comb = (mixes[:, 2 * hc_mult:].view(t, hc_mult, hc_mult) * hc_scale[2]
++            + hc_base[2 * hc_mult:].view(1, hc_mult, hc_mult))
++    comb = torch.softmax(comb, -1) + hc_sinkhorn_eps
++    comb = comb / (comb.sum(-2, keepdim=True) + hc_sinkhorn_eps)
++    for _ in range(sinkhorn_repeat - 1):
++        comb = comb / (comb.sum(-1, keepdim=True) + hc_sinkhorn_eps)
++        comb = comb / (comb.sum(-2, keepdim=True) + hc_sinkhorn_eps)
++    li = torch.sum(pre.unsqueeze(-1) * rf.to(torch.float32), dim=1)
++    if norm_weight is not None:
++        # vLLM RMSNorm semantics: fp32 normalize, cast, then weight.
++        li = li * torch.rsqrt(li.square().mean(-1, keepdim=True) + norm_eps)
++        li = li.to(residual.dtype) * norm_weight.to(residual.dtype)
++    else:
++        li = li.to(residual.dtype)
++    return (post.view(*outer, hc_mult, 1),
++            comb.view(*outer, hc_mult, hc_mult),
++            li.view(*outer, hidden))
++
++
++def _mhc_post_torch_generic(x, residual, post_layer_mix, comb_res_mix):
++    mixed = torch.einsum("...ij,...ih->...jh", comb_res_mix.to(torch.float32),
++                         residual.to(torch.float32))
++    post_term = (post_layer_mix.to(torch.float32)
++                 * x.unsqueeze(-2).to(torch.float32))
++    return (mixed + post_term).to(residual.dtype)
++
++
++def _hc_head_torch_generic(hs_flat, fn, hc_scale, hc_base, rms_eps, hc_eps):
++    t, hc, hidden = hs_flat.shape
++    x = hs_flat.reshape(t, hc * hidden).to(torch.float32)
++    mixes = x @ fn.t()
++    r = torch.rsqrt(x.square().sum(-1, keepdim=True) / (hc * hidden) + rms_eps)
++    pre = torch.sigmoid(mixes * r * hc_scale[0] + hc_base) + hc_eps
++    out = torch.einsum("tm,tmh->th", pre, hs_flat.to(torch.float32))
++    return out.to(hs_flat.dtype)
++
++
+ def _torch_hc_prenorm_gemm(
+     x: torch.Tensor,
+     fn: torch.Tensor,
+@@ -126,6 +189,12 @@
+         comb_mix: shape (..., hc_mult, hc_mult), dtype torch.float32
+         layer_input: shape (..., hidden_size), dtype torch.bfloat16
+     """
++    if residual.dtype == torch.float16:
++        return _mhc_pre_torch_generic(
++            residual, fn, hc_scale, hc_base, rms_eps, hc_pre_eps,
++            hc_sinkhorn_eps, hc_post_mult_value, sinkhorn_repeat,
++            norm_weight=norm_weight, norm_eps=norm_eps)
++
+     from vllm.model_executor.kernels.mhc.tilelang_kernels import (
+         compute_num_split,
+         mhc_pre_big_fuse_tilelang,
+@@ -306,6 +375,10 @@
+     post_layer_mix: torch.Tensor,
+     comb_res_mix: torch.Tensor,
+ ) -> torch.Tensor:
++    if residual.dtype == torch.float16:
++        return _mhc_post_torch_generic(x, residual, post_layer_mix,
++                                       comb_res_mix)
++
+     from vllm.model_executor.kernels.mhc.tilelang_kernels import (
+         mhc_post_tilelang as _mhc_post_kernel,
+     )
+@@ -355,6 +428,15 @@
+         layer_input_cur: shape (..., hidden_size)
+     """
+ 
++    if residual.dtype == torch.float16:
++        res_cur = _mhc_post_torch_generic(x, residual, post_layer_mix,
++                                          comb_res_mix)
++        post_cur, comb_cur, li_cur = _mhc_pre_torch_generic(
++            res_cur, fn, hc_scale, hc_base, rms_eps, hc_pre_eps,
++            hc_sinkhorn_eps, hc_post_mult_value, sinkhorn_repeat,
++            norm_weight=norm_weight, norm_eps=norm_eps)
++        return res_cur, post_cur, comb_cur, li_cur
++
+     from vllm.model_executor.kernels.mhc.tilelang_kernels import (
+         compute_num_split,
+         mhc_fused_tilelang,
+@@ -619,6 +701,9 @@
+     hc_eps: float,
+ ) -> torch.Tensor:
+     """Apply the fused hc_head kernel and return the (T, H) bf16 result."""
++    if hs_flat.dtype == torch.float16:
++        return _hc_head_torch_generic(hs_flat, fn, hc_scale, hc_base,
++                                      rms_eps, hc_eps)
+     num_tokens, hc_mult, hidden_size = hs_flat.shape
+     out = torch.empty(
+         num_tokens, hidden_size, dtype=torch.bfloat16, device=hs_flat.device

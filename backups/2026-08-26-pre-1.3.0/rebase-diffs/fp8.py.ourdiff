@@ -1,0 +1,52 @@
+--- fp8.py.122	2026-08-26 20:12:20.202357605 +0200
++++ /home/mp/Projekte/v100-skinny/fork_patches/fp8.py	2026-08-25 14:52:04.054135436 +0200
+@@ -148,6 +148,9 @@
+ 
+     @classmethod
+     def get_min_capability(cls) -> int:
++        from vllm.model_executor.kernels.linear.scaled_mm.qpn8_blk import (
++            qpn8_blk_enabled as _qpn8_blk_enabled,
++        )
+         if (
+             current_platform.is_cuda()
+             and current_platform.has_device_capability(70)
+@@ -156,6 +159,9 @@
+                 envs.VLLM_SM70_FP8_DEQUANT_FALLBACK
+                 or sm70_tm.forces_marlin()
+                 or sm70_tm.use_turbomind(envs.VLLM_SM70_FP8_TURBOMIND)
++                # fork: block-scaled FP8 via the skinny QPN8 kernel reaches
++                # init_fp8_linear_kernel when the paths above are disabled.
++                or _qpn8_blk_enabled()
+             )
+         ):
+             return 70
+@@ -332,14 +338,29 @@
+             and current_platform.has_device_capability(70)
+             and not current_platform.has_device_capability(75)
+         )
++        # fork: block-scaled FP8 goes to the skinny QPN8 kernel by DEFAULT
++        # (measured against TurboMind on the DeepSeek attention shapes:
++        # decode M<=8 up to 1.79x ahead, prefill parity -- see
++        # benchmarks/fp8_blk_backend_bench.py). VLLM_SM70_QPN8_BLK=0
++        # restores the TurboMind precedence below.
++        from vllm.model_executor.kernels.linear.scaled_mm.qpn8_blk import (
++            qpn8_blk_enabled,
++        )
++        self.use_sm70_fp8_qpn8_blk = (
++            self._sm70_without_fp8_hw
++            and self.block_quant
++            and qpn8_blk_enabled()
++        )
+         self.use_sm70_dequant_fallback = (
+             self._sm70_without_fp8_hw
+             and envs.VLLM_SM70_FP8_DEQUANT_FALLBACK
++            and not self.use_sm70_fp8_qpn8_blk
+             and not sm70_tm.use_turbomind(envs.VLLM_SM70_FP8_TURBOMIND)
+             and not sm70_tm.forces_marlin()
+         )
+         self.use_sm70_fp8_turbomind = (
+             self._sm70_without_fp8_hw
++            and not self.use_sm70_fp8_qpn8_blk
+             and sm70_tm.use_turbomind(envs.VLLM_SM70_FP8_TURBOMIND)
+             and self.block_quant
+             and self.weight_block_size == [128, 128]

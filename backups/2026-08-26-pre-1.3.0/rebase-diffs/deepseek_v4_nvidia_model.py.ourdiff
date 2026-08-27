@@ -1,0 +1,14 @@
+--- deepseek_v4_nvidia_model.py.122	2026-08-26 20:12:20.752348015 +0200
++++ /home/mp/Projekte/v100-skinny/fork_patches/deepseek_v4_nvidia_model.py	2026-08-25 15:27:43.894621389 +0200
+@@ -693,7 +693,10 @@
+             prefix=f"{prefix}.wo_b",
+         )
+         self.softmax_scale = self.head_dim**-0.5
+-        self.scale_fmt = config.quantization_config["scale_fmt"]
++        # fork: compressed-tensors checkpoints carry no ModelOpt
++        # "scale_fmt" key; the attribute has no reader in this class (the
++        # indexer hardcodes its own), so absent means None.
++        self.scale_fmt = config.quantization_config.get("scale_fmt")
+ 
+         self.rope_parameters = config.rope_scaling
+ 

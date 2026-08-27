@@ -1,0 +1,27 @@
+--- vllm/v1/core/single_type_kv_cache_manager.py
++++ vllm/v1/core/single_type_kv_cache_manager.py
+@@ -84,8 +85,10 @@ def __init__(
+         self._max_admission_blocks_per_request = max_admission_blocks_per_request
+         # Record newly allocated block ids only when worker-side zeroing will
+         # consume them and this manager holds a spec type that gets zeroed.
+-        self._record_new_block_ids = needs_kv_cache_zeroing and isinstance(
+-            kv_cache_spec, AttentionSpec
++        self._record_new_block_ids = (
++            needs_kv_cache_zeroing
++            and isinstance(kv_cache_spec, AttentionSpec)
++            and not isinstance(kv_cache_spec, CircularBufferSpec)
+         )
+         self.new_block_ids: list[int] = []
+ 
+@@ -2014,6 +2104,11 @@ def register_all_kvcache_specs(vllm_config):
+         SlidingWindowManager,
+         uniform_type_base_spec=SlidingWindowSpec,
+     )
++    KVCacheSpecRegistry.register(
++        CircularBufferSpec,
++        CircularBufferManager,
++        uniform_type_base_spec=CircularBufferSpec,
++    )
+     KVCacheSpecRegistry.register(
+         SlidingWindowMLASpec,
+         SlidingWindowManager,

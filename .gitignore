@@ -12,3 +12,13 @@ __pycache__/
 build/
 dist/
 *.so
+
+# Boot-/Lauf-Artefakte der Serve-Skripte
+*.boot
+*.out
+*.pid
+profiles/
+ac_suite/
+
+# Wheels (per SHA256 in der Uebergabe referenziert, nicht in VCS)
+*.whl

@@ -1,0 +1,23 @@
+--- /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/orig/kv_cache_coordinator.py	2026-08-26 22:55:13.675535694 +0200
++++ /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/new/kv_cache_coordinator.py	2026-08-26 22:55:13.706061918 +0200
+@@ -428,7 +428,8 @@
+         assert all(
+             g.kv_cache_spec.block_size % hash_block_size == 0
+             for g in kv_cache_config.kv_cache_groups
+-        ), "block_size must be divisible by hash_block_size"
++            if g.kv_cache_spec.prefix_cacheable
++        ), "block_size of prefix-cacheable groups must be divisible by hash_block_size"
+         assert dcp_world_size == 1, "DCP not support hybrid attn now."
+         assert pcp_world_size == 1, "PCP not support hybrid attn now."
+         self.verify_and_split_kv_cache_groups()
+@@ -459,8 +460,8 @@
+             else:
+                 attention_groups.append((spec, [i], manager_cls))
+ 
+-        assert len(attention_groups) > 1, (
+-            "HybridKVCacheCoordinator requires at least two attention groups."
++        assert attention_groups, (
++            "HybridKVCacheCoordinator requires at least one cacheable group."
+         )
+ 
+         # Put full attention first: its efficient left-to-right scan provides

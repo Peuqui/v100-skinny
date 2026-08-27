@@ -1,0 +1,11 @@
+--- vllm/config/vllm.py
++++ vllm/config/vllm.py
+@@ -78,6 +78,8 @@
+         "KimiK3ForConditionalGeneration",
+         "LongcatFlashNgramForCausalLM",
+         "Qwen2MoeForCausalLM",
++        "Qwen4ExpForCausalLM",
++        "Qwen4ExpForConditionalGeneration",
+     }
+ )
+ 

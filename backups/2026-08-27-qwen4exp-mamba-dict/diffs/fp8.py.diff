@@ -1,0 +1,10 @@
+--- /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/orig/fp8.py_model_executor_layers_quantization	2026-08-26 22:57:49.373814576 +0200
++++ /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/new/fp8.py	2026-08-26 22:57:49.398937851 +0200
+@@ -35,7 +35,6 @@
+ from vllm.model_executor.layers.fused_moe.oracle.fp8 import (
+     Fp8MoeBackend,
+     backend_to_kernel_cls,
+-    Fp8MoeBackend,
+     convert_to_fp8_moe_kernel_format,
+     make_fp8_moe_kernel,
+     make_fp8_moe_quant_config,

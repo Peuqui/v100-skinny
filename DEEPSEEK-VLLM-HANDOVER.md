@@ -762,3 +762,104 @@ Betriebsnotiz: Server-Repro unveraendert (serve-deepseek-mini.sh, GMU
 Dense-Linears auf V100 ueber Marlin statt TurboMind — GPU-Zeit runter,
 tok/s bei eager unveraendert). Logs: deepseek-skinny-moe.log,
 deepseek-skinny-marlin.log; Profile: profiles/.
+
+## MTP-VERSUCH UND SCHNITT (2026-08-26 abends)
+
+Peuquis Kriterium fuer die Fortsetzung: vLLM muss llama.cpp beim Tempo
+schlagen; MTP ist Pflicht ("ohne das mache ich es nicht"). Beides ist mit
+DeepSeek-V4-Flash unter vLLM **nicht erreichbar** — der Grund ist
+architektonisch, nicht behebbar durch Patches.
+
+### Was erreicht wurde
+
+**Umstieg auf die nvidia-Basis, und sie laeuft ohne einen neuen Patch.**
+`nvidia/DeepSeek-V4-Flash-nvfp4-DSpark` (Basis 164,7 GB + dspark 11,5 GB,
+176,2 GB gesamt) ersetzt RedHatAI (das dafuer geloescht wurde). Boot mit
+PP=5, GMU 0,90, eager: **Application startup complete**, Oracle waehlt
+SM70_SKINNY, der Per-Experten-Adapter greift auch im ModelOpt-Format.
+
+**Kohaerenz 8/8 statt 7/8** — die Buchstabenzaehlung ("count": 10) stimmt
+jetzt mit llama.cpp ueberein, die einzige Abweichung der RedHatAI-Laeufe
+ist weg. Die nvidia-Variante haelt Shared Experts und Dense-FFN in
+Block-FP8 statt NVFP4 (0,7 GB von 164 GB Unterschied) — offenbar genau
+dort, wo es zaehlt. Tempo unveraendert 3,8–4,1 tok/s.
+
+**Warum der Adapter formatunabhaengig stimmt** (vorab geprueft, nicht
+erst im Boot): ModelOpt legt `weight_scale_2 = amax/2688` ab und reicht
+es OHNE Kehrwert weiter; compressed-tensors legt den Kehrwert ab und
+invertiert beim Weiterreichen. Beide landen als dieselbe multiplikative
+Skala in `g1_alphas`. Die Namen unterscheiden sich (`weight` vs
+`weight_packed`, `weight_scale_2` vs `weight_global_scale`), der Loader
+vereinheitlicht sie.
+
+**Zwei MTP-Blocker geloest und committet (f83c2c1):** `SupportsPP` an
+`DeepSeekV4MTP` (Vorlage Qwen3_5MTP; der Drafter splittet nie, aber vLLM
+gated jedes Modell einer PP-Deployment am Interface) und
+`_with_draft_quant_config` (der Proposer baut den Drafter mit der
+TARGET-quant_config; bei eigenstaendigem Draft-Verzeichnis lief das gegen
+den Loader). Beide bleiben gueltig, unabhaengig vom Modell.
+
+**Betriebsfalle (wichtig fuer jeden kuenftigen Modell-Patch):** vLLM
+cached ModelInfo unter `~/.cache/vllm/modelinfos` und bildet den Hash
+ueber `spec.origin` — bei den hardware-isolierten Modellen ist das
+`deepseek_v4/__init__.py`, NICHT die gepatchte `nvidia/*.py`. Ein Patch
+an `models/deepseek_v4/**` wirkt erst nach
+`rm ~/.cache/vllm/modelinfos/vllm-models-deepseek_v4-*.json`.
+
+### Der Schnitt: DSpark ist kein MTP-Layer
+
+Der Boot mit `--speculative-config {"method":"mtp",...}` stirbt an
+`KeyError: model.layers.43.mtp_block.main_norm.weight`. Ursache ist keine
+Namensfrage, sondern die Architektur:
+
+| vLLM `DeepSeekV4MTP` erwartet | dspark-Checkpoint liefert |
+|---|---|
+| `enorm` + `hnorm` (zwei Normen) | `main_norm` (eine) |
+| `e_proj`, `h_proj` (je 4096x4096) | `main_proj` **[4096, 12288]** (drei Eingaenge) |
+| `hc_head_*` | `hc_attn_*` + `hc_ffn_*` |
+| EIN autoregressiver Layer | **DREI volle DSV4-Bloecke** (je 256 Experten) |
+
+llama.cpp (`src/models/dflash.cpp`) benennt es direkt: „DSpark = DFlash +
+a semi-autoregressive Markov head and Confidence head", Backbone-Stufen
+sind volle DSV4-Bloecke, mit Markov-Bias auf den Draft-Logits und
+blockweiser Confidence-Steuerung. Das ist ein eigenstaendiges
+Draft-MODELL mit eigenem Spekulationsverfahren, kein MTP-Layer. Ein Port
+nach vLLM waere daher nicht eine Modellklasse, sondern zusaetzlich ein
+neuer Proposer im Spec-Decode-Framework (blockweise semi-autoregressiv,
+Markov-Head, Confidence-Gating).
+
+**Und es gibt keine Alternative:** Alle geprueften NVFP4-Checkpoints mit
+Drafter fuehren dieselben drei dspark-Layer (Rarri:
+`mtp_layers: ["0","1","2"]`; nvidia identisch). Der einzige Kandidat mit
+Standard-MTP-Block (canada-quant, 184 GB) passt nicht in 192 GB — bei
+GMU 0,90 stehen nur 172,8 GB zur Verfuegung.
+
+**Rechnung:** llama.cpps 40,4/42,8 tok/s beruhen auf genau dieser
+dspark-Spekulation; ohne Draft liegt llama.cpp bei 21–26 (gemessen in der
+Kohaerenzprobe). vLLM ohne Spekulation erreicht nach vollem Ausbau
+(Referenzpfade + Graphen, siehe Paket oben) geschaetzt 25–40 — also
+bestenfalls Paritaet mit llama.cpp OHNE Draft, und klar unter dessen
+Prod-Konfiguration. Das Kriterium ist damit nicht erreichbar.
+
+### Empfehlung: hier schneiden, auf Qwen3.8-Flash-Next schwenken
+
+Der Volta/Turing-Port ist als Machbarkeit vollstaendig belegt (8/8
+Kohaerenz auf 284B ueber fuenf Karten) und alle generischen Bausteine —
+QPN8-blk, Skinny-MoE, SupportsPP, Draft-Quant-Config, das sm75-Paket —
+bleiben nutzbar. Das Tempo-Ziel braucht ein Modell, dessen Spekulation
+vLLMs MTP-Format spricht.
+
+`Qwen3.8-Flash-Next` (26.08.2026, ~180B) erfuellt genau das:
+NVFP4 **135,2 GB** (~57 GB Reserve statt 16), **MTP eingebaut**
+(`mtp_num_hidden_layers: 1`, ein Block im selben Checkpoint), GDN-Hybrid
+(36 linear + 12 full attention) — dieselbe Familie, fuer die der Fork das
+sm75-GDN-Paket und die PP+MTP-Maschinerie schon verifiziert hat
+(2x V100 PP2+MTP k7: 79,8 tok/s). Haken: Architektur
+`Qwen4ExpForConditionalGeneration` ist im Fork nicht registriert — erst
+upstream-Klasse einziehen (Vorgehen wie beim sm75-Paket), nicht nachbauen.
+Details in der Memory-Notiz `project_qwen38_flash_next`.
+
+Betriebsstand: Logs `deepseek-nvidia-base.log` (Basis, gruen),
+`deepseek-nvidia-mtp.log` (dspark-Blocker). RedHatAI-Checkpoint geloescht;
+Draft-Verzeichnis `/home/mp/models/deepseek-v4-flash-dspark-draft`
+(Symlink auf die dspark-Datei) kann weg, sobald der Fall abgelegt ist.

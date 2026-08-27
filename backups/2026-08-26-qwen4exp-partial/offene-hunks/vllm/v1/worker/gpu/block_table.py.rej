@@ -1,0 +1,37 @@
+--- vllm/v1/worker/gpu/block_table.py
++++ vllm/v1/worker/gpu/block_table.py
+@@ -215,6 +223,7 @@ def compute_slot_mappings(
+             self.block_table_strides,
+             self.block_sizes_tensor,
+             self.kernel_block_sizes_tensor,
++            self.slot_mapping_enabled,
+             slot_mappings,
+             slot_mappings.stride(0),
+             self.cp_rank,
+@@ -287,6 +296,7 @@ def _compute_slot_mappings_kernel(
+     block_table_strides,  # [num_kv_cache_groups]
+     block_sizes,  # [num_kv_cache_groups]
+     kernel_block_sizes,  # [num_kv_cache_groups]
++    slot_mapping_enabled,  # [num_kv_cache_groups]
+     slot_mappings_ptr,  # [num_kv_cache_groups, max_num_tokens]
+     slot_mappings_stride,
+     cp_rank,
+@@ -315,6 +325,7 @@ def _compute_slot_mappings_kernel(
+     block_table_stride = tl.load(block_table_strides + group_id)
+     kv_block_size = tl.load(block_sizes + group_id)
+     kernel_block_size = tl.load(kernel_block_sizes + group_id)
++    mapping_enabled = tl.load(slot_mapping_enabled + group_id)
+ 
+     req_state_idx = tl.load(idx_mapping + batch_idx)
+     start_idx = tl.load(query_start_loc + batch_idx)
+@@ -338,7 +349,9 @@ def _compute_slot_mappings_kernel(
+             local_offsets = rounds * CP_INTERLEAVE + remainder
+             local_positions = virtual_block_indices * kv_block_size + local_offsets
+ 
+-        block_indices = local_positions // kernel_block_size
++        block_indices = tl.where(
++            mapping_enabled, local_positions // kernel_block_size, 0
++        )
+         block_offsets = local_positions % kernel_block_size
+         block_numbers = tl.load(
+             block_table_ptr + req_state_idx * block_table_stride + block_indices,

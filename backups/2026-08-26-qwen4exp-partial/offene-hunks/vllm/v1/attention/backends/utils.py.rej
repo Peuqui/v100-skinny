@@ -1,0 +1,44 @@
+--- vllm/v1/attention/backends/utils.py
++++ vllm/v1/attention/backends/utils.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import functools
+ import math
+ from collections import defaultdict
+ from collections.abc import Callable, Iterable, Sequence
+@@ -1240,18 +1332,19 @@ def mamba_get_block_table_tensor(
+     """
+     if mamba_cache_mode in ("all", "none"):
+         return block_table
+-    else:
+-        assert isinstance(kv_cache_spec, MambaSpec)
+-        # NOTE: For 0-length requests in CUDA graph, use a start_index of 0
+-        # to handle the invalid block table.
+-        start_indices = (seq_lens - 1) // kv_cache_spec.block_size
+-        start_indices.clamp_(min=0)
+-        # Use int32 for arithmetic to avoid dtype promotion overhead,
+-        # then convert to int64 for gather (which requires Long indices)
+-        offsets = torch.arange(
+-            1 + kv_cache_spec.num_speculative_blocks,
+-            device=block_table.device,
+-            dtype=torch.int32,
+-        )
+-        indices_to_gather = (start_indices.unsqueeze(1) + offsets).to(torch.int64)
+-        return torch.gather(block_table, 1, indices_to_gather)
++    assert isinstance(kv_cache_spec, MambaSpec)
++    if HAS_TRITON and block_table.is_cuda and seq_lens.is_cuda:
++        return mamba_get_block_table_tensor_triton(block_table, seq_lens, kv_cache_spec)
++
++    # NOTE: For 0-length requests in CUDA graph, use a start_index of 0
++    # to handle the invalid block table.
++    start_indices = (seq_lens - 1) // kv_cache_spec.block_size
++    start_indices.clamp_(min=0)
++    # Keep the arithmetic in int32; torch.gather alone requires int64 indices.
++    offsets = torch.arange(
++        1 + kv_cache_spec.num_speculative_blocks,
++        device=block_table.device,
++        dtype=torch.int32,
++    )
++    indices_to_gather = (start_indices.unsqueeze(1) + offsets).to(torch.int64)
++    return torch.gather(block_table, 1, indices_to_gather)

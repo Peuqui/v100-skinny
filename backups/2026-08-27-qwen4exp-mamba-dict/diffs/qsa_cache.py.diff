@@ -1,0 +1,30 @@
+--- /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/orig/qwen4exp/common_qsa_cache.py	2026-08-26 23:28:40.026507490 +0200
++++ /home/mp/Projekte/v100-skinny/.venv-sm70-130/lib/python3.12/site-packages/vllm/models/qwen4_exp/common/qsa_cache.py	2026-08-26 23:28:40.053555558 +0200
+@@ -654,8 +654,12 @@
+ class QSAStateBackend(AttentionBackend):
+     """Key-only dummy backend for out-of-band BF16 QSA side-cache operations."""
+ 
+-    supported_dtypes: ClassVar[list[torch.dtype]] = [torch.bfloat16]
+-    supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = ["auto", "bfloat16"]
++    supported_dtypes: ClassVar[list[torch.dtype]] = [torch.bfloat16, torch.float16]
++    supported_kv_cache_dtypes: ClassVar[list[CacheDType]] = [
++        "auto",
++        "bfloat16",
++        "fp16",
++    ]
+ 
+     @staticmethod
+     def get_name() -> str:
+@@ -760,8 +764,10 @@
+     def bind_kv_cache(self, kv_cache: torch.Tensor) -> None:
+         if kv_cache.ndim != 4 or kv_cache.shape[2] != 1:
+             raise ValueError("QSA raw cache must be [blocks, block_size, 1, width]")
+-        if kv_cache.dtype != torch.bfloat16 or kv_cache.shape[3] != self.head_size:
+-            raise ValueError("QSA raw cache does not match its packed BF16 cache spec")
++        if kv_cache.dtype != self.dtype or kv_cache.shape[3] != self.head_size:
++            raise ValueError(
++                "QSA raw cache does not match its packed half-precision cache spec"
++            )
+         super().bind_kv_cache(kv_cache)
+         self.key_cache = kv_cache[..., : self.key_head_size]
+         if self.cache_rope_positions:

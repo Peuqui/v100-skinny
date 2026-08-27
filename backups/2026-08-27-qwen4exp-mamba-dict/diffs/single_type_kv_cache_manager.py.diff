@@ -1,0 +1,51 @@
+--- /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/orig/single_type_kv_cache_manager.py	2026-08-26 22:54:07.896662417 +0200
++++ /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/new/single_type_kv_cache_manager.py	2026-08-26 22:54:07.929623344 +0200
+@@ -68,6 +68,14 @@
+         self.block_pool = block_pool
+         self.enable_caching = enable_caching
+         self._max_admission_blocks_per_request = max_admission_blocks_per_request
++        # Only full-attention-style specs feed the worker-side zeroing path.
++        # The ring buffer of CircularBufferSpec is overwritten in place and
++        # must never be reported here.
++        self._record_new_block_ids = type(kv_cache_spec) in (
++            FullAttentionSpec,
++            TQFullAttentionSpec,
++            MLAAttentionSpec,
++        )
+         self.new_block_ids: list[int] = []
+ 
+         # Mapping from request ID to blocks to track the blocks allocated
+@@ -239,11 +247,7 @@
+                 cdiv(num_total_computed_tokens, self.block_size) - len(req_blocks)
+             )
+             req_blocks.extend(allocated_blocks)
+-            if type(self.kv_cache_spec) in (
+-                FullAttentionSpec,
+-                TQFullAttentionSpec,
+-                MLAAttentionSpec,
+-            ):
++            if self._record_new_block_ids:
+                 self.new_block_ids.extend(b.block_id for b in allocated_blocks)
+ 
+     def allocate_new_blocks(
+@@ -271,11 +275,7 @@
+         else:
+             new_blocks = self.block_pool.get_new_blocks(num_new_blocks)
+             req_blocks.extend(new_blocks)
+-            if type(self.kv_cache_spec) in (
+-                FullAttentionSpec,
+-                TQFullAttentionSpec,
+-                MLAAttentionSpec,
+-            ):
++            if self._record_new_block_ids:
+                 self.new_block_ids.extend(b.block_id for b in new_blocks)
+             return new_blocks
+ 
+@@ -1303,6 +1303,7 @@
+     SlidingWindowMLASpec: SlidingWindowManager,
+     ChunkedLocalAttentionSpec: ChunkedLocalAttentionManager,
+     MambaSpec: MambaManager,
++    CircularBufferSpec: CircularBufferManager,
+     CrossAttentionSpec: CrossAttentionManager,
+     SinkFullAttentionSpec: SinkFullAttentionManager,
+ }

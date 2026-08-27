@@ -1,0 +1,10 @@
+--- vllm/v1/core/sched/scheduler.py
++++ vllm/v1/core/sched/scheduler.py
+@@ -1171,6 +1183,7 @@ def schedule(self, throttle_prefills: bool = False) -> SchedulerOutput:
+                 request.status = RequestStatus.RUNNING
+                 request.num_computed_tokens = num_computed_tokens
+                 if pad_spec_decode:
++                    assert num_new_tokens == 1 + self.num_spec_tokens
+                     scheduled_spec_decode_tokens[request_id] = [
+                         -1
+                     ] * self.num_spec_tokens

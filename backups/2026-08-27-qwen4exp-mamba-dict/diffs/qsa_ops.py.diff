@@ -1,0 +1,12 @@
+--- /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/be15d3c5-5507-45d8-aff4-1ed93b9d8b91/scratchpad/work/orig/qwen4exp/amd_ops_qsa.py	2026-08-26 23:28:40.028932365 +0200
++++ /home/mp/Projekte/v100-skinny/.venv-sm70-130/lib/python3.12/site-packages/vllm/models/qwen4_exp/amd/ops/qsa.py	2026-08-26 23:28:40.053678776 +0200
+@@ -846,7 +846,8 @@
+         raise ValueError("QSA sparse attention requires valid grouped-query heads")
+     head_dim = q.shape[2]
+     assert head_dim >= 16 and (head_dim & (head_dim - 1)) == 0
+-    assert q.dtype == k_cache.dtype == v_cache.dtype == torch.bfloat16
++    assert q.dtype == k_cache.dtype == v_cache.dtype
++    assert q.dtype in (torch.bfloat16, torch.float16)
+     assert logical_indices.dtype == block_table.dtype == torch.int32
+     assert token_to_req.dtype == torch.int32
+     assert q.device == k_cache.device == v_cache.device

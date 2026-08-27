@@ -536,9 +536,12 @@ bash scripts/serve-qwen38-flash-next.sh "$SNAP"
 ## Ergebnis in einem Satz
 
 `RadixArk/Qwen3.8-Flash-Next-NVFP4` bootet unter 1Cat-vLLM 1.3.0 auf dem
-heterogenen 2×2-Gitter (2× RTX 8000 + 2× V100), generiert kohärent und
-erreicht **28–29 tok/s** im Decode. Der Kohärenztest ist **8/8**. MTP (k>0)
-bootet und läuft, liefert aber noch falsche Ausgaben — Diagnose unten.
+heterogenen 2×2-Gitter (2× RTX 8000 + 2× V100) und generiert kohärent —
+Kohärenztest **8/8**, **28–29 tok/s** im Decode.
+
+**MTP (k=4) ist ebenfalls kohärent (8/8), aber nur mit `--enforce-eager`.**
+Mit CUDA-Graphen liefert der erste Spekulationsschritt NaN; die Ursache ist
+damit das Graph-Capture, nicht die Numerik. Details unten.
 
 ## Repro
 
@@ -797,34 +800,67 @@ Reihenfolge:
    muss das tragen.
 3. **Der PLE-Conv-State** mit `conv_state_len + num_spec` = 13 statt 9.
 
+### Die Ursache ist gefunden: das CUDA-Graph-Capture
+
+`--enforce-eager` (plus `VLLM_SM70_E5_CACHE=0`, `GMU=0.97`) macht MTP
+**vollstaendig kohaerent** -- Kohaerenztest **8/8**, wie bei k=0:
+
+```
+[capital ] Paris          [recall  ] Mercury
+[arith   ] 1591           [prose   ] sinnvolle Erklaerung
+[count   ] 10             [code    ] s[::-1]
+[seq     ] Muster korrekt [longctx ] apple, brick, candle, dune, ember,
+                                     forge, granite, harbor.
+```
+
+Damit ist die Diagnose eindeutig: **die NaN kommen aus dem Graph-Replay, nicht
+aus der Numerik.** Der portierte Stapel rechnet mit Spekulation richtig; das
+Capture friert Adressen von Metadaten-Tensoren ein, die pro Schritt neu
+allokiert werden. Genau das Muster, das das Merge-Handover als
+"Restbaustelle 1" fuer den upstream-GDN-Builder beschreibt -- hier fuer
+Qwen4Exp bestaetigt.
+
+Die 14,5 tok/s des Eager-Laufs sind **nicht** aussagekraeftig: Eager kostet
+mehr, als die Spekulation einbringt (k=0 mit Graphen liegt bei 28-29 tok/s).
+Ein Tempo-Vergleich ist erst sinnvoll, wenn MTP mit Graphen laeuft.
+
+**Speicher:** Eager braucht `GMU=0.97`; bei 0,95 bleibt ein Rang bei
+<= 0 Bytes KV. Die Profilierung misst ohne Graph-Pools andere Spitzen.
+
+### PIECEWISE ist keine Abkuerzung -- drei verschiedene Fehlerbilder
+
+Gepruefte Kombinationen bei k=4, `VLLM_SM70_E5_CACHE=0`:
+
+| Graph-Modus | Verhalten |
+|---|---|
+| `FULL_AND_PIECEWISE` (Default) | NaN ab dem ersten Spekulationsschritt (`!!!`) |
+| `PIECEWISE` | **PP-Deadlock** -- 0 % GPU-Last, `shm_broadcast: No available shared memory broadcast block found in 60 seconds`, Engine steht |
+| `--enforce-eager` | **kohaerent, 8/8** |
+
+Der Deadlock ist ein eigener Befund, kein abgeschwaechtes NaN: er passt auf
+das Muster von Patch 7 des Merge-Projekts (asymmetrische Send/Recv-Zaehler
+zwischen den PP-Stufen, NCCL-Streams verklemmen). Es sind also womoeglich
+**zwei** Probleme -- eingefrorene Capture-Adressen *und* eine
+PP-Spekulations-Asymmetrie, die erst ohne FULL-Capture sichtbar wird.
+
 ### Empfohlene Reihenfolge fuer die Fortsetzung
 
-1. `--enforce-eager` gegen Graphen stellen -- trennt Numerik von Capture in
-   einem einzigen Boot. Bleibt NaN, ist es Numerik/Initialisierung;
-   verschwindet es, ist es Graph-Capture (eingefrorene Adressen bei pro
-   Schritt neu allokierten Metadaten-Tensoren -- das Merge-Handover kennt
-   dieses Muster als "Restbaustelle 1").
-2. Den ersten Draft/Verify-Schritt instrumentieren: wo erscheint das erste
-   NaN (Drafter-Forward, Verifier, QSA-Indexer)? Ein einzelner Decode-Schritt
-   reicht, kein Kampagnenlauf.
-3. Erst danach die PP-Naht (Patches 6/7 des Merge-Projekts) fuer den
-   Qwen4Exp-Proposer nachziehen -- bei k=1 meldete sie
-   `missing stashed scheduler_output`, das war aber Folge von (a).
+1. Die eigentliche Reparatur: die pro Schritt neu allokierten
+   Metadaten-Tensoren der betroffenen Builder in persistente Puffer legen
+   (upstream nutzt dafuer `build_for_cudagraph_capture`, der Fork-Runner
+   ruft nur `build()`). Kandidaten sind der sm75-GDN-Builder und der
+   `PleShortConvAttentionMetadataBuilder`.
+2. Getrennt davon den PIECEWISE-Deadlock verfolgen -- Send/Recv-Zaehler je
+   Stufe mitschreiben (das Merge-Handover beschreibt genau dieses Vorgehen
+   fuer Patch 7). Er ist der einfachere der beiden Faelle, weil er ohne
+   Capture auftritt.
+3. Der E5-Metadaten-Cache bleibt fuer dieses Modell aus
+   (`VLLM_SM70_E5_CACHE=0`); ob er fuer CSA-Modelle reparabel ist, ist eine
+   eigene Frage.
+4. Erst wenn MTP mit Graphen laeuft: Tempo gegen k=0 messen.
 
-**Betriebsparameter fuer MTP:** `VLLM_SM70_E5_CACHE=0`, `GMU=0.95`,
-k <= 4 oder k = 9...12 (Blockgroesse, s. Tabelle oben).
-
-## Betriebsnotizen
-
-- **Nach jedem Patch an `models/**` den ModelInfo-Cache löschen:**
-  `rm -f ~/.cache/vllm/modelinfos/vllm-models-qwen4_exp-*.json` — der Hash
-  bildet sich über `spec.origin` (`qwen4_exp/__init__.py`), nicht über die
-  gepatchte Datei.
-- Ein Boot dauert 4–10 min (k=0 ~4,5 min, k>0 bis 10). Alles, was sich
-  eigenständig reproduzieren lässt, gehört in ein Standalone-Skript — der
-  QSA-Kachel-Befund war so in Sekunden statt Bootzyklen zu klären.
-- Aufräumen nur über explizite PIDs bzw.
-  `nvidia-smi --query-compute-apps=pid`; `pkill -f` killt die eigene Shell.
+**Betriebsparameter fuer MTP heute:** `VLLM_SM70_E5_CACHE=0`,
+`EXTRA_ARGS=--enforce-eager`, `GMU=0.97`, k <= 4 oder k = 9...12.
 
 ## ACHTUNG: der Code lebt nur in der venv
 

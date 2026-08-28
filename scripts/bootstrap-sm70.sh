@@ -208,13 +208,11 @@ deploy deepseek_v4_nvidia_model.py vllm/models/deepseek_v4/nvidia/model.py
 deploy deepseek_v4_mtp.py    vllm/models/deepseek_v4/nvidia/mtp.py
 deploy nvfp4_moe_oracle.py  vllm/model_executor/layers/fused_moe/oracle/nvfp4.py
 deploy nvfp4_emulation_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4_emulation_moe.py
-deploy nvfp4_skinny_moe.py  vllm/model_executor/layers/fused_moe/experts/nvfp4_skinny_moe.py
+deploy_new nvfp4_skinny_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4_skinny_moe.py
 deploy sparse_attn_indexer.py vllm/model_executor/layers/sparse_attn_indexer.py
 deploy mhc_tilelang.py      vllm/model_executor/kernels/mhc/tilelang.py
 deploy deepseek_v4_attention.py vllm/models/deepseek_v4/attention.py
 deploy dsv4_compressor.py   vllm/models/deepseek_v4/compressor.py
-deploy dsv4_cache_utils.py  vllm/models/deepseek_v4/common/ops/cache_utils.py
-deploy dsv4_fused_compress_quant_cache.py vllm/models/deepseek_v4/common/ops/fused_compress_quant_cache.py
 deploy rocm_aiter_mla_sparse.py vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
 deploy import_utils.py      vllm/utils/import_utils.py
 deploy sparse_swa.py        vllm/v1/attention/backends/mla/sparse_swa.py
@@ -227,6 +225,42 @@ deploy_new() {  # like deploy, but the target may not exist in the wheel yet
 deploy_new qwen_gdn_linear_attn_sm75.py vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn_sm75.py
 deploy_new gdn_attn_sm75.py vllm/v1/attention/backends/gdn_attn_sm75.py
 deploy_new qpn8_blk.py      vllm/model_executor/kernels/linear/scaled_mm/qpn8_blk.py
+
+# --- qwen4_exp port (Qwen3.8-Flash-Next) + supporting core patches ---
+deploy _custom_ops.py vllm/_custom_ops.py
+deploy compilation.py vllm/config/compilation.py
+deploy scheduler.py vllm/config/scheduler.py
+deploy speculative.py vllm/config/speculative.py
+deploy attention_layer_base.py vllm/model_executor/layers/attention_layer_base.py
+deploy abstract.py vllm/model_executor/layers/mamba/abstract.py
+deploy qwen_gdn_linear_attn.py vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py
+deploy mamba_utils.py vllm/model_executor/layers/mamba/mamba_utils.py
+deploy flashinfer_utils.py vllm/model_executor/layers/quantization/utils/flashinfer_utils.py
+deploy vocab_parallel_embedding.py vllm/model_executor/layers/vocab_parallel_embedding.py
+deploy weight_utils.py vllm/model_executor/model_loader/weight_utils.py
+deploy config.py vllm/model_executor/models/config.py
+deploy interfaces.py vllm/model_executor/models/interfaces.py
+deploy qwen3_next.py vllm/model_executor/models/qwen3_next.py
+deploy registry.py vllm/model_executor/models/registry.py
+deploy utils.py vllm/model_executor/models/utils.py
+deploy interface.py vllm/platforms/interface.py
+deploy transformers_utils_config.py vllm/transformers_utils/config.py
+deploy transformers_configs_init.py vllm/transformers_utils/configs/__init__.py
+deploy_new qwen4_exp.py vllm/transformers_utils/configs/qwen4_exp.py
+deploy model_arch_config_convertor.py vllm/transformers_utils/model_arch_config_convertor.py
+deploy short_conv_attn.py vllm/v1/attention/backends/short_conv_attn.py
+deploy backends_utils.py vllm/v1/attention/backends/utils.py
+deploy kv_cache_coordinator.py vllm/v1/core/kv_cache_coordinator.py
+deploy kv_cache_utils.py vllm/v1/core/kv_cache_utils.py
+deploy sched_scheduler.py vllm/v1/core/sched/scheduler.py
+deploy single_type_kv_cache_manager.py vllm/v1/core/single_type_kv_cache_manager.py
+deploy kv_cache_interface.py vllm/v1/kv_cache_interface.py
+deploy llm_base_proposer.py vllm/v1/spec_decode/llm_base_proposer.py
+deploy_new spec_decode_qwen4_exp.py vllm/v1/spec_decode/qwen4_exp.py
+deploy block_table.py vllm/v1/worker/gpu/block_table.py
+deploy model_runner.py vllm/v1/worker/gpu/model_runner.py
+deploy worker_mamba_utils.py vllm/v1/worker/mamba_utils.py
+deploy worker_utils.py vllm/v1/worker/utils.py
 deploy tilelang_target.py   tilelang/utils/target.py
 # sm75 pair needs the UNMODIFIED upstream FLA triton ops under their
 # upstream path (the fork's layers/fla/ops are modified and wrong on sm75).
@@ -234,6 +268,11 @@ say "deploying upstream flash_linear_attention tree (sm75 GDN pair)"
 mkdir -p "$SP/vllm/third_party/flash_linear_attention"
 cp -r "$REPO_ROOT/fork_patches/flash_linear_attention/." \
       "$SP/vllm/third_party/flash_linear_attention/"
+
+say "deploying qwen4_exp model tree (Qwen3.8-Flash-Next)"
+mkdir -p "$SP/vllm/models/qwen4_exp"
+cp -r "$REPO_ROOT/fork_patches/qwen4_exp_models/." \
+  "$SP/vllm/models/qwen4_exp/"
 # sm70_native_round.py is deliberately NOT installed — experimental, inert.
 
 # ------------------------------------------------------------------ kernels

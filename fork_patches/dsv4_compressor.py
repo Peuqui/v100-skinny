@@ -7,7 +7,7 @@ from typing import Any, ClassVar, cast
 import torch
 from torch import nn
 
-from vllm.config import VllmConfig, get_current_vllm_config
+from vllm.config import CUDAGraphMode, VllmConfig, get_current_vllm_config
 from vllm.forward_context import get_forward_context
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.model_executor.layers.layernorm import RMSNorm
@@ -32,6 +32,19 @@ from vllm.v1.kv_cache_interface import (
     MLAAttentionSpec,
     SlidingWindowMLASpec,
 )
+
+
+def _get_c128_boundary(metadata: CommonAttentionMetadata) -> bool | None:
+    starts = metadata._num_computed_tokens_cpu
+    if starts is None:
+        return None
+
+    starts_list = starts.tolist()
+    query_start_loc = metadata.query_start_loc_cpu.tolist()
+    return any(
+        start % 128 + query_start_loc[i + 1] - query_start_loc[i] >= 128
+        for i, start in enumerate(starts_list)
+    )
 
 
 class CompressorBackend(AttentionBackend):
@@ -81,6 +94,7 @@ class CompressorMetadata:
     block_size: int
 
     token_to_req_indices: torch.Tensor | None = None  # [num_tokens]
+    c128_boundary: bool | None = None
 
 
 class CompressorMetadataBuilder(AttentionMetadataBuilder):
@@ -104,17 +118,19 @@ class CompressorMetadataBuilder(AttentionMetadataBuilder):
         common_attn_metadata: CommonAttentionMetadata,
         fast_build: bool = False,
     ) -> CompressorMetadata:
-        query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
-        num_reqs = common_attn_metadata.num_reqs
-        query_lens = query_start_loc_cpu[1:] - query_start_loc_cpu[:-1]
-        x = torch.repeat_interleave(torch.arange(num_reqs), query_lens).pin_memory()
-        token_to_req_indices = self.token_to_req_indices[: x.shape[0]]
-        token_to_req_indices.copy_(x, non_blocking=True)
+        token_to_req_indices = common_attn_metadata.token_to_req_indices(
+            self.token_to_req_indices
+        )
         return CompressorMetadata(
             block_table=common_attn_metadata.block_table_tensor.clamp_(min=0),
             slot_mapping=common_attn_metadata.slot_mapping,
             block_size=self.block_size,
             token_to_req_indices=token_to_req_indices,
+            c128_boundary=(
+                _get_c128_boundary(common_attn_metadata)
+                if self.block_size == 8
+                else None
+            ),
         )
 
 
@@ -282,7 +298,8 @@ class DeepseekCompressor(nn.Module):
         )
 
         # Get the metadata and handle dummy profiling run.
-        attn_metadata = get_forward_context().attn_metadata
+        forward_context = get_forward_context()
+        attn_metadata = forward_context.attn_metadata
         if not isinstance(attn_metadata, dict):
             return
 
@@ -324,6 +341,15 @@ class DeepseekCompressor(nn.Module):
             pdl_kwargs=pdl_kwargs,
         )
 
+        if (
+            current_platform.is_cuda()
+            and self.head_dim == 512
+            and self.compress_ratio == 128
+            and forward_context.cudagraph_runtime_mode != CUDAGraphMode.FULL
+            and state_metadata.c128_boundary is False
+        ):
+            return
+
         # Fused: compress → RMSNorm → RoPE → FP8 quant → KV cache write.
         # RoPE requirements (kernel applies forward GPT-J style rotation):
         # - is_neox_style=False (interleaved pairs, NOT split-half)
@@ -335,7 +361,9 @@ class DeepseekCompressor(nn.Module):
         k_cache_metadata = cast(Any, attn_metadata[self.k_cache_prefix])
         kv_cache = self._static_forward_context[self.k_cache_prefix].kv_cache
 
-        if current_platform.is_cuda():
+        if current_platform.is_cuda() and not current_platform.is_device_capability(
+            (7, 0)
+        ):
             # NVIDIA GPUs.
             # fork: the CuteDSL kernel needs Hopper+. Pre-Hopper takes the
             # Triton kernel that AMD already uses for this exact layout.

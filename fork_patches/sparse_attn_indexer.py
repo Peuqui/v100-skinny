@@ -92,6 +92,10 @@ def _torch_paged_mqa_logits(q_values, kv_cache, weights, seq_lens,
 MXFP4_BLOCK_SIZE = 32
 
 
+def _is_exact_sm70_cuda() -> bool:
+    return current_platform.is_cuda() and current_platform.is_device_capability((7, 0))
+
+
 def _gather_workspace_shapes(
     total_seq_lens: int,
     head_dim: int,
@@ -200,10 +204,15 @@ def sparse_attn_indexer(
     has_decode = attn_metadata_narrowed.num_decodes > 0
     has_prefill = attn_metadata_narrowed.num_prefills > 0
     num_decode_tokens = attn_metadata_narrowed.num_decode_tokens
+    sm70_fp16_indexer = _is_exact_sm70_cuda()
 
     # q_scale is required iff the FP4 cache path is enabled; the FP8 path
     # folds the Q scale into `weights` inside fused_indexer_q_rope_quant.
-    if use_fp4_cache:
+    if sm70_fp16_indexer:
+        assert q_quant.dtype == torch.float16
+        assert q_scale is None
+        assert not use_fp4_cache, "SM70 requires the FP8 indexer cache"
+    elif use_fp4_cache:
         assert q_scale is not None, "use_fp4_cache=True requires q_scale"
     else:
         assert q_scale is None, "q_scale must be None when use_fp4_cache=False"
@@ -273,7 +282,18 @@ def sparse_attn_indexer(
                 q_slice_cast = q_slice
                 k_quant_cast = k_quant
                 k_scale_cast = k_scale.view(torch.float32).squeeze(-1)
-            if current_platform.is_xpu():
+            if sm70_fp16_indexer:
+                from vllm.models.deepseek_v4.sm70.indexer import (
+                    sm70_indexer_prefill_logits,
+                )
+
+                logits = sm70_indexer_prefill_logits(
+                    q_slice,
+                    k_quant,
+                    k_scale,
+                    weights[chunk.token_start : chunk.token_end],
+                )
+            elif current_platform.is_xpu():
                 if q_scale_slice is not None:
                     raise RuntimeError("XPU fp8_mqa_logits does not support FP4 Q")
                 logits = torch.ops.vllm.xpu_fp8_mqa_logits(
@@ -319,7 +339,9 @@ def sparse_attn_indexer(
     if has_decode:
         decode_metadata = attn_metadata_narrowed.decode
         assert decode_metadata is not None
-        kv_cache = kv_cache_as_quant_view(kv_cache, head_dim, use_fp4_cache)
+        raw_kv_cache = kv_cache
+        if not sm70_fp16_indexer:
+            kv_cache = kv_cache_as_quant_view(kv_cache, head_dim, use_fp4_cache)
         decode_lens = decode_metadata.decode_lens
         if decode_metadata.requires_padding:
             # pad in edge case where we have short chunked prefill length <
@@ -343,6 +365,11 @@ def sparse_attn_indexer(
                     q_quant[:num_decode_tokens], decode_lens
                 )
                 padded_q_scale = None
+            padded_weights = (
+                pack_seq_triton(weights[:num_decode_tokens], decode_lens, pad_value=0)
+                if sm70_fp16_indexer
+                else None
+            )
         else:
             padded_q_quant_decode_tokens = q_quant[:num_decode_tokens].reshape(
                 decode_lens.shape[0], -1, *q_quant.shape[1:]
@@ -353,6 +380,13 @@ def sparse_attn_indexer(
                 )
             else:
                 padded_q_scale = None
+            padded_weights = (
+                weights[:num_decode_tokens].reshape(
+                    decode_lens.shape[0], -1, weights.shape[-1]
+                )
+                if sm70_fp16_indexer
+                else None
+            )
         # TODO: move and optimize below logic with triton kernels
         batch_size = padded_q_quant_decode_tokens.shape[0]
         next_n = padded_q_quant_decode_tokens.shape[1]
@@ -366,7 +400,25 @@ def sparse_attn_indexer(
             if use_fp4_cache
             else padded_q_quant_decode_tokens
         )
-        if current_platform.is_xpu():
+        if sm70_fp16_indexer:
+            from vllm.models.deepseek_v4.sm70.indexer import (
+                sm70_indexer_decode_logits,
+            )
+
+            assert padded_weights is not None
+            logits = sm70_indexer_decode_logits(
+                padded_q_quant_decode_tokens.reshape(
+                    num_padded_tokens,
+                    padded_q_quant_decode_tokens.shape[-2],
+                    padded_q_quant_decode_tokens.shape[-1],
+                ),
+                raw_kv_cache,
+                padded_weights.reshape(num_padded_tokens, -1),
+                seq_lens,
+                decode_metadata.block_table,
+                attn_metadata_narrowed.max_seq_len,
+            )
+        elif current_platform.is_xpu():
             if padded_q_scale is not None:
                 raise RuntimeError("XPU fp8_paged_mqa_logits does not support FP4 Q")
             seq_lens_xpu = (
@@ -507,7 +559,11 @@ class SparseAttnIndexer(CustomOp):
         self.topk_indices_buffer = topk_indices_buffer
         self.skip_k_cache_insert = skip_k_cache_insert
         self.use_fp4_cache = use_fp4_cache
-        if current_platform.is_cuda() and not has_deep_gemm():
+        if (
+            current_platform.is_cuda()
+            and not _is_exact_sm70_cuda()
+            and not has_deep_gemm()
+        ):
             # fork: pre-Hopper devices have no DeepGEMM; the torch reference
             # logits path above serves the indexer instead (eager only).
             logger.warning_once(

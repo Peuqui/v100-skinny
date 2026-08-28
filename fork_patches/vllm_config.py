@@ -67,6 +67,16 @@ else:
 logger = init_logger(__name__)
 
 DEFAULT_V2_MODEL_RUNNER_ARCHITECTURES = frozenset({"Qwen3ForCausalLM"})
+_SM70_NOMTP_CUDAGRAPH_CAPTURE_SIZES = (1, 2, 4, 8, 16)
+
+
+def _sm70_nomtp_cudagraph_capture_sizes(max_num_seqs: int) -> list[int]:
+    max_graph_reqs = min(max(int(max_num_seqs), 1), 16)
+    capture_sizes = {
+        size for size in _SM70_NOMTP_CUDAGRAPH_CAPTURE_SIZES if size <= max_graph_reqs
+    }
+    capture_sizes.update((1, 2, max_graph_reqs))
+    return sorted(capture_sizes)
 
 
 
@@ -1356,7 +1366,9 @@ class VllmConfig:
                     CUDAGraphMode.FULL_AND_PIECEWISE
                 )
                 if self.compilation_config.cudagraph_capture_sizes is None:
-                    cudagraph_capture_sizes = [1, 2]
+                    cudagraph_capture_sizes = _sm70_nomtp_cudagraph_capture_sizes(
+                        self.scheduler_config.max_num_seqs
+                    )
                     if (
                         self.speculative_config is not None
                         and self.speculative_config.num_speculative_tokens
@@ -1402,6 +1414,11 @@ class VllmConfig:
                             "%sx1..%s for Flash-V100 compile graph.",
                             decode_query_len,
                             max_graph_reqs,
+                        )
+                    elif cudagraph_capture_sizes != [1, 2]:
+                        logger.info_once(
+                            "Using SM70 no-MTP decode cudagraph request shapes %s.",
+                            tuple(cudagraph_capture_sizes),
                         )
                     self.compilation_config.cudagraph_capture_sizes = (
                         cudagraph_capture_sizes

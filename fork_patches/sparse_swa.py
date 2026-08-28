@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 from dataclasses import dataclass
-from typing import ClassVar, cast
+from typing import ClassVar, TypedDict, cast
 
 import torch
 
@@ -9,6 +9,7 @@ from vllm.config import CacheConfig, VllmConfig, get_current_vllm_config
 from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
 from vllm.platforms import current_platform
 from vllm.triton_utils import tl, triton
+from vllm.utils.math_utils import cdiv
 from vllm.v1.attention.backend import (
     AttentionBackend,
     AttentionCGSupport,
@@ -31,6 +32,16 @@ from vllm.v1.kv_cache_interface import (
 _LAYER_TYPE_SWAONLY = "swaonly"
 _LAYER_TYPE_C4A = "c4a"
 _LAYER_TYPE_C128A = "c128a"
+
+
+class _DeepseekV4MetadataFields(TypedDict, total=False):
+    prefill_seq_lens: torch.Tensor
+    prefill_seq_lens_cpu: torch.Tensor
+    prefill_gather_lens: torch.Tensor
+    prefill_query_lens_cpu: torch.Tensor
+    prefill_window_size: int
+    prefill_max_model_len: int
+    prefill_max_num_batched_tokens: int
 
 
 def _layer_type_for(compress_ratio: int) -> str:
@@ -164,6 +175,7 @@ class DeepseekSparseSWAMetadata:
     block_table: torch.Tensor
     slot_mapping: torch.Tensor
     block_size: int
+    causal: bool = True
     seq_lens: torch.Tensor | None = None  # [num_seqs]
     query_start_loc: torch.Tensor | None = None  # [num_seqs + 1]
     query_start_loc_cpu: torch.Tensor | None = None  # [num_seqs + 1]
@@ -181,7 +193,12 @@ class DeepseekSparseSWAMetadata:
 
     # Pre-computed prefill metadata shared across all DeepseekV4 attention layers.
     prefill_seq_lens: torch.Tensor | None = None
+    prefill_seq_lens_cpu: torch.Tensor | None = None
     prefill_gather_lens: torch.Tensor | None = None
+    prefill_query_lens_cpu: torch.Tensor | None = None
+    prefill_window_size: int = 0
+    prefill_max_model_len: int = 0
+    prefill_max_num_batched_tokens: int = 0
 
     # Per-layer-type FlashMLA tile-scheduler metadata. One FlashMLASchedMeta
     # per present DeepseekV4 layer type, shared across all ~60 layers of that type
@@ -196,6 +213,68 @@ class DeepseekSparseSWAMetadata:
     tile_sched_swaonly: "FlashMLASchedMeta | None" = None
     tile_sched_c4a: "FlashMLASchedMeta | None" = None
     tile_sched_c128a: "FlashMLASchedMeta | None" = None
+
+    def get_prefill_chunk_plan(
+        self, compress_ratio: int, prefill_chunk_size: int
+    ) -> list[tuple[int, int, int, int]]:
+        if self.num_prefills == 0:
+            return []
+
+        assert self.prefill_seq_lens_cpu is not None
+        assert self.prefill_query_lens_cpu is not None
+        max_workspace_area = prefill_chunk_size * (
+            (
+                0
+                if compress_ratio <= 1
+                else cdiv(self.prefill_max_model_len, compress_ratio)
+            )
+            + self.prefill_window_size
+            + self.prefill_max_num_batched_tokens
+        )
+        prefix_lens = self.prefill_seq_lens_cpu - self.prefill_query_lens_cpu
+        gather_lens = self.prefill_query_lens_cpu + torch.clamp(
+            prefix_lens, min=0, max=self.prefill_window_size - 1
+        )
+        compressed_lens = (
+            torch.zeros_like(self.prefill_seq_lens_cpu)
+            if compress_ratio <= 1
+            else torch.div(
+                self.prefill_seq_lens_cpu,
+                compress_ratio,
+                rounding_mode="floor",
+            )
+        )
+
+        chunk_plan: list[tuple[int, int, int, int]] = []
+        chunk_start = 0
+        while chunk_start < self.num_prefills:
+            chunk_max_compressed = int(compressed_lens[chunk_start].item())
+            chunk_max_gather = int(gather_lens[chunk_start].item())
+            chunk_end = chunk_start + 1
+            while chunk_end < self.num_prefills:
+                candidate_max_compressed = max(
+                    chunk_max_compressed, int(compressed_lens[chunk_end].item())
+                )
+                candidate_max_gather = max(
+                    chunk_max_gather, int(gather_lens[chunk_end].item())
+                )
+                candidate_width = candidate_max_compressed + candidate_max_gather
+                candidate_area = (chunk_end - chunk_start + 1) * candidate_width
+                if candidate_area > max_workspace_area:
+                    break
+                chunk_max_compressed = candidate_max_compressed
+                chunk_max_gather = candidate_max_gather
+                chunk_end += 1
+            chunk_plan.append(
+                (
+                    chunk_start,
+                    chunk_end,
+                    chunk_max_compressed,
+                    chunk_max_compressed + chunk_max_gather,
+                )
+            )
+            chunk_start = chunk_end
+        return chunk_plan
 
 
 class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
@@ -222,12 +301,15 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         self.head_size = mla_spec.head_size  # Already considered quantization.
         self.compress_ratio = mla_spec.compress_ratio
         self.block_size = mla_spec.block_size
+        self.max_model_len = self.vllm_config.model_config.max_model_len
+        self.max_num_batched_tokens = (
+            self.vllm_config.scheduler_config.max_num_batched_tokens
+        )
 
         # Handle MTP: adjust decode_threshold like the indexer does
+        spec_config = self.vllm_config.speculative_config
         self.num_speculative_tokens = (
-            self.vllm_config.speculative_config.num_speculative_tokens
-            if self.vllm_config.speculative_config
-            else 0
+            spec_config.num_speculative_tokens if spec_config else 0
         )
         # With MTP, decode can have query_len up to 1 + num_speculative_tokens.
         # Must match the threshold used by the indexer and flashmla_sparse so
@@ -271,6 +353,14 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
             dtype=torch.bool,
             device=self.device,
         )
+        self.is_dspark = spec_config is not None and spec_config.use_dspark()
+        self.noncausal_index_width = (
+            cdiv(self.window_size + self.num_speculative_tokens, 128) * 128
+            if self.is_dspark
+            else 0
+        )
+        self.decode_swa_indices_noncausal: torch.Tensor | None = None
+        self._max_tokens = max_tokens
 
     def build(
         self,
@@ -286,8 +376,8 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
 
         For prefill, we use chunked prefill to align with the indexer's chunking.
         """
-        num_reqs = common_attn_metadata.num_reqs
         seq_lens = common_attn_metadata.seq_lens
+        seq_lens_cpu = common_attn_metadata.seq_lens_cpu_upper_bound
         query_start_loc = common_attn_metadata.query_start_loc
         query_start_loc_cpu = common_attn_metadata.query_start_loc_cpu
         block_table = common_attn_metadata.block_table_tensor
@@ -302,37 +392,69 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
 
         # NOTE: Ensure all metadata tensors maintain fixed memory addresses
         # for CUDA graph compatibility.
-        query_lens = query_start_loc_cpu[1:] - query_start_loc_cpu[:-1]
-        x = torch.repeat_interleave(torch.arange(num_reqs), query_lens).pin_memory()
-        token_to_req_indices = self.token_to_req_indices[: x.shape[0]]
-        token_to_req_indices.copy_(x, non_blocking=True)
+        token_to_req_indices = common_attn_metadata.token_to_req_indices(
+            self.token_to_req_indices
+        )
 
         is_valid_token = self.is_valid_token[: slot_mapping.shape[0]]
         is_valid_token.copy_(slot_mapping >= 0)
 
+        non_causal = not common_attn_metadata.causal
+        decode_swa_indices = self.decode_swa_indices
         if num_decode_tokens > 0:
             self.decode_swa_lens[num_decode_tokens:] = 0
-            _compute_swa_indices_and_lens_kernel[(num_decode_tokens,)](
-                self.decode_swa_indices,
-                self.decode_swa_indices.stride(0),
-                self.decode_swa_lens,
-                self.window_size,
-                query_start_loc,
-                seq_lens,
-                token_to_req_indices,
-                is_valid_token,
-                block_table,
-                block_table.stride(0),
-                self.block_size,
-                TRITON_BLOCK_SIZE=1024,
-            )
+            if non_causal:
+                assert self.is_dspark, (
+                    "Non-causal DeepSeek V4 SWA is supported only for DSpark."
+                )
+                if self.decode_swa_indices_noncausal is None:
+                    self.decode_swa_indices_noncausal = torch.zeros(
+                        self._max_tokens,
+                        1,
+                        self.noncausal_index_width,
+                        dtype=torch.int32,
+                        device=self.device,
+                    )
+                decode_swa_indices = self.decode_swa_indices_noncausal
+                _compute_dspark_noncausal_swa_indices_kernel[(num_decode_tokens,)](
+                    decode_swa_indices,
+                    decode_swa_indices.stride(0),
+                    self.decode_swa_lens,
+                    self.window_size,
+                    self.noncausal_index_width,
+                    query_start_loc,
+                    seq_lens,
+                    token_to_req_indices,
+                    is_valid_token,
+                    block_table,
+                    block_table.stride(0),
+                    self.block_size,
+                    TRITON_BLOCK_SIZE=1024,
+                )
+            else:
+                _compute_swa_indices_and_lens_kernel[(num_decode_tokens,)](
+                    decode_swa_indices,
+                    decode_swa_indices.stride(0),
+                    self.decode_swa_lens,
+                    self.window_size,
+                    query_start_loc,
+                    seq_lens,
+                    token_to_req_indices,
+                    is_valid_token,
+                    block_table,
+                    block_table.stride(0),
+                    self.block_size,
+                    TRITON_BLOCK_SIZE=1024,
+                )
 
         # Pre-compute DeepseekV4 prefill metadata shared across all attention layers.
         deepseek_v4_fields = self._build_deepseek_v4_metadata(
             num_decodes,
             num_prefills,
             seq_lens,
+            seq_lens_cpu,
             query_start_loc,
+            query_start_loc_cpu,
         )
 
         # Per-layer-type tile-scheduler plan holders. Empty FlashMLASchedMeta
@@ -347,9 +469,10 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
             query_start_loc_cpu=query_start_loc_cpu,
             block_table=block_table,
             slot_mapping=slot_mapping,
+            causal=common_attn_metadata.causal,
             is_valid_token=is_valid_token,
             token_to_req_indices=token_to_req_indices,
-            decode_swa_indices=self.decode_swa_indices[:num_decode_tokens],
+            decode_swa_indices=decode_swa_indices[:num_decode_tokens],
             decode_swa_lens=self.decode_swa_lens[:num_decode_tokens],
             block_size=self.block_size,
             num_decodes=num_decodes,
@@ -385,6 +508,10 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
             num_decode_tokens == 0
             or _needs_triton_sparse_swa()
             or current_platform.is_xpu()
+            or (
+                current_platform.is_cuda()
+                and current_platform.is_device_capability((7, 0))
+            )
         ):
             return out
         for layer_type in self._layer_types:
@@ -400,8 +527,10 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         num_decodes: int,
         num_prefills: int,
         seq_lens: torch.Tensor,
+        seq_lens_cpu: torch.Tensor | None,
         query_start_loc: torch.Tensor,
-    ) -> dict[str, torch.Tensor | None]:
+        query_start_loc_cpu: torch.Tensor,
+    ) -> _DeepseekV4MetadataFields:
         """Pre-compute DeepseekV4 prefill metadata during the metadata build phase.
 
         Returns a dict of keyword arguments to pass to the
@@ -410,10 +539,11 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
         Note: C128A topk indices are computed by the FlashMLASparse builder
         (which owns the C128A block_table), not here.
         """
-        result: dict[str, torch.Tensor | None] = {}
+        result: _DeepseekV4MetadataFields = {}
 
         # --- Prefill query metadata (single Triton kernel + CPU slicing) ---
         if num_prefills > 0:
+            assert seq_lens_cpu is not None
             pfx_gather_lens = torch.empty(
                 num_prefills, dtype=torch.int32, device=seq_lens.device
             )
@@ -428,7 +558,15 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
             )
 
             result["prefill_seq_lens"] = seq_lens[num_decodes:]
+            result["prefill_seq_lens_cpu"] = seq_lens_cpu[num_decodes:]
             result["prefill_gather_lens"] = pfx_gather_lens
+            result["prefill_query_lens_cpu"] = (
+                query_start_loc_cpu[num_decodes + 1 : num_decodes + num_prefills + 1]
+                - query_start_loc_cpu[num_decodes : num_decodes + num_prefills]
+            ).to(dtype=torch.int32)
+            result["prefill_window_size"] = self.window_size
+            result["prefill_max_model_len"] = self.max_model_len
+            result["prefill_max_num_batched_tokens"] = self.max_num_batched_tokens
 
         return result
 
@@ -514,4 +652,56 @@ def _compute_swa_indices_and_lens_kernel(
             swa_indices_ptr + token_idx * swa_indices_stride + offset,
             slot_ids,
             mask=offset < window_size,
+        )
+
+
+@triton.jit
+def _compute_dspark_noncausal_swa_indices_kernel(
+    swa_indices_ptr,
+    swa_indices_stride,
+    swa_lens_ptr,
+    window_size,
+    index_width,
+    query_start_loc_ptr,
+    seq_lens_ptr,
+    token_to_req_indices_ptr,
+    is_valid_token_ptr,
+    block_table_ptr,
+    block_table_stride,
+    block_size,
+    TRITON_BLOCK_SIZE: tl.constexpr,
+):
+    """Build one block-anchored context window plus the complete query block."""
+    token_idx = tl.program_id(0)
+    is_valid = tl.load(is_valid_token_ptr + token_idx)
+    if not is_valid:
+        tl.store(swa_lens_ptr + token_idx, 0)
+        return
+
+    req_idx = tl.load(token_to_req_indices_ptr + token_idx)
+    query_start = tl.load(query_start_loc_ptr + req_idx)
+    query_end = tl.load(query_start_loc_ptr + req_idx + 1)
+    query_len = query_end - query_start
+    seq_len = tl.load(seq_lens_ptr + req_idx)
+    prefix_len = seq_len - query_len
+    start_pos = tl.maximum(prefix_len - window_size, 0)
+    end_pos = seq_len
+    swa_len = end_pos - start_pos
+    tl.store(swa_lens_ptr + token_idx, swa_len)
+
+    for i in range(0, index_width, TRITON_BLOCK_SIZE):
+        offset = i + tl.arange(0, TRITON_BLOCK_SIZE)
+        pos_offset = start_pos + offset
+        block_indices = pos_offset // block_size
+        block_numbers = tl.load(
+            block_table_ptr + req_idx * block_table_stride + block_indices,
+            mask=pos_offset < end_pos,
+            other=0,
+        )
+        slot_ids = block_numbers * block_size + pos_offset % block_size
+        slot_ids = tl.where(offset < swa_len, slot_ids, -1)
+        tl.store(
+            swa_indices_ptr + token_idx * swa_indices_stride + offset,
+            slot_ids,
+            mask=offset < index_width,
         )

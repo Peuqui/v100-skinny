@@ -1,7 +1,22 @@
 # Übergabe: 1Cat-vLLM 1.3.0 + Qwen3.8-Flash-Next (Qwen4Exp) Portierung
 
 Stand: 2026-08-27 · Vorgeschichte: [DEEPSEEK-VLLM-HANDOVER.md](DEEPSEEK-VLLM-HANDOVER.md)
-(DeepSeek-Schnitt, Begründung für den Schwenk)
+(DeepSeek-Schnitt, Begründung für den Schwenk) ·
+Referenzkonfiguration und 85-tok/s-Beleg: [MERGE-PROJECT-HANDOVER.md](MERGE-PROJECT-HANDOVER.md)
+
+> ## ⚠️ ZUERST LESEN — Abend-Sitzung 27.08. hat mehrere Aussagen widerlegt
+>
+> Der Abschnitt „Sitzung 2026-08-27 (Abend)" ganz unten ist der aktuelle Stand.
+> Vier Dinge, die weiter oben im Dokument **falsch oder überholt** stehen:
+>
+> 1. **`VLLM_SM70_E5_CACHE=0` ist wirkungslos**, nicht der dokumentierte
+>    Betriebsparameter. Läufe mit `=0` und `=1` sind byte-gleich.
+> 2. **Das Schadensbild ist ein anderes**: nicht „Prefill korrekt, NaN im
+>    Spekulationsschritt", sondern **Prefill zerstört** — es entsteht nie ein
+>    zweites Token.
+> 3. **MTP ist derzeit langsamer als kein MTP** (14,4 gegen 31,4 tok/s).
+> 4. **Der eigentliche Befund liegt vor MTP**: Qwen4Exp läuft komplett am
+>    skinny-NVFP4-Kernelpfad des Forks vorbei. Das ist das offene Arbeitspaket.
 
 ## Auftrag
 
@@ -887,3 +902,498 @@ flache `deploy <datei> <ziel>`-Liste nicht abbildet -- analog zum `cp -r` des
 `backups/2026-08-27-qwen4exp-bringup/` — `geaendert/` (19 Dateien, flach
 benannt nach ihrem Pfad), das Boot-Skript und das Kohärenz-JSON.
 `backups/2026-08-27-qwen4exp-dtype/vorher/` — die Ausgangsfassungen.
+
+---
+
+# Sitzung 2026-08-27 (Abend): MTP ist langsamer als kein MTP — Messungen und Irrwege
+
+> Diese Sitzung hat **keinen** Fortschritt beim ursprünglich beauftragten
+> NaN-Problem gebracht, sondern die Problemlage neu vermessen. Mehrere
+> Aussagen der Vorsitzung stimmen so nicht. Wer hier weitermacht, sollte
+> zuerst "Was widerlegt wurde" lesen.
+
+## Kernbefund: MTP kostet Tempo statt es zu bringen
+
+Sauber gemessen (`scripts/bench.py`-Methodik: fester Prompt, 200 Token,
+`ignore_eos`, ein verworfener Aufwärmlauf, n=3):
+
+| Konfiguration | Durchsatz | Streuung |
+|---|---:|---|
+| k=0 (ohne Spekulation) | **31,4 tok/s** | 31,4 / 31,4 / 31,3 |
+| k=4 MTP (gesunde Variante) | **14,4 tok/s** | 14,3 / 14,4 / 14,4 |
+
+Akzeptanzlänge 1,92 bei 23 % Draft-Annahme — der Drafter arbeitet also, kostet
+aber mehr, als er einbringt. Rückrechnung: 133 ms pro Iteration, davon ~35 ms
+Verify, also **~25 ms je Drafter-Schritt** — fast so viel wie die kompletten
+48 Schichten des Zielmodells (31,9 ms).
+
+## Die Hardware hat Reserve — sie wird nur nicht abgerufen
+
+Gleicher k=0-Server, mehrere gleichzeitige Anfragen:
+
+| parallel | gesamt | pro Strom |
+|---:|---:|---:|
+| 1 | 31,7 tok/s | 31,7 |
+| 2 | 41,6 tok/s | 20,8 |
+| 4 | **87,5 tok/s** | 21,9 |
+
+2,8× mehr Durchsatz aus derselben Hardware. Genau diese Reserve in einen
+einzelnen Strom zu übersetzen ist die Aufgabe von MTP.
+
+## Der wichtigste Verweis: MERGE-PROJECT-HANDOVER.md
+
+Auf **identischer Topologie** (TP=2 RTX-Stufe + TP=2 V100-Stufe, PP über die
+Generationsgrenze, `CUDA_VISIBLE_DEVICES=0,2,1,4`) erreicht das Merge-Projekt
+mit Qwen3.8-27B-NVFP4 und MTP k=7 **85,0 ± 1,1 tok/s** — gegen 32,2 tok/s
+ohne MTP, also **2,5×**. Es liegt also nicht an TP2/PP2 und nicht an der
+gesperrten P2P-Situation.
+
+**Der entscheidende Unterschied steht in `scripts/serve-qwen38-mini.sh:145`:**
+
+```bash
+K1=$((K + 1)); K2=$((K1 * 2))
+--compilation-config "{\"cudagraph_capture_sizes\":[$K1,$K2]}"
+```
+
+Die Referenz setzt die Capture-Größen **explizit** auf `[k+1, 2(k+1)]` und
+umgeht damit den 1Cat-MTP-Default-Block in `engine/arg_utils.py:1885-1895`
+(der greift nur, wenn `compilation_config.cudagraph_capture_sizes is None`).
+Unser `serve-qwen38-flash-next.sh` überlässt die Liste der Automatik und
+bekommt `[1,2,4,5,8,9,10,15,20]` — und genau die ist kaputt (s.u.).
+
+Ausserdem fehlen unserem Skript diese Schalter, die die Referenz setzt:
+`VLLM_SKINNY_LMHEAD=1`, `VLLM_SKINNY_LMHEAD_NATIVE=1`,
+`VLLM_SM70_GDN_CHAIN_SPEC_FAST_BUILD=1`,
+`VLLM_SM70_MTP_DYNAMIC_DRAFT_VOCAB_DEFAULT=0`, `VLLM_SKINNY_DROP_CT=1`,
+`VLLM_SM70_QPN8_MT2=1`, `VLLM_FLASH_V100_DECODE_PARTITION_SIZE`,
+`--async-scheduling`, sowie `attention_backend` und
+`use_local_argmax_reduction` explizit in der Spec-Config.
+Der LM-Kopf-Schalter ist der aussichtsreichste: der Drafter ruft den Kopf
+über ~152.000 Vokabeleinträge bei **jedem** der k Schritte.
+
+## WICHTIGSTER BEFUND: der skinny-NVFP4-Pfad ist für dieses Modell inaktiv
+
+Qwen3.8-Flash-Next läuft **komplett am skinny-Kernelpfad des Forks vorbei** —
+an genau den qpn/qpn2-Tensor-Core-Kerneln, für die v100-skinny existiert.
+Belegt über zwei unabhängige Signale:
+
+| Signal | Flash-Next (unser) | 27B (Referenz, `matrix-nvfp4-k0.log`) |
+|---|---|---|
+| `Skinny route map`-Zeilen | **0** | **30–32**, inkl. lm_head `N=124160 K=5120 -> qpn2` |
+| Quelle der FP4-Warnung | `marlin_utils_fp4.py:305` | `marlin.py:282` |
+
+Beide Dateien geben denselben Warntext aus — die Zeilennummer verrät den Pfad.
+`marlin_utils_fp4.py` ist vLLMs **generischer** Weight-only-Marlin;
+`model_executor/kernels/linear/nvfp4/marlin.py` ist der skinny-Kernel.
+
+`VLLM_SKINNY_NVFP4=1` ist gesetzt und `_SKINNY_ENABLED` damit true
+(`nvfp4/marlin.py:32` — ebenfalls eine **Modul-Konstante zur Importzeit**).
+Der Pfad ist also aktiviert, wird für dieses Modell aber nie ausgewählt.
+
+**Das ordnet alle Messungen dieser Sitzung neu ein.** Auch die 31,4 tok/s bei
+k=0 stammen vom langsamen Pfad. Die Frage ist damit nicht mehr in erster Linie
+"warum ist MTP langsam", sondern "warum greift für Qwen4Exp die
+Kernel-Auswahl nicht". Der MTP-Aufschlag kommt obendrauf, weil der Drafter den
+lm_head (~152.000 Vokabeleinträge) k-mal pro Iteration über den generischen
+Pfad ruft.
+
+**Nächster Schritt:** Auswahl-Logik zwischen
+`model_executor/kernels/linear/nvfp4/{marlin,cutlass,emulation,flashinfer}.py`
+und `layers/quantization/utils/marlin_utils_fp4.py` vergleichen — warum
+resolviert der Qwen4Exp-Baum auf den generischen Kernel? Verdacht: die
+PR-Modelldateien unter `models/qwen4_exp/` bauen ihre Linear-Layer an der
+gepatchten Quant-Methode vorbei.
+
+## Capture-Größen: die Messreihe
+
+Alle mit k=4, sonst identischer Konfiguration. "Prefill-Gesundheit" ist die
+mittlere Logprob über die letzten 12 Prompt-Tokens eines stark vorhersagbaren
+Musters (`scripts/health_probe.py`): gesund ≈ −0,1 bis −0,3, zerstört ≈ −16,7.
+
+| Capture-Größen | Ergebnis |
+|---|---|
+| `[1,2,4,8]` | gesund, −0,11 |
+| `[1,2,4,5,8]` | gesund, −0,11 |
+| `[1,2,4,5,8,9]` | **Hänger schon beim Graph-Capture** |
+| `[1,2,4,5,8,9,10]` | **Hänger beim ersten Request** |
+| `[1,2,4,5,8,10,15,20]` | **Hänger beim ersten Request** |
+| `[1,2,4,5,8,9,10,15,20]` (Automatik) | Prefill zerstört, −16,75 (5× reproduziert) |
+| `[5,10]` (Referenz-Schema `[k+1,2(k+1)]`) | **Hänger beim ersten Request** |
+
+Jede Größe über 8 führt zu Hänger oder Zerstörung. `MNS=1` (wie in der
+Referenz) ist **keine** Option: der Boot stirbt an
+`ConstraintViolationError: Constraints violated (L['query_start_loc'].size()[0])`
+— mit einer einzigen Sequenz ist `num_reqs+1` konstant 2 und verletzt die
+dynamische Shape-Bedingung von torch.compile.
+
+## Was widerlegt wurde (Vorsicht, steht teils noch falsch im Dokument)
+
+1. **`VLLM_SM70_E5_CACHE=0` ist in dieser Konfiguration wirkungslos.**
+   Läufe mit `=0` und `=1` liefern byte-gleiche Ergebnisse (−16,75, identische
+   Tokens). Die Variable erreicht die Worker nachweislich (Weitergabe durch
+   `setsid` + fork/spawn/forkserver nachgestellt). Sie ist trotzdem eine Falle:
+   `_E5_CACHE` ist eine **Modul-Konstante zur Importzeit**
+   (`v1/worker/gpu_model_runner.py:545`).
+   Der Betriebsparameter im MTP-Abschnitt ist damit nicht belegt.
+2. **Torch.compile ist unschuldig.** `cudagraph_mode:NONE` bei aktivem
+   torch.compile ist gesund (−0,11). Nur die Graphen zählen.
+3. **Compile-Cache und ModelInfo-Cache sind unschuldig.**
+   `VLLM_DISABLE_COMPILE_CACHE=1` (frische Übersetzung) ändert nichts.
+4. **Die "zwei sterbenden Server" waren kein vLLM-Bug**, sondern mit dem
+   startenden Tool-Aufruf abgeräumte Prozesse. Seit Boot und Tests verkettet
+   als verwalteter Hintergrund-Task laufen, ist kein Server mehr gestorben.
+5. **`set_skip_topk` / `compact_topk_indices` sind toter Code im PR selbst**,
+   keine verlorene Verdrahtung des Forks — der Proposer ist byte-identisch
+   mit der PR-Fassung in `backups/2026-08-26-qwen4exp-partial/`.
+
+## Ungeklärt
+
+Der Lauf `serve-flash-next-mtp-k4c.log` (oben 15:58:56–16:00:35) war
+**vollständig kohärent** — mit Graphen, mit der vollständigen Automatik-Liste
+`[1,2,4,5,8,9,10,15,20]`, identischer Konfiguration und identischem Code
+(19 portierte Dateien byte-identisch zur 16:23-Sicherung, Bytecode aktuell,
+KV-Cache-Größen identisch: 21.969/34.523). Fünf spätere Läufe derselben
+Konfiguration sind deterministisch zerstört. Dafür gibt es bislang **keine
+Erklärung**.
+
+Ebenso ungeklärt: Das Schadensbild dieser Sitzung ist **nicht** das im
+MTP-Abschnitt beschriebene. Dort ist der Prefill korrekt und erst der
+Spekulationsschritt liefert NaN; hier ist der Prefill selbst zerstört, sodass
+nie ein zweites Token entsteht — kein Lauf dieser Sitzung hat je eine
+SpecDecoding-Metrik erzeugt, ausser den gesunden Varianten.
+
+## Werkzeuge, die diese Sitzung hervorgebracht hat
+
+- `health_probe.py` — Prefill-Gesundheit als **Zahl** statt Textstichprobe.
+  Hat mehr geleistet als jede Kohärenzsuite; gehört nach `scripts/`.
+- `bench.py` — stationärer Decode-Durchsatz mit `ignore_eos`, n=3.
+- `conc.py` — aggregierter Durchsatz bei 1/2/4 parallelen Strömen.
+- `run_probe.sh` / `run_bench.sh` — Boot + Test **verkettet**, damit kein
+  Leerlauf-Fenster entsteht, mit Fail-Fast nach 60 s bei Hängern.
+
+## Betriebsnotiz
+
+`pkill -f` killt die eigene Shell (im Dokument bereits gewarnt — ich bin
+trotzdem hineingelaufen, Exit 144). Aufräumen ausschliesslich über
+`nvidia-smi --query-compute-apps=pid` und explizite PIDs.
+
+## llama.cpp-Gegenvergleich: Stand und Modellbestand
+
+**Warum überhaupt:** vLLM liefert auf diesem Modell 31,4 tok/s (k=0) bzw.
+14,4 (k=4). Ob das an vLLM oder an der Hardware liegt, entscheidet nur ein
+zweiter Stack. `llama-swap` ist dieser zweite Stack.
+
+**Blocker war der Build.** `llama-swap-autoscan` verwarf das Modell mit
+`✗ unsupported architecture 'qwen4exp' — skipping`. Unser Build stand auf
+`353b32d8b` (21.08.2026); die Unterstützung ist erst danach gelandet — als
+buchstäblich neuester Commit auf master:
+`6c84c7d5d model: add Qwen3.8-Flash-Next (qwen4exp) (#27742)`, 98 Commits
+Abstand.
+
+**Eigene Patches:** keine im produktiven Baum. `/home/mp/llama.cpp` war
+sauberer master ohne lokale Commits. Der cuBLAS-Patch aus dem Worktree
+`llama.cpp-pr26574` ist upstream gemerged
+(`d9b6be07d ggml-cuda: provide static workspace for cuBLAS handles (#26574)`).
+Ein Update verliert also nichts, was im Einsatz war.
+
+**Vorgehen beim Rebuild** (Stand beim Schreiben: läuft):
+Nicht über den laufenden Build, weil llama-swap bei jedem Modellwechsel
+`llama-server` neu startet und ein halb geschriebenes Binary fatal wäre.
+Stattdessen `build-new/` mit identischer Konfiguration
+(`Release`, `CUDA_ARCHITECTURES=70;75`, `GGML_CUDA=ON`, `GGML_NATIVE=ON`,
+`GGML_BLAS=OFF`, `GGML_CUDA_FA_ALL_QUANTS=OFF`).
+Alt-Binaries gesichert unter `/home/mp/llama.cpp-build-backup/bin-353b32d8b`.
+Tausch erst nach Verifikation, per `mv` (Rename stört laufende Prozesse nicht).
+
+### Modellbestand und Namenskonvention
+
+```
+/home/mp/models/Qwen3.8-Flash-Next-180B-A4B/
+  UD-Q6_K_XL/Qwen3.8-Flash-Next-180B-A4B-UD-Q6_K_XL-0000{1..6}-of-00006.gguf   158 GiB
+  mtp/mtp-Qwen3.8-Flash-Next-Q8_0.gguf                                           3,9 GiB
+```
+
+Layout und Benennung folgen dem DeepSeek-Muster
+(`<Modell>/<QUANT>/…` plus `<Modell>/<sidecar>/<präfix>-…`).
+Der Anzeigename in AIfred wird aus dem **Dateinamen** abgeleitet, nicht aus
+dem Verzeichnis — deshalb trägt der Dateiname die volle Deskription.
+
+**Basis-GGUF von unsloth enthält KEINEN MTP-Kopf** (`blk.0`–`blk.47`, 1224
+Tensoren). Der Kopf kommt separat von `quimmedes/Qwen3.8-Flash-Next-MTP-GGUF`
+und ist auf Tensor-Ebene verifiziert: Architektur `qwen4exp`, **`blk.48`**,
+34 Tensoren inkl. `output.weight` / `output_hc_down|up` / `token_embd`.
+Basis und Kopf müssen in Checkpoint und Vokabular übereinstimmen, **nicht** in
+der Quantisierung — wie bei DeepSeek (Q4-Basis, Q8_0-Draft).
+
+llama.cpp erwartet Sidecars mit Präfix `mtp-` (`find_best_mtp`,
+`common/download.cpp:641`, analog `dspark-`). Für lokale Modelle wird der Kopf
+über `--model-draft` plus `--spec-type draft-mtp` eingebunden.
+
+## Offenes Arbeitspaket für die nächste Instanz
+
+**Frage:** Warum wählt der Qwen4Exp-Baum den skinny-NVFP4-Kernel nicht?
+
+Einstiegspunkte:
+- `model_executor/kernels/linear/nvfp4/marlin.py` — skinny-Kernel,
+  `_SKINNY_ENABLED` (Zeile 32, Modul-Konstante zur Importzeit),
+  `can_implement` (Zeile 278) gibt bedingungslos `True` zurück.
+- `model_executor/layers/quantization/modelopt.py:1609` —
+  `self.kernel = MarlinNvFp4LinearKernel(NvFp4LinearLayerConfig())`.
+  Prüfen, ob der Qwen4Exp-Pfad hier überhaupt vorbeikommt.
+- `model_executor/layers/quantization/utils/marlin_utils_fp4.py:305` — der
+  generische Pfad, der unsere Läufe bedient (Zeilennummer in der Warnung
+  verrät den Pfad!).
+- Verdacht: die PR-Modelldateien unter `models/qwen4_exp/` bauen ihre
+  Linear-Layer an der gepatchten Quant-Methode vorbei.
+
+**Verifikation:** `Skinny route map`-Zeilen im Log zählen. Referenz
+`matrix-nvfp4-k0.log`: 30–32 Zeilen inkl. lm_head `N=124160 -> qpn2`.
+Unsere Flash-Next-Läufe: 0.
+
+**Danach erst** MTP erneut messen — die Grundlage verschiebt sich.
+Reihenfolge: Kernelpfad, dann fehlende Schalter des Referenzskripts
+(`VLLM_SKINNY_LMHEAD`, `_NATIVE`, `VLLM_SM70_GDN_CHAIN_SPEC_FAST_BUILD`,
+`--async-scheduling`), dann `VLLM_SM70_MTP_PROFILE=1` für die Phasenaufteilung.
+
+**Vorschlag zur Dokumentstruktur** (nicht umgesetzt, Entscheidung offen):
+Die drei Handovers getrennt lassen, aber eine kurze Einstiegsebene darüber —
+Maschinen-Invarianten (P2P gesperrt, Aufräumen nur über explizite PIDs, Code
+lebt nur in der venv), eine „was läuft"-Tabelle mit Repro-Befehlen und
+gemessenem Durchsatz, und eine Landkarte der Dokumente mit Status. Heute
+kostete das Fehlen dieser Ebene mehrere Boot-Zyklen: der funktionierende
+Startbefehl und die Gate-Prüfungen lagen fertig in `serve-qwen38-mini.sh`.
+
+## llama.cpp-Gegenmessung — und was sie NICHT bedeutet
+
+Gleiches Werkzeug wie bei vLLM (`scripts/bench.py`, 200 Token, `ignore_eos`, n=3):
+
+| Stack | Durchsatz |
+|---|---:|
+| vLLM k=0 (TP2×PP2) | 31,4 tok/s |
+| llama.cpp, ohne Spekulation, 5 GPUs | **33,2 tok/s** (best 34,8) |
+| vLLM k=4 MTP (gesunde Variante) | 14,4 tok/s |
+
+**Fehlschluss, den man hier NICHT ziehen darf** (in der Sitzung zunächst
+gezogen und vom User korrigiert): „llama.cpp landet auch bei ~33, also ist das
+die Hardware-Grenze." Das folgt nicht — llama.cpp nutzt auf Volta ebenfalls
+keinen spezialisierten Tensor-Core-Pfad. Zwei unoptimierte Stacks bei
+derselben Zahl belegen keine Obergrenze.
+
+**Was dagegen belegt ist:**
+- 4 parallele Anfragen liefern **87,5 tok/s** aggregiert (gegen 31,7 bei einer).
+  Die Reserve ist physisch vorhanden, Faktor 2,8.
+- Das 27B erreicht auf **identischer** Topologie 32,2 ohne MTP und **85,0 mit**
+  (MERGE-PROJECT-HANDOVER.md). Die Basiswerte 32,2 und 31,4 liegen praktisch
+  gleichauf — der gesamte Unterschied entsteht im MTP-Pfad.
+
+**Zielmarke für Qwen3.8-Flash-Next ist damit 60–80 tok/s**, nicht ~35.
+
+### llama.cpp: Stand und offener Punkt
+
+Build aktualisiert auf `6c84c7d5d` (build 10660) in `build-new/`; Alt-Binaries
+unter `/home/mp/llama.cpp-build-backup/bin-353b32d8b`. **Tausch noch nicht
+erfolgt** — `build/bin` ist unverändert der alte Stand.
+
+Das Hauptmodell lädt sauber (4,5 min, ~110 GB über 5 GPUs) und liefert
+33,2 tok/s. **MTP läuft noch nicht:** beide Drittanbieter-Sidecars scheitern.
+
+| Sidecar | Fehler |
+|---|---|
+| `quimmedes/…-MTP-Q8_0` | `output_hc_norm.weight` fehlt in der Datei |
+| `dzannotti/…-MTP-Q4_K_M` | hat `output_hc_norm`, aber `blk.0.hc_attn_norm` fehlt |
+
+Ursache: Die Sidecars deklarieren `qwen4exp.block_count = 49`, enthalten aber
+nur `blk.48`. llama.cpp allokiert daraufhin 49 Schichten und sucht `blk.0`.
+Diese Dateien sind zum **Verschmelzen** mit der Basis gedacht, nicht als
+eigenständiges Draft-Modell — anders als beim 27B, wo MTP im Haupt-GGUF liegt.
+
+**Nächster Ansatz:** `dzannotti/Qwen3.8-Flash-Next-MTP-GGUF` enthält zusätzlich
+einen Ordner `unsloth-UD-Q4_K_XL-mtp-shards/` — offenbar die unsloth-Basis
+**mit** eingebautem MTP. Das wäre die Struktur, die llama.cpp erwartet.
+Alternativ selbst konvertieren, jetzt wo `convert_hf_to_gguf.py` qwen4exp kennt.
+
+### llama.cpp-Update: DURCHGEFÜHRT und verifiziert
+
+`build/bin` trägt jetzt **build 10660 / `6c84c7d5d`**. Vorgehen: in `build-new/`
+gebaut, dann mit `-DCMAKE_BUILD_RPATH=/home/mp/llama.cpp/build/bin` neu
+gelinkt (RUNPATH war absolut und hätte das Verschieben sonst zerstört),
+danach `build` → `build-old-353b32d8b`, `build-new` → `build`.
+
+Rückfallebenen: `/home/mp/llama.cpp/build-old-353b32d8b/` (kompletter Baum)
+und `/home/mp/llama.cpp-build-backup/bin-353b32d8b/` (nur Binaries).
+
+**Regressionstest 27B** (gleiche Serve-Parameter, `scripts/bench.py`, n=3):
+
+| Binary | Durchsatz |
+|---|---:|
+| alt `353b32d8b` | 26,9 tok/s (best 27,8) |
+| neu `6c84c7d5d` | 27,6 tok/s (best 28,0) |
+
+Keine Regression. Antwortqualität geprüft (Reasoning + „Paris"), MTP-Draft-
+Kontext wird geladen. Achtung bei eigenen Tests: das 27B denkt zuerst — mit
+`max_tokens=16` kommt `content` leer zurück, das ist kein Fehler.
+
+### Volta-Kernel: was llama.cpp auf sm70 tut
+
+Relevant für die Frage, wieviel der skinny-Pfad bringen kann:
+
+- `VOLTA_MMA_AVAILABLE` (`common.cuh:275`) gilt **exklusiv** für
+  `__CUDA_ARCH__ == 700` und wird **nur** in `fattn-mma-f16.cuh` benutzt —
+  also ausschliesslich für Flash Attention.
+- Der MMQ-Tensor-Core-Pfad hängt an `TURING_MMA_AVAILABLE` (sm75+). Die V100
+  fällt auf **DP4A** zurück (`mmq-config-pascal-dp4a.cuh`); die RTX 8000
+  bekommt den MMA-Pfad.
+- Bei Batch 1 läuft ohnehin `mul_mat_vec_q` (bandbreitenlimitiert) — deshalb
+  landen beide Stacks bei ~31–33 tok/s.
+
+**Daraus folgt:** Der Vorteil der skinny-Kernel entsteht erst bei M > 1, also
+genau wenn MTP k+1 Token gleichzeitig durchs Zielmodell schickt. Der Fork
+zielt sichtbar darauf (`modelopt.py`: `if m <= 8: return ext.gemm_qpn8(...)`,
+Volta-`m8n8k4`). Das erklärt, warum das 27B **mit** MTP von 32 auf 85 sprang
+und ohne MTP nicht. MTP und skinny-Kernel sind kein Entweder-oder, sondern
+bedingen einander.
+
+---
+
+# Sitzung 2026-08-28: die llama.cpp-Seite ist vermessen — und sie verschiebt die vLLM-Latte
+
+> Diese Sitzung hat **keine** vLLM-Arbeit gemacht. Sie hat die
+> Vergleichsseite sauber vermessen und dabei drei Dinge geklärt, die für
+> die Fortsetzung des Ports unmittelbar relevant sind.
+
+## Kernbefund für den vLLM-Port: die Latte liegt höher, als sie aussah
+
+Alle llama.cpp-Werte: 5 GPUs, split 14:14:4:8:8, ctx 256512, PLE **auf der
+Platte**, 400 Token je Lauf, Page-Cache gesättigt (19 GB).
+
+| Konfiguration | wechselnde Prompts | identischer Prompt |
+|---|---:|---:|
+| ohne Spekulation | **33,0 ± 0,6** | 35,7 |
+| mit ngram-Spekulation | **32,3** | 49,7 |
+| erster Lauf nach dem Laden (kalter Cache) | — | 22–31 |
+| *vLLM k=0 (Vorsitzung), PLE **im VRAM*** | | *31,4* |
+
+**Methodik-Warnung, teuer gelernt:** Mit stets identischem Prompt bei
+`temperature 0` lernt der ngram-Drafter die eigene Ausgabe auswendig —
+das ergab scheinbare 49,7 tok/s und einen scheinbaren Spekulationsgewinn
+von +39 %. Mit wechselnden Prompts bleibt davon **nichts** übrig; die
+Spekulation kostet dann sogar rund 2 %. Wer hier misst, variiert die
+Prompts. Der PLE-Cache-Effekt ist davon unberührt (gleichverteilte
+Hash-Lookups), der Drafter-Effekt vollständig.
+
+**Das ist die eigentliche Nachricht.** vLLM hält die PLE-Tabelle über
+`VocabParallelEmbedding` im VRAM (26,4 GB je Rang bei TP=2) und liegt
+trotzdem gleichauf mit llama.cpp, das dieselbe Tabelle bei jedem Token
+von einer USB-NVMe nachliest. Der Vorsprung, den vLLM strukturell haben
+müsste, kommt nicht an. Das stützt den Befund der Vorsitzung, dass
+Qwen4Exp am skinny-NVFP4-Kernelpfad vorbeiläuft (0 statt 30–32
+`Skinny route map`-Zeilen) — der Verlust dort ist offenbar groß genug,
+um einen kompletten Plattenzugriff pro Token zu kompensieren.
+
+**Zielmarke bleibt 60–80 tok/s**, aber die Untergrenze ist jetzt härter:
+Alles unter 33 wäre schlechter als llama.cpp ohne jede Spekulation.
+
+## Was llama.cpp kann und vLLM nicht — und umgekehrt
+
+| | llama.cpp | vLLM |
+|---|---|---|
+| PLE (50,7 GiB, EIN Tensor) | nur lazy von Platte | **im VRAM**, über TP-Ränge geteilt |
+| MTP für `qwen4exp` | **existiert nicht** (s.u.) | portiert, k=4 kohärent (eager) |
+| skinny-Kernel | kein Äquivalent nötig (mmvq/MMQ decken M≤8) | vorhanden, aber für dieses Modell **inaktiv** |
+
+Beides zusammen heißt: Für Qwen3.8-Flash-Next hat der vLLM-Pfad **zwei**
+unabhängige strukturelle Vorteile (PLE im VRAM, MTP möglich) — er löst
+sie derzeit nur nicht ein.
+
+## MTP für qwen4exp gibt es in llama.cpp nicht (endgültig geklärt)
+
+Drei unabhängige Belege, alle im Quelltext von build 10660:
+
+- `conversion/qwen4exp.py`: `supports_mtp_export = False` mit dem Kommentar
+  „the MTP block is a separate draft head; vLLM drops it too" — deshalb hat
+  unsloths Basis nur `blk.0`–`blk.47`;
+- `src/models/qwen4exp.cpp`: **0** Treffer für nextn/mtp
+  (qwen35: 72, qwen35moe: 81, qwen3next: 69);
+- `mtp_on_hybrid_qwen` (`llama-model.cpp:2429`) listet QWEN3NEXT/QWEN35/
+  QWEN35MOE/BAILINGMOE3, **nicht** QWEN4EXP.
+
+Die GGUF-Metadaten bestätigen es: Der produktive 27B trägt `arch=qwen35`
+mit 4 MTP-Tensoren, Flash-Next `arch=qwen4exp` mit 0.
+
+**Konsequenz:** Kein Anbieter-GGUF kann das ändern, und selbst ein korrekt
+gemergter MTP-Kopf wäre nutzlos — es fehlt der Lesecode. Die beiden
+Drittanbieter-Sidecars (quimmedes, dzannotti) sind gelöscht. Nicht erneut
+suchen, nicht konvertieren. **Watch-Item für llama.cpp-Updates.**
+
+## Die PLE-Mechanik, vollständig
+
+`per_layer_token_embd.weight`: **50,7 GiB, Q8_0, EIN Tensor**,
+shape `[160, 320001536]`, liegt komplett in Shard 3 von 6.
+
+- llama.cpp legt ihn mit `TENSOR_READ_LAZY` an (`qwen4exp.cpp:139`) und
+  liest die Zeilen bei Bedarf — Voraussetzung ist **mmap**.
+- Er passt auf keine einzelne Karte (größte: 48 GB), und `-sm layer` kann
+  einen Tensor nicht teilen. `--tensor-read-lazy off` legt ihn deshalb
+  nicht ins VRAM, sondern in den **Host-RAM** — bei 30 GB physisch ein
+  sicherer OOM (verifiziert, Abbruch bei RSS 17,8 GB).
+- `-sm row` ist kein Ausweg: `ggml_backend_split_buffer_type` existiert nur
+  im SYCL-Backend, nicht in CUDA. Zusätzlich `fit.cpp:477`:
+  „changing weight allocation for LLAMA_SPLIT_MODE_ROW not implemented".
+- Readahead ist bereits sauber behandelt: llama.cpp setzt
+  `POSIX_MADV_RANDOM` gezielt auf die Lazy-Bereiche (`llama-mmap.cpp:504`),
+  obwohl die Platte auf 4 MB Readahead steht.
+
+**Der Page-Cache ist der bestimmende Faktor.** 19 GB Cache decken 37 % der
+Tabelle; der Durchsatz steigt vom ersten Lauf (22–31) auf den
+Sättigungswert. Mehr RAM ginge im Mini nicht (nicht erweiterbar).
+Praktische Folge: **Nach jedem Modellstart ist das Modell spürbar langsam
+und wird über die ersten Minuten schneller.**
+
+## Betriebsparameter, die sich geändert haben
+
+**`--direct-io` ist für dieses Modell tödlich.** Es schließt mmap aus, damit
+fällt Lazy Read aus, und die 50,7 GiB gehen in den Hauptspeicher → OOM-Kill,
+der über die systemd-Unit auch AIfred mitreißt. Beide Flags sind in
+build 10660 ohnehin deprecated und schreiben dasselbe Feld (`load_mode`,
+nur der letzte gewinnt) — `--mlock --direct-io` war ein stiller Widerspruch.
+Richtig ist `--load-mode auto`. Für Modelle ohne Tensor > 4 GiB bleibt
+`--load-mode dio` die schnellere Wahl.
+
+**ngram-Spekulation bringt bei Prosa nichts** (32,3 gegen 33,0 ohne) — sie
+ist der einzige für qwen4exp verfügbare Mechanismus, rechtfertigt sich bei
+freiem Text aber nicht. Ungeprüft: strukturierter Output (Code, Listen),
+wo n-Gramme erfahrungsgemäss besser treffen. Vor einem Entfernen aus der
+Config dort messen.
+
+## AIfred-Seite (committed, nicht in diesem Repo)
+
+Die Kalibration nahm die **Dateigröße** als VRAM-Bedarf und verteilte die
+PLE zusätzlich über `mb_per_layer` auf alle Layer — 157,5 statt 106,9 GB.
+Folge: „nur 35/48 Layer passen auf 4 GPUs" und ein um über 100k Token zu
+niedrig angesetzter Kontext. Gefixt über `get_gguf_lazy_tensor_bytes()`
+mit llama.cpps eigener 4-GiB-Schwelle; `Model.size_mb` ist jetzt die
+VRAM-relevante Größe. Ergebnis: 106,9 GB berechnet gegen 107,5 GB real
+gemessen, und die Kalibration findet den **vollen nativen Kontext von
+262.144** (split 13:14:7:7:7 über 5 GPUs, KV=f16).
+
+Commits `f8be6a1e` (Fix) und `2dbbc3c3` (Messwerte) im AIfred-Repo,
+Messtabelle in `docs/de/benchmarks/performance-history.md`.
+
+## Beobachtung für die Kalibrierung (offen, nicht umgesetzt)
+
+Der Kalibrationslauf brauchte **85 Minuten für 17 Probeläufe**, davon 14
+allein für die Bisektion der Speed-Variante — **96 % der Zeit sind
+Modell-Ladevorgänge** (je 5,0 min). `llama-fit-params` beantwortet
+dieselbe Frage in ~3 s und lag in der Gegenprobe 2 % neben der Realität,
+dabei auf der sicheren Seite (sagt eher mehr Bedarf voraus). Das interne
+Kostenmodell musste sich dagegen über einen Bias von −3.946 MB nachführen.
+Ein fit-params-Vorfilter vor jedem Probelauf wäre der größte Hebel;
+der Umbau der Bisektion selbst ist der zweite Schritt.
+
+## Nächster Schritt: zurück zu vLLM
+
+Unverändert Punkt 1 der Vorsitzung: **Warum wählt der Qwen4Exp-Baum den
+skinny-NVFP4-Kernel nicht?** Einstiegspunkte stehen im Abschnitt
+„Offenes Arbeitspaket" oben. Die Messungen dieser Sitzung machen die Frage
+dringender, nicht weniger: vLLM hat die PLE im VRAM und ist trotzdem
+langsamer als llama.cpp mit derselben Tabelle auf der Platte.

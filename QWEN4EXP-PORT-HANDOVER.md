@@ -2585,3 +2585,42 @@ implementieren + Proposer-Verdrahtung (`set_skip_topk`/
 
 Diagnose-Patch (qsa.py) nach der Messung zurückgenommen, venv byte-identisch
 zum Backup `backups/2026-08-28-mtp-quant-indexshare/`.
+
+## IndexShare ENDGÜLTIG entschieden: Skalierungskurve ist flach bis 91.600 Token
+
+Nachmessung auf Peuquis Wunsch (AIfred arbeitet mit 20k-System-Prompts und
+Verläufen >100k). Ein Boot (eager, MML 131072, Split 24/24, MTPQ, E5=0),
+drei Prompts am selben Server, Profiling mit Phasen-Buckets (Decode vs
+Prefill getrennt; Zuordnung über Report-Zählerstände zwischen den Requests):
+
+| Kontext (prompt_tokens) | Drafter-Indexer je Aufruf (schneller/langsamer TP-Rang) |
+|---:|---|
+| 19 | 0,15–0,47 / 0,67–0,80 ms |
+| 29.579 | 0,33–0,76 / 0,45–0,93 ms |
+| **91.600** | **0,22–0,45 / 0,67–0,94 ms** |
+
+**Faktor 4.800 mehr Kontext, Kosten unverändert.** Der Indexer scored gegen
+die komprimierten Keys (Kontext/4); selbst 22.900 Einträge bei 91k sind für
+die GPU ein triviales GEMM — der Kernel-Start-Overhead dominiert überall.
+Die lineare Komponente ist bis 91k schlicht unsichtbar.
+
+**Entscheidung: IndexShare wird NICHT implementiert.** Die Ersparnis bleibt
+über den gesamten realen Betriebsbereich (0,4k–92k) bei 1–4 %. Das
+SGLang-Feature zielt auf Regime jenseits davon (Richtung 1M, vgl.
+Windowed-MTP-Paper). Die toten Haken im PR bleiben dokumentiert, falls
+llama.cpp-artige Riesenkontexte je real werden.
+
+**Nebenbefunde der Messreihe:**
+- Der Drafter hat einen eigenen Prefill-Anteil (`mtp_pre`): ~14–18 ms je
+  2048er-Chunk, parallel zum Hauptmodell-Prefill (`main_pre` ~15–20 ms je
+  Chunk). Der Indexer ist im PREFILL der teure Posten — er skaliert mit der
+  Chunk-Größe, nicht mit der Kontextlänge. IndexShare adressiert nur die
+  Decode-Aufrufe und hülfe auch hier nicht.
+- Akzeptanz fiel auf dem Zahlen-Wirrwarr-Prompt auf 20,1 % — Promptinhalt
+  schlägt bei MTP alles; der 73-%-Wert gilt für normalen Text.
+- 91k-Prompts unter eager: Prefill dauert Minuten (1,7 tok/s gesamt inkl.
+  Prefill). Für Produktion irrelevant (Graphen an), für Messläufe einplanen.
+
+Diagnose-Patch v2 (Buckets) nach der Messung erneut zurückgenommen; venv
+byte-identisch zum Backup. Messwerkzeug: `$SCRATCH/idx_longctx.sh` +
+Patch-Rezept in `backups/2026-08-28-mtp-quant-indexshare/`.

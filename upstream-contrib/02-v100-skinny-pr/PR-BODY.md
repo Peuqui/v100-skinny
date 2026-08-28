@@ -85,9 +85,12 @@ same grid, 8/8 coherence, up to 51.9 tok/s with MTP k=4 vs 32.2 without.
 - E5 metadata cache is structurally incompatible with the QSA ring
   (crash + masked PP death); we run VLLM_SM70_E5_CACHE=0 for qwen4_exp.
 - The PR's IndexShare hooks (set_skip_topk/compact_topk_indices) are dead
-  code; we measured the drafter's QSA indexer at 0.2-0.8 ms/call
-  (CUDA events, short sequences) — wiring IndexShare up is worth ~1-4%
-  at short context and only becomes interesting at long context.
+  code. We measured the drafter's QSA indexer with CUDA events at three
+  context lengths (19 / 29,579 / 91,600 prompt tokens): per-call cost is
+  flat at 0.2-0.9 ms across all of them — the top-k over compressed keys
+  is launch-overhead-dominated even at 22.9k entries. Wiring IndexShare
+  up is worth only 1-4% below ~100k context; the feature targets far
+  longer regimes.
 
 Full measurement history, dead ends and repro commands are in the two
 handover documents in the repo root of our working tree; happy to trim

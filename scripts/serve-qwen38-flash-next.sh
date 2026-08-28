@@ -15,6 +15,9 @@
 #
 # Überschreibbar: ENV_PREFIX TP PP K GMU MML MNS MBT PORT PP_PARTITION LOG
 #                 EXTRA_ARGS (zusätzliche Argumente für den Server)
+#                 SPEC_CONFIG (kompletter --speculative-config-JSON; ersetzt den
+#                 aus K gebauten Default, z.B. um enforce_eager nur für den
+#                 Drafter zu setzen)
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -44,7 +47,12 @@ read -r -a EXTRA_ARGS_ARR <<< "${EXTRA_ARGS:-}"
 
 SPEC_ARGS=()
 if [ "$K" -gt 0 ]; then
-  SPEC_ARGS=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$K,\"draft_sample_method\":\"greedy\"}")
+  # Kein ${VAR:-{...}}: Bash matcht die schliessende Klammer der Expansion
+  # falsch, sobald der Default selbst geschweifte Klammern enthaelt.
+  if [ -z "${SPEC_CONFIG:-}" ]; then
+    SPEC_CONFIG="{\"method\":\"mtp\",\"num_speculative_tokens\":$K,\"draft_sample_method\":\"greedy\"}"
+  fi
+  SPEC_ARGS=(--speculative-config "$SPEC_CONFIG")
 fi
 
 # Die QSA-Ringkapazität muss die Attention-Blockgröße teilen

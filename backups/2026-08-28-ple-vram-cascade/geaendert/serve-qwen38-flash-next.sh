@@ -16,11 +16,7 @@
 # PLE_HOST_GIB legt einen Teil der PLE-Tabelle je Rang in den Host-RAM (UVA,
 # zero-copy ueber PCIe). Die Tabelle ist 51,2 GB gross, traegt aber nur 2,5 KB
 # Verkehr pro Token -- im VRAM verdraengt sie den KV-Cache und damit den
-# nutzbaren Kontext.
-#   auto (Default) = so viel im VRAM lassen wie moeglich und nur das auslagern,
-#                    was MML an KV-Cache braucht
-#   <zahl>         = feste GiB je Rang
-#   0              = alles im VRAM (Stand vor dieser Kaskade)
+# nutzbaren Kontext. 0 = alles im VRAM (bisheriges Verhalten).
 #
 # Überschreibbar: ENV_PREFIX TP PP K GMU MML MNS MBT PORT PP_PARTITION LOG
 #                 PLE_HOST_GIB
@@ -82,7 +78,7 @@ PY
 )}"
 
 rm -f "$LOG"
-echo "==> booting $CKPT  (TP=$TP PP=$PP k=$K GMU=$GMU MML=$MML partition=$PP_PARTITION block=$BLOCK_SIZE ple_host=${PLE_HOST_GIB:-auto})"
+echo "==> booting $CKPT  (TP=$TP PP=$PP k=$K GMU=$GMU MML=$MML partition=$PP_PARTITION block=$BLOCK_SIZE ple_host=${PLE_HOST_GIB:-0}GiB)"
 
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0,2,1,4}" \
 CUDA_DEVICE_ORDER="${CUDA_DEVICE_ORDER:-PCI_BUS_ID}" \
@@ -97,7 +93,7 @@ VLLM_SKINNY_NVFP4=1 \
 VLLM_SKINNY_QPN=1 \
 VLLM_SKINNY_QPN2=1 \
 VLLM_SKINNY_NVFP4_SRC="$REPO_ROOT/kernels/skinny_kernels.cu" \
-VLLM_QWEN4EXP_PLE_HOST_GIB="${PLE_HOST_GIB:-auto}" \
+VLLM_QWEN4EXP_PLE_HOST_GIB="${PLE_HOST_GIB:-0}" \
 setsid "$PY" -m vllm.entrypoints.openai.api_server \
   --model "$CKPT" \
   --served-model-name qwen3.8-flash-next \

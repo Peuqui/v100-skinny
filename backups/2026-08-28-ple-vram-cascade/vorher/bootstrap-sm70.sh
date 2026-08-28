@@ -200,7 +200,6 @@ deploy qwen3_5_mtp.py       vllm/model_executor/models/qwen3_5_mtp.py
 deploy qwen3_5.py           vllm/model_executor/models/qwen3_5.py
 deploy cuda.py              vllm/platforms/cuda.py
 deploy vllm_config.py       vllm/config/vllm.py
-deploy kernel_config.py     vllm/config/kernel.py
 deploy linear_init.py       vllm/model_executor/kernels/linear/__init__.py
 deploy fp8.py               vllm/model_executor/layers/quantization/fp8.py
 deploy compressed_tensors.py vllm/model_executor/layers/quantization/compressed_tensors/compressed_tensors.py

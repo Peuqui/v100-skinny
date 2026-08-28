@@ -1390,14 +1390,7 @@ class ModelOptNvFp4Config(ModelOptQuantConfigBase):
 
     @classmethod
     def get_min_capability(cls) -> int:
-        # NVFP4 was left at the upstream threshold when the sibling ModelOpt
-        # configs were lowered for Volta, although this fork runs NVFP4 on
-        # sm70 -- the V100 stage of the heterogeneous grid does so in normal
-        # operation. It never surfaced because the caller reads device 0 alone
-        # (VllmConfig._get_quantization_config), and the Turing card is listed
-        # first by convention: the identical grid refuses to boot as soon as
-        # CUDA_VISIBLE_DEVICES puts a V100 in front.
-        return _SM70_MIN_CAP if _SM70_MODELOPT else 75
+        return 75
 
     @classmethod
     def override_quantization_method(

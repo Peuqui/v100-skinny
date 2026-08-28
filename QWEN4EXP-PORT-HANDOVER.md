@@ -1397,3 +1397,428 @@ skinny-NVFP4-Kernel nicht?** Einstiegspunkte stehen im Abschnitt
 „Offenes Arbeitspaket" oben. Die Messungen dieser Sitzung machen die Frage
 dringender, nicht weniger: vLLM hat die PLE im VRAM und ist trotzdem
 langsamer als llama.cpp mit derselben Tabelle auf der Platte.
+
+---
+
+# Sitzung 2026-08-28 (Vormittag): die PLE-Tabelle kaskadiert jetzt VRAM → Host-RAM
+
+> Diese Sitzung hat den PLE-Ballast beweglich gemacht und dabei einen
+> strukturellen Befund erzwungen, der jede weitere Speicherarbeit an diesem
+> Modell betrifft: **bei PP bestimmt die schwächste Stufe die Kapazität aller.**
+> Wer nur eine Stufe entlastet, gewinnt nichts.
+
+## Was gebaut wurde
+
+Die PLE-Tabelle (51,2 GB, 16 Hash-Köpfe × 20 Mio Zeilen × 160 Byte FP8) liegt
+nicht mehr zwingend vollständig im VRAM. Sie wird **zeilenweise geteilt**: der
+vordere Teil bleibt im Gerätespeicher, der Rest liegt in pinned Host-RAM und
+wird über einen UVA-View gelesen — ohne expliziten Transfer, direkt im Gather.
+
+Drei Stellen, alle auf vorhandenen Bausteinen:
+
+| Datei | Was |
+|---|---|
+| `models/qwen4_exp/common/ple.py` | Platzierungsrechnung, geteilter Ladepfad, geteilter Gather, Automatik-Formel |
+| `models/qwen4_exp/amd/ple_layer.py` | `Qwen4ExpPLEFp8EmbeddingMethod` legt beide Tabellen **lazy** an, löst das Budget auf, prüft den Host-Speicher |
+| `scripts/serve-qwen38-flash-next.sh` | `PLE_HOST_GIB` (Default `auto`) |
+
+**Der Host-Weg ist nicht neu gebaut, sondern der vorhandene:** `should_pin_memory()`
+und `get_accelerator_view_from_cpu_tensor()` aus `model_executor/offloader/`,
+also derselbe UVA-Mechanismus wie beim generischen `UVAOffloader`. Warum der
+generische nicht reicht: er offloadet **ganze Parameter**. `ngram_embedding.weight`
+ist 25,6 GB je Rang, bei TP=2 also 51,2 GB pinned — der Mini hat 30 GB. Es fehlte
+allein die Granularität, nicht der Mechanismus.
+
+**Der geteilte Ladepfad baut `copy_ple_embedding_shard_` nicht nach**, sondern ruft
+sie zweimal mit den beiden Teilbereichen der TP-lokalen Zeilenachse. Die
+Überlappungsrechnung bleibt eine SSOT.
+
+### Warum lazy, und nicht nachträglich umschichten
+
+Die Aufteilung muss **vor** dem Laden feststehen. Nachträglich wäre der volle
+Tensor plus die verkleinerte Kopie gleichzeitig am Leben — Peak 48,6 GiB auf
+einer 48-GiB-Karte. Ausgelöst wird die Materialisierung deshalb vom **ersten
+Checkpoint-Shard**: dann ist der Modellaufbau fertig, aller übrige Gewichts-VRAM
+allokiert und jeder Layer im `static_forward_context` registriert — genau die
+Information, die die Automatik braucht. `create_weights` registriert bis dahin
+einen Parameter mit **null Zeilen**.
+
+## Der Zugriff kostet praktisch nichts (gemessen)
+
+`scratchpad/ple_uva_probe.py`, echte Geometrie, RTX 8000:
+
+| Last | VRAM | Host über UVA |
+|---|---:|---:|
+| 1 Token (16 Lookups) | 0,005 ms | **0,005 ms** |
+| 4096 Token Prefill | 0,071 ms | 3,404 ms |
+
+Der Link sättigt bei **3,08 GB/s** — exakt PCIe 3.0 x4, also der USB4-Tunnel.
+Im Decode ist der Host-Zugriff **nicht messbar teurer** als VRAM; ein voller
+262k-Prefill verlängert sich um rund 0,2 s.
+
+Der geteilte Gather selbst (zwei Lookups plus `torch.where`, branchless) kostet
+**+0,035 ms je Decode-Schritt** — 0,1 % bei 32 ms/Token. Branchless ist Absicht:
+ein `.any()` auf die Indexmaske wäre ein Geräte-Sync pro Token.
+
+**Bitgleichheit ist verifiziert**, nicht angenommen: `scratchpad/ple_split_unit.py`
+prüft Laden und Lookup gegen den ungeteilten Pfad für Host-Anteile von 0 % bis
+100 % und beide TP-Ränge — 44 Prüfungen, alle grün. Der Offload kann die Numerik
+also nicht verändern; das war später wichtig.
+
+## Die Kaskade rechnet selbst (Default `auto`)
+
+`VLLM_QWEN4EXP_PLE_HOST_GIB` ist standardmäßig `auto`: die Tabelle bleibt im
+VRAM, und ausgelagert wird **nur, was der Zielkontext beansprucht**. Der
+KV-Bedarf kommt aus der Engine-eigenen SSOT — Summe über
+`spec.max_memory_usage_bytes(vllm_config)` aller KV-Layer dieser Stufe, dieselben
+Specs, die der Allokator später konsultiert. Der freie Speicher wird gemessen
+(`mem_get_info`), nicht geschätzt.
+
+Beispiel aus dem Lauf (Split 20/28, MML 262144):
+
+```
+PLE auto placement: 42.54 GiB usable at gmu=0.90, 16.65 GiB already allocated,
+1.37 GiB needed for 262144 tokens of context, 2.84 GiB held in reserve
+-> 2.16 GiB of the table go to host memory
+```
+
+**Der volle Kontext kostet auf Stufe 0 nur 1,37 GiB.** Kontext war nie der
+Engpass dieses Modells.
+
+Einziger nicht messbarer Term ist die Aktivierungsspitze, die die Engine erst
+nach dem Platzieren profiliert. Sie steckt in `VLLM_QWEN4EXP_PLE_VRAM_RESERVE`
+(Default 6 % der Karte). Gemessen lag die Lücke zwischen (Gewichte + KV) und dem
+Utilization-Budget bei **1,41 / 2,24 / 2,26 / 2,28 GiB** einer 48-GiB-Karte, der
+Default lässt also etwas Luft. Zu viel Reserve kostet Host-RAM, zu wenig lässt
+die Engine den Kontext mit klarer Meldung ablehnen.
+
+## WICHTIGSTER BEFUND: die schwächste PP-Stufe deckelt alle
+
+`v1/core/kv_cache_utils.py`, im Klartext:
+
+```python
+# Change the num_blocks of each rank to the smallest among all ranks.
+min_num_blocks = min(kv_cache_config.num_blocks for kv_cache_config in kv_cache_configs)
+```
+
+Deshalb ist der PLE-Offload **allein wirkungslos**: er entlastet Stufe 0 (die
+RTX-Karten tragen die Tabelle), aber das Minimum sitzt auf Stufe 1 (V100, ohne
+PLE). Belegt durch zwei Läufe, die sich nur im Offload unterscheiden:
+
+| | ohne Offload | mit 2 GiB Host |
+|---|---:|---:|
+| Gewichte Stufe 0 | 38,65 GiB | 36,65 GiB (exakt −2,00) |
+| KV-Speicher Stufe 0 | 3,14 GiB | 4,31 GiB (+1,17) |
+| **KV-Kapazität** | **489.028 Tok** | **489.028 Tok** |
+
+Der Speicher wird frei — und verpufft. **Der Ertrag entsteht erst, wenn der
+freigeräumte Platz in zusätzliche Layer umgesetzt wird**, die Stufe 1 entlasten.
+Offload und Layer-Split greifen nur zusammen.
+
+Nebenwirkung als Diagnosehilfe: sobald beide Stufen dieselbe Blockzahl melden,
+gibt der Log die Größe nur noch **einmal** aus statt zweimal — die Stufen sind
+dann ausbalanciert.
+
+## Messreihe (MML 262144, k=0, GMU 0,90)
+
+**Lesehinweis zur Spalte „Pool":** das ist **keine** Kontextlänge. vLLM meldet
+`num_tokens = max_concurrency * max_model_len` — die Gesamtzahl der Token-Slots
+im KV-Pool. Die einzelne Sequenz bleibt bei **262.144** (`max_position_embeddings`).
+Die Spalte sagt also, wie viele Anfragen **voller Länge** gleichzeitig Platz
+haben. Der volle Kontext lief bereits vor jeder Änderung; gewonnen wurde
+**Parallelität, nicht Länge**.
+
+| Split | PLE-Host | Gewichte St. 0 | KV-Speicher St. 0 | Pool (Slots) | Concurrency | Durchsatz | Kohärenz |
+|---|---:|---:|---:|---:|---:|---:|---|
+| 18/30 | 0 | 38,65 GiB | 3,14 GiB | 489.028 | 1,87x | — | — |
+| 18/30 | 2 GiB | 36,65 GiB | 4,31 GiB | 489.028 | 1,87x | 31,1 | 8/8 |
+| **20/28** | **auto (2,16)** | 38,00 GiB | 3,76 GiB | **729.377** | **2,78x** | **31,5** | **8/8** |
+| 20/28 | 4 GiB | 36,16 GiB | 4,78 GiB | 774.095 | 2,95x | 31,6 | 8/8 |
+| 22/26 | 6 GiB | 35,65 GiB | 5,27 GiB | 982.268 | 3,75x | 31,7 | **7/8** |
+
+Referenz zum Vergleich (MML 4096, Split 18/30, kein Offload): 217.770 / 261.324
+Slots, 31,4 tok/s, Kohärenz 8/8 — vom Regressionslauf dieser Sitzung **exakt**
+reproduziert, bevor irgendetwas verändert wurde.
+
+**Der Durchsatz bleibt über alle Varianten bei 31,1–31,7 tok/s.** Die Kaskade
+kostet kein Tempo, der verschobene Layer-Split auch nicht.
+
+## Split 22/26 ist nicht einsetzbar — und der Offload ist unschuldig
+
+Bei Split 22/26 antwortet das Modell auf den `count`-Prompt im Chat-Pfad mit
+einem einzelnen leeren Token: erstes Token `<|im_end|>` mit logprob **−0,059**
+(94 %), zweiter Kandidat −3,0. Das ist kein numerischer Grenzfall.
+
+Isoliert über die gespeicherten Kohärenz-JSONs:
+
+| Lauf | Split | PLE-Host | `count` |
+|---|---|---:|---|
+| Referenz 27.08. | 18/30 | 0 | `10` |
+| Regressionslauf | 18/30 | 0 | `10` |
+| voller Kontext | 18/30 | 2 GiB | `10` |
+| Automatik | 20/28 | 2,16 GiB | `10` |
+| manuell | 20/28 | 4 GiB | `10` |
+| **ausgereizt** | **22/26** | 6 GiB | **leer** |
+
+**Es ist der Layer-Split, nicht der Offload** — der liefert bitgleiche Bytes
+(Unit-Test) und ist bei 18/30 und 20/28 unauffällig. Split 22/26 schiebt die
+Layer 18–21 auf die Turing-Seite, wo der upstream-GDN-Ersatzpfad und die
+halbierte QSA-Kachel greifen. Der zuerst verdächtigte Layer 19 (fünfter
+full-attention-Layer, `full_attention_interval = 4`) ist entlastet: er wandert
+bei Split 20/28 ebenfalls und stört dort nicht. **Verbleibender Verdacht: die
+GDN-Layer 20/21 auf sm75.** Eigener Befund über den sm75-Pfad, unabhängig von
+dieser Arbeit.
+
+## Host-RAM ist die harte Untergrenze der Kaskade
+
+Eine dritte Ebene „notfalls Platte" gibt es **nicht**, und sie lässt sich nicht
+in dieselbe Abstraktion einhängen: der zero-copy-Gather braucht **page-locked**
+Speicher. Normaler oder mmap-Speicher ist für die GPU nicht adressierbar; eine
+Plattenebene bräuchte einen CPU-seitigen Gather mit Transfer, also einen
+Host-Umweg pro Schritt.
+
+Empirische Obergrenze auf dieser Maschine: **12 GiB gepinnt** (6 GiB × 2 Ränge)
+ließ das System auf 2 GB Restspeicher laufen. 8 GiB gepinnt sind unauffällig.
+Reicht der Host nicht, bricht `_check_host_memory` mit benannter Meldung ab
+statt in den OOM-Killer zu laufen — die Prüfung ist bei TP absichtlich
+optimistisch (jeder Rang pinnt gleichzeitig seinen Anteil).
+
+## Betriebsempfehlung
+
+```bash
+MML=262144 PP_PARTITION=20,28 bash scripts/serve-qwen38-flash-next.sh "$SNAP"
+# PLE_HOST_GIB bleibt auf auto
+```
+
+Voller nativer Kontext (262.144 je Sequenz), 2,78 gleichzeitige Anfragen dieser
+Länge, 31,5 tok/s, Kohärenz 8/8.
+
+## ACHTUNG: der Code lebt weiter nur in der venv
+
+Beide geänderten Dateien gehören zum `models/qwen4_exp/`-Baum, für den die
+flache `deploy`-Liste in `scripts/bootstrap-sm70.sh` **keinen Mechanismus hat**
+(offener Punkt der Vorsitzung, unverändert). Gesichert unter
+`backups/2026-08-28-ple-vram-cascade/` — `vorher/`, `geaendert/`, `ergebnisse/`
+sowie Unit-Test und Mikro-Benchmark. Ein Re-Bootstrap löscht die Arbeit.
+
+## MTP mit vollem Kontext: die Kaskade greift am falschen Ende
+
+Erwartung war, dass die Kaskade gerade bei MTP hilft, wo der Speicher knapp ist.
+**Sie hilft dort nicht.** Zwei Läufe, Split 20/28, `--enforce-eager`, MML 262144:
+
+| GMU | Ergebnis |
+|---|---|
+| 0,90 | `ValueError: No available memory for the cache blocks` |
+| 0,95 | `2.14 GiB KV cache is needed … available … 1.45 GiB`, geschätzte max. Länge 177.760 |
+
+Stufe 0 hatte dabei 3,90 GiB frei, und die Automatik lagerte korrekt **nichts**
+aus — ihr lokaler Bedarf war gedeckt. **Der Engpass liegt auf Stufe 1**, wo keine
+PLE liegt und stattdessen Drafter-Gewichte und Draft-Blöcke dazukommen. Ein
+PLE-Offload kann dort nichts freimachen.
+
+Es fehlten nur **0,7 GiB** — weniger als ein Layer (0,823 GiB je Rang). Die
+naheliegenden Hebel sind daher ein weiter verschobener Split (Splits ≥ 22 sind
+wegen des Kohärenzbefunds gesperrt) oder die vertauschte Stufenzuordnung.
+
+**Zur Einordnung:** der MTP-Stand der Vorsitzungen lief mit MML **4096**. Der
+Test hier verlangt MTP *und* vollen Kontext gleichzeitig; das ist die deutlich
+härtere Anforderung, die Läufe sind also nicht direkt vergleichbar.
+
+## Die Stufen zu vertauschen scheitert an einem Gate, nicht an der Hardware
+
+Naheliegend wäre, die PLE auf die V100 zu legen und die Layer samt KV-Cache auf
+die 48-GB-Karten — dann läge der Engpass dort, wo Platz ist. Überschlagen (6
+Layer auf der V100-Stufe): 6,8 GiB gepinnt, und die RTX-Stufe käme auf **8,63 GiB
+KV je Karte** statt der 1,45 GiB, an denen MTP scheitert.
+
+Das braucht keine Codeänderung, nur `CUDA_VISIBLE_DEVICES=1,4,0,2`. **Der Boot
+stirbt aber sofort:**
+
+```
+ValueError: The quantization method modelopt_fp4 is not supported for the
+current GPU. Minimum capability: 75. Current capability: 70.
+```
+
+`VllmConfig._get_quantization_config` (`config/vllm.py:646`) ruft
+`current_platform.get_device_capability()` **ohne device_id**, fragt also
+`device_id=0` — die erste sichtbare Karte — und nimmt sie stellvertretend für das
+ganze System. Steht die V100 vorn, fällt der Boot durch.
+
+**Das Gate prüft die falsche Sache:** im laufenden Betrieb rechnen die beiden
+V100 der Stufe 1 heute schon NVFP4-Layer. Es ist bisher nur nie aufgefallen, weil
+die RTX per Konvention vorn steht. Ein Vertausch-Experiment setzt voraus, dass
+die Prüfung über alle sichtbaren Geräte statt über Gerät 0 geht — ein Eingriff in
+`config/vllm.py`, die als `vllm_config.py` in `fork_patches/` liegt.
+
+**Offen und unbewertet bleiben damit die beiden Gegenargumente**, die gegen den
+Vertausch sprechen: die V100 lesen mit 900 GB/s gegen 672 GB/s der RTX (beim
+Decode zählt genau das, und vertauscht lägen ~42 von 48 Layern auf den
+langsameren Karten), und es lägen ~42 statt 20 Layer auf dem sm75-Pfad, dessen
+Qualität bei Split 22/26 gerade fragwürdig geworden ist.
+
+## Der Vertausch läuft — und widerlegt die Bandbreiten-Empfehlung
+
+Das Gate war ein vergessener Wert, keine Hardware-Grenze. `ModelOptNvFp4Config.
+get_min_capability()` gab hart `75` zurück, während die Geschwister-Configs
+(`ModelOptFp8Config`, Z. 419) längst `_SM70_MIN_CAP if _SM70_MODELOPT else …`
+liefern. NVFP4 wurde beim Volta-Umbau schlicht ausgelassen; es fiel nie auf, weil
+`VllmConfig._get_quantization_config` **Gerät 0** abfragt und die Turing-Karte
+konventionell vorn steht. **Gefixt in `modelopt.py` — und in `fork_patches/`
+mitgezogen**, sonst hätte der nächste Bootstrap ihn entfernt.
+
+Damit ist `CUDA_VISIBLE_DEVICES=1,4,0,2` bootbar: die V100 werden Stufe 0 und
+tragen die PLE, die RTX werden Stufe 1 und tragen den Großteil der Layer.
+
+**Gemessen (MML 262144, k=0, Split 6/42, Automatik):**
+
+| | Standard (RTX trägt PLE, Split 20/28) | Vertauscht (V100 trägt PLE, Split 6/42) |
+|---|---:|---:|
+| Durchsatz | 31,5 tok/s | **34,0 tok/s** |
+| Kohärenz | 8/8 | **8/8** |
+| Gewichte Stufe 0 | 38,00 GiB | 25,87 GiB |
+| PLE-Auslagerung | 2,16 GiB/Rang | 3,76 GiB/Rang |
+
+**Der Vertausch ist 8 % schneller, nicht langsamer.** Die Empfehlung weiter oben
+in diesem Dokument — „V100 (HBM2) liest mit 900 GB/s, RTX 8000 (GDDR6) mit
+672 GB/s … die V100 sind die *schnelleren* Karten und sollen die echten
+Rechen-Layer tragen" — **trifft für dieses Modell nicht zu.** Limitierend ist
+nicht die Bandbreite, sondern der Kernelpfad: der generische Marlin läuft auf
+Turing über die MMA-Tensor-Cores, auf Volta nicht. Mehr Layer auf den RTX heißt
+mehr Layer auf dem besseren Pfad. Das ist die Kehrseite desselben Befunds, der
+als Punkt 1 offen steht (skinny-NVFP4-Pfad inaktiv).
+
+**Nebenbefund:** 42 Layer auf dem sm75-GDN-Ersatzpfad sind sauber kohärent. Der
+Split-22/26-Ausfall liegt also **nicht** an der Zahl der Layer auf Turing — der
+Verdacht muss anders gefasst werden.
+
+**34,0 tok/s liegen erstmals über llama.cpp** (33,0 mit wechselnden Prompts).
+
+### MTP auf der vertauschten Anordnung: Speicherblocker weg, Graph-Bug bleibt
+
+`CUDA_VISIBLE_DEVICES=1,4,0,2`, Split 6/42, k=4, **GMU 0,90**, MML 262144,
+`--compilation-config {"cudagraph_capture_sizes":[1,2,4,8]}`, **ohne**
+`--enforce-eager`:
+
+- **Der Boot gelingt.** 356.622 / 423.220 Slots, 1,36x Concurrency bei vollem
+  Kontext. Zum Vergleich: auf der Standardanordnung scheiterte derselbe Versuch
+  bei GMU 0,90 **und** 0,95 an `No available memory for the cache blocks`. Das
+  „GMU auf 0,97"-Erfordernis der Vorsitzungen ist damit erledigt.
+- Die Automatik lagert hier 3,79 GiB/Rang aus; der Kontextbedarf der V100-Stufe
+  beträgt nur 0,31 GiB (sie trägt bloß die Layer 0–5).
+- **Der erste Prompt antwortet korrekt** (`Paris`), der zweite reißt die Engine ab:
+  `TimeoutError: RPC call to sample_tokens timed out` → `EngineDeadError`.
+
+Das ist ein **Hänger, kein NaN** — dasselbe Muster, das die Abend-Sitzung für
+mehrere Capture-Größen und für PIECEWISE beschreibt. **Der MTP-Blocker war nie
+ein Speicherproblem**, er sitzt im Graph-Capture. Die Speicherarbeit hat eine
+Voraussetzung geschaffen, mehr nicht.
+
+Aufräumen nach dem Absturz: die vier Worker halten VRAM und reagieren nicht auf
+`SIGTERM`; `kill -9` über die PIDs aus
+`nvidia-smi --query-compute-apps=pid` (niemals `pkill -f`).
+
+## Punkt 1 ist geklärt — die Frage war falsch gestellt
+
+„Warum wählt der Qwen4Exp-Baum den skinny-NVFP4-Kernel nicht?" unterstellte einen
+Defekt. Es ist keiner. Der Checkpoint quantisiert **ausschliesslich die
+MoE-Experten**:
+
+| quantisiert (trägt `weight_scale`) | Anzahl |
+|---|---:|
+| `layers.N.mlp.experts.N.{gate,up,down}_proj` | 3 × 24.576 |
+| `layers.N.ple.ple_embedding.ngram_embedding` | 1 |
+
+`exclude_modules` deckt alles andere ab: `*.self_attn.*`, `*.linear_attn.*`,
+`*.mlp.gate*`, `*.mlp.shared_expert.*`, `*hyper_connection*`, `*.ple.*`,
+`lm_head`, `embed_tokens`. **Es gibt keine quantisierten Linear-Layer**, also
+kann der skinny-*Linear*-Kernel per Konstruktion nie laufen. Die „0 statt 30
+`Skinny route map`-Zeilen" sind eine Struktureigenschaft, kein Defekt.
+
+Das 27B kommt über `quant_algo = MIXED_PRECISION` mit **dense** MLP-Layern
+(`mlp.gate_proj/up_proj/down_proj` als NVFP4) auf den Linear-Pfad; Flash-Next
+deklariert global `NVFP4` und hat nur MoE. Gegenprobe: `VLLM_NVFP4_GEMM_BACKEND=marlin`
+erzwingen ändert **nichts** (34,0 tok/s vorher wie nachher, weiter 0 Route-Zeilen) —
+es gibt schlicht keine Linear-Layer für den Kernel.
+
+### Der eigentliche Hebel ist der MoE-Pfad — und er ist zweifach blockiert
+
+**(1) Der Backend-Name war unerreichbar.** `fused_moe/oracle/nvfp4.py` mappt
+`"sm70_skinny"` auf `NvFp4MoeBackend.SM70_SKINNY`, aber das `MoEBackend`-Literal
+in `config/kernel.py` listete ihn nicht — `--moe-backend sm70_skinny` wurde von
+argparse abgewiesen. Auto-Select erreicht ihn ebenfalls nie: in
+`AVAILABLE_BACKENDS` steht `MARLIN` **vor** `SM70_SKINNY` und ist hier
+unterstützt, die Suche endet einen Eintrag zu früh.
+**Gefixt**: Literal ergänzt, `fork_patches/kernel_config.py` angelegt und
+`deploy kernel_config.py vllm/config/kernel.py` in `bootstrap-sm70.sh` eingetragen.
+Danach meldet der Log `Using 'SM70_SKINNY' NvFp4 MoE backend` und
+`Using Nvfp4SkinnySm70Experts`.
+
+**(2) Die Expertengeometrie passt nicht.** `moe_intermediate_size = 640`:
+
+| Konfiguration | K (down_proj) | Kernel-Check | Ergebnis |
+|---|---:|---|---|
+| TP=2 | 320 | `k % 128 == 0` | `K must be a multiple of 128` |
+| TP=1 | 640 | `k % 256 == 0` (Z. 1089) | `K must be a multiple of 256` |
+
+640 = 5 × 128, also durch 128 teilbar, durch 256 nicht.
+**Wichtig: 128er-Kernel existieren** (`kernels/skinny_kernels.cu`, Z. 732, 764,
+2069) und würden K=640 akzeptieren — nur der Dispatch wählt den 256er-Pfad
+(Z. 1089). Der skinny-MoE ist für dieses Modell also **nicht prinzipiell
+ausgeschlossen, sondern eine Frage der Kernel-Auswahl**. Das ist der konkrete
+Einstiegspunkt; es bedeutet CUDA-Arbeit mit Neubau, kein Nebenbei-Fix.
+
+### TP=1 ist jetzt möglich — die Kaskade hebt das Ausschlusskriterium auf
+
+Das Dokument nennt weiter oben „Layer 1 passt auf keine einzelne Karte ⇒ TP=1/PP=5
+ist unmöglich, es braucht TP ≥ 2". Diese Bedingung galt **nur wegen der
+PLE-Tabelle**. Mit der Kaskade trägt eine einzelne RTX sie:
+
+```
+PLE table placement: 218622473 of 320001536 rows on device (32.58 GiB),
+101379063 rows in host memory (15.11 GiB)
+```
+
+TP=1/PP=4 lädt damit vollständig durch. Es scheitert erst an der KV-Struktur:
+
+```
+ValueError: CSA+linear sharded mamba cache owners must use one spec.
+```
+
+Derselbe Fehler tritt bei TP=2 mit Split 3/45 auf. Gemeinsame Ursache: **eine
+Stufe braucht mindestens einen Full-Attention-Layer.** `layer_types` beginnt mit
+drei `linear_attention`, der erste `full_attention` ist **Layer 3**; eine Stufe 0
+mit weniger als vier Layern hält nur GDN- und PLE-ShortConv-Zustände, und die
+CSA+linear-Allokation kommt mit zwei Mamba-Typen ohne Attention-Owner nicht
+zurecht. Split 6/42 (TP=2) läuft, weil Layer 3 enthalten ist.
+
+### TP=1 ist gemessen — und deutlich schlechter
+
+Mit Split 4/15/15/14 (Stufe 0 enthält Layer 3) bootet TP=1/PP=4 vollständig:
+554.769 Slots, 2,12x, voller Kontext. Aber:
+
+| Topologie | Durchsatz | Kohärenz |
+|---|---:|---|
+| TP=2 / PP=2, vertauscht, Split 6/42 | **34,0 tok/s** | 8/8 |
+| TP=1 / PP=4, Split 4/15/15/14 | **24,9 tok/s** | 7/8 (`count` → „user") |
+
+**−27 %.** Damit ist die Erwartung dieses Dokuments widerlegt, TP sei „der
+eigentliche Kostenfaktor … und die lohnendste Optimierungsstelle". Die Rechnung
+„96 All-Reduces × 30–50 µs = 3–5 ms von 32 ms" zählt nur die Kosten. Die
+Gegenseite fehlt: **TP=2 halbiert die Rechenzeit jedes Layers**, weil zwei Karten
+daran arbeiten. Dieser Gewinn ist größer als der Kommunikationsaufwand — auch bei
+gesperrtem P2P. TP ist hier kein Ballast, sondern der Grund für das Tempo.
+
+Der Weg bleibt trotzdem dokumentiert, weil er eine Voraussetzung geklärt hat: die
+Kaskade macht TP=1 überhaupt erst bootbar. Für den Durchsatz lohnt er nicht.
+
+## Nächste Schritte
+
+1. **Der Kernelpfad bleibt Punkt 1** (unverändert aus der Vorsitzung): warum
+   wählt der Qwen4Exp-Baum den skinny-NVFP4-Kernel nicht? 0 statt 30–32
+   `Skinny route map`-Zeilen. Daran hat diese Sitzung nichts geändert.
+2. **GDN-Layer auf sm75 prüfen** — Split 22/26 als reproduzierbarer Einstieg in
+   ein Qualitätsproblem des upstream-Ersatzpfads.
+3. **Capability-Gate über alle Geräte** statt über Gerät 0, falls die vertauschte
+   Stufenzuordnung gemessen werden soll.
+4. **Bootstrap-Integration des `models/qwen4_exp/`-Baums**, vor dem nächsten
+   Re-Bootstrap.

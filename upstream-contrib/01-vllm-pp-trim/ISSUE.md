@@ -1,12 +1,10 @@
 # [Bug]: PP + async scheduling + spec decode: output_token_ids trim only runs on the last PP rank, desynchronizing the ranks until NCCL deadlocks
 
-## Target
-vllm-project/vllm — verified present in v0.27.1; MUST be re-checked against
-current main before posting.
-
 ## Summary
 
-In `vllm/v1/worker/gpu_model_runner.py`, `_update_states()` contains:
+Verified present in current `main` (checked 2026-08-28: the `elif` sits at
+line 1425 of `vllm/v1/worker/gpu_model_runner.py`) and in v0.27.1, where we
+hit and debugged it. `_update_states()` contains:
 
 ```python
 if not is_last_rank:

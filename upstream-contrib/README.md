@@ -1,7 +1,13 @@
 # Upstream-Beiträge — Entwürfe (Stand 2026-08-28)
 
-Vorbereitet zur Freigabe durch Peuqui. NICHTS hiervon ist gepostet.
-Alle externen Texte auf Englisch. Reihenfolge = empfohlene Veröffentlichung.
+ALLE VERÖFFENTLICHT am 2026-08-28 (Freigabe Peuqui):
+- PR:  https://github.com/dnv2003/v100-skinny/pull/7
+- vLLM: https://github.com/vllm-project/vllm/issues/54260 (Bug in main
+  bestätigt, Zeile 1425, Stand 28.08.)
+- 1Cat: https://github.com/1CatAI/1Cat-vLLM/issues/412 (Device-0),
+  /413 (E5×QSA), /414 (MTP-Profiling PP)
+- HF:  https://huggingface.co/RadixArk/Qwen3.8-Flash-Next-NVFP4/discussions/6
+- Werkzeug-Repo: https://github.com/Peuqui/mtp-quant-transplant
 
 | # | Ziel | Art | Inhalt | Voraussetzung |
 |---|------|-----|--------|---------------|

@@ -69,4 +69,7 @@ acceptance, never correctness — and acceptance actually went up).
 Would you consider publishing an NVFP4 (or FP8) MTP block alongside the
 checkpoint, or including it in a future revision? It is ~1.5 GiB and
 turns MTP from a net loss into a 1.6x gain for everyone below Hopper.
-Happy to share exact scripts/measurements.
+
+Check and transplant tooling (stdlib-only, the check needs no model
+download), with all measurements:
+https://github.com/Peuqui/mtp-quant-transplant

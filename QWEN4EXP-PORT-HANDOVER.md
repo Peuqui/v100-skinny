@@ -2506,3 +2506,82 @@ Messung, und sie war mit einer Datei zu beheben.
 Offen und weiterhin lohnend, aber nicht mehr dringend: IndexShare
 (`set_skip_topk`/`compact_topk_indices` sind toter Code im PR), das die
 QSA-Top-k-Auswahl einmal je MTP-Iteration statt k-mal berechnen würde.
+
+## k-Sweep und Capture-Feintuning: k=4 mit [1,2,4,5,8] ist der Betriebspunkt
+
+Alle Läufe am MTPQ-Modell, identischer Betriebspunkt, 300 Token, n=2:
+
+| Konfiguration | vorhersagbar | schwer | Akzeptanz | Länge |
+|---|---:|---:|---:|---:|
+| k=3, capture [1,2,4,8] | 42,8 | 37,3 | 33,7 % | 2,01 |
+| k=3, capture [4,8] | 43,2 | 37,6 | 34,8 % | 2,04 |
+| k=4, capture [1,2,4,8] | 67,2 | 49,2 | 73,1 % | 3,92 |
+| **k=4, capture [1,2,4,5,8]** | **68,2** | **51,9** | 69,8 % | 3,79 |
+| k=4, capture [5,10] | 31,1 | 39,5 | 33,5 % | 2,34 |
+| k=9, capture [10,20] | (54,4)* | 13,3 | **0,0 %** | 1,00 |
+
+*k=9 „vorhersagbar" ist Prefix-Cache, keine Spekulation — 0 von 1080 Drafts
+akzeptiert.
+
+**Erkenntnisse:**
+1. **Das Referenz-Schema `[k+1, 2(k+1)]` der 27B ist für dieses Modell
+   FALSCH.** Es legt Größe 10 in den kaputten Bereich (>8) und drückt die
+   Akzeptanz von 73 auf 33 %. Der Capture-Größen-Befund der Abend-Sitzung
+   vom 27.08. (jede Größe >8 → Hänger oder Degradation) gilt unverändert —
+   mit quantisiertem Draftkopf zeigt er sich als stiller Qualitätsverlust
+   statt als Absturz.
+2. **Größe 5 (= Verifier-Batch k+1) gehört in die Liste:** +5 % beim
+   schweren Prompt (49,2 → 51,9), weil der Verifier sonst ungecaptured läuft.
+3. **k=9 ist doppelt tot:** Es erzwingt Capture-Vielfache von 10 (im
+   kaputten Bereich) UND die Akzeptanz kollabiert vollständig. k=5–8 bleiben
+   durch die QSA-Ring-Blockgrößen-Kopplung gesperrt (Kapazität 12 → Block 48).
+   k=3 verliert ein Drittel. **k=4 ist das Optimum, und es ist das einzige
+   sinnvolle k.**
+
+**Betriebsempfehlung Stand 28.08. abends:**
+`K=4`, `--compilation-config {"cudagraph_capture_sizes":[1,2,4,5,8]}`,
+`VLLM_SM70_E5_CACHE=0`, Modell MTPQ. Ergebnis: **51,9 / 68,2 tok/s**
+(schwer / vorhersagbar) gegen 32,2 ohne Spekulation.
+
+## IndexShare vermessen: auf kurzen Kontexten nur 1–4 % — zurückgestellt
+
+Frage: Wie viel der Draft-Zeit entfällt auf den QSA-Indexer, den IndexShare
+(SGLang) von k Aufrufen auf einen je MTP-Iteration reduzieren würde?
+
+**Messung** (CUDA-Events um den Indexer-Aufruf in `_run_qsa`, getrennt nach
+MTP-Draftkopf und Hauptmodell-Layern; eager, MML 4096, k=4, Sequenzen
+<500 Token — Graph-Replay enthält die Events nicht, deshalb eager):
+
+| Rang | Indexer je Aufruf (mtp) | je Aufruf (main) |
+|---|---:|---:|
+| PP1_TP0 | 0,18–0,38 ms | 0,16–0,35 ms |
+| PP1_TP1 | 0,76–0,77 ms | 0,89–0,91 ms |
+
+Die Rang-Diskrepanz ist mutmaßlich mitgemessene Sync-Wartezeit (Events
+messen alles zwischen den Markern auf dem Stream); die echte Rechenzeit
+liegt beim schnelleren Rang. Der Drafter hat einen Indexer-Layer, k=4
+Schritte ⇒ **0,8–3,1 ms Indexer je MTP-Iteration**. IndexShare spart drei
+Viertel davon: 0,6–2,3 ms auf eine ~64-ms-Iteration (Graph-Betrieb) =
+**1–3,6 %**, also bestenfalls 51,9 → ~53,8 tok/s, realistisch weniger.
+
+**Einordnung:** Der Indexer skaliert mit der Kontextlänge (Top-k über den
+gesamten Kontext). Gemessen wurde bei Sequenzen unter 500 Token — bei
+50k–250k Token wächst der Anteil erheblich; genau dafür hat SGLang
+IndexShare gebaut. **Entscheidung: zurückgestellt.** Lohnt erst, wenn
+Lang-Kontext-Betrieb real ansteht; dann `skip_topk` im Triton-Indexer
+implementieren + Proposer-Verdrahtung (`set_skip_topk`/
+`compact_topk_indices` liegen als tote Haken im PR bereit).
+
+### Betriebsgrenzen, beim Messen kartiert
+
+- `--compilation-config {"cudagraph_mode":"NONE"}` läuft in denselben
+  PP-Deadlock wie PIECEWISE (shm_broadcast-Spin, 0 % Util) — der gesunde
+  „NONE"-Befund der Abend-Sitzung kam über einen anderen Mechanismus.
+- Eager auf Split 24/24 verträgt kein GMU 0,97: `Triton Error [CUDA]: out
+  of memory` zur Laufzeit. GMU 0,90 + MML 4096 läuft.
+- CUDA-Timing-Events innerhalb von Graph-Capture sind nicht auslesbar —
+  Instrumentierung braucht eager UND einen `is_current_stream_capturing`-
+  Guard.
+
+Diagnose-Patch (qsa.py) nach der Messung zurückgenommen, venv byte-identisch
+zum Backup `backups/2026-08-28-mtp-quant-indexshare/`.

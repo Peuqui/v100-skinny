@@ -4,19 +4,29 @@ Stand: 2026-08-27 · Vorgeschichte: [DEEPSEEK-VLLM-HANDOVER.md](DEEPSEEK-VLLM-HA
 (DeepSeek-Schnitt, Begründung für den Schwenk) ·
 Referenzkonfiguration und 85-tok/s-Beleg: [MERGE-PROJECT-HANDOVER.md](MERGE-PROJECT-HANDOVER.md)
 
-> ## ⚠️ ZUERST LESEN — Abend-Sitzung 27.08. hat mehrere Aussagen widerlegt
+> ## ✅ ZUERST LESEN — MTP ist GELÖST (28.08. abends)
 >
-> Der Abschnitt „Sitzung 2026-08-27 (Abend)" ganz unten ist der aktuelle Stand.
-> Vier Dinge, die weiter oben im Dokument **falsch oder überholt** stehen:
+> **Der MTP-Block des Checkpoints war unquantisiert (4,86 GiB BF16) und las
+> damit fast so viel wie das gesamte 125B-Modell. Ersetzt durch eine
+> NVFP4-Fassung (1,49 GiB) — fertig.**
 >
-> 1. **`VLLM_SM70_E5_CACHE=0` ist wirkungslos**, nicht der dokumentierte
->    Betriebsparameter. Läufe mit `=0` und `=1` sind byte-gleich.
-> 2. **Das Schadensbild ist ein anderes**: nicht „Prefill korrekt, NaN im
->    Spekulationsschritt", sondern **Prefill zerstört** — es entsteht nie ein
->    zweites Token.
-> 3. **MTP ist derzeit langsamer als kein MTP** (14,4 gegen 31,4 tok/s).
-> 4. **Der eigentliche Befund liegt vor MTP**: Qwen4Exp läuft komplett am
->    skinny-NVFP4-Kernelpfad des Forks vorbei. Das ist das offene Arbeitspaket.
+> | | schwer | vorhersagbar |
+> |---|---:|---:|
+> | k=0 | 32,2 | — |
+> | k=4, BF16-Block (vorher) | 14,0 | 19,4 |
+> | **k=4, NVFP4-Block (jetzt)** | **49,2** | **67,2** |
+>
+> Akzeptanz 73,1 %, Länge 3,92, Kohärenz einwandfrei, null Fehler.
+> Modell: `/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ`
+> (Symlinks auf den RadixArk-Bestand + 1,49 GiB aus provsalt, 35 MB echt).
+>
+> **Pflicht-Betriebsparameter: `VLLM_SM70_E5_CACHE=0`, vor dem Skriptaufruf
+> gesetzt** (Modul-Konstante) — sonst crasht `_e5_apply_ints` am QSA-Ring.
+>
+> Details im letzten Abschnitt („Abend II"), die Diagnose davor
+> („Abend" / „Nachmittag"). Verworfene Thesen, nicht erneut verfolgen:
+> Graph-Capture, XQA-Verifier, „Drafter produziert Müll", fehlendes
+> `--async-scheduling`, SM70-Baseline, Speichermangel.
 
 ## Auftrag
 
@@ -1811,6 +1821,110 @@ gesperrtem P2P. TP ist hier kein Ballast, sondern der Grund für das Tempo.
 Der Weg bleibt trotzdem dokumentiert, weil er eine Voraussetzung geklärt hat: die
 Kaskade macht TP=1 überhaupt erst bootbar. Für den Durchsatz lohnt er nicht.
 
+### Der simt-Umweg ist kein Workaround
+
+Versucht: in `_expert_gemm` (`nvfp4_skinny_moe.py`) bei `K % 256 != 0` statt
+`gemm_wmma` gechunktes `gemm_simt` rufen — die Dispatch-Entscheidung liegt in
+Python, der Eingriff ist fünf Zeilen. Der K-Check fällt damit weg, der Boot
+kommt weiter und instanziiert die Experten, stirbt aber im Graph-Capture:
+
+```
+CUDA error: operation failed due to a previous error during capture
+```
+
+**Zurückgenommen** (venv wieder identisch zu `fork_patches/nvfp4_skinny_moe.py`):
+der Umweg ersetzt eine klare Fehlermeldung durch einen undurchsichtigen
+Capture-Abbruch. Der skinny-MoE braucht für dieses Modell eine **wmma-Variante
+mit KC=128** — echte Kernel-Arbeit mit Neubau, kein Python-Fix.
+
+Zu bedenken: bei TP=2 ist K=320, dann bräuchte es sogar KC=64. **Expert-Parallelism**
+(`--enable-expert-parallel`) wäre der Ausweg, der K bei 640 belässt, weil ganze
+Experten je Rang liegen statt geteilter — ungetestet, und für den skinny-MoE erst
+nach dem KC=128-Kernel relevant.
+
+### Expert-Parallelism: gemessen, kein Gewinn
+
+`--enable-expert-parallel` auf dem besten Betriebspunkt (vertauscht, Split 6/42,
+MML 262144, k=0): **31,9 tok/s gegen 34,0**, Kohärenz 8/8, KV 797.226 Slots
+(3,04x). **−6 %.** Ganze Experten je Rang statt geteilter kosten hier mehr an
+All-to-All, als sie an All-Reduce sparen. Für den skinny-MoE bliebe EP dennoch
+die Voraussetzung, weil es K bei 640 belässt — aber erst nach einem
+KC=128-wmma-Kernel.
+
+## Topologie-Messreihe (MML 262144, k=0, Einzelstrom)
+
+| Topologie | Durchsatz | Kohärenz |
+|---|---:|---|
+| TP=2/PP=2, Standard (RTX trägt PLE), Split 20/28 | 31,5 | 8/8 |
+| TP=2/PP=2, vertauscht, Split 6/42, **+EP** | 31,9 | 8/8 |
+| **TP=2/PP=2, vertauscht, Split 6/42** | **34,0** | **8/8** |
+| TP=1/PP=4, Split 4/15/15/14 | 24,9 | 7/8 |
+
+Ausgangslage der Vorsitzung: 31,4 tok/s. llama.cpp: 33,0.
+
+### Entwarnung: der Split-22/26-Ausfall ist ein Grenzfall, kein Defekt
+
+Nachgemessen mit gleicher Offload-Menge wie der gesunde Lauf (4 GiB, Split 22/26,
+MML 4096, Standardanordnung):
+
+| Messung | Wert |
+|---|---|
+| Prefill-Gesundheit (`health_probe.py`) | **−0,35** (kaputt wäre −12…−15) |
+| Kohärenz | 7/8 — nur `count` |
+| Durchsatz | 31,9 tok/s |
+| `count` über `/v1/chat/completions` | dreimal deterministisch leer |
+| derselbe Prompt über `/v1/completions` | korrekt |
+
+**Der Forward rechnet sauber.** Und der Ausfall hängt an genau dieser
+Formulierung:
+
+| Prompt | Antwort |
+|---|---|
+| „…word 'strawberry'? Reply with just the number." | leer |
+| „…does the word 'strawberry' have?" | normal |
+| „Count the letters in 'strawberry'…" | normal |
+| „…word **'blueberry'**? Reply with just the number." | `9` (korrekt) |
+
+Jede Variation funktioniert, auch die wortgleiche mit anderem Wort. Es ist eine
+Grenzfallentscheidung des Modells (denken vs. sofort EOS), die von der Rundung
+abhängt, und die Layer-Verteilung verschiebt sie. **Kein Vorbehalt gegen den
+sm75-Pfad und damit keiner gegen den empfohlenen Betriebspunkt** (42 Layer auf
+sm75, Kohärenz 8/8).
+
+Nebenbefund derselben Messreihe: Split 22/26 **ohne** Offload bootet gar nicht
+(`No available memory for the cache blocks`) — die 6 GiB des Ursprungslaufs waren
+keine Zutat, sondern Voraussetzung. Der Ausfall trat auch mit 4 GiB auf, die
+Kaskade ist damit endgültig entlastet.
+
+### MTP-Stand nach dieser Sitzung — zwei Verdachtsmomente korrigiert
+
+**(a) `build_for_cudagraph_capture` IST verdrahtet.** Die Vorsitzung nannte als
+Reparatur, die Metadaten-Builder in persistente Puffer zu legen, „upstream nutzt
+dafür `build_for_cudagraph_capture`, der Fork-Runner ruft nur `build()`". Das
+trifft nicht zu: `gpu_model_runner.py:6477` ruft es im `for_cudagraph_capture`-Zweig,
+und sowohl `gdn_attn_sm75.py:535` als auch `short_conv_attn.py:534` implementieren
+es. Dieser Ansatz ist damit erledigt, bevor er begonnen wurde.
+
+**(b) Das Fehlerbild passt nicht zu eingefrorenen Adressen.** Mit Capture-Größen
+`[1,2,4,8]` auf der vertauschten Anordnung antwortet der **erste** Prompt korrekt
+(`Paris`), erst der zweite reisst die Engine ab
+(`TimeoutError: RPC call to sample_tokens timed out` → `EngineDeadError`).
+Eingefrorene Capture-Adressen würden sofort falsch rechnen. Ein Zustandsproblem,
+das erst beim zweiten Request zuschlägt, passt eher auf das Patch-7-Muster des
+Merge-Projekts (asymmetrische Send/Recv-Zähler zwischen den PP-Stufen).
+
+**(c) Eager hilft auf der vertauschten Anordnung NICHT mehr.** Auf der
+Standardanordnung war `--enforce-eager` die kohärente Variante (8/8, 14,4 tok/s).
+Vertauscht hängt die Engine auch damit: `bench.py` läuft in den 180-s-Timeout,
+danach ist der Server tot. Die Spekulationsmetriken bleiben bei **3 Drafts,
+12 Draft-Token, 0 akzeptierten** stehen.
+
+**Konsequenz für die Priorisierung:** MTP ist ein eigenes Arbeitspaket, und sein
+Ertrag ist unsicher — die Vorsitzung mass Akzeptanzlänge 1,92 bei 23 % Annahme,
+und dort kostete der Drafter mehr, als er einbrachte. Der Kartentausch (+8 %) und
+MTP schliessen sich derzeit gegenseitig aus; wer MTP verfolgt, muss auf der
+Standardanordnung arbeiten.
+
 ## Nächste Schritte
 
 1. **Der Kernelpfad bleibt Punkt 1** (unverändert aus der Vorsitzung): warum
@@ -1822,3 +1936,573 @@ Kaskade macht TP=1 überhaupt erst bootbar. Für den Durchsatz lohnt er nicht.
    Stufenzuordnung gemessen werden soll.
 4. **Bootstrap-Integration des `models/qwen4_exp/`-Baums**, vor dem nächsten
    Re-Bootstrap.
+
+---
+
+# Sitzung 2026-08-28 (Nachmittag): MTP scheitert an zwei Defekten — keiner davon ist das Graph-Capture
+
+> Diese Sitzung hat die MTP-Diagnose neu aufgesetzt. Die bisherige Leitthese
+> (eingefrorene Capture-Adressen) ist nicht die Ursache; sie hatte sich in der
+> Vormittags-Sitzung bereits zweifach selbst entkräftet. Es sind **zwei
+> unabhängige Defekte**, beide unten belegt. Drei weitere Verdachtsmomente
+> wurden geprüft und ausgeschlossen — sie müssen nicht erneut untersucht werden.
+
+## Defekt 1: der Verifier läuft nicht über FLASH_ATTN_V100 — der XQA-Pfad ist unbeteiligt
+
+**Das ist der Grund, warum MTP hier nichts einbringt.** Ausgangsbeobachtung:
+„XQA path active" erscheint in **jedem** 27B-MTP-Lauf zweimal
+(`s4-2x2-k7.log`, `matrix-nvfp4-k7.log`) und in **keinem einzigen**
+Flash-Next-Lauf — auch nicht in `serve-flash-next-mtp-bench_k4.log`, dem Lauf
+mit den 14,4 tok/s, der **mit vollen CUDA-Graphen lief** (`enforce_eager=False`,
+`cudagraph_mode=FULL_AND_PIECEWISE`) und 23,9 % Akzeptanz erreichte. Eager
+scheidet als Erklärung damit aus.
+
+**Die Ursache ist struktureller Art.** `models/qwen4_exp/amd/qsa.py:296` setzt
+unbedingt, ohne Plattform- oder Capability-Zweig:
+
+```python
+self.attn_backend = Qwen4ExpQSAFlashAttentionBackend
+```
+
+Die full-attention-Layer von Qwen4Exp laufen also über ein **modelleigenes
+Backend** (`Qwen4ExpQSAFlashAttentionBackend(FlashAttentionBackend)`, Zeile 66)
+mit eigener Implementierung `Qwen4ExpQSAFlashAttentionImpl` — deren Docstring
+sagt es klar: „Run paged sparse GQA with the QSA Triton kernel"
+(`.ops.qsa.qsa_sparse_paged_attention`). Der gesamte `flash_attn_v100.py`-Pfad
+einschliesslich seines XQA-Verifiers ist an diesem Modell **nicht beteiligt**.
+Deshalb meldet auch kein Flash-Next-Lauf je „Using AttentionBackendEnum.
+FLASH_ATTN_V100 backend", während die 27B-Referenz es auf ihrer V100-Stufe tut.
+
+**Konsequenz für die Diagnose:** Fork-Bug (b) aus dem `MERGE-PROJECT-HANDOVER.md`
+(„ohne XQA rechnet der MTP-Verifier auf SM70 bei q>1 still falsch") beschreibt
+das Verhalten von FLASH_ATTN_V100 und ist hier **nicht anwendbar**. Die richtige
+Frage lautet stattdessen: **rechnet der QSA-Triton-Kernel beim Verify mehrerer
+Draft-Token (q>1) korrekt?** Bei k=0 ist das Modell kohärent 8/8, der Kernel ist
+bei q=1 also gesund; die Akzeptanzraten von 0 % bis 28 % legen nahe, dass er es
+bei q>1 nicht ist. Der Kernel kennt Spekulation grundsätzlich (`ops/qsa.py:1063`
+behandelt „speculative rows" explizit) — das ist der Einstiegspunkt.
+
+**Nebenbefund, für dieses Modell folgenlos, aber festhaltenswert:** Selbst wenn
+man Qwen4Exp auf FLASH_ATTN_V100 umbiegen wollte, ginge XQA nicht. Die
+Geometrie passt nicht — 24 Heads / 2 KV-Heads ergibt q_per_kv = 12, und die
+Grenze steht nicht im Python-Dispatch (`flash_attn_v100.py:4169`), sondern im
+vorkompilierten Kernel:
+
+```
+XQA decode supports q_per_kv in {4, 6, 8}, got
+staged XQA supports q_per_kv=6 only
+```
+
+Die 27B-Referenz hat 24/4 = 6 und passt. `flash_attn_v100` ist ein Fremdpaket
+und liegt nur als `.so` vor; eine Instanz für 12 müsste upstream entstehen.
+
+**Sofort umsetzbar und überfällig:** Das Boot-Skript hat kein Gate auf den
+tatsächlich gewählten Verifier-Pfad. Die Referenz `scripts/serve-qwen38-mini.sh:288`
+prüft ihren (XQA) und hätte jeden bisherigen Flash-Next-MTP-Lauf als nicht
+zitierbar abgewiesen. Für Qwen4Exp braucht es ein eigenes, auf den QSA-Pfad
+zugeschnittenes Gate.
+
+## Defekt 2: der PP-Spec-Stash bricht — der „Hänger" ist ein maskierter Crash
+
+Reproduktion auf der vertauschten Anordnung (`CUDA_VISIBLE_DEVICES=1,4,0,2`,
+Split 6/42, k=4, GMU 0,90, MML 262144, Capture `[1,2,4,8]`): der Server
+bootet, der erste Request läuft in den Timeout, und im Log stehen auf **beiden**
+PP0-Rängen:
+
+```
+RuntimeError: PP spec decode: missing stashed scheduler_output
+              for the hybrid state update on a non-last rank.
+              gpu_model_runner.py:10649
+```
+
+Das ist die Schutzabfrage aus Patch 6 des Merge-Projekts. Stufe 0 empfängt den
+Spekulations-Zustand, aber der `scheduler_output`, den ihr eigenes
+`execute_model` (Zeile 9774) hinterlegen müsste, fehlt — Empfang und Stash
+laufen nicht mehr im Takt. Das ist eine Buchführungs-Asymmetrie zwischen den
+Stufen, dieselbe Klasse, für die Patch 7 gebaut wurde.
+
+Warum das bisher als Hänger erschien, steht im Merge-Handover selbst: der
+Executor propagiert Worker-Exceptions bei PP nicht sauber, der EngineCore
+bleibt in `shm_broadcast` stehen. Der beobachtete `TimeoutError: RPC call to
+sample_tokens timed out` ist die **Folge**, nicht die Ursache.
+
+**Der Fehler steht bereits in drei Logs der Vorsitzungen** —
+`serve-flash-next-mtp-eager-swap.log`, `serve-flash-next-mtp-k1.log`,
+`serve-flash-next-swap-mtp.log` — wurde dort aber nie als Ursache benannt.
+Wer an MTP weiterarbeitet, greppt zuerst nach `missing stashed`, bevor er
+einen Deadlock diagnostiziert.
+
+Spekulationsmetriken desselben Laufs: Akzeptanz **0,0 %** über alle vier
+Positionen (`Accepted: 0 tokens, Drafted: 8 tokens`), passend zu Defekt 1.
+
+## Geprüft und ausgeschlossen — nicht erneut untersuchen
+
+1. **Fehlendes `--async-scheduling` ist folgenlos.** Der Verdacht lag nahe,
+   weil der gesamte PP-Spec-Transport daran hängt (Sender 9768 und 10399–10406,
+   Empfänger 9939) und `serve-qwen38-flash-next.sh` den Schalter nicht setzt,
+   die Referenz aber schon. Er ist trotzdem falsch: `"mtp"` und
+   `"qwen4_exp_mtp"` stehen in `MTPModelTypes` ⊂ `EagleModelTypes`, und
+   `config/vllm.py:1047` schaltet async scheduling dann von selbst ein.
+   Gegenprobe über alle 170 Logs im Repo: ausnahmslos „Asynchronous scheduling
+   is enabled", auch in jedem Flash-Next-MTP-Lauf.
+2. **Die fehlenden Spec-Schalter setzt 1Cat selbst.** `attention_backend=
+   FLASH_ATTN_V100` und `use_local_argmax_reduction=True` erscheinen im Log als
+   „Applied 1Cat SM70 MTP defaults" (`arg_utils.py:1908`), weil das Skript bei
+   K>0 `VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS=1` setzt. Aus derselben Quelle
+   stammt übrigens die Capture-Liste `[1,2,4,5,8,9,10,15,20]` — sie ist ein
+   1Cat-MTP-Default, nicht vLLMs Automatik.
+3. **Die SM70-Baseline greift.** Der device-0-Verdacht aus Session 4 des
+   Merge-Projekts trifft hier nicht zu: alle Läufe zeigen 8 Zeilen
+   „Auto-setting VLLM_SM70_*", die Flash-Next-Läufe wie die 27B-Referenz. Die
+   Warnung „not SM70 CUDA" betrifft nur `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH`
+   und erscheint in den funktionierenden Läufen genauso.
+
+## Werkzeuge dieser Sitzung
+
+`scratchpad/mtp_async_ab.sh` (Boot + vier Requests + Metrik-Auswertung,
+verkettet) und `mtp_std_xqa.sh` (dasselbe auf der Standardanordnung, mit einem
+Prompt über 4096 Token für die XQA-Sequenzlängenbedingung). Aufräumen nach
+Abstürzen weiterhin ausschliesslich über `nvidia-smi --query-compute-apps=pid`
+und `kill -9`, niemals `pkill -f`.
+
+## Betriebsnotiz: der CUDA_HOME-Default des Boot-Skripts zeigt ins Leere
+
+`scripts/serve-qwen38-flash-next.sh` setzt `CUDA_HOME="${CUDA_HOME:-/usr/local/cuda-12.8}"`.
+**Dieses Verzeichnis existiert auf dieser Maschine nicht** — apt liefert nur
+12.0, der nvcc 12.8 liegt entpackt unter
+`$REPO/.cuda-nvcc-deb/usr/local/cuda-12.8` (so dokumentiert im
+`MERGE-PROJECT-HANDOVER.md`, dessen Repro-Kommandos ihn explizit setzen).
+
+Der Fehler ist latent: Solange die JIT-Artefakte unter
+`~/.cache/flashinfer/0.6.11.post2/70_75/cached_ops/` liegen, bootet der Server.
+Verlangt eine Konfiguration einen Op, der noch nicht gebaut ist, stirbt der
+Boot nach ~10 Minuten mit `RuntimeError: Ninja build failed` — die Fehlermeldung
+nennt nvcc nicht, der Zusammenhang ist also nicht offensichtlich.
+
+Bis das Skript korrigiert ist: `CUDA_HOME` bei jedem Aufruf explizit
+mitgeben. Der Skript-Default sollte auf den Repo-Pfad zeigen.
+
+## Defekt 3 (und vermutlich der auslösende): der E5-Metadaten-Cache crasht
+
+Verifikationslauf auf der **Standardanordnung** (`CUDA_VISIBLE_DEVICES=0,2,1,4`,
+Split 24/24, GMU 0,95, MML 16384, k=4, Capture `[1,2,4,8]`, **ohne** eager,
+`PLE_HOST_GIB=6`): Server bootet, erster Request stirbt, danach 500er, dann tot.
+Drei Fehler im Log, in dieser Reihenfolge:
+
+```
+RuntimeError: output with shape [] doesn't match the broadcast shape [1]
+              gpu_model_runner.py:1292, in _e5_apply_ints        <- zuerst
+RuntimeError: PP spec decode: missing stashed scheduler_output ...   <- danach
+TimeoutError: RPC call to sample_tokens timed out.                   <- Folge
+```
+
+Der erste Fehler trifft **beide** PP0-Ränge und steht in `_e5_apply_ints`, dem
+E5-Metadaten-Cache. Die Absturzzeile ist `t[0].copy_(torch.tensor(row, ...))`
+auf `spec_state_indices_tensor`: der Cache setzt eine zweidimensionale Form
+voraus, der QSA-Ring hat eine eindimensionale (ein Block pro Request), also ist
+`t[0]` ein Skalar und die Zuweisung von `row` (Länge 1) scheitert.
+
+**Damit ist die ursprüngliche Diagnose der ersten MTP-Sitzung rehabilitiert**
+(„Der E5-Metadaten-Cache verdirbt schon den Prefill … setzt eine
+Blocktabellen-Form voraus, die der QSA-Ring nicht hat; bei k=1 fliegt er sogar
+hart mit `output with shape [] doesn't match the broadcast shape [1]`"). Die
+Abend-Sitzung hatte den Cache mit dem Befund „`VLLM_SM70_E5_CACHE=0` ist
+wirkungslos" entlastet — dieser Schluss trägt nicht: Dass zwei Läufe
+byte-gleich waren, zeigt nur, dass in **jenem** Schadensbild der Cache nicht
+der Unterschied war, nicht dass er unschuldig ist. `_E5_CACHE` ist eine
+Modul-Konstante mit Default **an** (`gpu_model_runner.py:545`), sie greift also,
+wenn die Variable vor dem Prozessstart im Environment steht.
+
+**Wahrscheinliche Kausalkette** — sie ordnet Defekt 2 als Folge ein:
+der E5-Crash wirft auf PP0, der Executor propagiert Worker-Exceptions bei PP
+nicht sauber, die Ränge laufen auseinander, in der Folgerunde fehlt der Stash
+(`missing stashed scheduler_output`), und der Timeout ist das Endstadium. Wer
+Defekt 2 isoliert untersucht, arbeitet möglicherweise an einer Folgeerscheinung.
+
+**Nächster Schritt (läuft):** derselbe Betriebspunkt mit
+`VLLM_SM70_E5_CACHE=0`, vor dem Skriptaufruf gesetzt, damit die Modul-Konstante
+sie sieht. Fällt der Crash weg, wird zum ersten Mal sichtbar, was der
+QSA-Verifier bei q>1 tatsächlich leistet.
+
+**Weiteres aus diesem Lauf, unabhängig bestätigt:**
+- „XQA path active": **0** — auch mit V100 als letzter Stufe, vollen Graphen
+  und einem Seq-Hint über 4096. Deckt sich mit Defekt 1 (eigenes QSA-Backend).
+- Akzeptanz **0,0 %** über alle vier Positionen.
+- `missing stashed scheduler_output` tritt **auf beiden Kartenanordnungen** auf,
+  nicht nur auf der vertauschten.
+
+## DURCHBRUCH: mit `VLLM_SM70_E5_CACHE=0` läuft MTP stabil — es lohnt sich nur nicht
+
+Erstmals ein MTP-Betrieb ohne Absturz an diesem Modell. Betriebspunkt:
+`CUDA_VISIBLE_DEVICES=0,2,1,4`, TP=2 PP=2, Split 24/24, GMU 0,95, MML 16384,
+`PLE_HOST_GIB=6`, Capture `[1,2,4,8]`, **ohne** `--enforce-eager`,
+`VLLM_SM70_E5_CACHE=0` **vor** dem Skriptaufruf gesetzt.
+
+Ergebnis: keine Exception im Log, Server nach allen Requests noch oben,
+Spekulation arbeitet — und damit ist auch Defekt 2
+(`missing stashed scheduler_output`) verschwunden. Er war eine Folge des
+E5-Crashes, keine eigenständige Ursache.
+
+**Der Schalter war die ganze Zeit da.** Er wurde in der Abend-Sitzung nur
+wirkungslos gesetzt und daraufhin verworfen. Er muss im Environment stehen,
+bevor der Python-Prozess startet, weil `_E5_CACHE` eine Modul-Konstante ist.
+Das Boot-Skript reicht ihn nicht durch — voranstellen genügt (er wird vererbt).
+
+### Messreihe am identischen Betriebspunkt
+
+| | k=0 | k=4 |
+|---|---:|---:|
+| Durchsatz (bench.py, 200 tok, n=3) | **32,2 tok/s** | **13,3 tok/s** |
+| Streuung | 32,2 / 32,2 / 32,2 | 13,3 / 13,3 / 13,3 |
+| Prefill-Gesundheit | −0,52 | −0,11 |
+| Akzeptanz | — | 15,0 % |
+| Akzeptanzlänge | — | 1,60 |
+| Per-Position-Akzeptanz | — | 0,40 / 0,10 / 0,10 / 0,00 |
+
+**MTP kostet 59 % des Durchsatzes.** Das ist die erste gleichbedingte Messung —
+die bisherigen 14,4 gegen 31,4 stammten aus verschiedenen Läufen mit
+unterschiedlichen Splits und Graph-Modi. Die Größenordnung bestätigt sich damit,
+aber jetzt belastbar. Die Ursache steht in der Per-Position-Zeile: nach der
+ersten Position bricht die Akzeptanz auf 10 % und dann auf null ein. Der Drafter
+läuft viermal und liefert im Mittel 0,6 Zusatz-Token.
+
+**Damit ist die Frage klar umrissen und von allem Beiwerk befreit:** warum
+akzeptiert der Verifier ab Position 2 praktisch nichts? Crash, Speicherblocker,
+Graph-Capture und E5-Cache sind als Störgrößen ausgeräumt; übrig bleibt der
+QSA-Triton-Kernel bei q>1 (Defekt 1).
+
+### Nebenbefund: sehr kurze Prompts kippen — und das ist NICHT MTP
+
+Bei beiden Läufen liefert ein 6-Token-Prompt („The capital of France is") Müll,
+während längere korrekt sind:
+
+| Prompt | k=4 | k=0 |
+|---|---|---|
+| „The capital of France is" (6 tok) | `'\n\n\| ::\|\n\|\n\n\n\|'` | `' ")\n    assert "'` |
+| „…Paris. The capital of Germany is" (13 tok) | „ Berlin. The capital of Italy is Rome" | dito, korrekt |
+| „1, 2, 3, 4, 5, 6, 7," | „ 8, 9, 10," | „ 8, 9, 1" |
+| „def add(a, b):\n return" | „ a + b\n\ndef subtract(a, b):" | — |
+
+Da es bei k=0 genauso auftritt, gehört es **nicht** zu MTP. Verdacht: bei
+Prompts unterhalb einer QSA-Kompressionsgruppe (`compress_ratio = 4`,
+Blockgröße 16) kippt der Prefill. Auffällig ist außerdem, dass eine Wiederholung
+desselben kurzen Prompts korrekt antwortet — das riecht nach Prefix-Caching, das
+den kaputten Erstdurchlauf überdeckt. Eigener Untersuchungsgegenstand; er
+entwertet kurze Kohärenz-Stichproben als Messinstrument.
+
+Zur Einordnung des Betriebspunkts: Split 24/24 mit 6 GiB PLE-Offload ist
+qualitativ nicht optimal (bei k=0 setzt das Modell das Prompt-Muster fort,
+statt „Madrid" zu antworten — bei k=4 antwortet es korrekt). Er wurde gewählt,
+weil Split 18/30 an der V100-Stufe keinen KV-Cache mehr übrig lässt.
+
+# Sitzung 2026-08-28 (Abend): der Drafter ist gesund — es ist der QSA-Indexer
+
+> **Die Diagnose dreht sich um.** Weder Drafter noch Verifier sind defekt.
+> Gemessen mit dem Step-Dump des Forks: der Drafter trifft bis zu **5 von 5**
+> Token. MTP ist trotzdem langsamer, weil ein Draft-Schritt mehr kostet als ein
+> kompletter Forward des Zielmodells. Die Ursache ist benannt und upstream
+> bereits gelöst — in SGLang, nicht in vLLM.
+
+## Der Drafter produziert keinen Garbage — Beleg aus dem Step-Dump
+
+`VLLM_SM70_MTP_DUMP_STEP_DIR=<dir>` schreibt je Runde `draft_token_ids` und
+`sampled_token_ids`. Dekodiert, an einem Prompt, der sich selbst fortsetzt
+(Liste von Hauptstädten), k=4:
+
+```
+akzeptiert=5 von 5   Drafter: ['.', ' The', ' capital', ' of']
+                     Verifier: ['.', ' The', ' capital', ' of', ' Belgium']
+akzeptiert=2 von 5   Drafter: [' is', '?', ' The', ' capital']
+                     Verifier: [' is', ' Brussels', ·, ·, ·]
+```
+
+Das Muster wiederholt sich über alle 40 Runden. Der Drafter beherrscht die
+**Struktur** perfekt (Satzgerüst: 5/5) und scheitert nur am **Faktenwissen**
+(der Hauptstadtname nach „ is": 2/5). Genau so soll ein MTP-Kopf sich
+verhalten. Metrik desselben Laufs:
+
+```
+Mean acceptance length: 5.00 · Per-position 1.000/1.000/1.000/1.000 · 100.0 %
+Mean acceptance length: 3.50 · Per-position 1.000/0.500/0.500/0.500 ·  62.5 %
+```
+
+**Akzeptanzlänge 3,5 — die offizielle B200-Referenz meldet 3,3.** Unser
+Drafter ist auf Augenhöhe. Die 15 % aus der Vormittagsmessung waren kein
+Defekt, sondern die Schwierigkeit des bench-Prompts (freier Fachtext).
+Damit sind die früheren Deutungen „Verifier rechnet still falsch" und
+„Drafter produziert Müll" **beide widerlegt**.
+
+## Der Beweis, dass es an den Kosten liegt
+
+Gleicher Server, nur der Prompt variiert (200 Token, `ignore_eos`, Dump aus):
+
+| Konfiguration | Akzeptanz | Durchsatz |
+|---|---:|---:|
+| k=0 (Referenz, schwerer Prompt) | — | **32,2 tok/s** |
+| k=4, vorhersagbarer Prompt | ~3,5 von 5 | **20,3 tok/s** |
+| k=4, schwerer Prompt | ~15 % | **14,0 tok/s** |
+
+**Selbst bei nahezu perfekter Akzeptanz bleibt MTP 37 % langsamer als gar
+keine Spekulation.** Rückrechnung: bei Akzeptanzlänge 3,5 und 20,3 tok/s
+dauert eine MTP-Iteration 172 ms, ein reiner Target-Forward 31 ms. Die vier
+Draft-Schritte kosten also zusammen ~141 ms, **je Schritt ~35 ms — mehr als
+das komplette 125B-Zielmodell**. Der MTP-Block hat 4B Parameter (MoE, wenig
+aktiv); er dürfte einen Bruchteil kosten. Kein Akzeptanzgewinn kann das
+aufholen: Der Ertrag ist strukturell gedeckelt.
+
+## Die Ursache: der QSA-Indexer läuft bei JEDEM Draft-Schritt
+
+LMSYS beschreibt im Day-0-Blog zu diesem Modell genau diesen Punkt und die
+Lösung, die SGLang dafür gebaut hat — **IndexShare**: die QSA-Top-k-Auswahl
+aus dem Draft-Extend-Pass wird für die ganze MTP-Iteration festgehalten,
+sodass jeder Draft-Decode-Schritt den Indexer überspringt. „The draft's
+indexer work per MTP iteration drops from N invocations to one."
+
+Der MTP-Block trägt den Indexer tatsächlich
+(`mtp.layers.0.self_attn.indexer.index_qk_proj.weight` im Checkpoint), und
+**der vLLM-PR enthält die Haken dafür — aber tot**:
+
+- `models/qwen4_exp/amd/mtp.py:246` `set_skip_topk()` und `:252`
+  `compact_topk_indices()` sind definiert;
+- **beide werden nirgends im gesamten Baum aufgerufen** (verifiziert per grep);
+- `skip_topk` kommt im QSA-Indexer des `amd/`-Zweigs **gar nicht vor** — die
+  Zuweisung `attention.indexer.skip_topk = skip` würde ein Attribut setzen,
+  das niemand liest.
+
+Die Abend-Sitzung vom 27.08. hatte diese beiden Methoden als „toter Code im PR
+selbst" abgehakt. Das stimmt — nur ist es kein harmloser Befund, sondern
+**genau die fehlende Optimierung**, die den Draft-Schritt teuer macht.
+
+## Was die Recherche sonst noch geklärt hat
+
+- **PLE ist im Drafter bereits aus.** `mtp.py:7` „forces PLE off", und der
+  Forward reicht `ngram_context=None`. Die offizielle Anforderung („the draft
+  model disables PLE") ist erfüllt — dieser Hebel ist schon gezogen.
+- **Der MTP-Block ist unquantisiert.** `exclude_modules` enthält `mtp.*` und
+  `model.mtp.*`, im Checkpoint gibt es 0 Skalen-Tensoren unter `mtp.`. Die
+  Bug-Klasse aus vLLM-Issue #43304 (Drafter erbt das Quantisierungsschema und
+  scheitert am Laden) trifft uns nicht — unser Drafter lädt und rechnet.
+- **Issue #36331** (0 % Akzeptanz, Qwen3.5-122B NVFP4) hat eine andere
+  Signatur (`w1_weight_global_scale must match w3_weight_global_scale`), die in
+  **keinem** unserer Logs vorkommt. Nicht unser Fall.
+- **Der Abfall über die Draft-Positionen ist normal.** Ein MTP-Kopf wird auf
+  Ground-Truth-Hidden-States trainiert, konditioniert bei Inferenz aber auf
+  seine eigenen — die Akzeptanz sinkt mit der Drafttiefe bauartbedingt. Unser
+  Profil (1,00 / 0,50 / 0,50 / 0,50 bei leichtem Text) ist unauffällig.
+- **Pipeline-Parallelismus ist offiziell nicht vorgesehen.** Die vLLM-Recipe
+  nennt einen „pipeline-parallel startup error", weil das N-Gram-Embedding PP
+  zunächst nicht unterstützt. Wir fahren PP=2 — das läuft, ist aber
+  ungetestetes Gelände.
+- **Windowed-MTP** (arXiv 2607.21535, Code unter
+  `github.com/avalliappan-nvidia/windowed-mtp-b200`) löst dieselbe Kostenfrage
+  für den Langkontext-Fall: Sliding Window nur für die Draft-Attention, +28–44 %
+  je Decode-Schritt, keine Trainingsänderung. Für uns zweitrangig, solange der
+  Indexer N-mal läuft — aber der nächste Hebel danach.
+
+## Nächster Schritt
+
+IndexShare in den Qwen4Exp-Proposer verdrahten: `skip_topk` im QSA-Indexer des
+`amd/`-Zweigs implementieren (Top-k-Auswahl einmal pro MTP-Iteration berechnen
+und für die Draft-Schritte einfrieren) und aus dem Proposer heraus rufen. Das
+ist Python plus Triton-Aufrufpfad, kein neuer Kernel. Vorbild und Nachweis der
+Wirksamkeit: SGLang. Erst danach lohnt eine erneute Tempomessung.
+
+## GEKLÄRT: der MTP-Block ist unquantisiert — er liest fast so viel wie das ganze Modell
+
+**Das ist die Ursache, quantitativ belegt.** GPU-Zeiten aus dem eingebauten
+MTP-Profiling (CUDA-Events, Mittel über 120 Iterationen, k=4, vorhersagbarer
+Prompt, Akzeptanzlänge 2,88):
+
+| Posten | ms je Iteration | Anteil |
+|---|---:|---:|
+| `target_forward` (komplettes 125B-Modell) | **24,3** | 17 % |
+| `target_logits` | 1,7 | 1 % |
+| **`draft_total` (vier Draft-Schritte)** | **83,9** | **58 %** |
+| `draft_wall_cpu` (Wall-Clock inkl. Sync) | 119,9 | — |
+| `state_update_*` gesamt | 1,5 | 1 % |
+| `bookkeeping` | 0,1 | <1 % |
+
+**Der Draft-Pfad kostet das 3,4-fache des kompletten Zielmodells.** Je Schritt
+sind das 21 ms gegen 24,3 ms für alle 48 Layer des Targets. Gegenprobe mit dem
+gemessenen Durchsatz: 120 + 24 = 144 ms je Iteration bei 2,88 akzeptierten
+Token ergibt 20,0 tok/s — gemessen 19,4. Die Rechnung geht auf.
+
+### Warum: der Checkpoint nimmt den MTP-Block von der Quantisierung aus
+
+| Teil des Checkpoints | Größe | Format |
+|---|---:|---|
+| Hauptmodell | 73,27 GiB | NVFP4 |
+| PLE-Tabelle | 47,75 GiB | Q8 |
+| **MTP-Block** | **4,86 GiB** | **BF16, alle 31 Tensoren** |
+
+`exclude_modules` enthält `mtp.*` und `model.mtp.*`; unter `mtp.` liegt **kein
+einziger Skalen-Tensor**. Der Draft-Block liegt also in voller BF16-Breite vor,
+während das Hauptmodell auf ein Viertel komprimiert ist.
+
+Decode ist bandbreitenlimitiert: Das Hauptmodell liest ~6,5 GiB je Token, der
+Draft-Block 4,86 GiB je Schritt. Vier Schritte lesen 19,4 GiB gegen 6,5 GiB des
+Targets — Verhältnis 3,0 gegen gemessene 3,45. **Kein Akzeptanzgewinn kann das
+aufholen:** Selbst bei 100 % Akzeptanz bliebe MTP hier ein Verlustgeschäft.
+
+### Das erklärt auch, warum es auf der Referenzhardware nicht auffällt
+
+Auf B200 (HBM3e, ~8 TB/s) sind 4,86 GiB rund 0,6 ms — verschwindend gegen den
+Spekulationsgewinn; dort meldet die offizielle Referenz 540 tok/s bei
+Akzeptanzlänge 3,3. Auf RTX 8000 (672 GB/s) und V100 (900 GB/s), zusätzlich
+über zwei PP-Stufen verteilt, wird genau dieser Posten zum Hauptkostenträger.
+**Es ist kein Fehler im Modell und keiner im Port, sondern eine Eigenschaft
+dieses Checkpoints, die nur auf langsamerem Speicher sichtbar wird.**
+
+### Der Hebel, mit Erwartungswert
+
+Läge der MTP-Block ebenfalls in NVFP4 vor (4,86 → ~1,2 GiB), fiele ein
+Draft-Schritt von 21 auf ~5 ms. Eine Iteration käme auf 24 + 21 + 3 = ~48 ms
+für 2,88 Token, also **~60 tok/s gegen 32,2 ohne Spekulation — Faktor 1,9.**
+Das ist der Ertrag, den MTP hier haben sollte.
+
+Umsetzung: den `mtp.*`-Teil des Checkpoints nachträglich quantisieren
+(ModelOpt/llm-compressor, NVFP4 wie das Hauptmodell; FP8 wäre der halbe
+Gewinn und der einfachere Weg). Der PR bringt die Infrastruktur dafür schon
+mit — `get_draft_quant_config` und `_remap_ignored_layers`
+(`models/qwen4_exp/amd/mtp.py:117-135`) lösen die Draft-Quant-Config
+unabhängig vom Target auf; ein quantisierter MTP-Block würde also sauber
+geladen. Alternativ nach einem Anbieter-Checkpoint mit quantisiertem
+MTP-Block suchen (für DeepSeek-V4-Flash existiert so etwas bereits:
+`canada-quant/DeepSeek-V4-Flash-NVFP4-FP8-MTP`).
+
+### Widerlegt: IndexShare ist NICHT unser Engpass
+
+Der Async-CPU-Trace weist `draft_ms=6,8…8,0` je Iteration aus — im selben
+Bereich wie beim 27B (6,4 ms), wo MTP 2,5x bringt. CPU-seitig ist am
+Draft-Pfad nichts auffällig; die 83,9 ms sind reine GPU-Rechenzeit. Der
+IndexShare-Befund der Vorsitzung (`set_skip_topk`/`compact_topk_indices` sind
+toter Code) bleibt sachlich richtig und wäre eine sinnvolle Optimierung —
+**aber er erklärt unsere Zahlen nicht** und ist nicht der erste Hebel.
+
+### Nebenbefund: das MTP-Profiling ist bei PP blind
+
+`_sm70_mtp_profile_report` bricht bei `not is_global_first_rank()` ab
+(`gpu_model_runner.py:2163`), die MTP-Events entstehen aber auf der **letzten**
+PP-Stufe. Bei Pipeline-Parallelismus schweigt also genau der Rang, der die
+Daten hat. Für diese Messung wurde das Gate temporär aufgehoben (Diagnose-Patch
+in der venv, danach zurückgenommen, venv wieder byte-identisch). Wer das
+Profiling bei PP braucht, muss das Gate erneut lockern — ein Kandidat für einen
+echten Fix in `fork_patches/`.
+
+## Es gibt bereits Checkpoints mit quantisiertem MTP-Block
+
+Recherche über die HF-API (128 Flash-Next-Repos gesichtet, Kandidaten über die
+`model.safetensors.index.json` geprüft — Skalen-Tensoren unter `mtp.`). Die
+MTP-Block-Größen wurden per HTTP-Range auf die Safetensors-Header gemessen,
+ohne Download:
+
+| Repo | gesamt | MTP-Block | PLE quantisiert | Downloads |
+|---|---:|---:|---|---:|
+| **RadixArk** (unser Bestand) | 125,9 GiB | **4,86 GiB BF16** | nein | 2297 |
+| Inferact/…-NVFP4 | 170,2 GiB | 1,49 GiB NVFP4 | nein | 359 |
+| starkweatherdigital/…-nvfp4 | **101,7 GiB** | **1,49 GiB NVFP4** | ja (129 Skalen) | 0 |
+| provsalt/…-NVFP4-PLE-NVFP4 | **101,7 GiB** | **1,49 GiB NVFP4** | ja (256 Skalen) | 0 |
+| local-inference-lab/…-4p89 | **98,6 GiB** | **1,49 GiB NVFP4** | ja, MIXED_PRECISION | 0 |
+| mbehr90/…-nvfp4 | 170,2 GiB | 1,49 GiB (compressed-tensors) | nein | 0 |
+
+Ohne quantisierten MTP-Block (alle 4,86 GiB BF16, wie unserer): PixelML,
+hn7305, lovedheart (beide), primitive-ai (beide), axiomofmind, gorbatjovy,
+lesj0610, wtdcode (AWQ), Intel-AutoRound. `MESHIVEAI` hat **gar keinen**
+MTP-Block. Selbst quantisieren ist also unnötig.
+
+**Der MTP-Block schrumpft von 4,86 auf 1,49 GiB — Faktor 3,3.** Hochgerechnet
+auf die gemessenen GPU-Zeiten: Draft-Schritt von 21 auf ~6,4 ms, vier Schritte
+25,7 statt 83,9 ms, Iteration ~53 statt 144 ms. Bei Akzeptanzlänge 2,88 ergibt
+das **~54 tok/s gegen 32,2 ohne Spekulation — Faktor 1,7.**
+
+**Zweiter, unabhängiger Gewinn:** drei der Kandidaten quantisieren zusätzlich
+die PLE-Tabelle und kommen damit auf **98–102 GiB statt 125,9 GiB**. Das nimmt
+24+ GiB VRAM-Druck und entschärft die Split- und Offload-Klemme, an der diese
+Sitzung mehrfach hing (Split 18/30 ohne KV-Cache auf der V100-Stufe,
+`PLE_HOST_GIB`-Kaskade). Ob die quantisierte PLE Qualität kostet, ist
+ungeprüft — sie ist eine Hash-N-Gram-Tabelle, kein gewöhnliches Gewicht.
+
+**Vorbehalte:** Die drei kleinen Kandidaten haben 0 Downloads (brandneu,
+ungetestet). Ihr Experten-Layout unterscheidet sich vom Bestand — 6173 bzw.
+4637 MTP-Tensoren statt 31, also einzelne statt gestapelter Experten; ob der
+Loader beide Formen frisst, ist zu prüfen (der PR bringt `WeightsMapper` mit
+`orig_to_new_stacked` mit, spricht also dafür). Inferact ist mit 359 Downloads
+der einzige mit etwas Verbreitung, aber 170,2 GiB gross.
+
+**Praktische Hürde:** Auf `/` sind nur **51 GB frei** (916 G, 95 % belegt),
+HF-Cache bereits 152 G. Ein 100-GiB-Checkpoint passt erst, wenn Platz
+geschaffen wird — naheliegend durch Löschen des RadixArk-Bestands (125,9 GiB),
+was aber die Rückfallebene nimmt. Reihenfolge und Freigabe liegen bei Peuqui.
+
+# Sitzung 2026-08-28 (Abend II): GELÖST — MTP bringt jetzt Faktor 1,5 bis 2,1
+
+> **Der MTP-Block wurde durch eine NVFP4-quantisierte Fassung ersetzt. Damit
+> ist das Problem erledigt.** Kein Kernel-Eingriff, kein Code-Patch, kein
+> Neu-Download des Modells — eine Datei von 1,49 GiB und zwei JSON-Dateien.
+
+## Ergebnis
+
+Alle Werte am identischen Betriebspunkt (`CUDA_VISIBLE_DEVICES=0,2,1,4`,
+TP=2 PP=2, Split 24/24, GMU 0,95, MML 16384, `PLE_HOST_GIB=6`,
+Capture `[1,2,4,8]`, `VLLM_SM70_E5_CACHE=0`, 200 Token, `ignore_eos`):
+
+| Konfiguration | schwerer Prompt | vorhersagbarer Prompt |
+|---|---:|---:|
+| k=0 (keine Spekulation) | 32,2 | — |
+| k=4, MTP-Block **BF16** (Ausgangslage) | 14,0 | 19,4 |
+| **k=4, MTP-Block NVFP4 (neu)** | **49,2** | **67,2** |
+
+**Faktor 1,53 bzw. 2,09 gegenüber k=0 — und Faktor 3,5 gegenüber dem
+BF16-Block.** Die Prognose aus der Vorsitzung (~54 tok/s) ist getroffen.
+
+Akzeptanz steigt mit: **73,1 %, Akzeptanzlänge 3,92**, Per-Position
+0,897 / 0,772 / 0,662 / 0,593 (vorher 51 % / 3,04). Prefill-Gesundheit
+**−0,11**, Kohärenz einwandfrei (Hauptstädte, Zahlenfolge, Code, deutsche
+Fachantwort, Faktenwissen — alles korrekt). Null Fehler im Log.
+
+## Was gebaut wurde
+
+`/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ` — 419 Dateien,
+**35 MB echter Platzbedarf**. Alle Gewichte sind Symlinks in den bestehenden
+RadixArk-Cache; neu geschrieben sind nur `config.json` und
+`model.safetensors.index.json`, dazu ein Symlink auf den 1,49-GiB-Block aus
+`provsalt/Qwen3.8-Flash-Next-NVFP4-PLE-NVFP4` (Datei
+`nvfp4_experts_mtp.safetensors`, dort exklusiv). **Der RadixArk-Bestand bleibt
+unangetastet und ist die Rückfallebene.**
+
+Damit bleibt auch die PLE-Tabelle in ihrem originalen fp8 — die
+Fertig-Checkpoints mit quantisiertem MTP hätten sie auf 4 Bit gedrückt
+(26,88 statt 47,75 GiB) oder auf BF16 aufgebläht (Inferact: 95,43 GiB). Die
+Transplantation nimmt nur das Gute aus beiden.
+
+### Zwei Fallen beim Nachbauen
+
+1. **Die Quant-Config dieses Checkpoints heißt `ignore`, nicht
+   `exclude_modules`.** Wer `exclude_modules` bearbeitet, greift ins Leere und
+   merkt es nicht.
+2. **Die Wildcards in `ignore` reichen in den MTP-Block hinein.** Nach dem
+   Entfernen von `mtp.*` / `model.mtp.*` bleiben vier Tensoren ungedeckt, die
+   im neuen Block bewusst BF16 sind: `mtp.fc_embedding`, `mtp.fc_hidden`,
+   `mtp.pre_fc_norm_embedding`, `mtp.pre_fc_norm_hidden`. Die ersten beiden
+   sind echte Linear-Layer — ohne expliziten Eintrag erwartet der Loader dort
+   Skalen und stirbt. Sie müssen namentlich in `ignore`. Gegenprobe: von den
+   1536 quantisierten Gewichten darf keines von einem Muster erfasst werden.
+
+Warum die Layouts trotz 31 gegen 6173 Tensoren zusammenpassen: Der neue Block
+legt die 512 Experten **einzeln** ab (`weight` U8 + `weight_scale` F8_E4M3 +
+`weight_scale_2`/`input_scale` F32, group_size 16) — exakt so, wie das
+**Hauptmodell** des Bestands schon vorliegt. Der Loader verarbeitet diese Form
+also längst; nur der alte MTP-Block war mit gestapelten, fusionierten Experten
+der Sonderfall.
+
+## Einordnung
+
+Die Ursachenkette dieser Untersuchung, rückblickend:
+Graph-Capture (falsch) → Verifier rechnet still falsch (falsch) → Drafter
+produziert Müll (falsch) → **Draft-Block ist unquantisiert und liest fast so
+viel wie das ganze Modell (richtig)**. Nur die letzte These überlebte die
+Messung, und sie war mit einer Datei zu beheben.
+
+Offen und weiterhin lohnend, aber nicht mehr dringend: IndexShare
+(`set_skip_topk`/`compact_topk_indices` sind toter Code im PR), das die
+QSA-Top-k-Auswahl einmal je MTP-Iteration statt k-mal berechnen würde.

@@ -18,8 +18,9 @@ located a checkpoint problem for us).
 - Host: GEM10 mini-PC (AMD Ryzen APU), 32 GB RAM (~30 GiB usable after iGPU carve-out), boot NVMe on USB 3.2
 - GPUs: 5 external cards, 192 GB VRAM total — 2x Quadro RTX 8000 48 GB
   (sm75, GDDR6 672 GB/s) + 3x Tesla V100-PCIE-32GB (sm70, HBM2 900 GB/s)
-- Attachment: 4 cards via M.2-to-OCuLink adapters, 1 (one of the V100s)
-  via a USB4 tunnel (AG02 dock) — and that tunneled V100 is an active
+- Attachment: 1 card on the GEM10's native OCuLink port, 3 via
+  M.2-to-OCuLink adapters, 1 (one of the V100s) via a USB4 tunnel
+  (AG02 dock) — and that tunneled V100 is an active
   member of the last PP stage, i.e. the MTP drafter itself runs on it. All five run PCIe Gen3 x4 under load (~3.9 GB/s per
   card); the USB4-tunneled card measures only ~5% slower than OCuLink.
 - Peer-to-peer DMA between the Ryzen root ports does NOT work: NCCL P2P

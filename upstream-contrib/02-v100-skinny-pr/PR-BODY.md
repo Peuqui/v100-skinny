@@ -10,17 +10,18 @@ a big one. This branch makes a single vLLM span a heterogeneous
 5-GPU box (2x Quadro RTX 8000 sm75 + 3x Tesla V100 sm70): TP=2 within
 each card generation, PP across the generation boundary, MTP on top.
 
-## Headline numbers (Qwen3.8-27B-NVFP4, bench.py, n=3)
+## Headline numbers (single stream, tok/s)
 
-| Topology | plain | MTP k=7 |
-|---|---:|---:|
-| PP=2 (2x V100) | 32.3 | 79.8 ± 1.2 |
-| 2x2 grid (TP2 RTX stage + TP2 V100 stage) | 32.2 | **85.0 ± 1.1** |
+| Model | Topology | plain | with MTP |
+|---|---|---:|---:|
+| Qwen3.8-27B-NVFP4 | PP=2 (2x V100) | 32.3 | 79.8 ± 1.2 (k=7) |
+| Qwen3.8-27B-NVFP4 | 2x2 grid (TP2 RTX stage + TP2 V100 stage) | 32.2 | **85.0 ± 1.1** (k=7) |
+| Qwen3.8-Flash-Next 125B+PLE (qwen4_exp) | 2x2 grid | 32.2 | **51.9** (k=4) |
 
-Also validated on Qwen3.8-Flash-Next (qwen4_exp, 125B+PLE): boots on the
-same grid, 8/8 coherence, up to 51.9 tok/s with MTP k=4 vs 32.2 without.
-Reaching that number required transplanting a quantized MTP head into the
-checkpoint — tooling and measurements:
+27B: bench.py methodology, n=3. Flash-Next: hard free-form prompt, n=2,
+8/8 coherence, full 51 GiB n-gram (PLE) table active; the easy-prompt
+ceiling is 68.2. Reaching those numbers required transplanting a
+quantized MTP head into the checkpoint — tooling and measurements:
 https://github.com/Peuqui/mtp-quant-transplant. The full qwen4_exp
 model port behind these numbers (model tree, mamba-groups rework,
 runner wiring, PLE cascade) is contained in this branch as
@@ -33,8 +34,9 @@ running, benchmark-verified venv: zero lines of difference.
 - Host: GEM10 mini-PC (AMD Ryzen APU), 32 GB RAM (~30 GiB usable after iGPU carve-out), boot NVMe on USB 3.2
 - GPUs: 5 external cards, 192 GB VRAM total — 2x Quadro RTX 8000 48 GB
   (sm75, GDDR6 672 GB/s) + 3x Tesla V100-PCIE-32GB (sm70, HBM2 900 GB/s)
-- Attachment: 4 cards via M.2-to-OCuLink adapters, 1 (one of the V100s)
-  via a USB4 tunnel (AG02 dock) — and that tunneled V100 is an active
+- Attachment: 1 card on the GEM10's native OCuLink port, 3 via
+  M.2-to-OCuLink adapters, 1 (one of the V100s) via a USB4 tunnel
+  (AG02 dock) — and that tunneled V100 is an active
   member of the last PP stage, i.e. the MTP drafter itself runs on it. All five run PCIe Gen3 x4 under load (~3.9 GB/s per
   card); the USB4-tunneled card measures only ~5% slower than OCuLink.
 - Peer-to-peer DMA between the Ryzen root ports does NOT work: NCCL P2P

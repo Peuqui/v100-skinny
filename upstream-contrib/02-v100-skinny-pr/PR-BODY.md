@@ -19,6 +19,14 @@ each card generation, PP across the generation boundary, MTP on top.
 
 Also validated on Qwen3.8-Flash-Next (qwen4_exp, 125B+PLE): boots on the
 same grid, 8/8 coherence, up to 51.9 tok/s with MTP k=4 vs 32.2 without.
+Reaching that number required transplanting a quantized MTP head into the
+checkpoint — tooling and measurements:
+https://github.com/Peuqui/mtp-quant-transplant. The full qwen4_exp
+model port behind these numbers (model tree, mamba-groups rework,
+runner wiring, PLE cascade) is contained in this branch as
+fork_patches + bootstrap deploys — verified by simulating a complete
+deploy into a freshly unpacked 1.3.0 wheel and diffing against the
+running, benchmark-verified venv: zero lines of difference.
 
 ## Hardware environment (unusual, but that is the point)
 
@@ -36,6 +44,9 @@ same grid, 8/8 coherence, up to 51.9 tok/s with MTP k=4 vs 32.2 without.
 - Single-stream decode is VRAM-bandwidth-bound on this box, so the
   narrow PCIe links matter less than one would expect; TP=2 per card
   generation + PP across generations is the operating point that wins.
+- The rig is not a lab toy — it serves a production assistant in daily
+  use. Full build documentation with photos:
+  https://peuqui.github.io/AIfred-Intelligence/examples/Hardware_Setup_Frankenstein_MiniPC.html
 
 ## What's in the branch
 

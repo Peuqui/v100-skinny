@@ -75,6 +75,60 @@ Lang-Decode @28.843 (k=0-Referenz): RTX 29,8 / Gitter 29,5→29,3 / V100 30,3.
   Prefill-Patt-Brecher (29,3~29,8, Prefill 836 vs. 510); Speed-Variante
   V100 k=2 38,2 @151.200 persistiert.
 
+## TAETER GEFUNDEN (00:0x): Kein Split-KV fuer den Spec-Verify
+
+Kette (E1+E2+Mikrobenchmark):
+1. py-spy: 83 % der Worker-Zeit = GPU-Warten (synchronize) → GPU-bound,
+   kein CPU-/Launch-Overhead. (Nebenbefund: _sm70_qpn8_indices ~9 % CPU.)
+2. MTP-Profiler: Drafter nur 10,7 ms/propose (7,5 first_forward) —
+   von ~127 ms Step frisst der VERIFY ~116 ms.
+3. Kernel-Mikrobenchmark FA2 paged varlen @31k (4/1 Heads, hdim128):
+   q=1: 0,134 ms — q>=2: 2,6 ms = **20x**. Ursache in flash_api.cpp:
+   "Only apply split-k for decoding" — set_params_splitkv laeuft NUR im
+   seqlenq_ngroups_swapped-Fall (q=1); fuer q>1 paged varlen ist
+   num_splits<=1 erzwungen → 1 CTA je (batch, head) laeuft SERIELL
+   ueber ~2.000 KV-Bloecke (4 CTAs auf 72 SMs).
+
+Fix 1 (flash_api.cpp): Split-k auch fuer paged varlen mit
+max_seqlen_q <= 64 (Verify; Prefill q>64 bleibt unangetastet).
+→ Mikrobenchmark q>=2: 2,6 → 0,31 ms (**8,5x**).
+
+Dabei ZWEI weitere Upstream-Bugs im Combine-Kernel aufgedeckt (der
+Split-Pfad lief upstream nie mit echtem varlen):
+Fix 2: O-Write nutzte batch_idx*o_batch_stride — im varlen-Fall ist
+  der Stride ungesetzt (O ist ueber cu_seqlens_q gepackt): zweite
+  Sequenz eines Batches → NaN/Fehlschreiben. Jetzt cu_seqlens-Offsets
+  + Zeilen-Guard fuer kuerzere Sequenzen.
+Fix 3: Unpadded-LSE-Write nahm uniforme Sequenzlaengen an; jetzt
+  cu_seqlens-Packung. Plus Accum-Vorinitialisierung (-inf/0) fuer
+  Leer-Split-Slots kuerzerer Sequenzen.
+
+Erwartung E2E: Verify-Attention 165 → ~20 ms/Step (64 Schichten) →
+k=2 lang von 20,9 Richtung ~29-35 tok/s auf RTX. Beide Funde
+(Split-Enable + Combine-varlen) sind upstream-PR-Material — Ampere
+duerfte am seriellen Verify ebenfalls leiden, nur mildert es dort
+schnellere serielle Blockarbeit.
+
+## E2E-BESTAETIGUNG (00:20, Fix live im 1Cat-venv, Commit 40e3746)
+
+27B TP2-RTX @65k, Langpunkt 31.469 tok (200er-Decode / 600er-Decode):
+
+| k | kurz | lang (200) | lang (600) | vorher lang |
+|---|---:|---:|---:|---:|
+| 2 | 70,6 | 32,8 | 44,7 | 20,9 |
+| 3 | 75,4 | 33,2 | 43,3 | 20,5 |
+
+Spekulation gewinnt auf RTX jetzt an BEIDEN Enden (wie llama.cpp).
+RTX k=2/3 lang schlaegt die bisherige V100-Bestmarke (38,2). Der
+600er-Wert liegt ueber dem 200er (Akzeptanz auf laengerem repetitivem
+Auslauf + Amortisierung des Anlaufs).
+
+KONSEQUENZ: 27B-Neukalibration unter dem Fix noetig — die komplette
+k-Landschaft hat sich gedreht; die Lang-Regel wird jetzt ein k>0
+kueren. Offene Nebenbaustellen: k=1-Delle, _sm70_qpn8_indices (~9 %
+CPU/Step), V100-Verify koennte vom selben Split-Fix profitieren
+(XQA-Pfad separat, nicht untersucht).
+
 ## Protokoll
 
 - 22:15 Proben-OOM-Retry (neu) hat Gitter-k=6 gerettet (GMU 0,95).

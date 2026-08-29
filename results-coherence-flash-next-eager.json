@@ -1,0 +1,3 @@
+{"label": "qwen38-flash-next-k0-eager", "key": "capital", "prompt": "What is the capital of France? Answer in one word.", "text": "Paris", "reasoning": "", "completion_tokens": 2, "prompt_tokens": 24, "seconds": 9.46}
+{"label": "qwen38-flash-next-k0-eager", "key": "arith", "prompt": "Compute 37 * 43. Reply with just the number.", "text": "1591", "reasoning": "", "completion_tokens": 5, "prompt_tokens": 27, "seconds": 1.86}
+{"label": "qwen38-flash-next-k0-eager", "key": "count", "prompt": "How many letters are in the word 'strawberry'? Reply with just the number.", "text": "10", "reasoning": "", "completion_tokens": 3, "prompt_tokens": 30, "seconds": 0.44}

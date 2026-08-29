@@ -1,0 +1,5 @@
+2649540c5e88a2ca19b674a79ac313f5868943e5d56435dc370d381ad81db66f  ./v1/spec_decode/qwen4_exp.py
+ad3ded74e90d5341787c34b8397399a82a7de07ba653f4cd85f6f00db34c7919  ./v1/worker/gpu_model_runner.py
+52930210d6a6dc9e421b6822b01d5c1d92a708ce2330aa5abb4e3bf570c06548  ./models/qwen4_exp/amd/mtp.py
+c91b54c27fe663ddeffc100e94033219d6e339056df19587881a2c003db01834  ./models/qwen4_exp/amd/qsa.py
+13c06552f43cf1a0718ec51ebb3a4067c553ba2afdac255ce011ba2a080d4682  ./models/qwen4_exp/amd/ops/qsa.py

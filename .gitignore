@@ -22,3 +22,9 @@ ac_suite/
 
 # Wheels (per SHA256 in der Uebergabe referenziert, nicht in VCS)
 *.whl
+
+# Lokale venvs und entpackte CUDA-Toolchains (maschinenspezifisch)
+.venv-sm70/
+.venv-sm70-130/
+.cuda-nvcc-deb/
+.cuda128/

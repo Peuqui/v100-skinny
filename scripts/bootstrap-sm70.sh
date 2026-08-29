@@ -262,6 +262,21 @@ deploy model_runner.py vllm/v1/worker/gpu/model_runner.py
 deploy worker_mamba_utils.py vllm/v1/worker/mamba_utils.py
 deploy worker_utils.py vllm/v1/worker/utils.py
 deploy tilelang_target.py   tilelang/utils/target.py
+deploy triton_unified_attention.py vllm/v1/attention/ops/triton_unified_attention.py
+deploy triton_attn.py vllm/v1/attention/backends/triton_attn.py
+# FA2-sm75 enablement (2026-08-29): gates for the Turing FlashAttention
+# backend; the kernel itself (_vllm_fa2_C.abi3.so, ~152 MB, too big for
+# git) is built from Peuqui/flash-attention branch sm75-enablement and
+# copied from its build tree if present.
+deploy flash_attn.py vllm/v1/attention/backends/flash_attn.py
+deploy flash_attn_interface.py vllm/vllm_flash_attn/flash_attn_interface.py
+FA2_SM75_SO="$HOME/Projekte/flash-attention-sm75/build-sm75/_vllm_fa2_C.abi3.so"
+if [ -f "$FA2_SM75_SO" ]; then
+    say "deploying FA2-sm75 kernel from $FA2_SM75_SO"
+    cp "$FA2_SM75_SO" "$SP/vllm/vllm_flash_attn/_vllm_fa2_C.abi3.so"
+else
+    say "WARNING: FA2-sm75 kernel not found ($FA2_SM75_SO) - sm75 falls back to TRITON_ATTN"
+fi
 # sm75 pair needs the UNMODIFIED upstream FLA triton ops under their
 # upstream path (the fork's layers/fla/ops are modified and wrong on sm75).
 say "deploying upstream flash_linear_attention tree (sm75 GDN pair)"

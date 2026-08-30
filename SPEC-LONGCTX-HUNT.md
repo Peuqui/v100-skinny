@@ -160,3 +160,49 @@ Kommentar "Only apply split-k for decoding").
 
 => Der Befund ist NICHT Turing-spezifisch. Messskript:
 tools/ampere_verify_bench.py (laeuft gegen jedes installierte vLLM).
+
+## OPTIMIERUNGSRUNDE 27B (2026-08-30 nachmittags, tools/grid_stage_test.py)
+
+Alle Laeufe: Gitter TP2xPP2, k=2, 262.144 Kontext, Langpunkt 31.469 tok.
+
+### E-A: Drafter-Platzierung — HYPOTHESE WIDERLEGT
+
+| Stufenordnung | kurz | Prefill | lang |
+|---|---:|---:|---:|
+| RTX vorn (38,26), Drafter V100 = produktiv | 67,4 | 835 | 33,1 |
+| V100 vorn (26,38), Drafter RTX | 64,7 | 810 | 32,5 |
+
+Der Drafter auf den RTX bringt nichts (-2 bis -4 %). 1Cats XQA-Drafter
+auf Volta ist gut genug; die Umkehrung verschiebt zudem die fruehen
+Schichten auf die langsameren Karten. Konvention "schnellste Klasse
+zuerst" bleibt — jetzt gemessen, nicht nur angenommen.
+
+**Nebenprodukt (2 Fork-Patches, noetig damit der Test ueberhaupt bootet):**
+vLLM leitet die FlashAttention-Version GLOBAL von Geraet 0 ab
+(`get_flash_attn_version` -> `get_device_capability()`, Default 0) und
+unser sm75-Gate ebenso (`has_device_capability(75)`). In einem
+heterogenen Gitter diktiert damit die schwaechste Karte auf Position 0
+den Kernel fuer ALLE Stufen; mit V100 auf 0 bricht der RTX-Worker mit
+"FlashAttention version not detected". Fix: beide Stellen fragen
+`torch.cuda.current_device()`. Verifiziert ohne Regression auf der
+produktiven Ordnung (66,4/835/32,9 vs. 67,4/835/33,1 = Rauschen).
+Dateien: fork_patches/fa_utils.py, fork_patches/flash_attn_interface.py,
+Backups in backups/2026-08-30-fa-version-per-device/.
+
+### E-B: Chunk-Groesse und Blockgroesse
+
+| Konfiguration | kurz | Prefill | lang |
+|---|---:|---:|---:|
+| 2048 / Block 16 (Ausgangspunkt) | 67,4 | 835 | 33,1 |
+| 4096 / Block 16 | 67,3 | 858 | 33,0 |
+| 8192 / Block 16 | 66,1 | 817 | 32,8 |
+| **4096 / Block 32** (Kohaerenz 3/3) | 67,5 | **863** | 33,1 |
+
++3,5 % Prefill, Decode unveraendert. Der Abfall bei 8192 ist kein
+Messfehler: im PP-Betrieb lebt der Prefill von mehreren gleichzeitig
+fliegenden Chunks — zu grosse Chunks reduzieren die Ueberlappung.
+Kohaerenz bei der Bestkonfiguration 3/3 geprueft (Blockgroesse greift in
+die Paged-Geometrie und den Split-KV-Pfad ein, deshalb Pflichtcheck).
+
+Offen als grosser Hebel: Turing-Tile-Tuning (hdim 128 belegt derzeit
+64 KB smem = 1 CTA/SM; 64x32 waere 32 KB = 2 CTA/SM).

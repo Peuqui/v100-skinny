@@ -56,11 +56,7 @@ def _is_fa2_supported() -> tuple[bool, str | None]:
 
     # SM75 enablement: Turing runs the fp16-only FA2 build; bf16 inputs are
     # rejected by the C++ entry points.
-    # Heterogene Rigs: die eigene Karte des Workers befragen, nicht Geraet 0 —
-    # sonst entscheidet die schwaechste Karte im Gitter fuer alle Stufen.
-    import torch as _torch
-    _dev = _torch.cuda.current_device() if _torch.cuda.is_available() else 0
-    if not current_platform.has_device_capability(75, _dev):
+    if not current_platform.has_device_capability(75):
         return False, "FA2 is only supported on devices with compute capability >= 7.5"
     return True, None
 

@@ -125,8 +125,8 @@ def main():
     ]
     # Sweep-Kandidaten: (block_n, target_splits, warps)
     candidates = [
-        (32, 1, 2),    # RTX-Produktionsprofil nach Smem-Klammer
-        (32, 2, 2),
+        (64, 1, 2),    # Produktionsprofil (Referenz)
+        (16, 1, 4),    # zurueckgenommener Prefill-Kandidat
         (16, 4, 4),
     ]
     for rows, name, prod in regimes:
@@ -140,9 +140,9 @@ def main():
                 o = launch(q, k_cache, v_cache, li, bt, ttr, bn, ts, w)
                 torch.cuda.synchronize()
                 err = (o.float() - ref.float()).abs().max().item()
+                print(f"  N{bn:<4}S{ts:<4}W{w}: max-abs-Abweichung {err:.3e}",
+                      flush=True)
                 if err > 2e-2:
-                    print(f"  N{bn:<4}S{ts:<4}W{w}: NUMERIK {err:.1e}",
-                          flush=True)
                     continue
                 ms = bench(lambda: launch(q, k_cache, v_cache, li, bt, ttr,
                                           bn, ts, w),

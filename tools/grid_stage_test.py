@@ -17,6 +17,11 @@ K = int(K)
 # optional: max_num_batched_tokens, block_size
 MBT = sys.argv[6] if len(sys.argv) > 6 else "2048"
 BLK = sys.argv[7] if len(sys.argv) > 7 else "16"
+# TP als 8. Argument: 1 = reines Pipeline-Setup (llama.cpp-Aequivalent),
+# 2 = Tensor-Parallel je Stufe. PART kann "auto:N" sein — dann setzt der
+# Lauf KEINE explizite Schichtaufteilung und vLLM verteilt selbst auf N
+# Stufen (so lief der PP5-Vergleichslauf vom 25.08.).
+TP = sys.argv[8] if len(sys.argv) > 8 else "2"
 PORT = 8129
 VENV = "/home/mp/Projekte/v100-skinny/.venv-sm70-130"
 MODEL = ("/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/"
@@ -38,8 +43,11 @@ ENV.update({
     "TORCHINDUCTOR_CACHE_DIR": "/home/mp/.cache/torchinductor",
     "VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS": "1",
     "VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS": "0",
-    "VLLM_PP_LAYER_PARTITION": PART, "HOME": "/home/mp",
+    "HOME": "/home/mp",
 })
+if not PART.startswith("auto:"):
+    ENV["VLLM_PP_LAYER_PARTITION"] = PART
+
 
 spec = {"method": "mtp", "num_speculative_tokens": K,
         "draft_sample_method": "greedy", "use_local_argmax_reduction": True,
@@ -48,8 +56,9 @@ args = [
     f"{VENV}/bin/python", "-m", "vllm.entrypoints.openai.api_server",
     "--model", MODEL, "--served-model-name", NAME, "--trust-remote-code",
     "--dtype", "float16", "--disable-custom-all-reduce",
-    "--tensor-parallel-size", "2",
-    "--pipeline-parallel-size", str(len(PART.split(","))),
+    "--tensor-parallel-size", TP,
+    "--pipeline-parallel-size", (PART.split(":")[1] if PART.startswith("auto:")
+                                 else str(len(PART.split(",")))),
     "--gpu-memory-utilization", "0.95", "--block-size", BLK,
     "--max-model-len", "262144", "--max-num-seqs", "4",
     "--max-num-batched-tokens", MBT, "--host", "127.0.0.1",
@@ -62,7 +71,7 @@ log = open(f"{OUT}/grid_{TAG}.log", "w")
 proc = subprocess.Popen(args, env=ENV, stdout=log, stderr=subprocess.STDOUT,
                         cwd="/home/mp")
 print(f"[{TAG}] pid {proc.pid} | GPUs {GPUS} | Partition {PART} | "
-      f"Drafter-Backend {SPEC_BE} | k={K} | MBT {MBT} | Block {BLK}")
+      f"Drafter-Backend {SPEC_BE} | k={K} | MBT {MBT} | Block {BLK} | TP {TP}")
 
 def api(path, payload=None, timeout=1200):
     req = urllib.request.Request(

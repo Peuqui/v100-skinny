@@ -135,3 +135,28 @@ CPU/Step), V100-Verify koennte vom selben Split-Fix profitieren
 - 22:40 py-spy 0.4.2 einsatzbereit (setcap + ptrace_scope=0 durch Peuqui).
 - 23:31 Baseline geerntet, ki abgemeldet, Chrome beendet, GPUs frei.
 - E1 startet: k=2 RTX TP2 @65k mit VLLM_SM70_MTP_PROFILE=1 + py-spy.
+
+## AMPERE-GEGENBEWEIS (2026-08-30, RTX 3090 Ti / sm86)
+
+Unveraenderter Upstream-Kernel (vLLM 0.13.0 aus dem Paket, torch 2.9.0,
+WSL2 auf Aragon), paged varlen Attention bei 31.488 Token KV, hdim 128:
+
+| Koepfe (Q/KV) | q=1 | q>=2 | Faktor |
+|---|---:|---:|---:|
+| 4 / 1 | 0,065 ms | ~1,44 ms | **22,8x** |
+| 8 / 2 | 0,083 ms | ~1,38 ms | **16,5x** |
+| 32 / 8 | 0,189 ms | ~1,37 ms | **7,3x** |
+
+Die ABSOLUTE Zeit bleibt bei ~1,4 ms — unabhaengig von Kopfzahl und
+q-Laenge. Signatur des seriellen KV-Durchlaufs: die Arbeit haengt nur an
+der Kontextlaenge. Mehr Koepfe = mehr CTAs = kleinerer Faktor, aber der
+Einbruch bleibt selbst bei 32 Q-Koepfen (Llama-8B-Geometrie) beim
+Siebenfachen.
+
+Quelltext-Pruefung am aktuellen Upstream-main (2026-08-30): die Sperre
+steht unveraendert
+(`} else if (paged_KV) { STD_TORCH_CHECK(num_splits <= 1, ...)`,
+Kommentar "Only apply split-k for decoding").
+
+=> Der Befund ist NICHT Turing-spezifisch. Messskript:
+tools/ampere_verify_bench.py (laeuft gegen jedes installierte vLLM).

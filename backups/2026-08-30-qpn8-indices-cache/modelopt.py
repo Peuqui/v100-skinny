@@ -579,24 +579,13 @@ _KORDER8 = [0, 2, 4, 6, 1, 3, 5, 7, 8, 10, 12, 14, 9, 11, 13, 15]
 
 
 
-_sm70_qpn8_indices_cache: dict = {}
-
-
 def _sm70_qpn8_indices(n, k, dev):
-    # Pro (n, k, dev) deterministisch; der Aufruf laeuft bei JEDEM
-    # Prefill-Reconstruct-GEMM (~9 % CPU-Zeit je Schritt im Profil
-    # 2026-08-30) — deshalb memoisiert.
-    key = (n, k, str(dev))
-    hit = _sm70_qpn8_indices_cache.get(key)
-    if hit is not None:
-        return hit
     tiles, groups = n // 32, k // 16
     lane = torch.arange(32, device=dev)
     col = ((lane >> 2) & 3) * 8 + (lane & 3) + ((lane & 16) > 0).long() * 4
     korder = torch.tensor(_KORDER8, device=dev)
     g = torch.arange(groups, device=dev)
     kidx = g.view(groups, 1) * 16 + korder.view(1, 16)
-    _sm70_qpn8_indices_cache[key] = (tiles, groups, col, kidx)
     return tiles, groups, col, kidx
 
 

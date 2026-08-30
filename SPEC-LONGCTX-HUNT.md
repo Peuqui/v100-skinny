@@ -206,3 +206,52 @@ die Paged-Geometrie und den Split-KV-Pfad ein, deshalb Pflichtcheck).
 
 Offen als grosser Hebel: Turing-Tile-Tuning (hdim 128 belegt derzeit
 64 KB smem = 1 CTA/SM; 64x32 waere 32 KB = 2 CTA/SM).
+
+### E-C: Kachel-Tuning beider Architekturen (2026-08-30 abends)
+
+Turing (FA2-Fork, JIT-Sweep tests/jit_probe/tile_sweep.py): Dispatch
+hdim128 auf 64x32 (-18 % Decode/Verify, 2 CTAs/SM), Align auf 128x64
+(-37 % Chunk-Prefill, Standard-Kernel-Kachel). Numerik PASS, deployed
+(Backup backups/2026-08-30-fa2-tile-tuning/). End-to-end am 27B NEUTRAL
+(A/B RTX-TP2: 533/33,8 neu vs. 535/33,9 alt) — Attention ist dort nicht
+der Engpass. grid_stage_test.py kann jetzt PP1 (PP-Groesse folgt der
+Partition).
+
+Volta (1Cat-Quellen jetzt lokal: ~/Projekte/1Cat-vLLM/flash-attention-v100,
+Sweep tools/volta_probe/): Verify skaliert LINEAR mit q (tokens-as-batch,
+0,153->0,632 fuer q=1->8); XQA-Gate nur D=256, das 27B nutzt ihn nie.
+Prefill-Kachel 32x176 -> 64x80 = 14,06 statt 16,10 ms (-13 %); Smem-Bilanz
+empirisch 272N + 856M + 4MN Bytes, 96-KB-Wand; M muss Vielfaches von 32
+sein. Restluecke zu Turing (14 vs 4 ms) strukturell (kein Double-Buffering,
+Score/Out im Smem) -> 1Cat-Kontakt. Messwerte: tools/volta_attn_bench.py.
+
+Gitter-Konsequenz: kritischer Pfad ist die V100-Stufe; Turing-Gewinne
+versickern in der Pipeline. Vollstaendige Tabellen:
+docs/*/benchmarks/vllm-autokalibration (AIfred-Repo).
+
+Nachtrag E-C: Volta-Kachel 64x80 aus v1.3.0-Quellstand neu gebaut
+(1Cat-Historie geprueft: D=128 nie getunt, nur Race-Fix 13.08. + Akku-Fix
+16.08., beide schon im 1.3.0-Wheel; alle Performance-Commits zielen auf
+D=256). Deployed mit Backup (backups/2026-08-30-volta-tile-64x80/),
+Mikrobench 14,09 ms bestaetigt. E2E-A/B Gitter: 863/33,1 vs. 864/33,0 =
+NEUTRAL. Fazit: beim 27B @31k ist Attention auf KEINER Architektur der
+Engpass (NVFP4/QPN8-GEMMs dominieren); Kachelgewinne zahlen erst bei
+langen Kontexten und D=256 (Flash-Next) ein. Quell-Clone:
+~/Projekte/1Cat-vLLM (sparse, Tag v1.3.0 fuer flash-attention-v100).
+
+### E-D: Flash-Next-Mini-Sweep (2026-08-30 spaet)
+
+tools/flashnext_stage_test.py (Ableger des Gitter-Harnesses: MML 16384,
+Langpunkt 13k, Akzeptanz aus /metrics, GMU als 8. Argument, k=0 ohne
+Spec-Config). Kernbefunde: (1) GMU 0.95 drosselte Long-Decode 28,3->12,6
+(Allokator-Druck QSA/Verify-Workspace, einmal harter Triton-OOM auf der
+V100-Stufe; Zombie-Worker hinterliessen 23 GiB VRAM -> kill noetig).
+(2) Akzeptanz 57,9 % kurz -> 19,0 % lang 13k; extern bestaetigt
+vllm#47602 (Qwen3.6-27B: 64,9->39,1 %, Speedup +129 %->-51 %). Das 27B
+haelt dagegen 97 % auch lang - Kopf-Robustheit ist modellspezifisch.
+(3) Spek bleibt netto positiv (28,3 vs 26,4 lang) -> kein
+Laengen-Abschalt-Patch. (4) MBT4096/Blk32 schaden Flash-Next (-12 %
+Prefill) - 27B-Config NICHT universell; AIfred-Kalibrations-Defaults
+zurueck auf neutral. Betriebspunkt-Yaml: GMU 0.93 + long_context_13k-Meta.
+Offen: QSA-Triton-Kernel (Basis-Attention Flash-Next) auf sm70/75 nie
+vermessen - naechster Kernel-Kandidat nach dem Kampagnen-Muster.

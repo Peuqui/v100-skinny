@@ -1,4 +1,4 @@
-"""Gitter-Experiment: Wo soll der MTP-Drafter sitzen?
+"""Flash-Next-Mini-Sweep: k-Werte am handkuratierten Gitterpunkt.
 
 Der Drafter lebt immer auf der LETZTEN PP-Stufe und macht pro Schritt k
 sequenzielle Vollkontext-Durchlaeufe — er ist damit der latenzkritischste
@@ -17,11 +17,11 @@ K = int(K)
 # optional: max_num_batched_tokens, block_size
 MBT = sys.argv[6] if len(sys.argv) > 6 else "2048"
 BLK = sys.argv[7] if len(sys.argv) > 7 else "16"
+GMU = sys.argv[8] if len(sys.argv) > 8 else "0.95"
 PORT = 8129
 VENV = "/home/mp/Projekte/v100-skinny/.venv-sm70-130"
-MODEL = ("/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/"
-         "snapshots/554ebba9b5f1b79dc11246341960360e6ef05ef4")
-NAME = "grid-test"
+MODEL = "/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ"
+NAME = "flashnext-test"
 OUT = "/home/mp/Projekte/v100-skinny/hunt-results"
 os.makedirs(OUT, exist_ok=True)
 
@@ -39,24 +39,28 @@ ENV.update({
     "VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS": "1",
     "VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS": "0",
     "VLLM_PP_LAYER_PARTITION": PART, "HOME": "/home/mp",
+    "VLLM_QWEN4EXP_PLE_HOST_GIB": "6",
 })
 
 spec = {"method": "mtp", "num_speculative_tokens": K,
-        "draft_sample_method": "greedy", "use_local_argmax_reduction": True,
-        "attention_backend": SPEC_BE}
+        "draft_sample_method": "greedy"}
+if SPEC_BE != "default":
+    spec["attention_backend"] = SPEC_BE
 args = [
     f"{VENV}/bin/python", "-m", "vllm.entrypoints.openai.api_server",
     "--model", MODEL, "--served-model-name", NAME, "--trust-remote-code",
     "--dtype", "float16", "--disable-custom-all-reduce",
     "--tensor-parallel-size", "2",
     "--pipeline-parallel-size", str(len(PART.split(","))),
-    "--gpu-memory-utilization", "0.95", "--block-size", BLK,
-    "--max-model-len", "262144", "--max-num-seqs", "4",
+    "--gpu-memory-utilization", GMU, "--block-size", BLK,
+    "--max-model-len", "16384", "--max-num-seqs", "4",
     "--max-num-batched-tokens", MBT, "--host", "127.0.0.1",
-    "--port", str(PORT), "--language-model-only", "--async-scheduling",
-    "--speculative-config", json.dumps(spec),
-    "--compilation-config", json.dumps({"cudagraph_capture_sizes": [1, 2, 3, 4, 8]}),
+    "--port", str(PORT), "--language-model-only",
+    "--compilation-config", json.dumps(
+        {"cudagraph_capture_sizes": sorted({1, 2, K, K + 1, 8} - {0})}),
 ]
+if K > 0:
+    args += ["--speculative-config", json.dumps(spec)]
 
 log = open(f"{OUT}/grid_{TAG}.log", "w")
 proc = subprocess.Popen(args, env=ENV, stdout=log, stderr=subprocess.STDOUT,
@@ -110,18 +114,39 @@ try:
             ok += 1
     print(f"[{TAG}] KOHAERENZ: {ok}/{len(checks)}")
 
+    def spec_counters():
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/metrics")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            text = r.read().decode()
+        vals = {}
+        for line in text.splitlines():
+            for key in ("vllm:spec_decode_num_draft_tokens_total",
+                        "vllm:spec_decode_num_accepted_tokens_total"):
+                if line.startswith(key):
+                    vals[key] = float(line.rsplit(" ", 1)[1])
+        return (vals.get("vllm:spec_decode_num_draft_tokens_total", 0.0),
+                vals.get("vllm:spec_decode_num_accepted_tokens_total", 0.0))
+
+    def accept_between(before, after):
+        drafts = after[0] - before[0]
+        return (after[1] - before[1]) / drafts if drafts > 0 else float("nan")
+
     short_p = ("Schreibe einen ausfuehrlichen Aufsatz ueber die Geschichte "
                "der Dampfmaschine und ihre Bedeutung.")
     complete(short_p, 20)
+    c0 = spec_counters()
     _, n, dt = complete(short_p, 200)
-    print(f"[{TAG}] SHORT  : {n/dt:.1f} tok/s")
+    c1 = spec_counters()
+    print(f"[{TAG}] SHORT  : {n/dt:.1f} tok/s  (Akzeptanz {accept_between(c0, c1):.1%})")
 
     filler = "Die Industrialisierung veraenderte Europa grundlegend. " * 12 + "\n"
-    long_p = filler * 260 + "\nFasse den Kern in einem Satz zusammen:"
+    long_p = filler * 108 + "\nFasse den Kern in einem Satz zusammen:"
     ptok, _, dt = complete(long_p, 1)
     print(f"[{TAG}] PREFILL: {ptok/dt:.0f} tok/s ({ptok} tok in {dt:.1f}s)")
+    c2 = spec_counters()
     _, n, dt = complete(long_p, 200)
-    print(f"[{TAG}] LONG   : {n/dt:.1f} tok/s")
+    c3 = spec_counters()
+    print(f"[{TAG}] LONG   : {n/dt:.1f} tok/s  (Akzeptanz {accept_between(c2, c3):.1%})")
 finally:
     proc.send_signal(signal.SIGINT)
     try:

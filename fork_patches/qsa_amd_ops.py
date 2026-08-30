@@ -896,21 +896,6 @@ def qsa_sparse_paged_attention(
         block_n, target_splits, partial_warps = 64, 4, 2
     else:
         block_n, target_splits, partial_warps = 64, 1, 2
-    # Pre-Ampere retune (measured 2026-08-30 on V100 sm70 and RTX 8000 sm75,
-    # tools/qsa_bench.py in v100-skinny): the wide GB300 prefill tiles are
-    # 19.3x (V100, 527 -> 27.3 ms) and 4.2x (RTX 8000 after the smem clamp,
-    # 199.7 -> 47.9 ms) slower than narrow 4-warp tiles on 2048-row chunks —
-    # two warps cannot hide the emulated-bf16 latency on these parts. The
-    # decode/verify branches (base_programs < 32) already run the optimal
-    # narrow profiles and stay untouched.
-    if base_programs >= 32 and not current_platform.is_rocm():
-        if torch.cuda.get_device_capability(q.device)[0] < 8:
-            if base_programs <= 256:
-                block_n, target_splits, partial_warps = 16, 8, 4
-            elif base_programs <= 512:
-                block_n, target_splits, partial_warps = 16, 4, 4
-            else:
-                block_n, target_splits, partial_warps = 16, 1, 4
     # The profiles above were tuned on GB300, whose 228 KiB of shared memory
     # per block hides the cost of the widest tile. A tile holds K and V for the
     # full head dimension plus the fp32 accumulator, so it needs

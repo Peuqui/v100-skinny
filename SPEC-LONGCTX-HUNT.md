@@ -255,3 +255,25 @@ Prefill) - 27B-Config NICHT universell; AIfred-Kalibrations-Defaults
 zurueck auf neutral. Betriebspunkt-Yaml: GMU 0.93 + long_context_13k-Meta.
 Offen: QSA-Triton-Kernel (Basis-Attention Flash-Next) auf sm70/75 nie
 vermessen - naechster Kernel-Kandidat nach dem Kampagnen-Muster.
+
+### E-E: QSA-Kernel-Retune fuer Pre-Ampere (2026-08-30 nacht)
+
+Der dritte Attention-Pfad (Flash-Next-Grundmodell, Triton, "Tuned on
+GB300"): Pre-Ampere nutzt den amd/-Zweig (qwen4_exp/__init__.py,
+DeepSeek-Port-Lektion — ERST den richtigen Zweig instrumentieren, die
+nvidia-Zwillingsdatei ist auf sm70/75 tot!). Harness tools/qsa_bench.py
+(Produktionsgeometrie H12/KV1/D256, TOPK 2048).
+
+Mikrobench 2048er-Chunk: V100 527 -> 27,3 ms (19,3x; GB300-Profil N64/W2
+blieb dank 96 KB Smem stehen); RTX 199,7 -> 47,9 ms (4,2x; Smem-Klammer
+hatte N64->N32 gerettet, aber W2 behalten). Decode/Verify-Zweige
+(base_programs < 32) waren bereits optimal. Patch: Pre-Ampere-Tabelle
+(16er-Kacheln, 4 Warps) in amd/ops/qsa.py hinter der GB300-Tabelle;
+Backup backups/2026-08-30-qsa-preampere-tiles/, fork_patches/qsa_amd_ops.py.
+
+E2E Flash-Next (2 Laeufe): PREFILL 392-448 -> 1482-1696 tok/s (~4x,
+13k in 7,7 s statt 33 s), Kohaerenz 3/3, kurz unveraendert. ABER:
+Lang-Akzeptanz deterministisch 19,0 -> 13,3 % (Kachel-Numerik verschiebt
+den fragilen Drafter), Long-Decode 26-29 -> 22,5-25,6. Netto pro
+13k-Turn (+500 tok) trotzdem ~28 s statt ~51 s. k-Frage (4 vs 0 lang)
+geht an die volle Kalibration.

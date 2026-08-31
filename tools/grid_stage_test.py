@@ -43,13 +43,23 @@ ENV.update({
     # Ueber GRID_QUANT_BACKEND steuerbar: "marlin" ist fuer NVFP4 richtig
     # (Skinny-Pfad), zwingt bei FP8 aber use_sm70_turbomind() auf False und
     # umgeht damit 1Cats eigene FP8-Kernel (envs.py:812).
-    "VLLM_SM70_QUANT_BACKEND": os.environ.get("GRID_QUANT_BACKEND", "marlin"), "VLLM_SKINNY_NVFP4": "1",
-    "VLLM_SKINNY_QPN": "1", "VLLM_SKINNY_QPN2": "1",
+    "VLLM_SM70_QUANT_BACKEND": os.environ.get("GRID_QUANT_BACKEND", "marlin"),
+    # Halbierungssuche im Skinny-Pfad: Der Decode laeuft im QPN-Band
+    # (M 4..16), der Prefill ueber Marlin (M>64) — ueber diese Schalter
+    # laesst sich der Decode schrittweise auf Marlin umleiten.
+    "VLLM_SKINNY_NVFP4": os.environ.get("GRID_SKINNY", "1"),
+    "VLLM_SKINNY_MAX_M": os.environ.get("GRID_SKINNY_MAX_M", "64"),
+    "VLLM_SKINNY_QPN": os.environ.get("GRID_QPN", "1"),
+    "VLLM_SKINNY_QPN2": os.environ.get("GRID_QPN2", "1"),
     "VLLM_SKINNY_NVFP4_SRC": "/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu",
     "TORCHINDUCTOR_CACHE_DIR": "/home/mp/.cache/torchinductor",
     "VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS": "1",
     "VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS": "0",
     "HOME": "/home/mp",
+    # PLE-Tabelle des Qwen4Exp: Anteil je Rang, der in gepinnten
+    # Hostspeicher wandert (UVA-Zugriff, kein Kopieren). Entlastet den
+    # VRAM — bei 30 GiB System-RAM aber nicht ueberreizen.
+    "VLLM_QWEN4EXP_PLE_HOST_GIB": os.environ.get("GRID_PLE_HOST_GIB", "6"),
 })
 if not PART.startswith("auto:"):
     ENV["VLLM_PP_LAYER_PARTITION"] = PART
@@ -66,7 +76,7 @@ args = [
     "--pipeline-parallel-size", (PART.split(":")[1] if PART.startswith("auto:")
                                  else str(len(PART.split(",")))),
     "--gpu-memory-utilization", "0.95", "--block-size", BLK,
-    "--max-model-len", "262144", "--max-num-seqs", "4",
+    "--max-model-len", os.environ.get("GRID_MML", "262144"), "--max-num-seqs", "4",
     "--max-num-batched-tokens", MBT, "--host", "127.0.0.1",
     "--port", str(PORT), "--language-model-only", "--async-scheduling",
     "--speculative-config", json.dumps(spec),

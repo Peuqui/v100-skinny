@@ -413,3 +413,131 @@ interessant fuer Recherche-Sessions mit grossen Kontexten.
 Das Zerfasern langer Antworten war ein 180B-Phaenomen, das beim 27B in
 KEINEM Format auftrat. Ob AWQ auch das behebt, ist ungeprueft —
 dafuer braeuchte es wtdcode/Qwen3.8-Flash-Next-AWQ-W4A16 (181 GB).
+
+## 180B in AWQ: gescheitert, aber nicht an AWQ
+
+Versuch mit `wtdcode/Qwen3.8-Flash-Next-AWQ-W4A16` (181 GB), um die
+offene Frage zu klaeren, ob AWQ auch das Zerfasern des 180B behebt.
+
+**Zwei Huerden, die zweite entscheidend:**
+
+1. *mmap-Limit.* Der Upload legt 102 GB in EINE safetensors-Datei.
+   Bei `vm.overcommit_memory=0` verweigert Linux Einblendungen groesser
+   als RAM+Swap (61 GB). Umgangen mit `sysctl vm.overcommit_memory=1`
+   (nur bis Reboot; safetensors bildet nur lesend ab, die Seiten kommen
+   bei Bedarf).
+
+2. *Die PLE-Tabelle ist unquantisiert.* Von 175 GB Gewichten entfallen
+   **102,5 GB auf PLE-Tabellen in BF16**; nur 73 GB sind das eigentliche
+   Modell (60,4 GB davon als I32-gepackte Vier-Bit-Gewichte). Das passt
+   auf dieser Maschine nirgends hin — weder in 192 GiB VRAM neben den
+   uebrigen Gewichten noch in 30 GiB Hostspeicher.
+
+Zum Vergleich: RadixArks NVFP4 kam auf 126 GiB gesamt, davon knapp
+18 GiB PLE je Rang auf der Karte. Dort ist die Tabelle also deutlich
+kompakter abgelegt.
+
+Die Alternative `VnimanieAI/Qwen3.8-Flash-Next-W4A16` (180 GB) traegt
+laut Gewichtsindex dieselben 128 ngram-Bruchstuecke — also vermutlich
+dasselbe Problem. Kein zweiter Download.
+
+**Die Frage bleibt damit offen:** Ob der emulierte NVFP4-Pfad auch das
+Zerfasern des 180B verursacht (wie er beim 27B die Verweigerungen
+verursachte), ist mangels tragfaehiger AWQ-Ausgabe nicht pruefbar. Was
+bleibt, ist die Analogie: Beim 27B war AWQ dem NVFP4 qualitativ klar
+ueberlegen, bei gleichem Modell, gleicher Bitbreite und gleichem Fork.
+
+## Ursachensuche: wo bricht die Qualitaet?
+
+### Die Spur: Bandaufteilung nach Stapelgroesse
+
+Der Skinny-Pfad (kernels/linear/nvfp4/marlin.py) teilt nach M auf:
+
+| M | Kernel |
+|---|---|
+| 1–3 | `gemm_qpn_simt` |
+| 4–16 | **QPN / QPN2** (Volta-eigenes `mma.m8n8k4`) |
+| 17–64 | Skinny-WMMA |
+| ab 65 | Marlin |
+
+Der Decode laeuft also durch die handgeschriebenen Volta-Kernel (bei
+k=2 ist M=3), der Prefill ueber Marlin. Da nur die ERZEUGTEN Texte
+auffaellig waren, nie der Prefill, lag der Verdacht auf diesen Kerneln.
+
+### Bisektion A: Skinny-Pfad komplett aus — ENTLASTET
+
+`GRID_SKINNY=0`, verifiziert am Protokoll (82 „Skinny route map"-Zeilen
+vorher, 0 nachher). Ergebnis: die Ausgaben sind **byteweise identisch**
+mit dem Lauf bei aktivem Skinny-Pfad — 4.449 / 108 / 57 Zeichen, gleiche
+Verweigerungen.
+
+**Die Inferenz-Arithmetik ist damit entlastet.** Die QPN/QPN2/SIMT-Kernel
+veraendern die Ausgabe nicht um ein Byte.
+
+Methodischer Nebengewinn: Zwei unabhaengige Boots liefern byteweise
+dasselbe. Die Messung ist deterministisch, alle bisherigen Vergleiche
+sind damit belastbarer als angenommen — Unterschiede sind echte
+Unterschiede, keine Sampling-Streuung.
+
+### Damit verbleibt: die Quantisierungs-Arithmetik
+
+Nicht wie beim Rechnen gerundet wird, sondern wie die Gewichte BEIM
+ERSTELLEN des Checkpoints gerundet wurden. Offene Teilfrage: liegt es
+an NVFP4 als Verfahren oder an RadixArks konkreter Ausgabe?
+
+Test laeuft: `unsloth/Qwen3.8-27B-NVFP4` — gleiches Modell, gleiches
+Format, anderer Quantisierer.
+
+### Zweite, unabhaengige Baustelle: das 180B
+
+Laut Uebergabedokument meldete das 180B **null Skinny-Routen** (statt
+30–32) — es umging diese Kernel ohnehin. Sein Zerfasern hat also eine
+andere Ursache als die Verweigerungen des 27B, vermutlich im
+qwen4exp-Pfad mit QSA, PLE und linearer Attention. Zwei Baustellen,
+nicht eine.
+
+### Bisektion B: anderer Quantisierer — AUFGELOEST
+
+`unsloth/Qwen3.8-27B-NVFP4` gegen `RadixArk/Qwen3.8-27B-NVFP4`:
+gleiches Modell, gleiches Format, gleicher Fork, gleiche Kernel — nur
+ein anderer Quantisierer.
+
+| Variante | Zeichen | nummerierte Saetze | verd. Woerter/1000 |
+|---|---:|---:|---:|
+| AWQ (shawnw3i) | 13.541 | 90 | 9,16 |
+| **NVFP4 (unsloth)** | 6.837 | **90** | **7,17** |
+| NVFP4 (RadixArk) | 4.614 | 30 | 10,40 |
+
+**NVFP4 als Format ist entlastet.** Unsloths Ausgabe beantwortet alle
+drei Fragen mit je dreissig nummerierten Saetzen und hat die NIEDRIGSTE
+Wortfehlerrate der drei. RadixArks Ausgabe verweigert zwei von drei.
+
+Haendische Durchsicht (Peuquis Vorgabe): Unsloth ist knapper als AWQ
+(6.837 gegen 13.541 Zeichen bei gleicher Satzzahl), sachlich aber
+korrekt. Ein Schwachpunkt in Turn 3: Es erklaert richtig, „Kuanda" sei
+fiktiv, beschreibt dann aber erneut den Regenbogen aus dem vorigen Turn
+und widerspricht sich damit. AWQ raet stattdessen auf
+Quanten-Tunnel-Effekt und bleibt in sich stimmig.
+
+Die Tippfehler-Aufloesung „Kuanda" -> Coandă schafft KEINE 27B-Variante.
+Das 180B konnte es in allen Laeufen — Groesseneffekt, kein Formateffekt.
+
+## FAZIT DER URSACHENSUCHE
+
+Die Qualitaet bricht **bei der Quantisierung**, nicht beim Rechnen.
+
+1. **Inferenz-Arithmetik entlastet** — Skinny-Kernel aus: byteweise
+   identische Ausgabe (Bisektion A).
+2. **NVFP4 als Format entlastet** — Unsloths Ausgabe ist einwandfrei
+   (Bisektion B).
+3. **Schuldig: RadixArks konkrete Quantisierung** des 27B.
+
+Das hat unmittelbare Folgen fuer die Modellwahl: Der schnelle Pfad
+(NVFP4-Skinny, bester Decode mit 33,0 tok/s) ist NICHT verloren — er
+braucht nur einen besseren Checkpoint. AWQ waere der langsamere
+Ausweg (23,1 tok/s), den wir nun nicht mehr brauchen.
+
+Offen bleibt das 180B: RadixArks Ausgabe war dort ebenfalls die
+verwendete, und der Zerfall koennte dieselbe Ursache haben. Eine
+Unsloth-NVFP4-Ausgabe des Flash-Next existiert (im GGUF-Repo gesehen);
+ob es sie auch als safetensors gibt, waere zu pruefen.

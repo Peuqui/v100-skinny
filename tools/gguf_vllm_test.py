@@ -1,4 +1,4 @@
-"""Gitter-Experiment: Wo soll der MTP-Drafter sitzen?
+"""Flash-Next-Mini-Sweep: k-Werte am handkuratierten Gitterpunkt.
 
 Der Drafter lebt immer auf der LETZTEN PP-Stufe und macht pro Schritt k
 sequenzielle Vollkontext-Durchlaeufe — er ist damit der latenzkritischste
@@ -16,20 +16,15 @@ GPUS, PART, SPEC_BE, K, TAG = sys.argv[1:6]
 K = int(K)
 # optional: max_num_batched_tokens, block_size
 MBT = sys.argv[6] if len(sys.argv) > 6 else "2048"
+MML = sys.argv[9] if len(sys.argv) > 9 else "16384"
+TP = sys.argv[10] if len(sys.argv) > 10 else "1"
 BLK = sys.argv[7] if len(sys.argv) > 7 else "16"
-# TP als 8. Argument: 1 = reines Pipeline-Setup (llama.cpp-Aequivalent),
-# 2 = Tensor-Parallel je Stufe. PART kann "auto:N" sein — dann setzt der
-# Lauf KEINE explizite Schichtaufteilung und vLLM verteilt selbst auf N
-# Stufen (so lief der PP5-Vergleichslauf vom 25.08.).
-TP = sys.argv[8] if len(sys.argv) > 8 else "2"
+GMU = sys.argv[8] if len(sys.argv) > 8 else "0.95"
 PORT = 8129
 VENV = "/home/mp/Projekte/v100-skinny/.venv-sm70-130"
-# Modell ueber GRID_MODEL uebersteuerbar (Formatvergleiche NVFP4 vs FP8),
-# damit Sonde, Kohaerenztor und Messpunkte identisch bleiben.
-MODEL = os.environ.get("GRID_MODEL") or (
-    "/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/"
-    "snapshots/554ebba9b5f1b79dc11246341960360e6ef05ef4")
-NAME = "grid-test"
+MODEL = ("/home/mp/models/Qwen3.8-Flash-Next-180B-A4B/UD-Q6_K_XL/"
+         "Qwen3.8-Flash-Next-180B-A4B-UD-Q6_K_XL-00001-of-00006.gguf")
+NAME = "flashnext-gguf-test"
 OUT = "/home/mp/Projekte/v100-skinny/hunt-results"
 os.makedirs(OUT, exist_ok=True)
 
@@ -40,24 +35,23 @@ ENV.update({
     "CUDA_HOME": "/home/mp/Projekte/v100-skinny/.cuda-nvcc-deb/usr/local/cuda-12.8",
     "TORCH_CUDA_ARCH_LIST": "7.0;7.5", "NCCL_P2P_DISABLE": "1",
     "VLLM_SM70_E5_CACHE": "0", "VLLM_SM70_NVFP4_TURBOMIND": "0",
-    # Ueber GRID_QUANT_BACKEND steuerbar: "marlin" ist fuer NVFP4 richtig
-    # (Skinny-Pfad), zwingt bei FP8 aber use_sm70_turbomind() auf False und
-    # umgeht damit 1Cats eigene FP8-Kernel (envs.py:812).
-    "VLLM_SM70_QUANT_BACKEND": os.environ.get("GRID_QUANT_BACKEND", "marlin"), "VLLM_SKINNY_NVFP4": "1",
-    "VLLM_SKINNY_QPN": "1", "VLLM_SKINNY_QPN2": "1",
+    "VLLM_SM70_QUANT_BACKEND": "marlin", 
+    
     "VLLM_SKINNY_NVFP4_SRC": "/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu",
     "TORCHINDUCTOR_CACHE_DIR": "/home/mp/.cache/torchinductor",
     "VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS": "1",
     "VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS": "0",
     "HOME": "/home/mp",
+    "VLLM_QWEN4EXP_PLE_HOST_GIB": "6",
 })
 if not PART.startswith("auto:"):
     ENV["VLLM_PP_LAYER_PARTITION"] = PART
 
 
 spec = {"method": "mtp", "num_speculative_tokens": K,
-        "draft_sample_method": "greedy", "use_local_argmax_reduction": True,
-        "attention_backend": SPEC_BE}
+        "draft_sample_method": "greedy"}
+if SPEC_BE != "default":
+    spec["attention_backend"] = SPEC_BE
 args = [
     f"{VENV}/bin/python", "-m", "vllm.entrypoints.openai.api_server",
     "--model", MODEL, "--served-model-name", NAME, "--trust-remote-code",
@@ -65,19 +59,21 @@ args = [
     "--tensor-parallel-size", TP,
     "--pipeline-parallel-size", (PART.split(":")[1] if PART.startswith("auto:")
                                  else str(len(PART.split(",")))),
-    "--gpu-memory-utilization", "0.95", "--block-size", BLK,
-    "--max-model-len", "262144", "--max-num-seqs", "4",
+    "--gpu-memory-utilization", GMU, "--block-size", BLK,
+    "--max-model-len", str(MML), "--max-num-seqs", "4",
     "--max-num-batched-tokens", MBT, "--host", "127.0.0.1",
-    "--port", str(PORT), "--language-model-only", "--async-scheduling",
-    "--speculative-config", json.dumps(spec),
-    "--compilation-config", json.dumps({"cudagraph_capture_sizes": [1, 2, 3, 4, 8]}),
+    "--port", str(PORT), "--language-model-only",
+    "--compilation-config", json.dumps(
+        {"cudagraph_capture_sizes": sorted({1, 2, K, K + 1, 8} - {0})}),
 ]
+if K > 0:
+    args += ["--speculative-config", json.dumps(spec)]
 
 log = open(f"{OUT}/grid_{TAG}.log", "w")
 proc = subprocess.Popen(args, env=ENV, stdout=log, stderr=subprocess.STDOUT,
                         cwd="/home/mp")
 print(f"[{TAG}] pid {proc.pid} | GPUs {GPUS} | Partition {PART} | "
-      f"Drafter-Backend {SPEC_BE} | k={K} | MBT {MBT} | Block {BLK} | TP {TP}")
+      f"Drafter-Backend {SPEC_BE} | k={K} | MBT {MBT} | Block {BLK}")
 
 def api(path, payload=None, timeout=1200):
     req = urllib.request.Request(
@@ -125,29 +121,39 @@ try:
             ok += 1
     print(f"[{TAG}] KOHAERENZ: {ok}/{len(checks)}")
 
-    # GRID_QUALITY=<datei>: statt der Tempomessung die Qualitaetssonde
-    # fahren (dieselben drei Prompts wie in den AIfred-Sitzungen), damit
-    # Format-Vergleiche auf demselben Modell moeglich sind.
-    _qual = os.environ.get("GRID_QUALITY")
-    if _qual:
-        import subprocess as _sp
-        _sp.run([f"{VENV}/bin/python",
-                 "/home/mp/Projekte/v100-skinny/tools/quality_probe.py",
-                 str(PORT), _qual], check=False)
-        raise SystemExit(0)
+    def spec_counters():
+        req = urllib.request.Request(f"http://127.0.0.1:{PORT}/metrics")
+        with urllib.request.urlopen(req, timeout=10) as r:
+            text = r.read().decode()
+        vals = {}
+        for line in text.splitlines():
+            for key in ("vllm:spec_decode_num_draft_tokens_total",
+                        "vllm:spec_decode_num_accepted_tokens_total"):
+                if line.startswith(key):
+                    vals[key] = float(line.rsplit(" ", 1)[1])
+        return (vals.get("vllm:spec_decode_num_draft_tokens_total", 0.0),
+                vals.get("vllm:spec_decode_num_accepted_tokens_total", 0.0))
+
+    def accept_between(before, after):
+        drafts = after[0] - before[0]
+        return (after[1] - before[1]) / drafts if drafts > 0 else float("nan")
 
     short_p = ("Schreibe einen ausfuehrlichen Aufsatz ueber die Geschichte "
                "der Dampfmaschine und ihre Bedeutung.")
     complete(short_p, 20)
+    c0 = spec_counters()
     _, n, dt = complete(short_p, 200)
-    print(f"[{TAG}] SHORT  : {n/dt:.1f} tok/s")
+    c1 = spec_counters()
+    print(f"[{TAG}] SHORT  : {n/dt:.1f} tok/s  (Akzeptanz {accept_between(c0, c1):.1%})")
 
     filler = "Die Industrialisierung veraenderte Europa grundlegend. " * 12 + "\n"
-    long_p = filler * 260 + "\nFasse den Kern in einem Satz zusammen:"
+    long_p = filler * 108 + "\nFasse den Kern in einem Satz zusammen:"
     ptok, _, dt = complete(long_p, 1)
     print(f"[{TAG}] PREFILL: {ptok/dt:.0f} tok/s ({ptok} tok in {dt:.1f}s)")
+    c2 = spec_counters()
     _, n, dt = complete(long_p, 200)
-    print(f"[{TAG}] LONG   : {n/dt:.1f} tok/s")
+    c3 = spec_counters()
+    print(f"[{TAG}] LONG   : {n/dt:.1f} tok/s  (Akzeptanz {accept_between(c2, c3):.1%})")
 finally:
     proc.send_signal(signal.SIGINT)
     try:

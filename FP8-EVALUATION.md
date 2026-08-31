@@ -263,3 +263,99 @@ Kerneln dieser Hardware.
 fehlenden `qwen4exp`-Zuordnung in `transformers` (integrations/ggml.py,
 29 Architekturen, unsere fehlt). Aufwand geschätzt ein bis zwei Tage,
 Gewinn wäre Q6-Qualität mit vLLM-Prefill.
+
+## Neue Hypothese (Peuqui): liegt es an der Arithmetik?
+
+Einwand: „Wenn NVFP4 so schlecht waere, wuerde es kaum jemand
+einsetzen." Dazu die eigene Erfahrung, dasselbe 27B sei als Q8-GGUF
+unter llama.cpp exzellent gewesen (damit wurde VECTORFALL
+nachprogrammiert).
+
+Die Recherche stuetzt den Einwand deutlich:
+
+1. **Der Fork beschreibt sich selbst als AWQ-Projekt.** GitHub-Titel:
+   „vLLM fork for Tesla V100 (SM70) with **AWQ 4-bit support**, CUDA
+   12.8 build flow, and **validated Qwen3.5 27B/35B** deployment". NVFP4
+   ist NICHT der validierte Pfad — es kommt ueber den
+   v100-skinny-Aufsatz (VLLM_SKINNY_NVFP4/QPN/QPN2) dazu.
+
+2. **NVFP4 ist ein Blackwell-Format.** Laut Red Hat und der
+   NVFP4-Literatur bleibt der Tensor waehrend der GESAMTEN Inferenz im
+   Vier-Bit-Format, ohne Entpacken, hardwarebeschleunigt — genau das
+   macht seine Guete aus (95-98 % BF16-Genauigkeit, Qwen ~98 %). Auf
+   Volta/Turing fehlt diese Hardware, die Skinny-Kernel muessen
+   emulieren.
+
+3. **Rundungsfehler sind laut Literatur ohnehin die dominante
+   Fehlerquelle** bei NVFP4 (arXiv 2512.02010 „Four Over Six",
+   2603.22370 „FAAR"). Eine emulierte Ausfuehrung legt weitere
+   Rundungsschritte obendrauf.
+
+### Der entscheidende Test
+
+| | Modell | Bits | Stapel | Kernel-Pfad |
+|---|---|---|---|---|
+| gemessen | 27B | 4 (NVFP4) | 1Cat-Fork | Skinny, EMULIERT |
+| jetzt | 27B | 4 (AWQ) | 1Cat-Fork | Marlin, VALIDIERT |
+
+Dasselbe Modell, dieselbe Bitbreite, derselbe Fork — nur der
+Kernel-Pfad unterscheidet sich. Verweigert AWQ nicht, wo NVFP4 zweimal
+verweigerte, ist die Emulation ueberfuehrt und weder das Modell noch die
+Vier-Bit-Grenze.
+
+Modell: shawnw3i/Qwen3.8-27B-AWQ-MTP (19 GiB, group_size 64, MTP-Kopf
+vorhanden — Spekulation bleibt vergleichbar).
+
+### ERGEBNIS: Die Hypothese ist bestaetigt
+
+Gleiches Modell (Qwen3.8-27B), gleiche Bitbreite (4), gleicher Fork,
+gleiche Sonde, gleicher System-Prompt — einzige Variable ist der
+Kernel-Pfad:
+
+| | NVFP4 (Skinny, emuliert) | AWQ (Marlin, validiert) | FP8 |
+|---|---|---|---|
+| Turn 1 Quantenphysik | 4.449 Z., 30 Saetze | 4.818 Z., 30 Saetze | 3.633 Z., 30 Saetze |
+| Turn 2 Regenbogen | **108 Z. — Verweigerung** | **4.021 Z., 30 Saetze** | 2.574 Z., ohne Nummern |
+| Turn 3 Kuanda | **57 Z. — Verweigerung** | **4.702 Z., 30 Saetze** | 2.375 Z., ohne Nummern |
+| Gesamt | 4.614 Zeichen | **13.541 Zeichen** | 8.582 Zeichen |
+| nummerierte Saetze | 30 | **90** | 30 |
+| CJK-Zeichen | 0 | 0 | 0 |
+| verd. Woerter/1000 Z. | 10,4 | **9,2** | 11,7 |
+
+NVFP4 verweigert zwei von drei Antworten mit sachlich falscher
+Begruendung. AWQ liefert alle drei vollstaendig mit je dreissig
+nummerierten Saetzen und hat zugleich die niedrigste Fehlerrate. FP8
+liegt dazwischen: antwortet, haelt aber die Nummerierungs-Anweisung nur
+im ersten Turn ein.
+
+Die Tippfehler-Aufloesung „Kuanda" -> Coandă schafft KEINE der drei
+27B-Varianten (AWQ raet Cavendish/Coulomb). Das 180B konnte es in allen
+Laeufen — Groesseneffekt, kein Formateffekt.
+
+**Schlussfolgerung:** Nicht das Modell und nicht die Vier-Bit-Grenze
+sind das Problem, sondern der emulierte NVFP4-Pfad. Das deckt sich mit
+der Selbstbeschreibung des Forks (AWQ ist der validierte Weg), mit der
+Formatspezifikation (NVFP4 rechnet auf Blackwell OHNE Entpacken —
+genau diese Eigenschaft fehlt auf Volta/Turing) und mit Peuquis
+Erfahrung, dasselbe 27B sei als Q8-GGUF exzellent gewesen.
+
+## Empfehlung
+
+**AWQ ist auf dieser Hardware das Format der Wahl fuer vLLM.** Es ist
+der validierte Pfad des Forks, liefert die beste Textqualitaet der drei
+gemessenen Formate und ist mit 19 GiB sogar kleiner als FP8 (29 GiB).
+
+Offen und lohnend: Tempo-Messung von AWQ gegen die NVFP4-Referenz
+(864 tok/s Prefill, 33,0 lang im Gitter). Der Nutzer erinnert AWQ auf
+dem 180B als „schnarchelahm" — das war allerdings VOR der gesamten
+Kernel-Kampagne und moeglicherweise ohne
+`VLLM_SM70_QUANT_BACKEND=marlin`.
+
+Ausserdem: Fuer das 180B existiert `wtdcode/Qwen3.8-Flash-Next-AWQ-W4A16`
+(181 GB) — die Frage nach einem brauchbaren grossen Modell stellt sich
+damit neu.
+
+Hinweis fuer die Praxis: `shawnw3i/Qwen3.8-27B-AWQ-MTP` liefert KEINE
+`chat_template.jinja` mit; ohne sie lehnt vLLM jede Chat-Anfrage mit
+HTTP 400 ab. Vorlage aus dem NVFP4-Upload kopieren oder
+`cyankiwi/Qwen3.8-27B-AWQ-INT4` nehmen (dafuer ohne MTP-Kopf).

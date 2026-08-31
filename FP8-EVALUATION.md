@@ -359,3 +359,57 @@ Hinweis fuer die Praxis: `shawnw3i/Qwen3.8-27B-AWQ-MTP` liefert KEINE
 `chat_template.jinja` mit; ohne sie lehnt vLLM jede Chat-Anfrage mit
 HTTP 400 ab. Vorlage aus dem NVFP4-Upload kopieren oder
 `cyankiwi/Qwen3.8-27B-AWQ-INT4` nehmen (dafuer ohne MTP-Kopf).
+
+### Tempo-Messung AWQ: bestaetigt „schnarchelahm"
+
+| Gitter TP2xPP2, k=2 | kurz | Prefill | lang 31k |
+|---|---:|---:|---:|
+| NVFP4 (Skinny) | **67,5** | 864 | **33,0** |
+| FP8 | 39,1 | **1.131** | 26,3 |
+| AWQ (Marlin) | 36,2 | 808 | 23,1 |
+
+Spekulation ist aktiv (Qwen3_5MTP aufgeloest, MTP-Kopf laeuft) — das
+Tempo ist also nicht durch fehlende Spekulation erklaerbar, sondern
+durch den Kernel-Pfad. AWQ ist in allen drei Kategorien das
+langsamste Format.
+
+Praktische Rechnung fuer einen 31k-Turn mit 500 Antwort-Tokens:
+
+| | Prefill | Decode | gesamt |
+|---|---:|---:|---:|
+| FP8 | 27,8 s | 19,0 s | **46,8 s** |
+| NVFP4 | 36,4 s | 15,2 s | 51,6 s |
+| AWQ | 38,9 s | 21,6 s | 60,5 s |
+
+AWQ kostet rund 17 % gegenueber NVFP4 und 29 % gegenueber FP8.
+
+## GESAMTFAZIT DER FORMATSTUDIE
+
+**Die Kernel-Landschaft dieses Forks hat einen Zielkonflikt:** Der
+schnellste Pfad (NVFP4-Skinny) ist der experimentelle, der
+qualitativ zuverlaessigste (AWQ-Marlin) der langsamste.
+
+| | Tempo | Qualitaet | Groesse |
+|---|---|---|---|
+| NVFP4 | **bester Decode** | **schlecht** (2/3 verweigert) | 21 GiB |
+| FP8 | **bester Prefill** | mittel (antwortet, ignoriert Nummerierung) | 29 GiB |
+| AWQ | langsamster | **bester** (3/3, je 30 Saetze, saubere Physik) | **19 GiB** |
+
+Haendische Durchsicht der AWQ-Ausgaben (Peuquis ausdrueckliche
+Vorgabe): kein einziges zerlegtes Wort, keine CJK-Zeichen,
+Nummerierung haelt bis 30 auch im letzten Drittel, Persona-Woerter
+korrekt gesetzt. Zwei Sachfehler gefunden — „Rasterkraftmikroskop"
+statt Rastertunnelmikroskop und „Alexanders Bogen" statt dunkles Band.
+Drei sprachliche Patzer („unaussprechlich komplex", „interferente",
+„die Große Zahlen"). Alles im Rahmen menschlicher Fluechtigkeit, kein
+Zerfallsmuster.
+
+**Empfehlung:** AWQ fuer Arbeit, bei der die Ausgabe zaehlt
+(Recherche, Texte, Code). NVFP4 nur, wo Tempo alles ist und die
+Ausgabe geprueft wird. FP8 ist der Kompromiss mit dem besten Prefill —
+interessant fuer Recherche-Sessions mit grossen Kontexten.
+
+**Wichtige Einschraenkung:** Alle Qualitaetsbefunde stammen vom 27B.
+Das Zerfasern langer Antworten war ein 180B-Phaenomen, das beim 27B in
+KEINEM Format auftrat. Ob AWQ auch das behebt, ist ungeprueft —
+dafuer braeuchte es wtdcode/Qwen3.8-Flash-Next-AWQ-W4A16 (181 GB).

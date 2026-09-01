@@ -270,7 +270,7 @@ deploy triton_attn.py vllm/v1/attention/backends/triton_attn.py
 # copied from its build tree if present.
 deploy flash_attn.py vllm/v1/attention/backends/flash_attn.py
 deploy flash_attn_interface.py vllm/vllm_flash_attn/flash_attn_interface.py
-FA2_SM75_SO="$HOME/Projekte/flash-attention-sm75/build-sm75/_vllm_fa2_C.abi3.so"
+FA2_SM75_SO="$HOME/Projekte/vllm-research/flash-attention-sm75/build-sm75/_vllm_fa2_C.abi3.so"
 if [ -f "$FA2_SM75_SO" ]; then
     say "deploying FA2-sm75 kernel from $FA2_SM75_SO"
     cp "$FA2_SM75_SO" "$SP/vllm/vllm_flash_attn/_vllm_fa2_C.abi3.so"

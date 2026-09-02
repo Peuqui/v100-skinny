@@ -577,3 +577,55 @@ je Schritt** — die Hälfte. Der grouped Skinny-MoE ist damit belegt der
 nächste große Hebel (Ziel ≤ 1 ms/Layer ⇒ Schritt ~180 ms ⇒ ~15 tok/s; mit
 Akzeptanz 60 % und Drafter-Graphs Richtung 25–30 tok/s).
 Boot-Rezept mit Traces: backups/2026-09-01-dsv4-softfp8/boot_ds_k5_graphs_trace.sh.
+
+### 2026-09-02 21:20 — Punkt 3 (Drafter mit Graphs): neutral
+
+`speculative_config.enforce_eager` weggelassen (Boot 51,
+backups/…/boot_ds_k5_graphs_draftgraph.sh): Capture läuft durch, Essay
+8,73 tok/s (vorher 8,76), Akzeptanz 32 % — kein messbarer Effekt, der
+Drafter-Anteil (~20 ms) ist vom eager MoE-Break dominiert. Bleibt als
+Default (weniger Sonderfälle). Commit dda7ad2 enthält den Stand davor.
+
+### 2026-09-02 22:10 — Punkt 2 (Akzeptanz): fp32-Aux-Abgriff statt Sättigung
+
+`_mhc_post_torch_generic` rechnet fp32 und castet am Ende nach fp16 — dort
+lief die BOS-Zeile über. Neu: `mhc_post_fp32` (gleiche Mathematik, kein
+Cast) für den Aux-Abgriff in model.py; der Drafter skaliert in fp32 mit
+2^-6 und castet erst dann auf den Aktivierungs-dtype (main_norm.weight);
+die nan_to_num-Sättigung ist raus. Boot 52 (Graphs, Drafter mit Graphs):
+Kohärenz 8/8, Essay **9,36 tok/s**, Akzeptanz **36 %** (Profil
+75/50/34/22/14 % je Position — praktisch wie vorher).
+
+Befund zur restlichen Lücke (36 gegen 61–65 % bei llama.cpp): llama.cpp
+fährt den DSpark-Drafter als **Q8_0**; unser Checkpoint trägt ihn mit
+NVFP4-Experten (U8-gepackt) und FP8-Attention (mtp-quant-transplant,
+bewusst wegen VRAM/Bandbreite). Ein 4-Bit-Drafter rät schlechter als ein
+8-Bit-Drafter — ein Teil der Lücke ist damit Checkpoint, nicht Code.
+Nächster Akzeptanz-Schritt wäre ein 8-Bit-Drafter-Transplantat (Projekt
+mtp-quant-transplant), kein Kernel-Thema. Damit ist Punkt 2 im Rahmen
+des Forks ausgereizt; weiter mit Punkt 1 (grouped MoE-Kernel).
+
+### 2026-09-02 22:45 — Punkt 1: grouped NVFP4-MoE-Kernel (moe_simt) — 13–20 tok/s
+
+Neuer Kernel `skinny_nvfp4_moe_simt` in kernels/skinny_kernels.cu (Binding
+`moe_simt`): ein Launch je Gewichtsmatrix und Layer, Grid (N/8 × Experten),
+Routing device-seitig (argsort + scatter_add + cumsum — KEIN bincount, das
+synchronisiert), Blöcke inaktiver Experten beenden sich ohne Gewichtszugriff,
+x-Zeilen per Slot-Permutation gegathert (token-major für w13, slot-major für
+w2), Zeilen-Dispatch blockuniform 1/2/4/8, Mehrpass falls Hash-Routing einem
+Experten mehr als 8 Zeilen gibt (das war der „misaligned address"-Crash
+von Boot 54: smem-Zeilenarray mit 8 Einträgen bei cnt=12). Python-Seite
+(nvfp4_skinny_moe.py): Batches ≤ 8 Token → grouped, capture-sicher ohne
+Eager-Break; Prefill → alte Schleife mit Break.
+
+Standalone (scripts/nvfp4_skinny_moe_grouped_test.py, echte Layer-5-
+Gewichte, RTX 8000 und V100): max|diff| 1,2–2,4e-4 (fp16-Rundung), T=6:
+1,0 ms statt 3,7–4,0 ms je Layer (3,5–4×), T=1: 0,4 statt 0,8 ms.
+Achtung Loader: ModelOpt-`weight_scale_2` ist der Dequant-Multiplikator
+(compressed-tensors speichert den Kehrwert).
+
+Server (Boot 56, Graphs, Drafter-Graphs, fp32-Aux): Kohärenz **8/8**;
+Essay **13,1 tok/s** (Akzeptanz 32 %), Code-Prompt **20,4 tok/s**
+(Akzeptanz 64 %), Sequenz/Liste 15–16 tok/s. Tag gesamt: 3,6 → 13–20 tok/s.
+Offen: Stufenlatenz-Trace mit grouped MoE (welcher Anteil bleibt: Attention/
+Indexer eager-Breaks, PP-Nähte), Akzeptanz bei Prosa (Q8-Drafter-Frage).

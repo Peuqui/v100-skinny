@@ -16,6 +16,7 @@ from vllm.distributed import (
     get_tensor_model_parallel_world_size,
 )
 from vllm.model_executor.kernels.mhc.tilelang import (
+    mhc_post_fp32,
     hc_head_fused_kernel_tilelang,
     mhc_fused_post_pre_tilelang,
     mhc_post_tilelang,
@@ -1108,11 +1109,14 @@ class DeepseekV4Model(nn.Module, EagleModelMixin):
                 residual,
             )
             if layer_idx + 1 in self.aux_hidden_state_layers:
-                reconstruction = mhc_post_tilelang(
+                # Fork fix (v100-skinny): reconstruct in fp32 for the aux
+                # stream (see mhc_post_fp32); the stage output keeps the
+                # activation dtype as before.
+                reconstruction32 = mhc_post_fp32(
                     hidden_states, residual, post_mix, res_mix
                 )
-                aux_hidden_states.append(reconstruction.mean(dim=1))
-                final_aux_reconstruction = reconstruction
+                aux_hidden_states.append(reconstruction32.mean(dim=1))
+                final_aux_reconstruction = reconstruction32.to(hidden_states.dtype)
         if layer is not None:
             if self.end_layer in self.aux_hidden_state_layers:
                 assert final_aux_reconstruction is not None

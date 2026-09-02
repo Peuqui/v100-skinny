@@ -51,12 +51,24 @@ def _mhc_pre_torch_generic(residual, fn, hc_scale, hc_base, rms_eps,
             li.view(*outer, hidden))
 
 
-def _mhc_post_torch_generic(x, residual, post_layer_mix, comb_res_mix):
+def _mhc_post_torch_generic(x, residual, post_layer_mix, comb_res_mix,
+                            out_dtype=None):
     mixed = torch.einsum("...ij,...ih->...jh", comb_res_mix.to(torch.float32),
                          residual.to(torch.float32))
     post_term = (post_layer_mix.to(torch.float32)
                  * x.unsqueeze(-2).to(torch.float32))
-    return (mixed + post_term).to(residual.dtype)
+    return (mixed + post_term).to(out_dtype or residual.dtype)
+
+
+def mhc_post_fp32(x, residual, post_layer_mix, comb_res_mix):
+    """Fork addition (v100-skinny): the mHC post reconstruction WITHOUT
+    the final cast to the activation dtype. The DSpark aux-hidden-state
+    extraction reads it: under fp16 the BOS row (attention sink) exceeds
+    65504 at that cast and poisoned every draft logit through the
+    drafter's context KV. The target itself never needs the BOS row of
+    its last layers, so it was unaffected. Same math as the fp16 path."""
+    return _mhc_post_torch_generic(x, residual, post_layer_mix, comb_res_mix,
+                                   out_dtype=torch.float32)
 
 
 def _hc_head_torch_generic(hs_flat, fn, hc_scale, hc_base, rms_eps, hc_eps):

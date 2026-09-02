@@ -44,6 +44,8 @@ logger = init_logger(__name__)
 _SKINNY_MOE_ENABLED = os.environ.get("VLLM_SM70_NVFP4_MOE_SKINNY", "1") == "1"
 # Measured linear-path frontier (seam_bench): simt owns M<=7, wmma above.
 _SIMT_MAX_M = 7
+# Grouped kernel bound: rows per expert <= tokens, and the kernel holds 8.
+_GROUPED_MAX_TOKENS = 8
 _WMMA_MAX_M = 64
 
 
@@ -130,6 +132,8 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
         # Lazy caches built on first apply (weights live on the GPU then).
         self._g1: list[float] | None = None
         self._g2: list[float] | None = None
+        self._g1_t: torch.Tensor | None = None
+        self._g2_t: torch.Tensor | None = None
         self._w1_scales_u8: torch.Tensor | None = None
         self._w2_scales_u8: torch.Tensor | None = None
 
@@ -174,8 +178,91 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
     # ops. Address contract: `output`, `hidden_states`, `topk_*` are
     # allocated in the captured segments and written in place; the loop's
     # transients stay local to the eager segment.
+    # Decode/verify batches (<= _GROUPED_MAX_TOKENS tokens) take the grouped
+    # kernel: device-side routing, one launch per weight matrix, no host
+    # sync -- so it captures into CUDA graphs like any other op. Larger
+    # (prefill) batches keep the per-expert loop, which routes on the host
+    # and therefore must leave the capture.
+    def apply(self, output, hidden_states, w1, w2, topk_weights, topk_ids,
+              activation, global_num_experts, expert_map, a1q_scale, a2_scale,
+              workspace13, workspace2, expert_tokens_meta,
+              apply_router_weight_on_input):
+        if hidden_states.size(0) <= _GROUPED_MAX_TOKENS:
+            return self._apply_grouped(
+                output, hidden_states, w1, w2, topk_weights, topk_ids,
+                activation, expert_map, apply_router_weight_on_input)
+        return self._apply_loop(
+            output, hidden_states, w1, w2, topk_weights, topk_ids, activation,
+            global_num_experts, expert_map, a1q_scale, a2_scale, workspace13,
+            workspace2, expert_tokens_meta, apply_router_weight_on_input)
+
+    def _check_apply_args(self, w1, hidden_states, expert_map,
+                          apply_router_weight_on_input):
+        assert w1.dtype == torch.uint8
+        assert hidden_states.dtype == torch.float16, (
+            "skinny NVFP4 kernels take fp16 activations, got "
+            f"{hidden_states.dtype}"
+        )
+        if expert_map is not None:
+            raise NotImplementedError(
+                "Per-expert skinny NVFP4 MoE does not support expert "
+                "parallelism."
+            )
+        if apply_router_weight_on_input:
+            raise NotImplementedError(
+                "Per-expert skinny NVFP4 MoE does not support "
+                "apply_router_weight_on_input."
+            )
+
+    def _ensure_scale_caches(self):
+        if self._g1 is None:
+            self._g1 = self.quant_config.g1_alphas.cpu().tolist()
+            self._g2 = self.quant_config.g2_alphas.cpu().tolist()
+            self._g1_t = self.quant_config.g1_alphas.to(torch.float32).contiguous()
+            self._g2_t = self.quant_config.g2_alphas.to(torch.float32).contiguous()
+            self._w1_scales_u8 = self.w1_scale_val.view(torch.uint8)
+            self._w2_scales_u8 = self.w2_scale_val.view(torch.uint8)
+
+    def _apply_grouped(self, output, hidden_states, w1, w2, topk_weights,
+                       topk_ids, activation, expert_map,
+                       apply_router_weight_on_input):
+        self._check_apply_args(w1, hidden_states, expert_map,
+                               apply_router_weight_on_input)
+        from vllm.model_executor.kernels.linear.nvfp4.marlin import (
+            _get_skinny_ext,
+        )
+        self._ensure_scale_caches()
+        ext = _get_skinny_ext()
+        num_tokens, top_k = topk_ids.shape
+        num_experts = w1.size(0)
+        inter_dim = self.adjust_N_for_activation(w1.size(1), activation)
+        device = hidden_states.device
+        # Device-side routing: slots sorted by expert + per-expert offsets.
+        # scatter_add instead of bincount -- bincount syncs for its output
+        # size and would break CUDA-graph capture.
+        flat = topk_ids.reshape(-1).to(torch.int64)
+        perm = torch.argsort(flat, stable=True).to(torch.int32)
+        counts = torch.zeros(num_experts, dtype=torch.int32, device=device)
+        counts.scatter_add_(0, flat, torch.ones_like(flat, dtype=torch.int32))
+        offsets = torch.zeros(num_experts + 1, dtype=torch.int32, device=device)
+        offsets[1:] = torch.cumsum(counts, 0)
+        y13 = torch.empty((num_tokens * top_k, w1.size(1)),
+                          dtype=hidden_states.dtype, device=device)
+        ext.moe_simt(hidden_states, w1, self._w1_scales_u8, self._g1_t, perm,
+                     offsets, top_k, y13, False, num_tokens)
+        inter = torch.empty((num_tokens * top_k, inter_dim), dtype=y13.dtype,
+                            device=device)
+        self.activation(activation, inter, y13)
+        y2 = torch.empty((num_tokens * top_k, w2.size(1)), dtype=y13.dtype,
+                         device=device)
+        ext.moe_simt(inter, w2, self._w2_scales_u8, self._g2_t, perm, offsets,
+                     top_k, y2, True, num_tokens)
+        weighted = y2.view(num_tokens, top_k, -1).float() * topk_weights.to(
+            torch.float32).unsqueeze(-1)
+        output.copy_(weighted.sum(1).to(output.dtype))
+
     @eager_break_during_capture(ignore_full_mode=True)
-    def apply(
+    def _apply_loop(
         self,
         output: torch.Tensor,
         hidden_states: torch.Tensor,
@@ -213,12 +300,7 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
             _get_skinny_ext,
         )
 
-        if self._g1 is None:
-            self._g1 = self.quant_config.g1_alphas.cpu().tolist()
-            self._g2 = self.quant_config.g2_alphas.cpu().tolist()
-            self._w1_scales_u8 = self.w1_scale_val.view(torch.uint8)
-            self._w2_scales_u8 = self.w2_scale_val.view(torch.uint8)
-
+        self._ensure_scale_caches()
         inter_dim = self.adjust_N_for_activation(w1.size(1), activation)
         skinny_moe_forward(
             ext=_get_skinny_ext(),

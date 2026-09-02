@@ -193,10 +193,11 @@ class DSparkDeepseekV4Model(nn.Module):
         # softmax over the context KV, collapsing acceptance to ~5 %.
         # Saturating to the FP16 max mirrors a saturating bf16->fp16 cast:
         # the sink row stays "very large", nothing turns NaN.
-        aux_hidden_states = torch.nan_to_num(
-            aux_hidden_states, nan=0.0, posinf=65504.0, neginf=-65504.0
-        )
-        projected = self.main_proj(aux_hidden_states * self.main_proj_input_scale)
+        # The aux stream arrives in fp32 (mhc_post_fp32); the power-of-two
+        # scale is applied there and the cast to the kernel dtype happens
+        # only afterwards, so the BOS row fits fp16 without saturation.
+        scaled = aux_hidden_states.to(torch.float32) * self.main_proj_input_scale
+        projected = self.main_proj(scaled.to(self.main_norm.weight.dtype))
         if diag:
             _p = projected.float()
             print(f"DSPARK-DIAG proj absmax={_p.abs().max().item():.1f} "

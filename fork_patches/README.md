@@ -35,6 +35,8 @@ installed file: the tracked copy here is the reviewable source of truth.
 | `gpu_worker.py` | `vllm/v1/worker/gpu_worker.py` | Per-rank KV availability logging; `VLLM_PP_SEAM_TRACE` early-return diagnostics. |
 | `parallel_state.py` | `vllm/distributed/parallel_state.py` | `VLLM_PP_SEAM_TRACE` diagnostics on the PP tensor-dict seam (metadata send/recv). |
 | `spec_decode_dspark.py` | `vllm/v1/spec_decode/dspark.py` | `VLLM_DSPARK_DIAG` base-logits diagnostics in the draft sampler. |
+| `flashmla_sparse.py`, `sm70_turbomind.py`, `dsv4_sm70_gemv.py` (+ edits in `deepseek_v4_attention.py`, `sparse_attn_indexer.py`, `sparse_swa.py`) | see paths | The DeepSeek 'exactly SM70' gates decide on the worker's device instead of device 0, so V100 stages of a mixed pipeline keep their SM70 paths; the grouped SM70 O-projection is selected only when `wo_a` is really TurboMind-prepared (with the QPN8-blk is_bmm route it is fp16-dequantised and the reference einsum applies). |
+| `breakable_cudagraph.py` | `vllm/compilation/breakable_cudagraph.py` | `eager_break_during_capture(ignore_full_mode=True)`: a capture break that also fires under the FULL runtime mode -- the host-driven skinny NVFP4 MoE (`nvfp4_skinny_moe.py`, routes on `topk_ids.cpu()`) uses it so DeepSeek V4 captures CUDA graphs on pre-Ampere cards. Companion edits: pre-Ampere ranks feed the fp16 Triton indexer from the fused software producer (`deepseek_v4_attention.py`, `sparse_attn_indexer.py`); boot recipe `scripts/serve-deepseek-het-graphs.sh`. |
 
 Not installed:
 

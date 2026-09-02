@@ -129,7 +129,11 @@ def _fill_short_context_topk_indices(
 
 
 def _is_exact_sm70_cuda() -> bool:
-    return current_platform.is_cuda() and current_platform.is_device_capability((7, 0))
+    # Fork fix (v100-skinny): decide on the WORKER'S device, not device 0
+    # of the visibility list -- on a heterogeneous pipeline (RTX 8000
+    # first) every rank saw sm75 and the V100 stages silently lost their
+    # SM70 paths (torch-reference indexer, generic projection/insert).
+    return current_platform.is_cuda() and torch.cuda.get_device_capability(torch.cuda.current_device()) == (7, 0)
 
 
 def _select_v4_sparse_impl() -> "type[DeepseekV4SparseMLAAttentionImpl]":
@@ -372,7 +376,13 @@ class DeepseekV4MultiHeadLatentAttentionWrapper(PluggableLayer):
         )
         o = o_padded[:, : self.n_local_heads, :]
 
-        if self._use_sm70_path:
+        # Fork fix (v100-skinny): the grouped SM70 projection needs a
+        # TurboMind-prepared wo_a. With the QPN8-blk is_bmm route wo_a is
+        # fp16-dequantised at load ([N, K] matrix, `_qpn8_dequant16`) and
+        # the reference einsum below is the matching implementation --
+        # calling the grouped path on it mis-shapes z by the group count
+        # ("shape '[T, 4096]' is invalid for input of size T*8*4096").
+        if self._use_sm70_path and not getattr(self.wo_a, "_qpn8_dequant16", False):
             from vllm.models.deepseek_v4.sm70.projection import (
                 sm70_grouped_output_projection,
             )
@@ -1025,7 +1035,18 @@ class DeepseekV4Indexer(nn.Module):
             # ReplicatedLinear returns (output, bias); bias is None.
             q, _ = self.wq_b(qr)
             q = q.view(-1, self.n_head, self.head_dim)
-            if current_platform.is_cuda() and not has_deep_gemm():
+            # Fork fix (v100-skinny): pre-Ampere ranks feed the fp16 Triton
+            # indexer, whose software branch in fused_indexer_q_rope_quant
+            # emits fp16 q + folded weights. The torch fp8 reference below
+            # is the DeepGEMM-less path for Ampere/Ada only; routing
+            # pre-Ampere through it fed fp8 to the fp16 indexer
+            # ("assert q_quant.dtype == torch.float16" in capture).
+            if (
+                current_platform.is_cuda()
+                and not has_deep_gemm()
+                and torch.cuda.get_device_capability(torch.cuda.current_device())
+                >= (8, 0)
+            ):
                 assert not self.use_fp4_kv, (
                     "torch indexer-q fallback supports the FP8 path only")
                 return _torch_indexer_q_rope_quant(

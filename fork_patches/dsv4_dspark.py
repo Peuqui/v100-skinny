@@ -512,10 +512,27 @@ class DSparkDeepseekV4ForCausalLM(nn.Module, SupportsPP):
         for layer in self.model.layers:
             layer.ffn.finalize_mega_moe_weights()
         logger.info_once("DSpark draft model loaded: %d params", len(loaded_params))
+        if "model.embed_tokens.weight" not in loaded_params:
+            raise RuntimeError(
+                "DSpark drafter: embed.weight was not loaded from the checkpoint; "
+                "under pipeline parallelism the drafter has no shared embedding "
+                "and would run on random embeddings."
+            )
+        logger.info("DSpark drafter: embed_tokens loaded from checkpoint.")
         return loaded_params
 
     @staticmethod
     def _remap_dspark_name(name: str) -> str | None:
+        # Fork fix (v100-skinny): under pipeline parallelism the proposer
+        # does NOT share the target's embed_tokens (they live on the first
+        # stage, the drafter on the last) and expects the draft checkpoint
+        # to supply them -- but every non-mtp.* key was dropped here, so
+        # the drafter ran its block forward on randomly initialised
+        # embeddings (DSpark acceptance ~5 %). Map the target's embedding
+        # onto the drafter's own table; with PP=1 the shared table replaces
+        # it afterwards, so nothing changes there.
+        if name == "embed.weight":
+            return "model.embed_tokens.weight"
         match = re.match(r"mtp\.(\d+)\.(.*)", name)
         if match is None:
             return None

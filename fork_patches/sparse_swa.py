@@ -509,8 +509,9 @@ class DeepseekSparseSWAMetadataBuilder(AttentionMetadataBuilder):
             or _needs_triton_sparse_swa()
             or current_platform.is_xpu()
             or (
+                # Fork fix (v100-skinny): worker-local capability.
                 current_platform.is_cuda()
-                and current_platform.is_device_capability((7, 0))
+                and torch.cuda.get_device_capability(torch.cuda.current_device()) == (7, 0)
             )
         ):
             return out

@@ -29,6 +29,8 @@ import os
 
 import torch
 
+from vllm.compilation.breakable_cudagraph import eager_break_during_capture
+
 import vllm.model_executor.layers.fused_moe.modular_kernel as mk
 from vllm.logger import init_logger
 from vllm.model_executor.layers.fused_moe.activation import MoEActivation
@@ -164,6 +166,15 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
         # fused output buffer is needed from the framework.
         return ((8,), (8,), (M, K))
 
+    # Fork fix (v100-skinny): the per-expert loop routes on the host
+    # (topk_ids.cpu()), which is illegal inside a CUDA graph capture. The
+    # breakable capture the fork already uses for DeepSeek V4 ends the
+    # current graph segment here, runs the MoE eagerly on the capture
+    # stream and resumes capture -- the same mechanism as the attention
+    # ops. Address contract: `output`, `hidden_states`, `topk_*` are
+    # allocated in the captured segments and written in place; the loop's
+    # transients stay local to the eager segment.
+    @eager_break_during_capture(ignore_full_mode=True)
     def apply(
         self,
         output: torch.Tensor,

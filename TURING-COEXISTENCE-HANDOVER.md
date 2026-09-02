@@ -442,3 +442,138 @@ Endzustand 05:25: alle GPUs frei, kein Server. K=5-Boot reproduzierbar
 über backups/2026-09-01-dsv4-softfp8/boot_ds_k5.sh (Diag-Varianten
 daneben). Alle Fixes in fork_patches + Bootstrap-Deploy + README,
 Repo uncommitted — Commit auf Ansage.
+
+### 2026-09-02 17:00 — Akzeptanz-Wurzel Nr. 2: Drafter lief auf ZUFALLS-Embeddings (PP-Bug)
+
+`_maybe_share_embeddings` (llm_base_proposer.py) teilt die Target-
+Embeddings nur bei `pp_world_size == 1`; bei PP heißt es „will be loaded
+separately" — aber `_remap_dspark_name` verwarf jeden Nicht-`mtp.*`-Key,
+also auch `embed.weight`. Der Drafter (has_own_embed_tokens=False, sitzt
+auf der LETZTEN Stufe, die Target-Embeddings liegen auf der ERSTEN) rechnete
+seinen Block-Forward auf zufällig initialisierten Embeddings; lm_head war
+geteilt (deshalb traf Position 0). Beleg: Boot-Log „vocab embedding will be
+loaded separately" auf PP4. llama.cpp-Vergleich (src/models/dflash.cpp,
+common/speculative.cpp): Sampling-Pfad (Anker-Start, Markov-Kette, voll
+nicht-kausale Attention, RoPE ab Kontextende) ist äquivalent — der Fehler
+lag allein im Laden.
+
+Fix (dsv4_dspark.py): `embed.weight` → `model.embed_tokens.weight` im
+Remap + harter RuntimeError, falls es nicht geladen wurde. Bei PP=1
+ersetzt das Sharing die Tabelle danach ohnehin.
+
+**Wirkung:** Akzeptanz 5 % → 36 % (Essay, 239/660), Profil je Position
+78/51/33/21/13 %; Tempo 3,6 → **7,97 tok/s** (Essay 371 Token / 46,6 s),
+seq-Prompt 10 tok/s. Kohärenz weiterhin 8/8
+(results-coherence-het-k5-embedfix.json). Hardware-unabhängiger Bug —
+jeder PP-DSpark-Boot war betroffen.
+
+Nebenbefund aus llama.cpp: der Confidence-Head (`dspark_conf_proj`, im
+vLLM-Remap verworfen) dient dort NUR der Draft-Kürzung (p_min) — bei
+uns werden alle 5 Draft-Token verifiziert, auch wenn Pos 3–4 nur 21/13 %
+treffen; der Verify skaliert auf Volta linear mit q (Issue #441, Teil 2).
+Kandidat für den nächsten Tempo-Hebel.
+
+### 2026-09-02 18:00 — Gruppe B worker-lokal: korrekt, aber kein Tempogewinn
+
+Die sechs „exakt sm70"-Weichen des DeepSeek-Pfads (attention.py-Helper,
+sparse_attn_indexer-Helper, sm70_turbomind-Helper, gemv, flashmla_sparse
+fixed_row_stride, sparse_swa) fragen jetzt das Worker-Device
+(Semantik bleibt „exakt Volta"; Skript: Scratchpad
+apply_group_b_worker_local.py, Ergebnis in fork_patches). Stolperstein:
+der grouped SM70-O-Projektionspfad setzt TurboMind-präpariertes wo_a
+voraus — mit der QPN8-blk-is_bmm-Route ist wo_a fp16-dequantisiert
+(auch im homogenen V100-Lauf vom 26.08., dessen Log 3–4 Tracebacks hat)
+und der Referenz-Einsum ist die passende Implementierung. Der Zweig
+hängt jetzt strukturell an `wo_a._qpn8_dequant16`.
+
+Ergebnis: Kohärenz 8/8, Akzeptanz 32 %, **7,56 tok/s — unverändert**.
+Stufenlatenz (Seam-Zeitstempel, ein Decode-Schritt mit 6 Token):
+V100-Stufen ~71 ms je 8 Layer, PP4 (RTX, 8 Layer + Drafter) ~100 ms,
+Schritt gesamt ~330 ms ⇒ ~9 ms/Layer. llama.cpp: 43 Layer in ~80 ms
+⇒ ~2 ms/Layer. Die Kernel-Wahl ist nicht der Engpass — der Eager-Modus
+(hunderte Launches pro Layer, keine CUDA-Graphs) ist der Hauptverdächtige.
+Nächster Hebel: `--enforce-eager` fallen lassen (Capture-Crash aus dem
+Handover war evtl. ein Symptom der inzwischen gefixten Bugs).
+
+### 2026-09-02 18:45 — Weg zu CUDA-Graphs: der Skinny-MoE ist die Bruchstelle
+
+Ohne `--enforce-eager` stirbt das Capture in `nvfp4_skinny_moe.py`
+(`topk_ids.cpu()` — host-getriebene Experten-Schleife, „operation not
+permitted when stream is capturing"). Kontext: Der Fork aktiviert für
+DeepSeek V4 automatisch `VLLM_USE_BREAKABLE_CUDAGRAPH` (Segment-Capture
+mit Eager-Breaks an den Attention-Ops, `compilation/breakable_cudagraph.py`);
+MARLIN-MoE (capture-sicher, so lief Flash-Next k=0 mit Graphs bei 28–29
+tok/s) scheidet für DeepSeek aus, weil nur TRTLLM/EMULATION/SM70_SKINNY
+den `swiglu_limit`-Clamp können. Umsetzung: `@eager_break_during_capture`
+auf `Nvfp4SkinnySm70Experts.apply` — exakt der Mechanismus der
+Attention-Ops; Adressvertrag erfüllt, weil output/hidden_states/topk_*
+in gecapturten Segmenten alloziert und in place beschrieben werden.
+
+Microbench (Scratchpad moe_bench.py, echte Layer-5-Experten, eager):
+M=1: 0,8 ms/Layer; M=6 (27 aktive Experten): **3,5 ms/Layer** auf RTX 8000
+wie V100. Bei ~9 ms/Layer je Schritt ist der MoE ~40 %; der Rest ist
+Graph-Kandidat. Realistische Erwartung mit Graphs + Eager-MoE: ~5 ms/Layer
+⇒ ~13 tok/s. Für 40 tok/s müsste der MoE selbst unter 1 ms/Layer —
+d. h. ein grouped/device-seitiger Skinny-MoE-Kernel statt der
+Per-Experten-Schleife (27 Experten × 2 GEMMs + Index-Ops je Layer).
+Das ist die eigentliche Tempo-Baustelle nach den Graphs.
+
+Werkzeug-Lektion: Boots IMMER mit `setsid nohup … & disown` in einem
+eigenen kurzen Aufruf starten und in einem SEPARATEN Aufruf warten — der
+10-Minuten-Timeout des Tools killt sonst die Prozessgruppe samt Boot
+(Boot 41 starb so um 18:18, exakt 10 min nach Start, ohne Traceback).
+
+### 2026-09-02 20:00 — Graph-Capture: drei Brecher beseitigt, vierter ist Speicher
+
+Boots 41–48 ohne `--enforce-eager` (Drafter eager, `VLLM_DISABLE_SHARED_
+EXPERTS_STREAM=1`), Capture-Brecher in Reihenfolge:
+1. Skinny-MoE `topk_ids.cpu()` → `@eager_break_during_capture(ignore_full_
+   mode=True)` auf `Nvfp4SkinnySm70Experts.apply` (Decorator um die Option
+   erweitert: der Fork-Bypass für FULL-Runtime-Modus ist für capture-sichere
+   Attention-Ops richtig, der host-getriebene MoE muss immer brechen).
+2. Shared Experts auf Aux-Stream über die Segmentgrenze → Env-Schalter.
+3. Indexer auf den RTX-Stufen im torch-reference-Pfad (Host-Sync): Gate
+   `< (8,0)` UND Produzenten-Fix in attention.py — `has_deep_gemm()` ist auf
+   beiden Karten False, der fp16-Indexer war damit bisher UNERREICHBAR
+   (Produzent lieferte immer fp8); pre-Ampere nutzt jetzt den fused
+   Software-Produzenten (fp16 + gefaltete Gewichte). RTX-Ränge capturen.
+4. V100-8-Layer-Stufen: Triton-Launch-OOM im Capture (auch mit
+   Capture-Größen [1,6,8], util 0.95). Physik: 28,2 GiB Gewichte auf 31,7,
+   Graph-Pools brauchen mehr als die ~1,5 GiB Rest. Layer-Arithmetik ohne
+   8er-V100: RTX-Paar max 23, V100-Trio (Drafter auf einer V100) max 18
+   ⇒ 41 < 43. Graphs auf DIESER 5-Stufen-Topologie brauchen noch einen
+   echten Speicherhebel (Workspaces, batched-tokens) — sonst bleibt
+   DeepSeek eager und der grouped MoE-Kernel ist der Weg.
+
+### 2026-09-02 20:10 — CUDA-Graphs laufen heterogen (Boot 49)
+
+Letzter Hebel für die V100-8-Layer-Stufen: `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=64`
+(Default 512 MB je Rang; kappt nur die Prefill-Chunk-Größe des Indexers),
+`--max-num-batched-tokens 64`, Capture-Größen `[6]` (1 Sequenz × K=5), util
+0.95. „Graph capturing finished in 1 secs, took 0.05 GiB". Rezept:
+`scripts/serve-deepseek-het-graphs.sh` (Drafter eager, Shared Experts inline).
+
+Ergebnis: Kohärenz **8/8** (results-coherence-het-k5-graphs.json), Essay
+**8,76 tok/s** (eager 7,56), Code/Sequenz/Liste 10–12 tok/s, Akzeptanz
+32 %. Gewinn kleiner als erhofft: der MoE bleibt eager (~3,5 ms × 8 Layer je
+V100-Stufe) und die 5-Stufen-PP-Latenz (USB4, NCCL_P2P_DISABLE, gloo-Metadaten
+je Naht) bleibt. Nächste Hebel in dieser Reihenfolge:
+1. Stufenlatenz mit Graphs messen (SEAM+CPU-Trace-Boot) — wie viel ist PP-Naht,
+   wie viel Rechnen.
+2. Grouped/device-seitiger Skinny-MoE (routing ohne Host-Sync, ein Launch je
+   Layer statt 2×Experten) — der einzige Weg unter ~2 ms/Layer.
+3. Drafter mit Graphs (speculative enforce_eager=false) — ~20 ms/Schritt.
+4. Akzeptanz 32 → 60 % (llama.cpp-Niveau): BOS-Sättigung durch fp32-Umweg
+   ersetzen, fp16-Numerik des Drafters auf sm75 prüfen.
+
+### 2026-09-02 20:30 — Stufenlatenz MIT Graphs (Seam-Trace, ein Decode-Schritt, 6 Token)
+
+PP0 RTX 11 Layer+embed: **75 ms** · PP1/2/3 V100 8 Layer: **49/47/45 ms**
+(eager waren es 71) · PP4 RTX 8 Layer+Drafter(eager 20 ms)+Sampling: **77 ms**
+· Summe 293 ms ≈ Engine-Schritt 286 ms. Pro Layer: V100 ~5,9 ms, RTX ~6,9 ms
+(GDDR6 672 GB/s gegen HBM2 900 GB/s — Decode ist bandbreitengebunden, die
+V100 ist die schnellere Karte). Davon MoE eager 3,5 ms × 43 Layer ≈ **150 ms
+je Schritt** — die Hälfte. Der grouped Skinny-MoE ist damit belegt der
+nächste große Hebel (Ziel ≤ 1 ms/Layer ⇒ Schritt ~180 ms ⇒ ~15 tok/s; mit
+Akzeptanz 60 % und Drafter-Graphs Richtung 25–30 tok/s).
+Boot-Rezept mit Traces: backups/2026-09-01-dsv4-softfp8/boot_ds_k5_graphs_trace.sh.

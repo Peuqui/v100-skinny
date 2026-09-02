@@ -218,6 +218,10 @@ deploy dsv4_fused_indexer_q.py vllm/models/deepseek_v4/common/ops/fused_indexer_
 deploy dsv4_dspark.py vllm/models/deepseek_v4/nvidia/dspark.py
 deploy dsv4_amd_rocm.py vllm/models/deepseek_v4/amd/rocm.py
 deploy spec_decode_dspark.py vllm/v1/spec_decode/dspark.py
+deploy flashmla_sparse.py vllm/v1/attention/backends/mla/flashmla_sparse.py
+deploy sm70_turbomind.py vllm/model_executor/layers/quantization/sm70_turbomind.py
+deploy dsv4_sm70_gemv.py vllm/models/deepseek_v4/sm70/gemv.py
+deploy breakable_cudagraph.py vllm/compilation/breakable_cudagraph.py
 deploy multiproc_executor.py vllm/v1/executor/multiproc_executor.py
 deploy gpu_worker.py vllm/v1/worker/gpu_worker.py
 deploy parallel_state.py vllm/distributed/parallel_state.py

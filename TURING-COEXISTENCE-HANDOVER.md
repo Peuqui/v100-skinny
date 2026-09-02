@@ -159,3 +159,286 @@ den DSpark-Proposer greift **und** die sm75-Stufen mitrechnen.
 Bricht es in Schritt 2 oder 3 erneut, ist der ehrliche Schluss: DeepSeek
 bleibt unter llama.cpp, und der Fork bleibt für die homogene V100-Hälfte
 der Maschine reserviert.
+
+---
+
+## Arbeitsprotokoll 2026-09-01 nachts (Fortsetzung, autonome Session)
+
+### Schritt 1 — Gruppe A vollständig + persistiert ✓
+
+Alle vier Gruppe-A-Stellen tragen jetzt die `not has_device_capability((8, 9))`-
+Bedingung (cache_utils.py 202/365 waren schon gepatcht; neu: cache_utils.py 398
+`use_cutedsl`, fused_compress_quant_cache.py 107, fused_indexer_q.py 391).
+Persistiert als `fork_patches/dsv4_cache_utils.py`,
+`dsv4_fused_compress_quant_cache.py`, `dsv4_fused_indexer_q.py` — mit
+Apache-§4(b)-Headern, in der Bootstrap-Deploy-Liste und der README-Tabelle.
+Originale: `backups/2026-09-01-dsv4-softfp8/*.orig`.
+
+### Erkenntnis: die B-Stellen sind überwiegend Device-0-Kopplungs-Bugs
+
+`current_platform.is_device_capability((7, 0))` fragt Device 0 der
+Sichtbarkeitsliste — bei unserem `CUDA_VISIBLE_DEVICES=0,2,1,4,3` eine
+RTX 8000. Damit liefern die "exakt sm70"-Weichen auf ALLEN Workern False,
+auch auf den V100-Stufen: die verlieren ihren SM70-Pfad, nicht die RTX ihren.
+Das ist exakt die Wurzel, die das Merge-Projekt (Session 4) für Qwen3.8
+gefunden und in `fork_patches/vllm_config.py` (ANY-device-Baseline) und
+`fork_patches/cuda.py` (Worker-lokale Backend-Wahl) gefixt hat.
+Das validierte Muster für Worker-lokale Weichen steht in
+`fork_patches/qwen3_5.py:346`:
+`torch.cuda.get_device_capability(torch.cuda.current_device())`.
+
+Klassifikation der B-Stellen nach Lektüre:
+
+| Stelle | Wirkung auf heterogenem Boot | Risiko |
+|---|---|---|
+| `models/deepseek_v4/attention.py:132` (`_is_exact_sm70_cuda`, 3 Nutzungen) | Impl-Wahl: pre-Hopper nimmt ohnehin den Triton-Pfad (has_device_capability(90)-Gate davor); aber `_use_sm70_path` (Z. 223) steuert Layer-Verhalten und ist Device-0-gekoppelt → V100-Stufen laufen ohne SM70-Pfad | HOCH |
+| `sparse_attn_indexer.py:96` (Z. 207 `sm70_fp16_indexer`, Z. 564) | dito, Worker-lokal nötig | HOCH |
+| `flashmla_sparse.py:674` (`fixed_row_stride`) | LAYOUT-Parameter Device-0-gekoppelt → potenziell stille Fehlberechnung der V100-Stufen | HÖCHSTES |
+| `sparse_swa.py:513` | sm70-Ausnahme beim FlashMLA-SchedMeta-Stub; Device-0-gekoppelt | MITTEL |
+| `sm70_turbomind.py:57` | Turbomind-Auswahl; bei uns per Env aus (`VLLM_SM70_NVFP4_TURBOMIND=0`) | NIEDRIG (derzeit) |
+| `sm70/gemv.py:47` | Opt-in-Fastpath (`VLLM_SM70_DSV4_FP16_GEMV`); ohne ihn nur langsamer, nicht falsch | NIEDRIG |
+| `nvidia/model.py:1324` | Nur ein Dtype-Guard (fp16-Zwang); Boot nutzt --dtype half → erfüllt | KEINES |
+| `marlin_utils_fp4.py:32` | `has_device_capability(75)` = True über Device 0; V100-Worker könnten den sm75-Marlin-Pfad wählen. Boot-Log beobachten | MITTEL |
+
+### Gruppe C (config/vllm.py 1192/1211/1361/1532/1587): für DIESEN Boot inaktiv
+
+1192/1211/1587 gelten nur bei `quantization == "fp8"` (Checkpoint ist NVFP4),
+1361/1532 nur im Compile-/Graph-Pfad (Boot ist --enforce-eager). Bleiben
+unangetastet, bis eager-Kohärenz steht — wie vom Handover verlangt.
+
+### Schritt 2 — Boot + Kohärenz mit Gruppe A: BESTANDEN ✓ (23:05)
+
+Heterogener 5-Karten-Boot (`boot_ds.sh`, K=0, eager) erreicht startup,
+und die Kohärenzprobe (`scripts/deepseek_coherence.py`, 8 Prompts,
+greedy) ist **vollständig deckungsgleich mit der nvidia-base-Referenz**:
+Paris / 1591 / 10 / Mercury / `s[::-1]` / exakte longctx-Liste; Prosa
+kohärent. Ergebnis: `results-coherence-het-groupA.json`.
+
+**Wichtige Korrektur der Ausgangsthese:** Die B-Stellen sind für die
+KORREKTHEIT dieses Setups nicht nötig. Die Device-0-Kopplung setzt alle
+Worker einheitlich auf den generischen (Nicht-SM70-)Pfad — einheitlich
+generisch rechnet richtig, verschenkt aber die SM70-Optimierungen der
+V100-Stufen. B ist damit ein TEMPO-Thema, kein Korrektheitsthema.
+Vorsicht beim späteren Worker-lokal-Machen: divergierende Layouts
+zwischen Stufen (fixed_row_stride!) können die Kohärenz brechen —
+einzeln, mit Kohärenzprobe, wie gehabt.
+
+Baseline-Durchsatz K=0 eager: 501 Token Prosa in 121,3 s = **4,13 tok/s**
+(deckt sich mit den 3,8–4,1 vom August).
+
+### Schritt 3 (vorgezogen: Spekulation statt B) — DSpark K=5
+
+Begründung der Umreihung: Die Messlatte (40,4 tok/s) ist nur über
+Spekulation erreichbar; B bringt einstellige Prozente auf den
+V100-Stufen. Also erst DSpark, B danach gezielt nach Profil.
+
+Rezept: `--speculative-config '{"method": "dspark",
+"num_speculative_tokens": 5}'` — Minimum ist `dspark_block_size` 5 aus
+der Checkpoint-Config (`dspark_markov_rank` 256, target_layers 40–42);
+Draft-Modell = derselbe Checkpoint (`speculative.py:650`). Skript:
+`backups/2026-09-01-dsv4-softfp8/boot_ds_k5.sh`. Auffällig:
+`speculative_config.enforce_eager` defaultet auf False — der Drafter
+versucht CUDA-Graphs trotz eager-Hauptmodell.
+
+### Bug gefunden (betrifft auch homogene V100-Boots!): hf_config_override nicht idempotent
+
+Der erste K=5-Boot starb mit „Pipeline parallelism is not supported for
+this model" — obwohl `DeepSeekV4MTP` das `SupportsPP` des Forks trägt.
+Ursache: `SpeculativeConfig.hf_config_override` (config/speculative.py
+~360) wird auf dem Draft-Config-Pfad mehrfach angewandt. Erste Anwendung:
+model_type deepseek_v4 → deepseek_mtp, Architektur `DeepSeekV4MTPModel`
+(so steht es auch im Boot-Log, „Resolved architecture"). Zweite
+Anwendung: model_type ist bereits deepseek_mtp → der V3-Zweig
+überschreibt die Architektur mit `DeepSeekMTPModel` — und das V3-MTP hat
+kein SupportsPP. Repro: Override 2× auf dieselbe Config anwenden.
+
+Fix (fork_patches/speculative.py + venv, synchron): der
+deepseek_mtp-Zweig greift nicht mehr, wenn `initial_architecture`
+bereits `DeepSeekV4MTPModel` ist. Nachweis: 1×/2×/3× Anwendung liefern
+jetzt stabil DeepSeekV4MTPModel; der v3-Pfad ist unverändert
+(DeepSeekMTPModel, idempotent). Kein Turing-Thema — jeder
+DSpark-PP-Boot, auch rein auf V100s, lief in diesen Fehler.
+
+**Korrektur zur Crash-Ursache:** Der Idempotenz-Bug ist real (Repro:
+2× Anwendung → DeepSeekMTPModel) und der Fix bleibt drin — aber der
+K=5-Crash kam von etwas anderem: dspark schreibt die Draft-Architektur
+auf `DSparkDraftModel` → `DSparkDeepseekV4ForCausalLM`
+(nvidia/dspark.py:256) um, und DIESER Klasse fehlte `SupportsPP` —
+dieselbe Lücke, die die Fork-Autoren bei `DeepSeekV4MTP` schon einmal
+geschlossen haben („Fork addition: SupportsPP"). Fix nach exakt deren
+Muster: Basisklasse `SupportsPP`, `make_empty_intermediate_tensors`-
+Factory im `__init__`, `intermediate_tensors`-Keyword im `forward`
+(akzeptiert und ignoriert — der Drafter läuft komplett auf der letzten
+Stufe). KEINE Numerik-Änderung; die Gruppe-C-Warnung zu dspark.py
+109/226 bleibt unberührt. Persistiert als `fork_patches/dsv4_dspark.py`
++ Deploy + README.
+
+**Stolperfalle Model-Info-Cache:** `~/.cache/vllm/modelinfos/*.json`
+cached die Interface-Inspektion; der Staleness-Hash bemerkt einen Patch
+an `nvidia/dspark.py` NICHT (Registry-Mapping zeigt aufs Paket
+`vllm.models.deepseek_v4`). Nach jedem Interface-Patch die betreffende
+JSON löschen, sonst prüft der Boot gegen die alte Antwort.
+
+### Drafter-Gewicht und Partition (K=5)
+
+OOM-Analyse über die Safetensors-Header (Bytes je Tensor): alle 43
+Hauptlayer uniform ~3,52 GiB (Summe 151,4), `embed` 0,99, `head` 0,99 —
+und der **DSpark-Drafter (`mtp.*`) wiegt 10,68 GiB**. Die letzte Stufe
+trägt Drafter + head, neben denen nur 4 Hauptlayer auf eine 32-GiB-V100
+passen (14,1 + 11,7 ≈ 25,8). Neue Partition für Spekulation:
+`VLLM_PP_LAYER_PARTITION=12,12,8,7,4` bei `--gpu-memory-utilization
+0.94` → Stufen-Gewichte 43,2 / 42,3 / 28,2 / 24,6 / 25,8 GiB
+(RTX-Budget 45,4, V100-Budget 29,8). Die K=0-Partition 11,11,7,7,7
+bleibt für spekulationsfreie Boots die richtige.
+
+### K=5-Bring-up: die Zwiebel (Boots 4–17, Nacht 02:00–02:30)
+
+Nach dem SupportsPP-Fix schälte sich Schicht um Schicht:
+
+1. **OOM letzte Stufe** → Partition muss den Drafter einpreisen (s.o.).
+2. **SWA-Ragged-Kopie zu schmal** (`models/deepseek_v4/amd/rocm.py`,
+   `_copy_ragged_to_graph_buffers`-Aufrufer): der Drafting-Pfad baut
+   SWA-Zeilen BREITER als `window_size` (Block-Overlap; 5 Draft-Zeilen
+   × 256 statt × 128) — der Slice kappte die Kopie („size of tensor a
+   (640) must match … (1280)"). Fix: Slice-Breite aus der echten
+   dense-Zeilenbreite (`dense_swa.shape[1]`), nicht aus der Annahme.
+3. **dspark `_insert_context_kv`**: der sm70-Software-Zweig hing an
+   `is_device_capability((7,0))` = Device 0 = RTX → die V100-Stufe
+   rannte in den fused Op („requires sm_80+; got sm_70"). Fix nach dem
+   validierten Muster: Worker-lokale Capability, Grenze < (8,0). KEINE
+   Numerik-Änderung (die Gruppe-C-Warnung betrifft andere Zeilen).
+4. **Scheinbarer PP-Deadlock** (PP0-2 im Spec-Broadcast, PP3-4 in
+   irecv): drei Fehlfährten — --no-async-scheduling (bringt eigenen
+   Bruch: Scheduler kennt Drafts nicht, assert num_scheduled >=
+   draft_len+1), Batch-Queue-Cap (VLLM_SM70_ASYNC_SCHEDULING_QUEUE_DEPTH
+   wirkt jetzt auch bei PP>1 — als Option behalten), Spec-Broadcasts auf
+   gloo/cpu_group (Transport war unschuldig; Umstellung bleibt drin,
+   schadet nicht, Payloads sind winzig). Die WAHRHEIT fand erst der
+   Seam-Trace (`VLLM_PP_SEAM_TRACE=1`, neue Diagnose in
+   parallel_state.py): PP0→PP1→PP2 lief, **PP2 sendete nie an PP3** —
+   sein execute_model warf „Triton Error [CUDA]: out of memory", der
+   worker_busy_loop loggt das nur und nimmt den nächsten RPC an, die
+   Pipeline verklemmt OHNE dass die Engine stirbt. Merke: bei
+   „Deadlock"-Symptomen IMMER erst `grep ERROR` über alle Worker.
+5. **JIT-Launch-OOM auf der 8-Layer-V100-Stufe** (28,2 GiB Gewichte):
+   weder util 0.96/0.97 noch batched 512 + expandable_segments retten
+   sie — eine V100 verträgt im DSpark-Betrieb KEINE 8 Hauptlayer.
+   Konsequenz: Partition 12,12,7,7,5 (PP0 wagt 12+embed, PP4 5+Drafter)
+   ist die einzige Verteilung ohne 8er-V100.
+
+Env-Stand des K=5-Skripts (boot_ds_k5.sh): QUEUE_DEPTH=2, SEAM_TRACE=1,
+PYTORCH_ALLOC_CONF=expandable_segments:True, batched 512, util 0.96,
+max-model-len 8192.
+
+### DURCHBRUCH 03:40 — DSpark K=5 läuft heterogen, Drafter auf der RTX 8000
+
+Finale Boot-Konfiguration (boot_ds_k5.sh):
+`CUDA_VISIBLE_DEVICES=0,1,4,3,2` (RTX, V100, V100, V100, RTX),
+`VLLM_PP_LAYER_PARTITION=11,8,8,8,8`, util 0.97,
+`--num-gpu-blocks-override 512`, batched 256, max-model-len 4096,
+max-num-seqs 1, QUEUE_DEPTH=2, expandable_segments.
+
+Der Speicher-Zielkonflikt (KV-Profiling will hohen util-Pool, das
+Serving-JIT braucht physischen Nicht-Pool-Raum) löst sich durch
+**util hoch + `--num-gpu-blocks-override` klein**: der Check rechnet
+mit dem util-Budget, die reale KV-Allokation bleibt winzig (MLA-KV
+≈ 0,3 MB/Block). Alle fünf Stufen positiv (1,5/1,5/1,5/2,5/3,7 GiB).
+Der Drafter (10,7 GiB mtp.*) erstickt auf jeder V100 — auf der
+zweiten RTX 8000 hat er Luft. Kohärenzprobe K=5: **alle 8 Prompts
+deckungsgleich mit nvidia-base** (results-coherence-het-k5.json).
+
+### Offen: DSpark-Akzeptanz kollabiert (~5–6 %) — Tempo bleibt ~3,7–4,5 tok/s
+
+Draft-Dumps (`VLLM_SM70_MTP_DUMP_STEP_DIR` + scripts/analyze_drafts.py):
+Position 0 trifft oft (25 %), ab Position 1 deterministischer Müll
+(' parallelogram', ' cryptocur'). Verdächtige geprüft:
+* mhc_post/hc_head-TileLang: nehmen bei fp16 den Torch-Generic-Pfad — raus.
+* main_proj_input_scale 2^-6: Device-0-Bug gefixt (worker-lokal, < (8,9)) —
+  Akzeptanz unverändert, Fix bleibt (sachlich richtig).
+* sm75-Layer-Mathe generell: durch die kohärenten 8 Hauptlayer auf
+  derselben RTX entlastet.
+
+Nächste Verdächtige (Reihenfolge für die nächste Session):
+1. **Markov-Head-Laden verifizieren** (mtp.2.markov_head.* →
+   model.markov_head.* — Remap sieht korrekt aus, aber prüfen ob die
+   Params wirklich geladen werden; Pos-0-gut/Rest-Müll passt exakt zu
+   fehlendem Markov-Bias). Auch: DSparkProposer wurde hier zum ERSTEN
+   Mal überhaupt end-to-end gefahren — der Bug kann hardware-unabhängig
+   im Fork-DSpark-Pfad liegen.
+2. `sm70_qnorm_rope_kv_fp8_insert` auf sm75 gegen V100 diffen (A/B-Skript
+   liegt im Scratchpad-Ansatz vor; scheiterte an belegtem VRAM).
+3. dflash.py:159 Warmup-Gate ist noch Device-0-gekoppelt (nur Warmup,
+   keine Numerik — aber gleiche Bug-Klasse, fixen).
+4. Aux-Hidden-States (dspark_target_layer_ids 40–42, alle auf PP4) und
+   der nicht-kausale Block-Attention-Pfad (SWA-Drafting-Metadata).
+
+### Persistiert (fork_patches + Deploy + README, alles kompiliert)
+
+dsv4_cache_utils / dsv4_fused_compress_quant_cache / dsv4_fused_indexer_q
+(Gruppe A), dsv4_dspark (SupportsPP + worker-lokaler Dispatch + Scale),
+dsv4_amd_rocm (SWA-Breite), speculative (hf_config_override idempotent),
+gpu_model_runner (Spec-Transport gloo), multiproc_executor (Queue-Cap),
+gpu_worker (per-Rank-KV-Log + Trace), parallel_state (Seam-Trace),
+kv_cache_utils (Fehlermeldung mit GiB-Zahl).
+**Uncommitted** — Commit auf Ansage des Users.
+
+### Sonstiges
+* Model-Info-Cache-Falle (s.o.): nach Interface-Patches an Modellklassen
+  die JSON unter ~/.cache/vllm/modelinfos/ löschen.
+* boot_ds_k5_dump.sh = Variante mit Draft-Dumps ins Scratchpad.
+* K=0-Referenz unverändert: boot_ds.sh (11,11,7,7,7, util 0.92) →
+  4,13 tok/s, kohärent.
+
+### Akzeptanz-Forensik (04:00–05:20) — NaN-Wurzel gefunden und gefixt, Rest offen
+
+Werkzeugkette der Diagnose (alles env-gated, bleibt im Fork):
+`VLLM_DSPARK_DIAG=1` aktiviert Prints in
+- dspark.py: Kontext-Insert (Layer, Token, Slots), Block-forward
+  (Positionen, input_ids), combine (aux/proj-Statistik inkl.
+  badrows/Layer-Drittel), Proposer (Anker + base-argmax)
+- amd/rocm.py: Drafting-SWA (rows, width, lens, row0-Indices)
+Skript-Variante: `boot_ds_k5_diag.sh`; Draft-Dumps weiterhin über
+`boot_ds_k5_dump.sh` + scripts/analyze_drafts.py.
+
+Entlastet (bewiesen):
+* Drafting-SWA-Metadata: Slots/lens exakt konsistent mit dem Insert
+  (Kontext 192–210 + Block 211–215, lens=24 ✓ nicht-kausal korrekt)
+* `sm70_qnorm_rope_kv_fp8_insert` auf sm75: bit-identisch zur V100
+  (A/B im Scratchpad, ab_kernels.py — Achtung: je Karte mit eigenem
+  CUDA_VISIBLE_DEVICES laufen lassen, sonst kompiliert Triton für
+  Device 0 und wirft „no kernel image")
+* Positionen/Noise-Token des Blocks: [ctx..ctx+4], [anchor, 4×128799] ✓
+* mhc/hc_head-TileLang: bei fp16 laufen die Torch-Generic-Pfade
+* Markov-Bias: funktioniert (er allein hob Position 0 auf 25 %)
+
+**Gefundene Wurzel:** Die Aux-Hidden-States der **BOS-Zeile** (Attention-
+Sink) sprengen unter `--dtype half` den FP16-Bereich → inf/NaN → ein
+einziger vergifteter Kontext-KV-Slot macht via Softmax ALLE
+base_logits des Drafters zu Müll (belegt: base-argmax vor Fix
+' cryptocur/' parallelogram' selbst auf Position 0). Die bf16-DSpark-
+Referenz kennt das Problem nicht. Fix in dsv4_dspark.py
+(combine_hidden_states): nan_to_num-Sättigung auf ±65504 — wie eine
+saturierende bf16→fp16-Konvertierung; die RMSNorm normalisiert die
+Sink-Zeile danach ohnehin (mainx absmax 0,39 statt NaN). Wirkung
+belegt: base[0] trifft jetzt (' fox' nach 'The', ' the' nach ' over').
+Vermutlich betrifft dieser Bug auch einen HOMOGENEN V100-dspark-Boot —
+der Pfad lief vor dieser Nacht nie bis zur Akzeptanzmessung.
+
+**Weiter offen:** Akzeptanz bleibt ~5 % (70/1420 im Essay-Lauf), Tempo
+~3,6–4,5 tok/s ≈ K=0-Baseline. base[1..4] (die Noise-Positionen)
+liefern kontext-nahe, aber positionsblinde Token (' frog',
+' parallelogram'). Nächste Schritte:
+1. Markov-Gewichts-Laden verifizieren (Werte gegen Checkpoint diffen,
+   nicht nur Remap-Logik lesen).
+2. Prüfen, wie llama.cpp dspark implementiert (Block-Attention-Maske!
+  sieht Noise-Position i dort die Positionen <i des Blocks? Unsere
+  lens=24 GLEICH für alle 5 Zeilen = voll nicht-kausal — wenn die
+  Referenz eine Stufen-Maske nutzt, wäre unsere Attention-Maske falsch
+  und genau das Positionsblind-Muster erklärt).
+3. Akzeptanz-Referenz je Position aus llama.cpp ziehen (dort läuft
+   dspark mit 40,4 tok/s — Akzeptanzprofil vergleichen).
+
+Endzustand 05:25: alle GPUs frei, kein Server. K=5-Boot reproduzierbar
+über backups/2026-09-01-dsv4-softfp8/boot_ds_k5.sh (Diag-Varianten
+daneben). Alle Fixes in fork_patches + Bootstrap-Deploy + README,
+Repo uncommitted — Commit auf Ansage.

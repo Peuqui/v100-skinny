@@ -212,6 +212,15 @@ deploy_new nvfp4_skinny_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp
 deploy sparse_attn_indexer.py vllm/model_executor/layers/sparse_attn_indexer.py
 deploy mhc_tilelang.py      vllm/model_executor/kernels/mhc/tilelang.py
 deploy deepseek_v4_attention.py vllm/models/deepseek_v4/attention.py
+deploy dsv4_cache_utils.py vllm/models/deepseek_v4/common/ops/cache_utils.py
+deploy dsv4_fused_compress_quant_cache.py vllm/models/deepseek_v4/common/ops/fused_compress_quant_cache.py
+deploy dsv4_fused_indexer_q.py vllm/models/deepseek_v4/common/ops/fused_indexer_q.py
+deploy dsv4_dspark.py vllm/models/deepseek_v4/nvidia/dspark.py
+deploy dsv4_amd_rocm.py vllm/models/deepseek_v4/amd/rocm.py
+deploy spec_decode_dspark.py vllm/v1/spec_decode/dspark.py
+deploy multiproc_executor.py vllm/v1/executor/multiproc_executor.py
+deploy gpu_worker.py vllm/v1/worker/gpu_worker.py
+deploy parallel_state.py vllm/distributed/parallel_state.py
 deploy dsv4_compressor.py   vllm/models/deepseek_v4/compressor.py
 deploy rocm_aiter_mla_sparse.py vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
 deploy import_utils.py      vllm/utils/import_utils.py

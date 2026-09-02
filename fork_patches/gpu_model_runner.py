@@ -10576,7 +10576,16 @@ class GPUModelRunner(
                 device=sampled_token_ids.device,
             )
             payload[:, : sampled_token_ids.shape[1]] = sampled_token_ids
-            torch.distributed.broadcast(payload, src=pp.rank, group=pp.device_group)
+            # Fork fix (v100-skinny): ship the tiny spec-state payloads over
+            # the gloo cpu_group instead of an NCCL collective on the
+            # device_group. With five PP stages the NCCL broadcast interleaves
+            # with the pipeline's send/recv ops on the same communicator and
+            # the first request deadlocks (PP0-2 in broadcast, PP3-4 in
+            # irecv); a CPU rendezvous has no stream-ordering constraint and
+            # the payload is [num_reqs, K+1] int32.
+            torch.distributed.broadcast(
+                payload.cpu(), src=pp.rank, group=pp.cpu_group
+            )
             return
         # `prev_sampled_token_ids` is expected to have shape [num_reqs, 1].
         assert sampled_token_ids.dim() == 2 and sampled_token_ids.shape[-1] == 1, (
@@ -10609,7 +10618,9 @@ class GPUModelRunner(
                 dtype=torch.int32,
                 device=self.device,
             )
-        torch.distributed.broadcast(payload, src=pp.rank, group=pp.device_group)
+        # Fork fix (v100-skinny): gloo cpu_group, see
+        # _pp_broadcast_prev_sampled_token_ids.
+        torch.distributed.broadcast(payload.cpu(), src=pp.rank, group=pp.cpu_group)
 
     def _pp_receive_spec_decode_state(self, num_reqs: int) -> None:
         """Receive the spec-decode round state from the last PP stage.
@@ -10622,12 +10633,16 @@ class GPUModelRunner(
         rank does in its full sample_tokens() path.
         """
         pp = get_pp_group()
-        sampled = torch.empty(
+        # Fork fix (v100-skinny): gloo cpu_group, see
+        # _pp_broadcast_prev_sampled_token_ids.
+        sampled_cpu = torch.empty(
             (num_reqs, self.num_spec_tokens + 1),
             dtype=torch.int32,
-            device=self.device,
         )
-        torch.distributed.broadcast(sampled, src=pp.last_rank, group=pp.device_group)
+        torch.distributed.broadcast(
+            sampled_cpu, src=pp.last_rank, group=pp.cpu_group
+        )
+        sampled = sampled_cpu.to(self.device, non_blocking=True)
         valid_counts = _count_contiguous_spec_tokens(sampled)
         next_token_ids = sampled.gather(
             1, (valid_counts.to(torch.int64) - 1).clamp_(min=0).unsqueeze(1)
@@ -10635,13 +10650,14 @@ class GPUModelRunner(
         assert self.valid_sampled_token_count_event is not None
         self._copy_valid_sampled_token_count(next_token_ids, valid_counts)
 
-        drafts = torch.empty(
+        drafts_cpu = torch.empty(
             (num_reqs, self.num_spec_tokens),
             dtype=torch.int32,
-            device=self.device,
         )
-        torch.distributed.broadcast(drafts, src=pp.last_rank, group=pp.device_group)
-        self._draft_token_ids = drafts
+        torch.distributed.broadcast(
+            drafts_cpu, src=pp.last_rank, group=pp.cpu_group
+        )
+        self._draft_token_ids = drafts_cpu.to(self.device, non_blocking=True)
 
         scheduler_output = self._pp_nonlast_scheduler_output
         self._pp_nonlast_scheduler_output = None

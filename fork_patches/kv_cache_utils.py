@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+#
+# Modified by the v100-skinny contributors, 2026, from 1Cat-vLLM 1.3.0
+# (https://github.com/1CatAI/1Cat-vLLM). Licensed under Apache-2.0.
+# Changes: the no-KV-memory error now reports the negative available_memory figure.
 """KV-Cache Utilities."""
 
 import copy
@@ -704,7 +708,8 @@ def _check_enough_kv_cache_memory(
 ):
     if available_memory <= 0:
         raise ValueError(
-            "No available memory for the cache blocks. "
+            f"No available memory for the cache blocks "
+            f"(available_memory={available_memory / 1024**3:.2f} GiB). "
             "Try increasing `gpu_memory_utilization` when initializing the engine "
             "(this flag also controls CPU memory reservation on the CPU "
             "backend, despite its name). "

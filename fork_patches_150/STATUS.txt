@@ -1,7 +1,7 @@
 gdn_attn.py AUTO_MERGED
-gpu_model_runner.py KONFLIKT (manuell, siehe mergecheck)
+gpu_model_runner.py AUFGELOEST (PLE-Partition-Pruefung statt PP-Verbot, PP-Spec-Gate, E5-Hooks; 6 Bloecke obsolet)
 marlin.py UNVERAENDERT (kopiert)
-modelopt.py KONFLIKT (manuell, siehe mergecheck)
+modelopt.py AUFGELOEST (QPN8- und TurboMind-Route koexistieren, env-Gate fuehrend)
 torch_utils.py UNVERAENDERT (kopiert)
 attention.py AUTO_MERGED
 custom_all_reduce.py AUTO_MERGED
@@ -19,8 +19,8 @@ nvfp4_moe_oracle.py UNVERAENDERT (kopiert)
 nvfp4_emulation_moe.py UNVERAENDERT (kopiert)
 nvfp4_skinny_moe.py FORK_EIGEN (kopiert)
 sparse_attn_indexer.py AUTO_MERGED
-mhc_tilelang.py KONFLIKT (manuell, siehe mergecheck)
-mhc_triton.py KONFLIKT (manuell, siehe mergecheck)
+mhc_tilelang.py UEBERNOMMEN (Basis seit Backport unveraendert)
+mhc_triton.py OBSOLET (Upstream identisch mit unserem Backport)
 deepseek_v4_attention.py AUTO_MERGED
 dsv4_cache_utils.py UNVERAENDERT (kopiert)
 dsv4_fused_compress_quant_cache.py AUTO_MERGED
@@ -57,7 +57,7 @@ config.py KONFLIKT (manuell, siehe mergecheck)
 interfaces.py KONFLIKT (manuell, siehe mergecheck)
 qwen3_next.py KONFLIKT (manuell, siehe mergecheck)
 registry.py AUTO_MERGED
-utils.py KONFLIKT (manuell, siehe mergecheck)
+utils.py AUFGELOEST (Upstream hat Stacked-Shard-Feature nachgebaut; unsere renaming+shard-Durchreichung erhalten)
 interface.py AUTO_MERGED
 transformers_utils_config.py AUTO_MERGED
 transformers_configs_init.py AUTO_MERGED
@@ -74,8 +74,8 @@ llm_base_proposer.py AUTO_MERGED
 spec_decode_qwen4_exp.py ERSETZT_DURCH_UPSTREAM (nicht kopiert)
 block_table.py AUTO_MERGED
 model_runner.py KONFLIKT (manuell, siehe mergecheck)
-worker_mamba_utils.py KONFLIKT (manuell, siehe mergecheck)
-worker_utils.py KONFLIKT (manuell, siehe mergecheck)
+worker_mamba_utils.py OBSOLET (natives 1.5.0-Qwen4Exp ersetzt unseren Gruppen-Mechanismus)
+worker_utils.py OBSOLET (Upstream loest Mixed-Page-Zeroing generischer)
 tilelang_target.py FORK_EIGEN (kopiert)
 triton_unified_attention.py AUTO_MERGED
 triton_attn.py UNVERAENDERT (kopiert)

@@ -1381,3 +1381,16 @@ NAECHSTER BLOCK: bootstrap-Skript auf -150/fork_patches_150 portieren
 dann Boot-Gates: erst 27B-Regression (2x2, Gates gruen?), dann Flash-Next
 (PLE-Partition!), dann DSv4-PP5. Kohaerenz + Bench je Modell gegen die
 frischen Baselines (FN k=0: 32,2; DSv4: 113 ms/Step).
+
+### 2026-09-03 23:15 — KORREKTUR zur CSA-Herkunft (Peuqui-Nachfrage, git-verifiziert)
+
+Die 23:00-Formulierung „unser DSv4-Layout ist upstream gelandet" war
+FALSCH HERUM: _CSALinearCacheTuple, orig_to_new_stacked und der
+FP8-int8-AllReduce kamen alle mit 1Cat-PR #403 (Merge 187b932,
+29.08. 16:45) in deren main — UNSERE Fassungen waren Backports/
+Adaptionen von deren HEAD in unsere 1.3.0-Basis (eigener Patch-Kommentar
+„Upstream writes this layout..."). Beim Rebase kehren die Originale
+zurueck; Uebernahme UNSERER Arbeit ist fuer diese drei nicht belegbar
+(deren Branch startete Stunden nach unseren 28.08.-Posts — Konvergenz
+plausibel, Kausalitaet offen). Echt von uns bleiben: PP-Transport,
+PLE-Kaskade, Device-0-Fixklasse, QPN-Kernelfamilie, moe_qpn (#441/#479).

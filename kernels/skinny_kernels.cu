@@ -2489,6 +2489,13 @@ void skinny_moe_simt(torch::Tensor x, torch::Tensor codes, torch::Tensor scales,
 // permutation: [E][tile N/32][group K/16][lane 32] x 8B codes + 1B scales.
 // A rows come through the slot indirection (token-major x for w13,
 // slot-major for w2) instead of qpn2's contiguous x.
+// Routing arrives COMPACT: grid.y spans slot-count-many group slots (a
+// static bound, so it captures into CUDA graphs), `gids[grp]` names the
+// group's expert and `goff[grp]..goff[grp+1]` its slot range; padding
+// groups carry an empty range and exit. This keeps the launch independent
+// of the expert count -- with a per-expert grid, many-expert models
+// (E=512, top-k 10, T=1) schedule thousands of empty blocks that cost
+// more than the actual work.
 // ---------------------------------------------------------------------------
 template <int SPLITK, int NACC>
 __global__ void __launch_bounds__(32 * SPLITK)
@@ -2498,7 +2505,8 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
                                      const half *__restrict__ x,
                                      half *__restrict__ y_slots,
                                      const int *__restrict__ perm,
-                                     const int *__restrict__ offsets,
+                                     const int *__restrict__ gids,
+                                     const int *__restrict__ goff,
                                      int N, int K, int topk,
                                      int x_slot_major) {
   constexpr int MMAX = 8;
@@ -2506,10 +2514,11 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
   __shared__ const half *xrows[MMAX];
   __shared__ int slots[MMAX];
 
-  const int e = blockIdx.y;
-  const int beg = offsets[e];
-  const int cnt = offsets[e + 1] - beg;
-  if (cnt <= 0) return;  // block-uniform: inactive expert, no weight read
+  const int grp = blockIdx.y;
+  const int beg = goff[grp];
+  const int cnt = goff[grp + 1] - beg;
+  if (cnt <= 0) return;  // block-uniform: padding group, no weight read
+  const int e = gids[grp];
 
   const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
   const int tile = blockIdx.x;
@@ -2593,7 +2602,8 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
 // with W in per-expert QPN fragment order (see _qpn_prepack).
 void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
                     torch::Tensor qscales, torch::Tensor gscales,
-                    torch::Tensor perm, torch::Tensor offsets, int64_t topk,
+                    torch::Tensor perm, torch::Tensor gids,
+                    torch::Tensor goff, int64_t topk,
                     torch::Tensor y_slots, bool x_slot_major,
                     int64_t num_tokens, int64_t splitk, int64_t nacc) {
   TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
@@ -2604,21 +2614,23 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   TORCH_CHECK(gscales.is_cuda() && gscales.dtype() == torch::kFloat &&
               gscales.is_contiguous());
   TORCH_CHECK(perm.is_cuda() && perm.dtype() == torch::kInt && perm.is_contiguous());
-  TORCH_CHECK(offsets.is_cuda() && offsets.dtype() == torch::kInt &&
-              offsets.is_contiguous());
+  TORCH_CHECK(gids.is_cuda() && gids.dtype() == torch::kInt && gids.is_contiguous());
+  TORCH_CHECK(goff.is_cuda() && goff.dtype() == torch::kInt &&
+              goff.is_contiguous());
   TORCH_CHECK(y_slots.is_cuda() && y_slots.dtype() == torch::kHalf &&
               y_slots.is_contiguous());
   const int64_t T = num_tokens, K = x.size(1);
   const int64_t E = gscales.size(0), N = y_slots.size(1);
-  TORCH_CHECK(x.size(0) == (x_slot_major ? T * topk : T), "x rows mismatch");
+  const int64_t S = T * topk;
+  TORCH_CHECK(x.size(0) == (x_slot_major ? S : T), "x rows mismatch");
   TORCH_CHECK(qcodes.numel() == E * N * (K >> 1), "qpn codes size");
   TORCH_CHECK(qscales.numel() == E * N * (K >> 4), "qpn scales size");
-  TORCH_CHECK(offsets.size(0) == E + 1);
-  TORCH_CHECK(perm.size(0) == T * topk && y_slots.size(0) == T * topk);
+  TORCH_CHECK(gids.size(0) == S && goff.size(0) == S + 1, "compact routing size");
+  TORCH_CHECK(perm.size(0) == S && y_slots.size(0) == S);
   TORCH_CHECK(T <= 8, "grouped qpn MoE serves <= 8 tokens (decode/verify); got ", T);
   TORCH_CHECK(K % 64 == 0 && (K / 16) % splitk == 0, "K/SPLITK");
   TORCH_CHECK(N % 32 == 0, "N % 32");
-  const dim3 grid((unsigned)(N / 32), (unsigned)E);
+  const dim3 grid((unsigned)(N / 32), (unsigned)S);
   auto stream = at::cuda::getCurrentCUDAStream();
 
 #define LAUNCH_MOE_QPN(SPv, NAv)                                            \
@@ -2628,8 +2640,8 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
           gscales.data_ptr<float>(),                                        \
           reinterpret_cast<const half *>(x.data_ptr<at::Half>()),           \
           reinterpret_cast<half *>(y_slots.data_ptr<at::Half>()),           \
-          perm.data_ptr<int>(), offsets.data_ptr<int>(), (int)N, (int)K,    \
-          (int)topk, x_slot_major ? 1 : 0)
+          perm.data_ptr<int>(), gids.data_ptr<int>(), goff.data_ptr<int>(), \
+          (int)N, (int)K, (int)topk, x_slot_major ? 1 : 0)
 
   const int key = (int)(splitk * 10 + nacc);
   switch (key) {
@@ -2650,7 +2662,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "grouped NVFP4 MoE GEMM (SIMT, device-side routing, tokens<=8)");
   m.def("moe_qpn", &skinny_moe_qpn,
         "grouped NVFP4 MoE GEMM (mma.m8n8k4 on prepacked fragments, "
-        "device-side routing, tokens<=8)");
+        "compact device-side routing, tokens<=8)");
   m.def("gemm_qpn8", &skinny_gemm_qpn8,
         "skinny FP8 E4M3 GEMM (QPN8, M<=8)");
   m.def("qpn8_blk_dequant", &skinny_qpn8_blk_dequant,

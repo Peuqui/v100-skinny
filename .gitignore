@@ -29,3 +29,7 @@ ac_suite/
 .cuda-nvcc-deb/
 .cuda128/
 hunt-results/
+.venv-sm70-150/
+.wheels/
+nsys-dsv4-het-moeqpn.sqlite
+nsys-dsv4-het-moeqpn.nsys-rep

@@ -1,0 +1,53 @@
+A/B: 1Cat-vLLM 1.5.0 compact-grouped NVFP4-MoE (TurboMind dense_stage-Ops,
+compact 1-Zeile/Gruppe-Offsets exakt wie deren Decode-Route) gegen
+v100-skinny moe_qpn (mma.m8n8k4, expert-gebuendelt bis 8 Zeilen/Lesung).
+Harness: tools/moe_ab_1cat.py in .venv-sm70-150 (Wheel 1cat_vllm-1.5.0).
+Gemessen: reine w13+w2-GEMM-Stufen, identisches vorbereitetes Routing,
+Korrektheit beider Routen gegen fp32-Dequant-Referenz (torch-Einsum).
+
+Tesla V100 (sm70), Qwen3.6-35B-A3B-NVFP4 Layer 1 (deren kleinster
+Contract: E=256, topk=8, w13 1024x2048, w2 2048x512):
+ T slots exp | 1cat      | moe_qpn  | ratio
+ 1     8   8 | 0.045 ms  | 0.067 ms | 0.67x   (1Cat schneller)
+ 2    16  16 | 0.062 ms  | 0.082 ms | 0.76x   (1Cat schneller)
+ 4    32  31 | 0.113 ms  | 0.113 ms | 1.00x
+ 6    48  45 | 0.147 ms  | 0.145 ms | 1.01x
+ 8    64  61 | 0.202 ms  | 0.191 ms | 1.06x
+ max|diff| vs Referenz: beide Routen 1e-4-Klasse (fp16-Rundung).
+
+Tesla V100 (sm70), DeepSeek-V4-Flash-NVFP4 Layer 5 (E=64, topk=6,
+w13 4096x4096, w2 4096x2048 — grosse Experten, echtes Sharing):
+ T slots exp | 1cat      | moe_qpn  | ratio
+ 1     6   6 | 0.168 ms  | 0.143 ms | 1.18x   (moe_qpn schneller)
+ 2    12  12 | 0.274 ms  | 0.259 ms | 1.06x
+ 4    24  20 | 0.525 ms  | 0.409 ms | 1.28x
+ 6    36  29 | 0.774 ms  | 0.578 ms | 1.34x   (Verify-Punkt K=5)
+ 8    48  36 | 1.025 ms  | 0.705 ms | 1.45x
+ max|diff| vs Referenz: beide Routen 2-4e-4 (fp16-Rundung).
+
+Quadro RTX 8000 (sm75), DSv4: 1Cat-TurboMind-Op bricht ab:
+ "[TM][FATAL] gemm.cu(935): No feasible kernel found:
+  sm75_f16_e2m1k16_f16_tnt_bbb_6x4096x4096_6"
+ -> deren Route ist real sm70-only; moe_qpn laeuft auf sm70 UND sm75
+ (identische Winner-Configs, siehe nvfp4_skinny_moe_qpn_test.py).
+
+Interpretation: 1Cats 1-Zeile-pro-Gruppe-Dispatch ist bei Mini-Experten
+und T<=2 schlanker (weniger Grid-Overhead); moe_qpn gewinnt, sobald
+Experten gross sind oder von mehreren Slots geteilt werden (Buendelung
+bis 8 Zeilen pro Gewichtslesung) — das speculative-Verify-Regime.
+
+NACHTRAG (compact-Grid-Fix, gleicher Tag): moe_qpn-Grid laeuft jetzt ueber
+slot-count-many kompakte Gruppen (statisch, graph-tauglich) statt ueber
+alle E Experten — die leeren Bloecke waren bei Mini-Experten/T=1 der
+gesamte Rueckstand. Neue Zahlen (V100, gleicher Harness):
+
+Qwen3.6-35B (E=256, topk=8):
+ T=1 1cat 0.044 / qpn 0.034 ms = 1.32x   (vorher 0.67x — GEDREHT)
+ T=2 0.062/0.057 = 1.08x | T=4 0.113/0.101 = 1.13x
+ T=6 0.146/0.140 = 1.05x | T=8 0.202/0.187 = 1.08x
+DSv4 (E=64, topk=6): T=1 1.22x, T=2 1.03x, T=4 1.22x, T=6 1.27x, T=8 1.38x
+Numerik unveraendert (fp16-Rundungsklasse).
+=> moe_qpn ist jetzt in JEDEM gemessenen Regime schneller als 1Cats
+compact-grouped-Route, auf deren eigenem Contract wie auf DSv4.
+FN-Geometrie (synthetisch, E=512): T=1 jetzt 7-9x vs moe_simt
+(0,054 ms V100 / 0,056 ms RTX je Layer w13+w2).

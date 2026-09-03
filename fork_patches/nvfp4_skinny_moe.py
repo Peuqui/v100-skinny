@@ -272,30 +272,39 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
         self._ensure_scale_caches()
         ext = _get_skinny_ext()
         num_tokens, top_k = topk_ids.shape
-        num_experts = w1.size(0)
         inter_dim = self.adjust_N_for_activation(w1.size(1), activation)
         device = hidden_states.device
-        # Device-side routing: slots sorted by expert + per-expert offsets.
-        # scatter_add instead of bincount -- bincount syncs for its output
-        # size and would break CUDA-graph capture.
+        # Compact device-side routing (all fixed shapes, CUDA-graph safe):
+        # slots sorted by expert; consecutive equal experts form a group.
+        # gids[g] = group's expert, goff[g]..goff[g+1] = its slot range;
+        # unused group slots stay empty (goff = S) and the kernel skips
+        # them -- the launch never scales with the expert count.
         flat = topk_ids.reshape(-1).to(torch.int64)
+        num_slots = flat.numel()
         perm = torch.argsort(flat, stable=True).to(torch.int32)
-        counts = torch.zeros(num_experts, dtype=torch.int32, device=device)
-        counts.scatter_add_(0, flat, torch.ones_like(flat, dtype=torch.int32))
-        offsets = torch.zeros(num_experts + 1, dtype=torch.int32, device=device)
-        offsets[1:] = torch.cumsum(counts, 0)
-        y13 = torch.empty((num_tokens * top_k, w1.size(1)),
+        sorted_e = flat[perm.long()]
+        new_group = torch.ones(num_slots, dtype=torch.bool, device=device)
+        new_group[1:] = sorted_e[1:] != sorted_e[:-1]
+        gidx = torch.cumsum(new_group, 0) - 1
+        goff = torch.full((num_slots + 1,), num_slots, dtype=torch.int64,
+                          device=device)
+        goff.scatter_reduce_(0, gidx, torch.arange(
+            num_slots, dtype=torch.int64, device=device), reduce="amin")
+        gids = torch.zeros(num_slots, dtype=torch.int64, device=device)
+        gids.scatter_(0, gidx, sorted_e)
+        gids32, goff32 = gids.to(torch.int32), goff.to(torch.int32)
+        y13 = torch.empty((num_slots, w1.size(1)),
                           dtype=hidden_states.dtype, device=device)
         ext.moe_qpn(hidden_states, w1, self._w1_scales_u8, self._g1_t, perm,
-                    offsets, top_k, y13, False, num_tokens,
+                    gids32, goff32, top_k, y13, False, num_tokens,
                     _MOE_QPN_CFG[0], _MOE_QPN_CFG[1])
-        inter = torch.empty((num_tokens * top_k, inter_dim), dtype=y13.dtype,
+        inter = torch.empty((num_slots, inter_dim), dtype=y13.dtype,
                             device=device)
         self.activation(activation, inter, y13)
-        y2 = torch.empty((num_tokens * top_k, w2.size(1)), dtype=y13.dtype,
+        y2 = torch.empty((num_slots, w2.size(1)), dtype=y13.dtype,
                          device=device)
-        ext.moe_qpn(inter, w2, self._w2_scales_u8, self._g2_t, perm, offsets,
-                    top_k, y2, True, num_tokens,
+        ext.moe_qpn(inter, w2, self._w2_scales_u8, self._g2_t, perm,
+                    gids32, goff32, top_k, y2, True, num_tokens,
                     _MOE_QPN_CFG[2], _MOE_QPN_CFG[3])
         weighted = y2.view(num_tokens, top_k, -1).float() * topk_weights.to(
             torch.float32).unsqueeze(-1)

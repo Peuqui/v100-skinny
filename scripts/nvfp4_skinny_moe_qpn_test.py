@@ -64,18 +64,29 @@ qs2v = qs2.view(E, hidden, inter // 16)
 
 
 def routing(ids):
+    """Beide Formate: per-Experte-Offsets (moe_simt) + compact (moe_qpn)."""
     T, topk = ids.shape
-    flat = ids.reshape(-1)
+    flat = ids.reshape(-1).to(torch.int64)
+    S = flat.numel()
     order = torch.argsort(flat, stable=True).to(torch.int32)
-    counts = torch.bincount(flat.to(torch.int64), minlength=E).to(torch.int32)
+    counts = torch.bincount(flat, minlength=E).to(torch.int32)
     offsets = torch.zeros(E + 1, dtype=torch.int32, device="cuda")
     offsets[1:] = torch.cumsum(counts, 0)
-    return order, offsets
+    sorted_e = flat[order.long()]
+    newg = torch.ones(S, dtype=torch.bool, device="cuda")
+    newg[1:] = sorted_e[1:] != sorted_e[:-1]
+    gidx = torch.cumsum(newg, 0) - 1
+    goff = torch.full((S + 1,), S, dtype=torch.int64, device="cuda")
+    goff.scatter_reduce_(0, gidx, torch.arange(S, dtype=torch.int64, device="cuda"),
+                         reduce="amin")
+    gids = torch.zeros(S, dtype=torch.int64, device="cuda")
+    gids.scatter_(0, gidx, sorted_e)
+    return order, offsets, gids.to(torch.int32), goff.to(torch.int32)
 
 
 def grouped_simt(hs, ids, w):
     T, topk = ids.shape
-    order, offsets = routing(ids)
+    order, offsets, _, _ = routing(ids)
     y13 = torch.empty(T * topk, 2 * inter, dtype=torch.float16, device="cuda")
     ext.moe_simt(hs, w13_c, w13_su, g13_t, order, offsets, topk, y13, False, T)
     mid = torch.empty(T * topk, inter, dtype=torch.float16, device="cuda")
@@ -87,13 +98,13 @@ def grouped_simt(hs, ids, w):
 
 def grouped_qpn(hs, ids, w, cfg13, cfg2):
     T, topk = ids.shape
-    order, offsets = routing(ids)
+    order, _, gids, goff = routing(ids)
     y13 = torch.empty(T * topk, 2 * inter, dtype=torch.float16, device="cuda")
-    ext.moe_qpn(hs, qc13, qs13, g13_t, order, offsets, topk, y13, False, T, *cfg13)
+    ext.moe_qpn(hs, qc13, qs13, g13_t, order, gids, goff, topk, y13, False, T, *cfg13)
     mid = torch.empty(T * topk, inter, dtype=torch.float16, device="cuda")
     act(mid, y13)
     y2 = torch.empty(T * topk, hidden, dtype=torch.float16, device="cuda")
-    ext.moe_qpn(mid, qc2, qs2, g2_t, order, offsets, topk, y2, True, T, *cfg2)
+    ext.moe_qpn(mid, qc2, qs2, g2_t, order, gids, goff, topk, y2, True, T, *cfg2)
     return (y2.view(T, topk, hidden).float() * w.unsqueeze(-1)).sum(1).half()
 
 
@@ -164,7 +175,7 @@ hs = (torch.randn(T, hidden, device="cuda", dtype=torch.float16) / 8).contiguous
 _, ids = torch.topk(torch.randn(T, E, device="cuda"), topk, dim=-1)
 ids = ids.to(torch.int32)
 w = torch.rand(T, topk, device="cuda") + 0.1
-order, offsets = routing(ids)
+order, offsets, gids, goff = routing(ids)
 y13 = torch.empty(T * topk, 2 * inter, dtype=torch.float16, device="cuda")
 mid = (torch.randn(T * topk, inter, device="cuda", dtype=torch.float16) / 8).contiguous()
 y2 = torch.empty(T * topk, hidden, dtype=torch.float16, device="cuda")
@@ -174,8 +185,8 @@ print(f"simt  w13 {t(lambda: ext.moe_simt(hs, w13_c, w13_su, g13_t, order, offse
       f"w2 {t(lambda: ext.moe_simt(mid, w2_c, w2_su, g2_t, order, offsets, topk, y2, True, T)):.3f} ms")
 best13, best2 = None, None
 for cfg in CFGS:
-    t13 = t(lambda: ext.moe_qpn(hs, qc13, qs13, g13_t, order, offsets, topk, y13, False, T, *cfg))
-    t2 = t(lambda: ext.moe_qpn(mid, qc2, qs2, g2_t, order, offsets, topk, y2, True, T, *cfg))
+    t13 = t(lambda: ext.moe_qpn(hs, qc13, qs13, g13_t, order, gids, goff, topk, y13, False, T, *cfg))
+    t2 = t(lambda: ext.moe_qpn(mid, qc2, qs2, g2_t, order, gids, goff, topk, y2, True, T, *cfg))
     print(f"qpn {cfg} w13 {t13:.3f} ms   w2 {t2:.3f} ms")
     if best13 is None or t13 < best13[1]:
         best13 = (cfg, t13)

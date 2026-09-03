@@ -1148,3 +1148,124 @@ Handover. venv ist deployt (cp), bootstrap-Zeile existierte schon.
 nach diesem Umbau veraltet — der Drafter-MoE wurde mitbeschleunigt), dann
 Drafter-Quantisierung bewerten; RTX-Tiny-GEMM-Rest (lm_head bleibt BF16,
 VERWORFEN-Notiz 15:30 beachten).
+
+### 2026-09-03 17:45 — Drafter-Solo NEU vermessen (Boot 65, nsys): Drafter-Quantisierung ZURÜCKGESTELLT
+
+Frisches nsys-Profil nach dem MoE-Umbau (Rezept wie 10:20; unter Profiler
+23,5/26,0 tok/s; SQLite nsys-dsv4-het-moeqpn.sqlite, Attribution
+benchmarks/nsys-dsv4-het-moeqpn-2026-09-03.txt, 403 Steps im 60-s-Fenster).
+
+**Timeline-Befund: Batch-1-Decode ist strikt seriell** — jede Stufe laeuft
+solo (dev4-Solo-Zeit == dev4-Busy-Zeit). Kernelzeit je Step: dev0 26,3 /
+V100 16,3-16,7 / dev4 27,3 ms (Summe ~103 unter Profiler).
+`moe_qpn` kostet auf V100 0,50 ms/Layer·Step (moe_simt: 1,04) — der
+MoE-Anteil hat sich im Serving mehr als halbiert.
+
+**Drafter+Sampling+Heads: nur noch ~8,3 ms/Step** (27,3 − ~19 fuer 8
+RTX-Layer; alte Zahl 14,2 — Drafter-MoE und FP8-Linears reiten die neuen
+Routen mit). Quantisierbar bleibt der BF16-Rest: Kernel2-Tiny-GEMMs
+3,4 ms (Drafter-Linears/Heads) + Anteil der Draft-Logits am
+turing-1688-GEMM (1,49 gesamt) ⇒ realistisch **~2-3 ms/Step ≈ +2 %** —
+gegen ein Checkpoint-Transplantat-Projekt (mtp-quant) mit Akzeptanz-
+Risiko + Qualitaets-Eval. ENTSCHEIDUNG: zurueckgestellt (schwaches
+Kosten-Nutzen-Verhaeltnis nach dem MoE-Umbau); Wiedervorlage nur, wenn
+ein 8-Bit-Drafter-Transplantat aus anderem Grund entsteht.
+
+**Kernel-Rangliste V100-Stufe jetzt:** Sparse-Decode 0,74 ms/Layer (Top,
+A/B negativ = geschlossen) > moe_qpn 0,50 > Rest klein. Auf Kernelebene
+ist die Kiste nahe am Optimum; die Restluecke zu llama.cpps Code-38
+haengt an Akzeptanz je Prompt, nicht mehr an Schrittlatenz (113 vs
+110 ms). Commit-Stand: 10f3d27 (MoE-Redesign) auf pp-mtp-merge.
+Endzustand 17:45: GPUs frei, kein Server.
+
+### 2026-09-03 18:15 — Gewichts-Beleg fuer das 1Cat-Angebot: Flash-Next-Geometrie 2,5-3,4×
+
+Vor dem #441-Kommentar (Entwurf comment-441-grouped-moe-offer.md) zwei
+Absicherungen gemessen:
+1. **Shape-Generik belegt** (scripts/nvfp4_skinny_moe_qpn_synth_fn.py):
+   moe_qpn auf der Qwen3.8-Flash-Next-TP1-Geometrie (E=512, topk=10,
+   w13 1280x2560, w2 2560x640, synthetische NVFP4-Bytes, Anker moe_simt
+   auf denselben Bytes): T=1 **3,2-3,4x**, T=6-8 2,5-2,9x vs moe_simt,
+   Numerik identisch auf V100 und RTX 8000. LIMITATION gefunden: K%64-
+   Anforderung schliesst den FN-TP4-w2-Shard (K=160) aus; TP1/TP2 ok —
+   steht jetzt ehrlich im Entwurf.
+2. **1Cat-Referenzzahlen gesichtet:** PR #361 (FN-Decode 82 tok/s TP4)
+   ist End-to-End, kein Kernel-A/B — deren per-Layer-MoE-Kosten kennen
+   nur sie; der Kommentar liefert unsere ms/Layer, die sie selbst
+   einordnen koennen. Echter A/B gegen deren compact-grouped braeuchte
+   deren 1.5.0-Build (Installation, Peuqui-Freigabe) ODER einen zweiten
+   echten NVFP4-MoE-Checkpoint (lokal existiert nur DSv4; Qwen3.5-122B-
+   NVFP4-Cache ist leer, ~70 GB Download, Peuqui-Entscheid).
+
+Endzustand 18:15: GPUs frei, kein Server. Uncommitted seit 10f3d27:
+Handover-Nachtraege, benchmarks/nsys-dsv4-het-moeqpn-2026-09-03.txt,
+Kommentar-Entwurf, scripts/nvfp4_skinny_moe_qpn_synth_fn.py; die grossen
+nsys-Binaerdateien (nsys-dsv4-het-moeqpn.*) bleiben unversioniert.
+
+### 2026-09-03 19:00 — Echter A/B gegen 1Cats compact-grouped-Route: differenziertes Ergebnis
+
+Freigabe Peuqui: eigene venv `.venv-sm70-150` (Release-Wheel 1cat_vllm-
+1.5.0, torch 2.10.0+cu128, Wheel unter .wheels/) + Qwen3.6-35B-A3B-NVFP4-
+Shard 1 (~7,4 GB, /home/mp/models/Qwen3.6-35B-A3B-NVFP4/). Harness
+tools/moe_ab_1cat.py: ruft 1Cats `nvfp4_moe_dense_stage_sm70_out` mit
+compact 1-Zeile/Gruppe-Offsets (exakt deren Decode-Staging, prepare via
+`nvfp4_sm70_prepare`+`awq_moe_build_strided_ptrs`) gegen unser moe_qpn;
+identisches vorbereitetes Routing, Korrektheit beider gegen fp32-Dequant-
+Referenz. Ergebnisse: benchmarks/moe-ab-1cat-2026-09-03.txt.
+
+**Kernbefund (V100, echte Bytes):** Qwen3.6 (Mini-Experten 1,25 MiB):
+1Cat gewinnt T=1-2 (wir 0,67-0,76x), Paritaet ab T=4. DSv4 (12-MiB-
+Experten, Sharing): WIR gewinnen durchgehend — T=1 1,18x, T=6 1,34x
+(Verify-Punkt), T=8 1,45x. Mechanik: deren 1-Zeile/Gruppe liest geteilte
+Experten je Slot erneut; moe_qpn buendelt bis 8 Zeilen je Lesung.
+**RTX 8000: deren TurboMind-Op bricht ab** („No feasible kernel found …
+sm75_f16_e2m1k16…") — deren Route ist real sm70-only. Numerik beider
+Routen in der fp16-Rundungsklasse (1e-4/2-4e-4).
+
+Harness-Falle (gefixt): moe_qpn adressiert slot-major ueber die ORIGINAL-
+Slot-Nummer; wer die Zwischenaktivierung in 1Cat-Sortierordnung uebergibt,
+misst Muell (w2-diff 1,8e-1) — mid vor dem Aufruf zurueckstreuen.
+
+Der #441-Entwurf (comment-441-grouped-moe-offer.md) traegt jetzt die
+A/B-Zahlen inkl. des ehrlichen 1Cat-Siegs im Mini-Shape-T=1-Regime und
+den sm75-Befund; Framing „complementary lanes". WARTET AUF FREIGABE.
+Endzustand 19:00: GPUs frei, kein Server.
+
+### 2026-09-03 19:20 — KORREKTUR (Peuqui-Einwand): TP ueber den Interconnect geht doch — 2x2-Gitter ist ein offener Latenz-Hebel
+
+Meine Aussage „TP kann unser Interconnect nicht" war zu pauschal. Fakten
+(reference_gpu_setup_5_cards): nur 1 von 5 Karten haengt am USB4-Tunnel
+(~5 % langsamer, kein Flaschenhals); das echte Limit ist fehlendes
+P2P-DMA zwischen Root-Ports (GEM10) → NCCL_P2P_DISABLE=1, Host-Bounce.
+Decode-AllReduces sind aber winzig (~10-50 KB): TP2 laeuft produktiv
+(-vllm-speed, 2xV100, 60,5 tok/s k=5). Offen aus dem Merge-Projekt bleibt
+das 2x2-Gitter (TP2 je Kartenklasse + PP darueber): fuer DSv4 hiesse das
+RTX-TP2 (~23 L) → V100-TP2 (~15 L) → V100 solo (5 L + Drafter) = 3
+serielle Stationen statt 5, TP2-Stationen mit doppelter Gewichtsband-
+breite; Groessenordnung 10-25 % Schrittlatenz, gegenzurechnen ~86
+Host-Bounce-AllReduces/Step. Mehrtaegiges Experiment (Blocker von damals:
+heterogener Graph-Capture, K>0-Spec im Upstream-Builder — SSOT
+MERGE-PROJECT-HANDOVER.md); als Kandidat NACH der 1Cat-Entscheidung.
+
+### 2026-09-03 20:00 — Compact-Grid-Fix: moe_qpn schlaegt 1Cats Route jetzt in JEDEM Regime
+
+Peuqui-Frage „koennen wir bei T=1 aufholen?" beantwortet mit Umbau:
+moe_qpn-Grid laeuft jetzt ueber slot-count-many kompakte Gruppen
+(gids/goff statt offsets[E+1]; statische Obergrenze S = T*topk, bleibt
+graph-tauglich; Padding-Gruppen exiten). Die leeren Experten-Bloecke
+waren bei Mini-Experten der GESAMTE Rueckstand: Qwen3.6 T=1 von 0,67x
+auf **1,32x** gedreht; alle Regime jetzt vorn (Qwen3.6 1,05-1,32x,
+DSv4 1,22-1,38x — benchmarks/moe-ab-1cat-2026-09-03.txt NACHTRAG).
+FN-Geometrie: T=1 jetzt 7-9x vs moe_simt (E=512-Grid entfaellt).
+Route/Kernel/alle 4 Skripte auf das compact-Format umgestellt
+(NO LEGACY: altes offsets[E+1]-Format ersatzlos raus; moe_simt behaelt
+seins als Checkpoint-Layout-Referenzanker — bewusst NICHT geloescht,
+er ist der layout-unabhaengige Korrektheitsanker der Tests).
+
+Serving Boot 66: 0 ERRORs, Kohaerenz 8/8 (5/8 bitidentisch = Quote),
+**113,8/114,5 ms/Step** (Boot 64: 112,8/114,5 — fuer DSv4 neutral wie
+prognostiziert, ~2-3 % gehen in der Streuung unter); essay 25,1 /
+code 28,6 tok/s. Entwurf comment-441-grouped-moe-offer.md auf die
+neuen Zahlen umgeschrieben (inkl. ehrlicher Notiz, dass die fruehere
+Grid-Version die T=1-Lane verlor und der Fix sie drehte).
+Endzustand 20:00: GPUs frei, kein Server.

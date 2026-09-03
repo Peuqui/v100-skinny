@@ -1394,3 +1394,33 @@ zurueck; Uebernahme UNSERER Arbeit ist fuer diese drei nicht belegbar
 (deren Branch startete Stunden nach unseren 28.08.-Posts — Konvergenz
 plausibel, Kausalitaet offen). Echt von uns bleiben: PP-Transport,
 PLE-Kaskade, Device-0-Fixklasse, QPN-Kernelfamilie, moe_qpn (#441/#479).
+
+### 2026-09-04 00:15 — 27B-Gate-Kampagne: Basis GRUEN, K>0-Spec degradiert (Verdaechtiger identifiziert)
+
+Sieben Gate-Boots auf 1.5.0+Patches, fehlergetrieben gefixt: (1) FLA-Baum
+fehlte im 150er-Deploy (Verzeichnis-Deploys ergaenzt, qwen4_exp_models
+bewusst nicht), (2) qwen3_next-Merge-Chimaere (mein K1-Fehler: theirs-Kopf
+in UNSERE _project_qkv_gate-Splitmethode gepflanzt) — Datei ist jetzt
+OBSOLET/pures 1.5.0, (3) FA2-Trio zurueckgestellt (sm75-Enablement haengt
+am Drop-in-Build, der nur in -130 installiert ist; RTX faellt auf
+TRITON_ATTN), (4) SECHS neue Device-0-(7,0)-Gates in 1.5.0-vllm_config
+auf _any_visible_device_has_capability umgestellt (Fixklasse #412 —
+Upstream produziert sie nach, homogene Referenz).
+
+STAND: elf Boot-Gates PASS, **k=0 via Chat VOLL KOHAERENT** (sauberer
+Denkblock, korrekte Antworten), Tempo k=7 math 75,9 / code 53,7
+(Referenz 85,0/56,3 — Luecke plausibel durchs zurueckgestellte FA2-Trio).
+**OFFEN: K=7-Spec degradiert das Denken** (Repro: "capital of France"
+→ Denkblock 165 Zeichen, "4. 4."-Duplikate, terminiert ohne Antwort;
+k=0 identisch sauber). PRUEFSTAND-LEKTION: Kohaerenz-Kurzproben bei
+Instruct-Modellen NUR ueber /v1/chat (Raw-Completions erzeugte
+Phantom-Salat auf BEIDEN venvs) und reasoning_content mitlesen.
+NAECHSTER SCHRITT: K2-Rollback-Experiment in gpu_model_runner (unser
+Async-Align-Block statt theirs' _sync_mamba_accepted_token_state) —
+1 Datei, 1 Boot; danach ggf. Verifier-Pfad (XQA/compile 1.5.0).
+
+PAKET 1a VORBEREITET: Branch qwen4exp-pp-mixer-loader-skip im 1Cat-Klon
+(Fix in nvidia+amd model.py, neuer Test in test_weight_loading.py —
+Lauf blockiert auf pytest-Freigabe fuer -150). Klon-Notiz: Sparse-
+Checkout (nur FA-Baeume materialisiert; qwen4_exp+tests hinzugefuegt),
+Stash "fa-v100-64x80-arbeit-2026-09-03" gesichert.

@@ -352,7 +352,7 @@ def apply_prefix_anchored_swa_constraints(cfg: "VllmConfig") -> None:
     from vllm.v1.attention.backends.registry import AttentionBackendEnum
 
     if not (
-        current_platform.is_cuda() and current_platform.is_device_capability((7, 0))
+        current_platform.is_cuda() and _any_visible_device_has_capability((7, 0))
     ):
         raise ValueError("prefix_anchored_decode_window requires an NVIDIA SM70 GPU")
 
@@ -1486,7 +1486,7 @@ class VllmConfig:
             and self.parallel_config.tensor_parallel_size <= 2
             and sm70_fp8_kv_requested
             and current_platform.is_cuda()
-            and current_platform.is_device_capability((7, 0))
+            and _any_visible_device_has_capability((7, 0))
             and envs.VLLM_SM70_FP8_DEQUANT_FALLBACK
             and envs.use_sm70_turbomind(envs.VLLM_SM70_FP8_TURBOMIND)
             and "VLLM_SM70_FP8_MOE_DEQUANT_FALLBACK" not in os.environ
@@ -1505,7 +1505,7 @@ class VllmConfig:
             and self.model_config.quantization == "fp8"
             and self.model_config.is_moe
             and current_platform.is_cuda()
-            and current_platform.is_device_capability((7, 0))
+            and _any_visible_device_has_capability((7, 0))
             and envs.VLLM_SM70_FP8_DEQUANT_FALLBACK
             and envs.VLLM_SM70_FP8_MOE_DEQUANT_FALLBACK
             and not envs.use_sm70_turbomind(envs.VLLM_SM70_FP8_TURBOMIND)
@@ -1667,7 +1667,7 @@ class VllmConfig:
                 )
             elif (
                 current_platform.is_cuda()
-                and current_platform.is_device_capability((7, 0))
+                and _any_visible_device_has_capability((7, 0))
                 and envs.VLLM_SM70_FLASH_ATTN_V100
             ):
                 self.compilation_config.mode = CompilationMode.VLLM_COMPILE
@@ -1854,7 +1854,7 @@ class VllmConfig:
                 )
             elif (
                 current_platform.is_cuda()
-                and current_platform.is_device_capability((7, 0))
+                and _any_visible_device_has_capability((7, 0))
                 and envs.VLLM_SM70_FLASH_ATTN_V100
             ):
                 capture_size = max(
@@ -1909,7 +1909,7 @@ class VllmConfig:
                 self.model_config is not None
                 and self.model_config.quantization == "fp8"
                 and current_platform.is_cuda()
-                and current_platform.is_device_capability((7, 0))
+                and _any_visible_device_has_capability((7, 0))
                 and envs.use_sm70_turbomind(envs.VLLM_SM70_FP8_TURBOMIND)
             )
 

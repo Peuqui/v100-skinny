@@ -23,4 +23,11 @@ while read -r src dst; do
   cp -p "$PATCHES/$src" "$SP/$dst"
   deployed=$((deployed+1))
 done < "$PATCHES/DEPLOY-TARGETS.txt"
-echo "deployed: $deployed, retired/skipped: $skipped (site-packages: $SP)"
+# sm75 GDN pair: closed upstream-copy tree, still required (no sm75 GDN
+# upstream). Source stays in fork_patches/ (shared with the 1.3.0 deploy).
+mkdir -p "$SP/vllm/third_party/flash_linear_attention"
+cp -r "$REPO_ROOT/fork_patches/flash_linear_attention/." \
+      "$SP/vllm/third_party/flash_linear_attention/"
+# NOTE: fork_patches/qwen4_exp_models/ is deliberately NOT deployed --
+# superseded by the wheel's native vllm/models/qwen4_exp package.
+echo "deployed: $deployed (+fla tree), retired/skipped: $skipped (site-packages: $SP)"

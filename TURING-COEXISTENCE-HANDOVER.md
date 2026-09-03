@@ -1563,3 +1563,47 @@ Massstab fuer den 150er-Schwenk ist der methodikgleiche -130-A/B:
 innerhalb der Akzeptanz-Lotterie, die Denkblock-Laengen divergieren
 zwischen den Versionen). Kein Regress; FA2-Langkontext-Staerken
 (Prefill 2,6x, Decode lang +47 %) sind hier gar nicht mitgemessen.
+
+### 2026-09-04 nachts — FN-Gate auf -150: PLE-Kaskade halb offen, BLOCKER identifiziert
+
+Fehlergetriebene Boot-Serie (RadixArk-FN, TP2/PP2, k=0). Der Reihe nach
+gefixt (alles in fork_patches_150 + venv + DEPLOY-TARGETS/STATUS):
+1. `serve-qwen38-flash-next.sh`: TURBOMIND + QUANT_BACKEND
+   parametrisiert — 1.5.0-Upstream NAGELT SM70-NVFP4-MoE auf TurboMind
+   fest (NotImplementedError bei QUANT_BACKEND=marlin; 1.3.0 fuhr
+   MARLIN). FN-Boots auf -150: QUANT_BACKEND=auto TURBOMIND=1.
+2. **PLE-PP-Verbot #2** (qwen4_exp/*/model_state.py, nvidia+amd
+   identisch): Partition-Pruefung statt Pauschalverbot — neuer Patch
+   qwen4_exp_model_state.py (Muster des Runner-Gates).
+3. **PLE-PP-Verbot #3** (gpu_worker._validate_ple_offload_config):
+   PP ok, wenn alle PLE-Layer auf Stufe 0 — im bestehenden
+   gpu_worker-Patch ergaenzt.
+4. **Offload-Kind erbt VLLM_PP_LAYER_PARTITION** und stirbt an
+   "len(partitions)=2 != pp_size=1" — neuer Patch
+   ple_offload_worker.py (Env im Kind poppen, isolierte PP1-Welt).
+
+**BLOCKER (naechstes Paket, nicht in dieser Nacht geloest):** Die
+PLE-Tabelle ist FP8, 51,2 GB (128 Shards a 0,4 GB, 2.500.012x160 je
+Shard). Auf DIESER Maschine (30 GB RAM) traegt sie kein 1.5.0-Pfad:
+(a) VLLM_PLE_CPU_OFFLOAD laedt die VOLLE Tabelle in den Host —
+Offload-Worker starb beim Laden (RAM); ausserdem verlangt sein
+Connector auf PLE-freien Raengen faelschlich einen PleOffloadLayer
+(connector.py _setup_layers raise — noch ungefixt). (b) Ohne Offload
+liegt die volle FP8-Tabelle je Stufe-0-Rang im VRAM und der
+Inductor-Compile materialisiert sie als 47,69-GiB-fp16-Dequant → OOM.
+(c) Der native `Qwen4ExpPinnedHostEmbedding` (1Cat hat unseren
+UVA-Pinned-Ansatz upstream uebernommen!) waere der richtige Weg,
+aktiviert sich aber nur bei `capability.to_int() == 70` via
+**Device-0-Capability** (#412-Fixklasse, RTX auf Position 0 → aus)
+UND haelt den vollen Rang-Shard pinned (25,6 GB x TP2 > RAM).
+LOESUNG = Split-Placement-Port aus dem 130er-Fork
+(fork_patches/qwen4_exp_models/common/ple.py: plan_ple_placement,
+copy_ple_embedding_shard_split_, split_ple_embedding_lookup,
+auto_ple_host_budget_bytes + VLLM_QWEN4EXP_PLE_HOST_GIB) in den
+nativen Layer — VRAM-Teil + kleiner Host-Teil (PLE_HOST_GIB=6 war
+der validierte -130-Betriebspunkt). Das ist zugleich der Kern von
+Upstream-Paket 3 (PP-Enablement/PLE).
+
+Reihenfolge-Entscheid der Nacht: DSv4-PP5-Gate vorgezogen (der
+Produktions-Schwenk haengt an DSv4, und der FN-Sprachzerfalls-Test
+braucht ohnehin Peuqui/AIfred-Persona).

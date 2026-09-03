@@ -1463,3 +1463,13 @@ Paket-1a-Stand: Branch qwen4exp-pp-mixer-loader-skip, Commit fb44f10
 in -150 installiert, Peuqui-Pauschalfreigabe); PR wartet auf Peuquis
 SICHTUNG vor dem Online-Stellen (explizite Ansage 2026-09-04).
 Endzustand 01:30: GPUs frei, kein Server.
+
+### 2026-09-04 01:50 — PAKET 1a GESTELLT: PR 1CatAI/1Cat-vLLM#485
+
+https://github.com/1CatAI/1Cat-vLLM/pull/485 (Peuqui-Go nach Sichtung
+von Diff+Text): [Bugfix][SM70] Skip final mixer weights on non-last PP
+ranks — Branch Peuqui:qwen4exp-pp-mixer-loader-skip (fb44f10), 48
+Zeilen (nvidia+amd symmetrisch + Test), TP-unabhaengig (Bedingung nur
+PP-Rank). Referenziert #479. Beobachten: #441, #479, #485 beim
+taeglichen Upstream-Check. Unabhaengig von der offenen K>=2-Regression
+(eigener Codepfad, Stock erreicht Spec nie).

@@ -1534,3 +1534,32 @@ UNGETESTET/unbestaetigt: der SM75-Zweig in
 noch die Row-Map des 1.5.0-Kontrakts — beim 27B-2x2 empirisch
 unauffaellig (beide Boots 3/3 inkl. Essay), beim DSv4-PP5-Gate mit
 RTX-Zwischenstufen im Blick behalten.
+
+### 2026-09-04 nachts — FA2-Drop-in nach -150 PORTIERT, 27B-Gate GRUEN
+
+Lage war guenstig: 1Cat hat den vllm-flash-attn-Teil zwischen 1.3.0
+und 1.5.0 nicht angefasst (Wheel-`flash_attn_interface.py`
+byte-identisch, Wheel-`flash_attn.py` byte-identisch) — das sm75-
+Drop-in (`build-sm75/_vllm_fa2_C.abi3.so`, == -130-Stand) passt
+binaer. Portiert: `flash_attn.py` + `flash_attn_interface.py` 1:1 aus
+fork_patches (Cap>=7.5, fp16-only-Gate, worker-lokale Capability),
+`fa_utils.py` neu aufgesetzt als 1.5.0-Wheel + unser worker-lokaler
+FA-Versions-Block (Wheel hatte dort minimalen Drift). Alles in
+fork_patches_150/ + DEPLOY-TARGETS + STATUS; im venv deployed mit
+.pre_deploy-Backups (auch fuers .so).
+
+27B-Gate mit FA2: 10-11/11 Gates PASS, PP0-RTX waehlt FLASH_ATTN
+automatisch, Chat 3/3, Essay kohaerent. SPEC_ATTN-A/B (TRITON_ATTN vs
+Default FLASH_ATTN_V100): kein Tempo-Unterschied.
+
+**Tempo-Einordnung (wichtig fuer alle kommenden Gates):** Die
+85,0/56,3-Latte vom 24.08. (MERGE-Handover Session 4) ist auch auf
+dem HEUTIGEN -130 nicht reproduzierbar — methodikgleicher A/B
+(bench.py-aequivalent, 200 tok ignore_eos, n=3, gleiche Topologie):
+-130 math 67,0 / code 69,6; -150+FA2 math 62-63 / code 80-82. Die
+Alt-Zahl stammt von der Vor-Rebase-venv-Generation (.venv-sm70/1.2.2).
+Massstab fuer den 150er-Schwenk ist der methodikgleiche -130-A/B:
+**-150 liegt auf -130-Niveau** (math -7 %, code +16 % — beides
+innerhalb der Akzeptanz-Lotterie, die Denkblock-Laengen divergieren
+zwischen den Versionen). Kein Regress; FA2-Langkontext-Staerken
+(Prefill 2,6x, Decode lang +47 %) sind hier gar nicht mitgemessen.

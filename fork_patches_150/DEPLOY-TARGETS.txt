@@ -82,3 +82,4 @@ triton_attn.py vllm/v1/attention/backends/triton_attn.py
 flash_attn.py vllm/v1/attention/backends/flash_attn.py
 flash_attn_interface.py vllm/vllm_flash_attn/flash_attn_interface.py
 qwen4_exp_nvidia_model.py vllm/models/qwen4_exp/nvidia/model.py
+fa_utils.py vllm/v1/attention/backends/fa_utils.py

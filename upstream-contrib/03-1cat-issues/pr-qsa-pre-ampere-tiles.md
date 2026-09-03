@@ -1,6 +1,6 @@
 # PR-Entwurf: [Bugfix+Perf][SM70/SM75] Pre-Ampere QSA sparse launch profile
 
-**Status:** Antwort an valentijnvenus GEPOSTET 2026-09-03 (https://github.com/1CatAI/1Cat-vLLM/issues/441#issuecomment-5523207906); der PR selbst (Branch + Push + Einreichen) wartet weiter auf Freigabe Peuqui.
+**Status:** PR EINGEREICHT 2026-09-03 (Freigabe Peuqui) — https://github.com/1CatAI/1Cat-vLLM/pull/469, Branch `Peuqui/1Cat-vLLM:qsa-pre-ampere-launch-profile` (Commit b2663602 auf ca73a34). Abweichungen vom Entwurf unten: statt des Helpers direkt `not current_platform.has_device_capability(80)` am Callsite (idiomatisch, Zeile 1272 nutzt dieselbe API), und BEIDE Upstream-Testdateien (test_qsa_launch_profile.py, test_qsa_ops.py) angepasst — die kannte der Entwurf noch nicht. Antwort an valentijnvenus war bereits gepostet (issuecomment-5523207906).
 **Kontext:** Nachgang zu Issue #441 und dem geschlossenen PR #455 (Dispatch-
 Irrtum unsererseits — upstream lädt auf CUDA `nvidia/`, nicht `amd/`).
 Maintainer yangzhuxinyzx nannte als Kandidaten: Gate `< 80` + smem-Clamp in

@@ -871,3 +871,24 @@ auf Freigabe Peuqui (Posten/Branch/Push = outward-facing).
 Endzustand 11:00: GPUs frei, kein Server. Uncommitted: mHC-Backport
 (fork_patches + bootstrap + README), tools/qsa_nvidia_ab.py, zwei
 Benchmark-Dateien, zwei upstream-contrib-Entwürfe, Handover.
+
+### 2026-09-03 11:30 — Alles committed/gepusht, #441-Antworten raus, QSA-PR #469 eingereicht
+
+Commits dd8e012 (mHC-Backport), 934a3f5 (QSA-Gate), 3847a7c (Status) auf
+`pp-mtp-merge` gepusht; AIfred-Repo: EN-Message-Hub-Doku (82b9d69d).
+Issue-#441-Kommentare gepostet: SabaTech (64x80-Diff,
+issuecomment-5523207244), valentijnvenus (issuecomment-5523207906).
+**PR https://github.com/1CatAI/1Cat-vLLM/pull/469** eingereicht (Freigabe
+Peuqui): Branch `qsa-pre-ampere-launch-profile` im Fork, EIN Commit
+b2663602 auf ca73a34, drei Dateien (qsa.py + beide Testdateien — Upstream
+hat Tests auf `_qsa_sparse_launch_profile`, via GitHub-Code-Suche
+gefunden). Verifikation vor dem Einreichen: alle 10 angepassten
+Test-Assertions grün gegen die gepatchte Datei; A/B-Harness gegen die
+GEPATCHTE Datei auf beiden Karten (Default-Dispatch reproduziert die
+N16-Zeiten, Decode-Kleinstprofile unverändert); Capability-Gate
+`not has_device_capability(80)` auf RTX und V100 direkt geprüft (beide
+True). PR-Tabelle exakt aus benchmarks/qsa-nvidia-ab-2026-09-03.txt
+(Reproduktionslauf; sm75-Ratio dort 1,16-1,17x — der erste Lauf hatte
+1,20x, beide real gemessen, PR zitiert konservativ die committete Datei).
+Peuqui-Regeln ab heute im Memory: äußerst penibel bei Außenwirkung,
+täglicher Upstream-Check beim Projektstart. GPUs frei, kein Server.

@@ -892,3 +892,136 @@ True). PR-Tabelle exakt aus benchmarks/qsa-nvidia-ab-2026-09-03.txt
 1,20x, beide real gemessen, PR zitiert konservativ die committete Datei).
 Peuqui-Regeln ab heute im Memory: äußerst penibel bei Außenwirkung,
 täglicher Upstream-Check beim Projektstart. GPUs frei, kein Server.
+
+### 2026-09-03 12:00 — Hebel Sparse-Decode: GESCHLOSSEN (negativ), plus zwei Strukturbefunde
+
+**Befund 1 — sm70-Sparse-Impl ist im PP-Verbund nicht aktivierbar:**
+`_select_v4_sparse_impl` (attention.py) wählt durch den Prä-Hopper-
+Catch-all IMMER den ROCm-Impl; der exakt-sm70-Zweig ist tot. Der Versuch,
+ihn per Reorder worker-lokal zu aktivieren (Boot 62,
+boot-dsv4-k5-sm70sparse.out), bootet zwar, stirbt aber beim ERSTEN
+Request: die Stufen fahren dann VERSCHIEDENE Attention-Backends
+(V4_SM70_TRITON_SPARSE auf V100 vs ROCM_V4_FLASHMLA_SPARSE auf RTX) und
+der Cross-Stage-Metadata-Vertrag bricht — PP0-Prefill verliert seine
+topk_indices (`assert topk_indices is not None`, amd/rocm.py:795).
+Reorder ZURÜCKGEDREHT; das Warum steht jetzt als NOTE-Kommentar direkt
+im Dispatch (fork_patches/deepseek_v4_attention.py). Isoliert ist die
+Selektion korrekt (Repro: alle 5 Ranks richtig).
+
+**Befund 2 — Standalone-A/B sagt: Wechsel lohnt ohnehin nicht.**
+tools/sparse_decode_ab.py (V100, 64H/D512, SWA128+TopK512, identische
+Eingaben, benchmarks/sparse-decode-ab-2026-09-03.txt): Ausgaben
+BITIDENTISCH (max|diff|=0) — gleiche Dekodierung. Tempo am
+Produktionspunkt b=6: sm70-Kernel 0,88× (12 % LANGSAMER als ragged);
+nur b=1 wäre 1,12×, den Fall fahren wir nicht. Der splitk-Pfad der
+sm70-Kernel liefert NICHT-FINITE Ausgaben (schlummernder Code, nie
+produktiv; nicht weiter debuggt). ⇒ Ragged bleibt zu Recht Produktion.
+Hinweis: Absolutniveau des Harness (≈3,8 ms) liegt über dem
+Produktionsprofil (0,77 ms/Layer·Step) — Cache-Residenz/Kontextlage
+unterscheiden sich; der Relativvergleich ist davon unberührt.
+
+**Verbleibende Hebel:** MoE-w13/w2-Fusion (kernels/skinny_kernels.cu)
+und PP4-Schrittfixkosten (Drafter+Sampling, 67 vs 38 ms je Stufe).
+Endzustand 12:00: GPUs frei, kein Server. Uncommitted seit c4ca076:
+attention.py-NOTE, tools/sparse_decode_ab.py, Benchmark-Datei, Handover.
+
+### 2026-09-03 13:00 — Step-Anatomie komplett + MoE-Mikro-Tuning negativ + NEUER Top-Hebel: RTX-Tiny-GEMMs
+
+**Step-Anatomie aus dem Boot-61-SQLite** (tools/pp4_attribution.py,
+tools/nsys_kernsum.py; Timeline-Zerlegung, ~158 ms/Step unter nsys):
+PP0-Phase 38,5 ms Spanne (11L+embed, fragmentiert; die Mini-Bursts auf
+dev1-4 währenddessen sind harmlose Metadata-Vorbereitung à ~0,24 ms) →
+Verify-Welle dev1/2/3 je ~22,6 ms mit NUR ~0,2 ms Naht-Übergaben (die
+früher vermuteten „33 ms Nähte" sind WIDERLEGT) → dev4 27,1 ms
+(8L+Verify-Tail) → Broadcast-Flurry 0,3 → **Drafter-SOLO auf dev4
+14,2 ms, alle anderen GPUs idle** → Turnaround 1,7. Serialisiertes
+Compute gesamt 140,7 ms/Step (PP0 37,3 / V100 je ~22 / PP4 36,8).
+
+**MoE-Mikro-Tuning: VIER Hypothesen getestet, alle verworfen** (Harness
+scripts/nvfp4_skinny_moe_grouped_test.py mit VLLM_SKINNY_NVFP4_SRC auf
+Scratchpad-Kopie; Baseline T=6 ≈ 1,00-1,04 ms, 2,4× Traffic-Floor
+390 MB/0,43 ms; ncu ohne sudo nicht möglich, ERR_NVGPUCTRPERM):
+KC=2048 → 1,13 (Occupancy-Verlust); Akku-Ketten-Splitting → 1,11
+(nicht FMA-latenzgebunden); uint4-Loads → 1,03 (neutral, nicht
+Load-Issue-gebunden); Double-Buffering → 1,36 (Registerdruck).
+Fazit: Der Kernel ist gegen Mikro-Tuning robust; die Restlücke zum
+Floor braucht ein Redesign (Tensor-Core-Pfad + Layout-Prepack) —
+Tagesprojekt, nicht angefangen. Numerik in allen Tests OK.
+
+**NEUER Top-Hebel — RTX-Stufen verbrennen ~12 ms/Step in
+cuBLAS/CUTLASS-Tiny-GEMMs** (nsys „Kernel2" =
+`cutlass::Kernel2<cutlass_75_wmma_tensorop_f16_s161616gemm_f16_16x16_
+128x2_tn>`, 16×16-Tiles à ~0,106 ms): dev0 4,3 ms/Step (64+14
+Launches), dev4 7,7 ms/Step (68+11, inkl. Drafter-Linears ~4,5).
+Die V100 zahlt für dieselben logischen Matmuls nur 0,65 ms/Step —
+dort laufen sie über skinny_fp8_qpn8 (40 Launches/Step); auf sm75
+gehen die Gewichte dequant16 → cuBLAS (is_bmm-Route). **Potential
+~10 ms/Step (~6-7 %).** Ansatzpunkte: gemm_qpn8_blk_wmma (Tensor-Core-
+Tiles aus gepacktem Layout, bisher „prefill band") für Decode-M≤8 auf
+sm75 ertüchtigen, oder Turing-Skinny-GEMM für die dequant16-Matmuls
+(+ Drafter-Linears getrennt betrachten). Zweiter Hebel: Drafter-Solo
+14,2 ms (Drafter-Quantisierung wäre der Weg, größeres Projekt).
+
+**Präzisierung nach Code-Lektüre:** `maybe_sm70_dsv4_fp16_gemv` ist NICHT
+der Unterschied — der Kernel ist auf `x.shape == (1, 4096)` (M=1) gegated
+und feuert bei K=5-Spekulation (M=6) auch auf V100 nie. Die V100-
+Ersparnis kommt aus der QPN8-Route (skinny_fp8_qpn8, M≤8); auf sm75
+laufen dieselben Gewichte fp16-dequantisiert durch cuBLAS. **Nächster
+konkreter Schritt:** Re-Profil mit `nsys … --trace=cuda,nvtx` (die
+NVTX-Phasen-Brackets aus dem gpu_model_runner-Fork-Patch aktivieren),
+um die 64-78 Tiny-GEMM-Launches/Step den Modulen zuzuordnen (Kandidaten:
+wo_a-is_bmm-Einsum, wq_b/q-lora, Indexer-Projektionen, Drafter-Linears);
+danach entscheiden: gemm_qpn8_blk_wmma (WMMA, läuft nativ auf sm75) für
+Decode-M≤8 ertüchtigen ODER die dequant16-Entscheidung auf sm75 kippen
+(Gewichte gepackt lassen). Boot-61-Profil hat KEIN NVTX (nur cuda-Trace).
+
+Endzustand 13:00: GPUs frei, kein Server. Uncommitted zusätzlich:
+tools/pp4_attribution.py, tools/nsys_kernsum.py, Handover.
+
+### 2026-09-03 13:30 — PR #469 GEMERGED (Upstream-Erstkontakt erfolgreich)
+
+yangzhuxinyzx hat #469 um 11:15 APPROVED und sofort gemergt
+(Merge-Commit 65d25c1): „Validated against main after #466: merge is
+conflict-free; targeted QSA suites report 20 passed, 1 skipped; targeted
+pre-commit passes. The change remains a pre-Ampere fallback/profile
+improvement and does not override the grouped Page4 fast path."
+Damit ist der sm75-OutOfResources-Bug upstream gefixt und unser
+N16-Profil offiziell drin. Für UNSEREN Fork/Boots ändert sich nichts
+(wir fahren den amd/-Zweig); beim nächsten Wheel-/Rebase-Zyklus kommt
+der Fix von selbst mit. #441 bleibt offen (Sammelthread); SabaTech-
+und TianHengZhuang-Antworten stehen noch aus.
+
+### 2026-09-03 14:00 — Tiny-GEMM-Hebel VOLLSTÄNDIG identifiziert (ohne Boot, aus Grid-Formen)
+
+Methode: Grid-Dimensionen der cutlass-Launches aus dem Boot-61-SQLite
+gruppiert (gridX/Y/Z stehen in CUPTI_ACTIVITY_KIND_KERNEL) und die
+Formen empirisch per torch.profiler auf der RTX gematcht — `x @ W.t()`
+(Linear, tn-Layout) wählt auf sm75 exakt den
+`cutlass_75_wmma_…16x16_128x2_tn`-Kernel. Kein NVTX/Boot nötig.
+
+**Befund 1 — der Monster-Launch ist der lm_head:** grid=(8,1010,1) ⇔
+vocab 129280/128 = 1010. 2 Launches/Step à 1,78 ms = **3,6 ms/Step auf
+PP4** (mutmaßlich 1× Verify-Logits M=6, 1× Draft-Logits M=5 gebündelt).
+`head.weight` liegt UNQUANTISIERT als BF16 (129280×4096 = 1,06 GB) im
+Checkpoint — der GEMM läuft mit ~595 GB/s = 89 % der RTX-Bandbreite
+memory-OPTIMAL. Hebel wäre NUR Gewichtsformat: head auf NVFP4/FP8
+quantisieren (→ 0,27–0,53 GB ⇒ ~1,3–2,7 ms/Step) — ABER das berührt
+direkt die Token-Wahl (Argmax bei knappen Logits) ⇒
+QUALITÄTSENTSCHEIDUNG PEUQUI, nicht autonom machen.
+
+**Befund 2 — die Layer-weisen Tiny-GEMMs sind die dequant16-Linears:**
+je RTX-Layer ~4-5 tn-GEMMs (wkv-, wo_b-, wq-Klasse; Grids (8,32,5/6),
+(8,12,1), (8,32,1), (8,64,1)) ≈ 3,5 ms/Step auf dev0 + ~3,3 auf dev4.
+Im Checkpoint SIND diese Gewichte quantisiert; die sm75-Route
+dequantisiert sie beim Laden zu fp16 (QPN8-blk-is_bmm-Entscheidung) und
+zahlt dann 2-4× Traffic. **Konkretes nächstes Paket:** Gewichte auf sm75
+gepackt halten und für Decode-M≤8 über `gemm_qpn8_blk_wmma` (WMMA läuft
+nativ auf sm75, bisher nur „prefill band") servieren — gleiche
+Dequant-Mathematik, nur in-Kernel ⇒ kein Qualitätsthema, ~3-4 ms/Step
+Potential. Einstieg: fork_patches/modelopt.py (Route/Census) +
+marlin.py-Routenkarte; Standalone-A/B vor jedem Boot.
+
+Hebel-Rangliste damit: (1) QPN8-blk-WMMA-Decode auf sm75 ~3-4 ms,
+(2) lm_head-Quantisierung ~1,3-2,7 ms (NUR mit Peuqui-Entscheid +
+Qualitäts-Eval), (3) Drafter-Solo 14,2 ms (Drafter-Quant, groß),
+(4) MoE-Redesign (Tagesprojekt).

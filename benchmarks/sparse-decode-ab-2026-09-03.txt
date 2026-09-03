@@ -1,0 +1,11 @@
+# Sparse-Decode-A/B DSV4 (2026-09-03): ROCm-Ragged (Produktion) vs sm70-Paged-FP8 (brachliegend)
+# Harness: tools/sparse_decode_ab.py — V100, 64H/D512(448+64), SWA 128 + TopK 512, Block 256, KV 4096, Mediane aus 50 Iter.
+# Absolutniveau != Produktionsprofil (Cache-Residenz/Kontext); der RELATIVE Vergleich ist fair (identische Eingaben).
+device: Tesla V100-PCIE-32GB
+b=1 Numerik sm70   vs ragged: max=0.000e+00 rel=0.000e+00
+b=1 Numerik splitk: NICHT-FINIT (Pfad defekt, wird nicht gewertet)
+b=1  ragged=2.978ms  sm70=2.670ms  splitk=nanms  speedup-sm70=1.12x
+b=6 Numerik sm70   vs ragged: max=0.000e+00 rel=0.000e+00
+b=6 Numerik splitk: NICHT-FINIT (Pfad defekt, wird nicht gewertet)
+b=6  ragged=3.761ms  sm70=4.267ms  splitk=nanms  speedup-sm70=0.88x
+DONE

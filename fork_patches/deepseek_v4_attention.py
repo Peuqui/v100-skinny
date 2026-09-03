@@ -141,6 +141,13 @@ def _select_v4_sparse_impl() -> "type[DeepseekV4SparseMLAAttentionImpl]":
     # fork: the "ROCM" impl carries no AMD dependency -- it is pure Triton and
     # subclasses the NVIDIA backend/metadata builders. FlashMLA needs SM90+, so
     # pre-Hopper CUDA takes the same Triton path instead of having none.
+    # NOTE (2026-09-03): the exact-SM70 branch below this catch-all is dead
+    # code ON PURPOSE for pipeline boots -- selecting the SM70 impl per stage
+    # gives PP stages DIFFERENT attention backends (V4_SM70_TRITON_SPARSE vs
+    # ROCM_V4_FLASHMLA_SPARSE) and the cross-stage metadata contract breaks
+    # (PP0 prefill lost its topk indices, assert in amd/rocm.py:795). An A/B
+    # of the SM70 kernels must either run standalone or make every stage
+    # declare a compatible backend/metadata plan first.
     if current_platform.is_rocm() or not current_platform.has_device_capability(90):
         from vllm.models.deepseek_v4.amd.rocm import (
             DeepseekV4ROCMAiterMLASparseImpl,

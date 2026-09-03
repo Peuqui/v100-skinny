@@ -12,9 +12,13 @@ per `git diff v1.3.0 v1.5.0 -- <pfad>` klassifiziert (Repo-Klon
    Eintraege Qwen4ExpForCausalLM/-ConditionalGeneration) plus die
    Decode/Prefill-Optimierungen der PRs #345/#361/#390/#393/#398 —
    Upstream faehrt Qwen3.8-Flash-Next produktiv auf V100 (82 tok/s TP4,
-   PR #361). Unser eigener, an der Mamba-Gruppen-Semantik haengender
-   Qwen4Exp-Port (QWEN4EXP-PORT-HANDOVER.md) ist damit vermutlich
-   OBSOLET — Verifikation = Phase 1 unten.
+   PR #361). KORREKTUR nach Memory-Gegencheck: unser eigener Qwen4Exp-
+   Port ist seit 28.08. FERTIG und produktiv (51,9 tok/s k=4, llama-swap-
+   Eintrag, SSOT FLASH-NEXT-OPERATING-POINT.md) — der 1.5.0-Wert liegt in
+   deren NACHGELAGERTEN Optimierungen: Decode-PRs #345-#398, pooled
+   disk-backed PLE (27e437c — loest den 51-GiB-PLE-Klumpen an Layer 1),
+   MTP5-Routen. Beim Rebase ersetzt deren offizielles qwen4_exp-Paket
+   unsere Port-Dateien.
 2. Bilanz der 83 Deploy-Ziele: **18 upstream unveraendert** (Patch 1:1
    portierbar), **58 geaendert** (Sichtung; davon ~18 mit Trivial-Diffs
    <= 20 Zeilen), 5 fork-eigene Dateien (kein Konflikt), 2 Kollisionen

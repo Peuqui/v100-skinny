@@ -1323,3 +1323,18 @@ verifiziert), Beleg ~52 tok/s PP-Betrieb auf unserer Kiste, Angebot einer
 PR-Serie (Loader-Fix + Test zuerst, dann input-id-Transport, dann
 PLE-Kaskade). Beobachten: Antworten auf #479 UND #441 (MoE-Angebot,
 noch unbeantwortet) beim taeglichen Upstream-Check.
+
+### 2026-09-03 21:45 — WICHTIG: .venv-sm70-Loeschung hatte Nebenwirkung (CUDA-Deb-Symlinks)
+
+Die FlashInfer-JIT-Fehler der Kontrollboots 1-4 („unsupported GNU
+version", /usr/include-12.0-Header) hatten eine selbstverschuldete
+Wurzel: `.cuda-nvcc-deb/cuda-12.8` bezog 83 Runtime-Header/Libs als
+SYMLINKS aus der pip-nvidia-Struktur der heute geloeschten `.venv-sm70`
+(1.2.2). Nach der Loeschung fiel gcc auf die System-CUDA-12.0-Header
+zurueck, deren host_config gcc>12 ablehnt (System-gcc ist inzwischen
+13.3 — frueher lief der 12.0-Fallback zufaellig durch). FIX: alle 83
+Symlinks auf `.venv-sm70-130` umgebogen (gleiche pip-Pakete);
+nvcc-Standalone-Test gruen. **MERKE: .venv-sm70-130 darf NICHT
+geloescht werden, solange .cuda-nvcc-deb dranhaengt** — beim
+1.5.0-Umzug die Symlinks auf -150 mitziehen oder das Deb um echte
+Kopien ergaenzen.

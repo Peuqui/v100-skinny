@@ -1285,3 +1285,19 @@ https://github.com/1CatAI/1Cat-vLLM/issues/441#issuecomment-5527353132
 Kartenklasse + PP darueber, 3 serielle Stationen statt 5; Ausgangspunkte
 MERGE-PROJECT-HANDOVER.md — Blocker von damals: heterogener
 Graph-Capture, K>0-Spec im Upstream-Builder). Davor ggf. Doku-Nachcommit.
+
+### 2026-09-03 20:45 — Schrittfixkosten-Gap-Analyse: kein Einzelblocker, sondern 3500 Mikro-Luecken
+
+Aus der Boot-65-SQLite (Union aller Nicht-NCCL-Kernel ueber alle 5 GPUs,
+60-s-Fenster, 403 Steps, unter Profiler): Compute 101,8 ms/Step;
+Intra-Lauf-Idle (alle GPUs kernel-still) 20,3 ms/Step verteilt auf
+**~3.482 Luecken pro Step** — 5,3 ms in <10-µs-, 8,0 ms in 10-50-µs-,
+4,8 ms in 50-200-µs-, 2,2 ms in 200µs-1ms-Luecken. (Inter-Request-Pausen
+sauber ausgeklammert.) Es gibt KEINEN einzelnen Fixkosten-Blocker: der
+Rest ist Launch-/Segment-Konfetti (breakable-capture-Segmentgrenzen,
+PP-Naht-Metadaten via gloo, Drafter-Iterationen). Der einzige Hebel
+waere Segment-Konsolidierung (weniger Graph-Breaks) — Fork-Infrastruktur,
+Ertrag real geschaetzt einstellige ms, Aufwand hoch. FAZIT: das
+Kernel-/Schrittlatenz-Kapitel fuer DSv4-PP5 ist AUSOPTIMIERT; weitere
+Tempoarbeit lohnt erst wieder bei Flash-Next (2x2-Gitter steht bereit,
+MERGE-Handover Session 4) bzw. nach 1Cat-Antwort (Port-PR).

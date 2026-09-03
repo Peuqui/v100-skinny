@@ -1424,3 +1424,42 @@ PAKET 1a VORBEREITET: Branch qwen4exp-pp-mixer-loader-skip im 1Cat-Klon
 Lauf blockiert auf pytest-Freigabe fuer -150). Klon-Notiz: Sparse-
 Checkout (nur FA-Baeume materialisiert; qwen4_exp+tests hinzugefuegt),
 Stash "fa-v100-64x80-arbeit-2026-09-03" gesichert.
+
+### 2026-09-04 01:30 — K>1-Spec-Degeneration: Bisektions-Matrix komplett, Suchraum final eingegrenzt
+
+REPRO (deterministisch, greedy): 27B, 1.5.0+Patches, TP2/PP2, K>=2:
+"capital of France"-Chatprompt → Denkblock degeneriert bit-identisch
+('**Identify the user is "France?"', "4. 4."-Duplikate, terminiert ohne
+content); 1591/Mercury-Prompts OK; K=0 und K=1 VOLL sauber (3/3).
+-130-Referenz: gleicher Prompt K=7 sauber → echter 150er-Regress.
+
+BISEKTIONS-MATRIX (je 1 Boot, K=7-Chatprobe):
+- K2-Rollback (unser 1.3.0-Async-Align statt deren Sync): SCHLECHTER
+  (1/3, Token-Duplikate "37 * 37*43") → deren _sync ist KORREKT,
+  Producer-Kontrakt hat sich mitgeaendert. Zurueckgenommen.
+- gdn_attn Stock: unveraendert 2/3 → unschuldig (Patch vorerst Stock,
+  Optimierung -1,4ms spaeter neu aufsetzen).
+- llm_base_proposer Stock: unveraendert → unschuldig (Stock belassen).
+- gpu_model_runner Stock: BOOTET NICHT ("no attribute 'drafter'") →
+  **1.5.0 hat weiterhin KEINEN PP-Spec-Support; unsere Runner-Hunks
+  sind zwingend** (Beleg fuer Paket 3!).
+- Scheduling-Trio (sched_scheduler/scheduler/multiproc_executor) Stock:
+  unveraendert → unschuldig (wieder gepatcht).
+- Verifier-Backend SPEC_ATTN=TRITON_ATTN statt XQA: unveraendert →
+  Wheel-XQA-Op unschuldig.
+
+FAZIT: Text bit-identisch ueber ALLE getauschten Schichten → Fehler
+sitzt in den SPEC-VERIFY-HUNKS des gemergten gpu_model_runner
+(Patch-6/7-Region: Draft-Broadcast/Accept-Ableitung/Bonus-Token gegen
+die umgebaute 1.5.0-Verify-Logik) oder qwen3_5_mtp-Fluss. NAECHSTER
+SCHRITT (statisch, kein Boot): unsere Spec-Hunks in fork_patches_150/
+gpu_model_runner.py Zeile fuer Zeile gegen (a) 1.3.0-Fassung und
+(b) 1.5.0-Umgebung diffen — Verdacht doppelte/versetzte Anwendung der
+akzeptierten Tokens im Bonus-Pfad. Diag-Hebel danach:
+VLLM_DSPARK_DIAG-artige Drafts-Dumps am 27B.
+
+Paket-1a-Stand: Branch qwen4exp-pp-mixer-loader-skip, Commit fb44f10
+(nvidia+amd+Test), isolierter Test PASS gegen Wheel+Fix (pytest+tblib
+in -150 installiert, Peuqui-Pauschalfreigabe); PR wartet auf Peuquis
+SICHTUNG vor dem Online-Stellen (explizite Ansage 2026-09-04).
+Endzustand 01:30: GPUs frei, kein Server.

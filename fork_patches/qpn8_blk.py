@@ -141,20 +141,22 @@ class QPN8Fp8BlockScaledMMLinearKernel(Fp8BlockScaledMMLinearKernel):
                 f"QPN8-blk: scale raster {tuple(bscale.shape)} does not match "
                 f"weights {n}x{k} at block [{bn},{bk}]")
 
-        if (torch.cuda.get_device_capability(w8.device) == (7, 5)
-                or getattr(layer, "is_bmm", False)):
-            # sm75 stage: fp16 dequant once at load, cuBLAS serves it.
+        if getattr(layer, "is_bmm", False):
             # is_bmm layers (DeepSeek wo_a): the model consumes layer.weight
             # directly in a grouped einsum (the fp8_einsum path needs
             # DeepGEMM); fp16-dequant at load serves the reference einsum
-            # on BOTH archs.
+            # on BOTH archs. Plain linears no longer dequant on sm75:
+            # the packed QPN8 route beats fp16 cuBLAS ~2x at decode M<=8
+            # on the RTX 8000 (m8n8k4 is memory-bound at these M, the
+            # Turing-mma concern does not apply; see
+            # benchmarks/fp8_blk_sm75_decode_bench.py, 2026-09-03).
             sc = (bscale.repeat_interleave(bn, 0)[:n]
                   .repeat_interleave(bk, 1)[:, :k])
             w16 = (w8.view(torch.float8_e4m3fn).to(torch.float32) * sc).half()
             layer.weight = torch.nn.Parameter(w16, requires_grad=False)
             layer._qpn8_dequant16 = True
             logger.info("QPN8_BLK_CENSUS_LOAD layer=%s K=%d N=%d "
-                        "route=sm75-fp16-dequant",
+                        "route=is_bmm-fp16-dequant",
                         getattr(layer, "prefix", "?"), k, n)
             return
 

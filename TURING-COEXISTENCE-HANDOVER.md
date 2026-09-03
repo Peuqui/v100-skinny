@@ -1025,3 +1025,34 @@ Hebel-Rangliste damit: (1) QPN8-blk-WMMA-Decode auf sm75 ~3-4 ms,
 (2) lm_head-Quantisierung ~1,3-2,7 ms (NUR mit Peuqui-Entscheid +
 Qualitäts-Eval), (3) Drafter-Solo 14,2 ms (Drafter-Quant, groß),
 (4) MoE-Redesign (Tagesprojekt).
+
+### 2026-09-03 15:00 — Hebel 1 UMGESETZT: QPN8-Route auch auf sm75 (Boot 63) — BEHALTEN
+
+**Überraschung im Standalone-Bench** (benchmarks/fp8_blk_sm75_decode_bench
+.py, RTX 8000): der „Volta"-m8n8k4-Kernel `gemm_qpn8_blk` schlägt
+fp16-cuBLAS bei M≤8 um ~2× (0,060 vs 0,118-0,126 ms auf wq_b/wo_a/wo_b)
+— bei Decode-M ist alles memory-bound, die Turing-mma-Skepsis greift
+nicht; der WMMA-Kandidat war sogar am langsamsten. Numerik 4,3e-4 rel
+(= fp16-Rundung).
+
+**Umsetzung = EIN Gate** (fork_patches/qpn8_blk.py): die Bedingung
+`capability == (7,5)` vor dem persistenten fp16-Dequant gestrichen —
+sm75 behält die Gewichte gepackt und fährt dieselbe M-Band-Dispatch wie
+V100 (blk ≤8, mt2 ≤16, wmma ≤64, transienter Dequant + cuBLAS darüber).
+`is_bmm` (wo_a-Einsum) bleibt auf BEIDEN Archs dequant16 — strukturell.
+Nebeneffekt: gepackte Gewichte = halber VRAM für diese Linears auf RTX.
+
+**Validierung Boot 63** (boot-dsv4-k5-qpn8sm75.out): Census 0×
+sm75-dequant, Linears gepackt (fused_wqa_wkv/wq_b/wo_b/shared/main_proj),
+46× is_bmm-dequant korrekt; 0 ERRORs. Kohärenz **5/8 bitidentisch zur
+nvidia-Referenz = exakt die akzeptierte Quote**. Tempo: der EINZIGE
+bitidentische Lang-Workload (longctx) **+3,7 %**; prose +5,6 %, code
++10,9 % (Probe) bzw. Bench-200-Token code 27,2 (+0,5); essay 20,4
+(−0,9) — Essay-Delle ist Akzeptanz-Drift (38,8 % vs ~42) durch die
+4e-4-Logit-Verschiebung, kein Kernel-Thema: ms/Step gemessen 144
+(essay) / 146,5 (code). Akzeptanz-Lotterie pro Prompt überdeckt bei
+Einzelprompts den ~2-3-ms-Struktur-Gewinn. ENTSCHEIDUNG: behalten
+(strukturell richtig, Kohärenz-Quote unverändert, VRAM-Gewinn).
+
+Endzustand 15:00: GPUs frei, kein Server. Commits 66fe3a7 (Tagesstand)
++ Folgecommit (qpn8_blk-Umstellung) auf pp-mtp-merge.

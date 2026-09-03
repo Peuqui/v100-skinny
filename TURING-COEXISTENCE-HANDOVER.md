@@ -1314,3 +1314,12 @@ Veroeffentlichung an 1Cat als PIPELINE fokussierter Pakete (Peuqui-GO):
 (2) moe_qpn-Port (laeuft, #441-Antwort abwarten), (3) PP-Enablement/PLE-
 Kaskade nach 1.5.0-Rebase, (4) sm75/Device-0-Serie. Jedes Paket einzeln
 wasserdicht (Tests, A/B, Kohaerenz); kein Big-Bang-PR.
+
+### 2026-09-03 21:30 — Paket-1-Auftakt GEPOSTET: 1Cat-Issue #479 (Qwen4Exp unter PP)
+
+https://github.com/1CatAI/1Cat-vLLM/issues/479 — drei Blocker (2 bewusste
+PLE-Gates + hyper_connection_mixer-Loader-Bug, alle gegen origin/main
+verifiziert), Beleg ~52 tok/s PP-Betrieb auf unserer Kiste, Angebot einer
+PR-Serie (Loader-Fix + Test zuerst, dann input-id-Transport, dann
+PLE-Kaskade). Beobachten: Antworten auf #479 UND #441 (MoE-Angebot,
+noch unbeantwortet) beim taeglichen Upstream-Check.

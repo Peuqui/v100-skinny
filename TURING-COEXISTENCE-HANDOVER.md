@@ -1,9 +1,9 @@
 # Übergabe: sm75-Koexistenz im v100-skinny-Fork
 
-> **SCHNELLEINSTIEG — Stand 2026-09-04 02:00 (gilt vor allem darunter).**
+> **SCHNELLEINSTIEG — Stand 2026-09-04 nachts (gilt vor allem darunter).**
 > Chronologisches Logbuch; fuer den aktuellen Stand reicht dieser Block
-> plus die Abschnitte ab "2026-09-03 23:00" (Rebase) und "01:30"
-> (Bisektions-Matrix).
+> plus die Abschnitte ab "2026-09-03 23:00" (Rebase), "01:30"
+> (Bisektions-Matrix) und "2026-09-04 nachts" (K>=2-Fix).
 >
 > **Produktion (unveraendert):** DSv4-Flash auf `.venv-sm70-130`, PP5,
 > 113 ms/Step (= llama.cpp-Niveau), moe_qpn + alle Patches; Boot
@@ -12,24 +12,26 @@
 >
 > **Baustelle: 1.5.0-Rebase** (`.venv-sm70-150`, fork_patches_150/ +
 > STATUS.txt + DEPLOY-TARGETS.txt, Deploy via
-> scripts/deploy-fork-patches-150.sh). 27B-Gate: Boots gruen, k=0/k=1
-> voll kohaerent, Tempo 75,9/53,7 (Ref 85/56,3; Luecke = FA2-Trio
-> zurueckgestellt). **VENV-IST-ZUSTAND weicht vom Skript-Deploy ab:**
-> nach der Bisektion liegen gdn_attn.py und llm_base_proposer.py
-> bewusst auf STOCK (.pre_deploy zurueckkopiert; beide beim 27B
-> unschuldig — llm_base_proposer wird fuer DSv4/DSpark aber wieder
-> gebraucht, gdn_attn ist reine -1,4ms-Optimierung). Wer
-> deploy-fork-patches-150.sh neu laeuft, stellt die Patches wieder her
-> — fuer die Bisektions-Fortsetzung danach beide wieder auf
-> .pre_deploy setzen oder bewusst mittesten.
+> scripts/deploy-fork-patches-150.sh). 27B-Gate: Boots gruen, jetzt
+> AUCH K=7 voll kohaerent (K>=2-Regression GEFIXT, s.u.); Tempo-Zahlen
+> im 09-04-Abschnitt (FA2-Trio-Luecke bleibt). **VENV-IST-ZUSTAND
+> weicht vom Skript-Deploy ab:** nach der Bisektion liegen gdn_attn.py
+> und llm_base_proposer.py bewusst auf STOCK (.pre_deploy
+> zurueckkopiert; beide beim 27B unschuldig — llm_base_proposer-Stock
+> ist bis auf einen Qwen4Exp-Listeneintrag identisch mit ours,
+> gdn_attn ist reine -1,4ms-Optimierung). Wer
+> deploy-fork-patches-150.sh neu laeuft, stellt die Patches wieder her.
 >
-> **OFFEN #1 (nächster Block): K>=2-Spec-Degeneration** — Repro +
-> komplette Bisektions-Matrix im 01:30-Abschnitt; Verdacht: unsere
-> Spec-Verify-Hunks im gemergten gpu_model_runner (Patch-6/7-Region)
-> gegen die 1.5.0-Verify-Logik; naechster Schritt STATISCH (Zeilen-Diff
-> ours-Hunks vs 1.3.0 vs 1.5.0-Umgebung), kein Boot noetig.
-> WICHTIG: Kohaerenzproben bei Instruct-Modellen NUR via /v1/chat mit
-> reasoning-Feld und genug max_tokens (Raw-Completions = Phantom-Salat).
+> **ERLEDIGT 2026-09-04: K>=2-Spec-Degeneration GEFIXT** — Taeter war
+> der E5-Metadata-Cache (default AN): `_e5_fast_prepare_v2` replizierte
+> den 1.3.0-Accepted-Sync (liest input_batch-Tensoren), 1.5.0 hat den
+> Producer-Kontrakt auf runner-owned Snapshots + Row-Map umgestellt
+> (`_sync_mamba_accepted_token_state`); in E5-Hit-Ketten froren die
+> Accept-Counts ein -> GDN-States rollten falsch. Fix: eine Zeile,
+> E5-Pfad ruft jetzt dieselbe _sync wie die Full-Runde. Details im
+> 09-04-Abschnitt. WICHTIG: Kohaerenzproben bei Instruct-Modellen NUR
+> via /v1/chat mit reasoning-Feld und genug max_tokens
+> (Raw-Completions = Phantom-Salat).
 >
 > **Upstream-Faeden (taeglicher Check):** #441 (MoE-Angebot, offen),
 > #479 (PP-Issue, offen), **#485 (PR Paket 1a, eingereicht 01:50)**.
@@ -1462,3 +1464,73 @@ Zeilen (nvidia+amd symmetrisch + Test), TP-unabhaengig (Bedingung nur
 PP-Rank). Referenziert #479. Beobachten: #441, #479, #485 beim
 taeglichen Upstream-Check. Unabhaengig von der offenen K>=2-Regression
 (eigener Codepfad, Stock erreicht Spec nie).
+
+### 2026-09-04 nachts (Folgesession) — K>=2-Spec-Degeneration GEFIXT (E5-Cache-Protokoll-Drift)
+
+Upstream-Check zuerst: #441 und #479 ohne neue Antworten; #485 ohne
+Review — der pre-run-check-FAIL dort ist nur das Contributor-Gate des
+Repos (braucht Maintainer-Label `ready`/`verified` oder >=4 gemergte
+PRs; wir haben 1), kein Handlungsbedarf.
+
+**Statischer Zeilen-Diff (wie geplant, kein Boot):** Alle sechs
+portierten PP-Spec-Funktionen UND alle 27 E5-Funktionen sind
+byte-identisch zwischen fork_patches (130) und fork_patches_150 — der
+Port war treu. AST-Funktionsvergleich Stock-1.3.0 vs Stock-1.5.0 fand
+die eigentliche Aenderung: **1.5.0 hat den Accepted-Count-Kontrakt
+umgebaut.** `_update_states_after_model_execute` schreibt die finalen
+Counts nur noch in runner-owned Snapshots (`num_accepted_tokens.cpu`,
+`spec_state_slot_selectors.cpu`) plus die neue Row-Map
+`_mamba_accepted_token_state_rows`; die InputBatch-Tensoren fuellt erst
+`_sync_mamba_accepted_token_state` in der NAECHSTEN prepare-Runde
+(genau die Funktion aus der K2-Bisektion). Unser
+`_e5_fast_prepare_v2` (verbatim aus 1.3.0) las aber weiter
+`input_batch.num_accepted_tokens_cpu` ueber das prev-positions-Align —
+in E5-HIT-KETTEN (die Full-Runde laeuft dann nie) friert dieser Wert
+ein -> GDN-States rollen mit falschen Accept-Counts -> deterministische
+Denk-Degeneration. Konsistent mit der Bisektions-Matrix: der einzige
+Tausch, der E5 entfernt haette (gpu_model_runner Stock), bootete nicht.
+Erklaert auch K=1-sauber (Accept-Count dort fast immer 2 = stale Wert)
+und dass -130 sauber war (dort sprachen Full- und E5-Pfad dasselbe
+1.3.0-Protokoll).
+
+**Empirische Bestaetigung (Boots im gestrigen Gate-Rezept):**
+1. `VLLM_SM70_E5_CACHE=0`, sonst identisch: K=7-Chatprobe **3/3
+   sauber** (gestern deterministisch degeneriert) -> Taeter isoliert.
+2. Fix rein, E5 wieder AN: alle 10 Gates PASS, K=7 **3/3**, E5-Hits
+   aktiv ([e5-v2] persistent prepare active), 900-Token-Essay
+   kohaerent.
+
+**Fix (fork_patches_150/gpu_model_runner.py + venv deployed):** der
+Accepted-Sync-Block in `_e5_fast_prepare_v2` ist durch
+`self._sync_mamba_accepted_token_state(so, num_reqs)` ersetzt — exakt
+die Zeile der 1.5.0-Full-Runde (kopiert, nicht erfunden). STATUS.txt
+aktualisiert.
+
+**Tempo-Fussnote:** math 63,4 / code 81,7 tok/s (ignore_eos-Bench).
+Die gestrigen 75,9/53,7 sind NICHT vergleichbar — sie wurden mit
+degeneriertem Output gemessen (repetitiven Muell draftet der MTP fast
+perfekt -> falsch-hohe Akzeptanz). Die Luecke zur 85er-Referenz bleibt
+dem zurueckgestellten FA2-Trio zugeordnet; ehrliche Vergleichszahlen
+liefert erst der FA2-Drop-in-Port.
+
+**Boot-Rezept-Nachtrag (kostete drei Fehlboots):** Das 27B-Gate auf
+-150 braucht ZWINGEND `CUDA_DEVICE_ORDER=PCI_BUS_ID
+CUDA_VISIBLE_DEVICES=0,2,1,4 NCCL_P2P_DISABLE=1` (sonst haengt der
+NCCL-Init nach Rank-3-Init still — kein Fehler im Log),
+`PATH=$R/.cuda-nvcc-deb/usr/local/cuda-12.8/bin:$PATH` + CUDA_HOME
+aufs Deb UND ninja im PATH (venv-bin), sowie
+`VLLM_QWEN35_MTP_SHARE_IO_WEIGHTS=0` (ohne: Dynamo-Symbolic-Shape-
+Abbruch `Eq(s72, 5120)` im Drafter-AOT-Compile, qwen3_5_mtp.py:206).
+Harness-Lektion: Boots ueberleben Tool-Aufruf-Grenzen NICHT (auch
+nicht mit setsid+nohup+disown, Sandbox an oder aus) — Boot + Warten +
+Probe + Teardown in EINEN run_in_background-Task packen.
+
+**Offen danach (unveraendert die Block-Reihenfolge):** FA2-Drop-in auf
+-150 portieren -> FN-Gate (AIfred-Persona-Sprachtest!) -> DSv4-PP5-Gate
+(113 ms/Step) -> Produktions-Schwenk. Statischer Nebenbefund, noch
+UNGETESTET/unbestaetigt: der SM75-Zweig in
+`_pp_receive_spec_decode_state` schreibt die 1.3.0-Ziele
+(input_batch-Tensoren + .gpu), aber weder die runner-owned Snapshots
+noch die Row-Map des 1.5.0-Kontrakts — beim 27B-2x2 empirisch
+unauffaellig (beide Boots 3/3 inkl. Essay), beim DSv4-PP5-Gate mit
+RTX-Zwischenstufen im Blick behalten.

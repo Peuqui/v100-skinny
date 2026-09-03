@@ -768,7 +768,13 @@ def _e5_fast_prepare_v2(self, scheduler_output):
         self._e5_fdiff_snap = {k: _e5_snapshot(v)
                                for k, v in leaves.items()}
 
-    # Accepted-count sync — verbatim from _prepare_inputs.
+    # Accepted-count sync — verbatim from _prepare_inputs. 1.5.0 moved the
+    # producer contract to runner-owned snapshots plus a req-id row map
+    # (_update_states_after_model_execute fills num_accepted_tokens.cpu /
+    # spec_state_slot_selectors.cpu and _mamba_accepted_token_state_rows;
+    # InputBatch tensors are only written back by the sync below). The old
+    # 1.3.0 prev-positions align read InputBatch directly and froze on hit
+    # chains — the K>=2 spec degeneration of 2026-09-04.
     self._compute_prev_positions(num_reqs)
     prev_req_id_to_index = self.input_batch.prev_req_id_to_index
     if self.num_accepted_tokens_event is not None:
@@ -778,31 +784,7 @@ def _e5_fast_prepare_v2(self, scheduler_output):
             "GPUModelRunner.num_accepted_tokens_event.synchronize",
         )
         _e5p_h(self, "H2")
-        if self.use_async_scheduling and prev_req_id_to_index:
-            prev_idx = self.prev_positions.np[:num_reqs]
-            new_mask = prev_idx < 0
-            prev_idx_or_zero = np.where(new_mask, 0, prev_idx)
-            align_counts = self.input_batch.num_accepted_tokens_cpu[
-                prev_idx_or_zero
-            ].copy()
-            align_counts[new_mask] = 1
-            self.input_batch.num_accepted_tokens_cpu[:num_reqs] = align_counts
-            spec_counts = self.input_batch.spec_num_accepted_tokens_cpu[
-                prev_idx_or_zero
-            ].copy()
-            spec_counts[new_mask] = 1
-            self.input_batch.spec_num_accepted_tokens_cpu[:num_reqs] = (
-                spec_counts
-            )
-            self.num_accepted_tokens.np[:num_reqs] = align_counts
-            self.spec_state_slot_selectors.np[:num_reqs] = spec_counts
-        else:
-            self.num_accepted_tokens.np[:num_reqs] = (
-                self.input_batch.num_accepted_tokens_cpu[:num_reqs]
-            )
-            self.spec_state_slot_selectors.np[:num_reqs] = (
-                self.input_batch.spec_num_accepted_tokens_cpu[:num_reqs]
-            )
+        self._sync_mamba_accepted_token_state(so, num_reqs)
         self._copy_buffer_to_gpu(self.num_accepted_tokens)
         self._copy_buffer_to_gpu(self.spec_state_slot_selectors)
 

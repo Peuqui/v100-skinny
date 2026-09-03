@@ -92,3 +92,18 @@ Messplan-Erweiterung (Peuqui): Vergleich DREISEITIG — Stock-1.5.0 vs
 (alte 32,2-Baseline vom 28.08. ist nach moe_qpn/mHC/QPN8-sm75 vermutlich
 ueberholt; FN lief damals auf MARLIN-MoE). Sprachzerfall-Test in DE UND
 EN (1Cats Testsprache — erklaert ggf., warum deren Audits nichts sehen).
+
+## Phase-1-ERGEBNIS: Stock-1.5.0 ist auf unserer Kiste NICHT bootfaehig (PP-Sperren)
+
+Drittes und hartes Gate: "N-gram PLE embedding currently requires
+pipeline_parallel_size=1" — Stock verbietet PLE unter PP (non-first
+ranks erhalten keine input_ids). Zusammen mit Gate 2 (PLE-Offload
+TP-only) und Gate 3 (hyper_connection_mixer-Loader-Bug) ist Qwen4Exp
+in 1.5.0 strikt auf homogene TP-Setups ausgelegt. FAZIT: unsere
+Patches sind fuer heterogene/PP-Kisten NICHT obsolet, sondern
+Voraussetzung. MATRIX-KORREKTUR: qwen4_exp.py/spec_decode_qwen4_exp.py
+sind NICHT "ersetzt durch Upstream" — beim Rebase gilt: Upstream-Paket
+als Basis + unsere PP/PLE-Kaskade-Deltas (Kern von PR dnv2003#7) darauf
+portieren. Der dreiseitige Vergleich wird zweiseitig (Stock disqualifiziert
+sich fuer PP); naechster Messpunkt: FRISCHER 1.3.0+Patches-Kontrollboot
+(RadixArk roh, k=0) als aktuelle Baseline statt der 32,2 vom 28.08.

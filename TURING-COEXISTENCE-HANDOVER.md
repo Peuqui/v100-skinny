@@ -1,58 +1,47 @@
 # Übergabe: sm75-Koexistenz im v100-skinny-Fork
 
-> **SCHNELLEINSTIEG — Stand 2026-09-03 10:15 (gilt vor allem, was darunter steht).**
-> Das Dokument ist ein chronologisches Logbuch ab 2026-09-01; die Abschnitte
-> darunter beschreiben teils überholte Zwischenstände. Für den aktuellen Stand
-> reicht dieser Block plus die letzten zwei Abschnitte („nsys-Per-Kernel-Profil"
-> und „mHC fp16 freigeschaltet").
-
-**Erreicht:** DeepSeek-V4-Flash (NVFP4, 43 Layer) läuft unter vLLM auf allen
-5 Karten (2× RTX 8000 sm75 + 3× V100 sm70) mit DSpark-Spekulation K=5,
-CUDA-Graphs (breakable capture), grouped NVFP4-MoE-Kernel und seit 10:15 dem
-freigeschalteten mHC-fp16-Kernelpfad (Upstream-Backport statt Torch-Generic).
-Kohärenz 8/8 gegen die Referenz (5/8 bitidentisch — gleiche Quote wie alle
-akzeptierten Läufe). **Essay 21,3 tok/s, Code 26,7 tok/s** (llama.cpp auf
-derselben Maschine: 21 / 38 — Prosa ist eingeholt). Start der Arbeit war 3,6.
-
-**So startet man es:** `scripts/serve-deepseek-het-graphs.sh` (Port 19998,
-Modell `dsv4-manual`). Topologie darin: `CUDA_VISIBLE_DEVICES=0,1,4,3,2`
-(RTX, V100, V100, V100, RTX), `VLLM_PP_LAYER_PARTITION=11,8,8,8,8`, Drafter
-(10,7 GiB) auf der letzten RTX, util 0.95, `--num-gpu-blocks-override 512`,
-`VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=64`, batched 64, Capture-Größen [6],
-`VLLM_DISABLE_SHARED_EXPERTS_STREAM=1`. Boot ~9 min. Kohärenzprobe:
-`scripts/deepseek_coherence.py --url http://127.0.0.1:19998 --model dsv4-manual`.
-Referenz: `results-coherence-nvidia-base.json`.
-
-**Code-Stand:** Fork-Branch `pp-mtp-merge`, committed bis `8e27308`
-(davor `dda7ad2`, `0b5093a`); danach nur Doku/Benchmark-Dateien. Alle
-Patches liegen in `fork_patches/` (Deploy über `scripts/bootstrap-sm70.sh`,
-Tabelle in `fork_patches/README.md`); der MoE-Kernel in
-`kernels/skinny_kernels.cu` (`moe_simt`, Test
-`scripts/nvfp4_skinny_moe_grouped_test.py`). Das venv `.venv-sm70-130`
-entspricht dem deployten Stand.
-
-**Nächste Hebel (Hebel 1 = mHC ist ERLEDIGT, siehe 10:15-Abschnitt):**
-1. ~~mHC-Pfad unter fp16~~ ERLEDIGT 10:15 — Upstream-Backport, 13/20 →
-   21,3/26,7 tok/s. Das nsys-Profil ist damit veraltet; vor weiteren
-   Hebeln NEU profilieren (`QnxKernelTrace` war mutmaßlich Teil des
-   Torch-Pfads und könnte mit verschwunden sein).
-2. Sparse-Decode: ROCm-Triton-Impl (`amd/rocm.py`) gegen `sm70/sparse_kernels.py`
-   messen (war 0,65 ms/Layer).
-3. MoE w13/w2 + Aktivierung in einen Launch (war ~0,3 ms).
-
-**Geschlossene Fragen (nicht neu aufrollen):** Drafter-Akzeptanz ist auf
-llama.cpp-Niveau (32 vs 28 % Prosa, 64 vs 69 % Code) — kein 8-Bit-Drafter.
-Die 21 „exakt sm70"-Weichen sind worker-lokal bzw. strukturell gegated.
-PR #455 (QSA) ist zu Recht geschlossen (Dispatch-Irrtum, siehe 06:50).
-
-**Werkzeug-Fallen:** Boots mit `setsid nohup … & disown` in EIGENEM Aufruf
-starten, in einem SEPARATEN Aufruf warten (Tool-Timeout killt sonst die
-Prozessgruppe); Prozesse über `nvidia-smi --query-compute-apps=pid` und
-`pgrep -f "[a]pi_server"` beenden, nie `pkill -f`; bei „Deadlock" zuerst
-`grep ERROR` je Worker; nach Interface-Patches an Modellklassen
-`~/.cache/vllm/modelinfos/*.json` löschen; Triton-A/B je Karte mit eigenem
-`CUDA_VISIBLE_DEVICES`; ModelOpt `weight_scale_2` ist der Dequant-
-Multiplikator; `nsys`/`ncu` liegen unter /usr/bin (Rezept: 06:50-Abschnitt).
+> **SCHNELLEINSTIEG — Stand 2026-09-04 02:00 (gilt vor allem darunter).**
+> Chronologisches Logbuch; fuer den aktuellen Stand reicht dieser Block
+> plus die Abschnitte ab "2026-09-03 23:00" (Rebase) und "01:30"
+> (Bisektions-Matrix).
+>
+> **Produktion (unveraendert):** DSv4-Flash auf `.venv-sm70-130`, PP5,
+> 113 ms/Step (= llama.cpp-Niveau), moe_qpn + alle Patches; Boot
+> scripts/serve-deepseek-het-graphs.sh. NICHT anfassen bis 1.5.0 fertig.
+> `.venv-sm70-130` traegt auch die CUDA-Deb-Symlinks (NICHT loeschen!).
+>
+> **Baustelle: 1.5.0-Rebase** (`.venv-sm70-150`, fork_patches_150/ +
+> STATUS.txt + DEPLOY-TARGETS.txt, Deploy via
+> scripts/deploy-fork-patches-150.sh). 27B-Gate: Boots gruen, k=0/k=1
+> voll kohaerent, Tempo 75,9/53,7 (Ref 85/56,3; Luecke = FA2-Trio
+> zurueckgestellt). **VENV-IST-ZUSTAND weicht vom Skript-Deploy ab:**
+> nach der Bisektion liegen gdn_attn.py und llm_base_proposer.py
+> bewusst auf STOCK (.pre_deploy zurueckkopiert; beide beim 27B
+> unschuldig — llm_base_proposer wird fuer DSv4/DSpark aber wieder
+> gebraucht, gdn_attn ist reine -1,4ms-Optimierung). Wer
+> deploy-fork-patches-150.sh neu laeuft, stellt die Patches wieder her
+> — fuer die Bisektions-Fortsetzung danach beide wieder auf
+> .pre_deploy setzen oder bewusst mittesten.
+>
+> **OFFEN #1 (nächster Block): K>=2-Spec-Degeneration** — Repro +
+> komplette Bisektions-Matrix im 01:30-Abschnitt; Verdacht: unsere
+> Spec-Verify-Hunks im gemergten gpu_model_runner (Patch-6/7-Region)
+> gegen die 1.5.0-Verify-Logik; naechster Schritt STATISCH (Zeilen-Diff
+> ours-Hunks vs 1.3.0 vs 1.5.0-Umgebung), kein Boot noetig.
+> WICHTIG: Kohaerenzproben bei Instruct-Modellen NUR via /v1/chat mit
+> reasoning-Feld und genug max_tokens (Raw-Completions = Phantom-Salat).
+>
+> **Upstream-Faeden (taeglicher Check):** #441 (MoE-Angebot, offen),
+> #479 (PP-Issue, offen), **#485 (PR Paket 1a, eingereicht 01:50)**.
+> Pipeline-Reihenfolge im 21:00-Abschnitt. PRs NUR nach Peuqui-Sichtung;
+> sonst Pauschalfreigabe (Tests/Installs/Downloads). Branch `work` =
+> Arbeit (Push frei), `pp-mtp-merge` eingefroren (PR dnv2003#7 = Draft).
+>
+> **Danach in Reihenfolge:** FA2-Drop-in-Build nach -150 portieren
+> (SM75-ENABLEMENT-PLAN.md) → FN-Gate auf 150 (RadixArk liegt im
+> HF-Cache; Sprachzerfall-Test DE+EN ueber AIfred-Persona!) →
+> DSv4-PP5-Gate auf 150 (gegen 113 ms/Step) → erst dann Produktions-
+> Schwenk. Ganz hinten: heterogenes PP3 (Peuqui: allerletzter Punkt).
 
 ---
 

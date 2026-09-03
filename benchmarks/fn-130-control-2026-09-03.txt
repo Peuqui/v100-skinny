@@ -1,0 +1,13 @@
+[tempo] k=0 decode 200 tok: mittel=32.3 tok/s (einzeln ['32.2', '32.2', '32.3']) | 1.3.0-Fork-Baseline: 32,2
+[kohaerenz] Paris: 'OK'
+[kohaerenz] 1591: 'OK'
+[kohaerenz] Mercury: 'OK'
+[kohaerenz] 3/3
+[zerfall-DE] Turn 1: 6801 Zeichen | CJK=0 Weichtrenner=0 Nullbreite=0
+[zerfall-DE] Turn 2: 4200 Zeichen | CJK=0 Weichtrenner=0 Nullbreite=0
+[zerfall-DE] Turn 3: 3354 Zeichen | CJK=0 Weichtrenner=0 Nullbreite=0
+[fangfrage-DE] Coandă erkannt: nein
+[zerfall-EN] Turn 1: 2479 Zeichen | CJK=0 Weichtrenner=0 Nullbreite=0
+[zerfall-EN] Turn 2: 2554 Zeichen | CJK=0 Weichtrenner=0 Nullbreite=0
+[zerfall-EN] Turn 3: 98 Zeichen | CJK=0 Weichtrenner=0 Nullbreite=0
+[fangfrage-EN] Coandă erkannt: nein

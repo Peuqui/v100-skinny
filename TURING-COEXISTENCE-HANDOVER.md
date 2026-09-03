@@ -1338,3 +1338,24 @@ nvcc-Standalone-Test gruen. **MERKE: .venv-sm70-130 darf NICHT
 geloescht werden, solange .cuda-nvcc-deb dranhaengt** — beim
 1.5.0-Umzug die Symlinks auf -150 mitziehen oder das Deb um echte
 Kopien ergaenzen.
+
+### 2026-09-03 22:15 — 1.3.0-Kontrollboot GRUEN: Baseline bestaetigt, Zerfall-Sonde differenziert nicht
+
+Kontrollboot 5 (RadixArk-FN roh, k=0, TP2/PP2, 24/24, PLE_HOST_GIB=6,
+CUDA_HOME+PATH aufs 12.8-Deb) nach Symlink-Reparatur: startup, Pruefstand
+(scratchpad/smoke_check_150.py, kopiert nach benchmarks/fn-130-control-
+2026-09-03.txt): **Tempo 32,3 tok/s** — die 28.08.-Baseline (32,2) gilt
+EXAKT weiter; die September-Patches (moe_qpn etc.) beschleunigen
+DSv4, aber nicht den FN-k=0-Pfad (FN-MoE laeuft weiter MARLIN-Route).
+Kohaerenz 3/3 (Reasoning-Modell: Antworten hinter <think>-Block,
+Pruefstand braucht max_tokens >=220). Sprachzerfall-NAEHERUNG (7,3k-
+Token-Kunstkontext, 3 Turns DE + EN): NULL Zeichenlecks — die Sonde
+reproduziert den 30.08.-Zerfall NICHT (deckt sich mit der Doku-Warnung:
+nur die echte AIfred-Persona zeigt ihn). Konsequenz: Der Checkpoint-
+Qualitaetstest fuer Kandidaten muss spaeter UEBER AIFRED laufen
+(inject-API + echte Persona), die Sonde taugt nur als Grobfilter.
+Pruefstand-Fallen: Token-Schaetzung Deutsch ~85 tok/Filler (Faktor 2
+ueber Gefuehl), 16k-Fenster in Turn 3 knapp.
+Endzustand 22:15: GPUs frei, kein Server. NAECHSTER BLOCK: Phase 2 —
+die 6 ernsten Konflikt-Patches (mhc_tilelang, modelopt,
+gpu_model_runner, worker_mamba_utils, worker_utils, utils) auf 1.5.0.

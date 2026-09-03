@@ -211,6 +211,7 @@ deploy nvfp4_emulation_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4
 deploy_new nvfp4_skinny_moe.py vllm/model_executor/layers/fused_moe/experts/nvfp4_skinny_moe.py
 deploy sparse_attn_indexer.py vllm/model_executor/layers/sparse_attn_indexer.py
 deploy mhc_tilelang.py      vllm/model_executor/kernels/mhc/tilelang.py
+deploy mhc_triton.py        vllm/model_executor/kernels/mhc/triton.py
 deploy deepseek_v4_attention.py vllm/models/deepseek_v4/attention.py
 deploy dsv4_cache_utils.py vllm/models/deepseek_v4/common/ops/cache_utils.py
 deploy dsv4_fused_compress_quant_cache.py vllm/models/deepseek_v4/common/ops/fused_compress_quant_cache.py

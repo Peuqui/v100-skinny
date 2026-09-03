@@ -6,13 +6,19 @@ from vllm import envs
 from vllm.logger import init_logger
 from vllm.platforms import current_platform
 from vllm.utils.torch_utils import direct_register_custom_op
+
 # ---------------------------------------------------------------------------
-# fork: fp16 torch reference path for the mHC block. The TileLang kernels
-# are written for bf16, which Volta does not have; on fp16 models every
-# public entry below routes into these implementations (math mirrors
-# kernels/mhc/torch.py resp. the hc_head_fuse_tilelang two-pass kernel,
-# fp32 internally, outputs in the residual dtype). Eager-only concern-free:
-# plain torch ops.
+# fork (v100-skinny): torch reference implementations of the mHC block.
+# Historic role: fp16 execution path while the TileLang kernels were believed
+# to be bf16-only. Since the 1.3.0 rebase the TileLang kernels are dtype-
+# parameterized (use_fp16) and upstream added the SM70 Triton decode route
+# (backported in kernels/mhc/triton.py), so the public entries below dispatch
+# fp16 into the fast kernels again. These references remain for
+#   (a) mhc_post_fp32 -- the DSpark aux-hidden-state extraction reads the
+#       post reconstruction WITHOUT the final fp16 cast (BOS attention-sink
+#       row exceeds 65504 and poisoned every draft logit), and
+#   (b) numerics debugging against the kernel paths.
+# Math mirrors kernels/mhc/torch.py, fp32 internally.
 # ---------------------------------------------------------------------------
 
 
@@ -81,8 +87,25 @@ def _hc_head_torch_generic(hs_flat, fn, hc_scale, hc_base, rms_eps, hc_eps):
     return out.to(hs_flat.dtype)
 
 
-
 logger = init_logger(__name__)
+
+
+def _is_exact_sm70_glm_mhc(
+    residual: torch.Tensor, norm_weight: torch.Tensor | None = None
+) -> bool:
+    if residual.dtype != torch.float16 or not current_platform.is_cuda():
+        return False
+    # fork (v100-skinny): decide on the WORKER'S device, not device 0 --
+    # on the heterogeneous pipeline device 0 is a Turing card.
+    if torch.cuda.get_device_capability(torch.cuda.current_device()) != (7, 0):
+        return False
+    if residual.shape[-2:] != (4, 4096):
+        return False
+    return norm_weight is None or norm_weight.dtype == torch.float16
+
+
+def _sm70_mhc_n_splits(num_tokens: int) -> int:
+    return 8 if num_tokens <= 16 else (4 if num_tokens <= 128 else 2)
 
 
 def _require_mhc_activation_dtype(
@@ -258,12 +281,6 @@ def mhc_pre_tilelang(
         comb_mix: shape (..., hc_mult, hc_mult), dtype torch.float32
         layer_input: shape (..., hidden_size), same dtype as ``residual``
     """
-    if residual.dtype == torch.float16:
-        return _mhc_pre_torch_generic(
-            residual, fn, hc_scale, hc_base, rms_eps, hc_pre_eps,
-            hc_sinkhorn_eps, hc_post_mult_value, sinkhorn_repeat,
-            norm_weight=norm_weight, norm_eps=norm_eps)
-
     from vllm.model_executor.kernels.mhc.tilelang_kernels import (
         compute_num_split,
         mhc_pre_big_fuse_tilelang,
@@ -301,7 +318,12 @@ def mhc_pre_tilelang(
     from vllm.utils.deep_gemm import is_deep_gemm_supported
 
     use_deep_gemm = is_deep_gemm_supported()
-    if use_deep_gemm:
+    use_sm70_triton = norm_weight is not None and _is_exact_sm70_glm_mhc(
+        residual_flat, norm_weight
+    )
+    if use_sm70_triton:
+        n_splits = _sm70_mhc_n_splits(num_tokens)
+    elif use_deep_gemm:
         # these numbers are from deepgemm kernel impl
         block_k = 64
         block_m = 64
@@ -327,7 +349,19 @@ def mhc_pre_tilelang(
     )
 
     residual_2d = residual_flat.view(num_tokens, hc_mult * hidden_size)
-    if use_deep_gemm:
+    if use_sm70_triton:
+        from vllm.model_executor.kernels.mhc.triton import (
+            sm70_mhc_prenorm_staging,
+        )
+
+        logger.info_once("SM70 GLM mHC Triton standalone-pre path enabled.")
+        sm70_mhc_prenorm_staging(
+            residual_2d,
+            fn,
+            gemm_out_mul,
+            gemm_out_sqrsum,
+        )
+    elif use_deep_gemm:
         tf32_hc_prenorm_gemm(
             residual_2d,
             fn,
@@ -345,7 +379,30 @@ def mhc_pre_tilelang(
             hc_mult,
         )
 
-    if norm_weight is None:
+    if use_sm70_triton:
+        from vllm.model_executor.kernels.mhc.triton import (
+            sm70_mhc_pre_norm_from_staging,
+        )
+
+        assert norm_weight is not None
+        sm70_mhc_pre_norm_from_staging(
+            gemm_out_mul,
+            gemm_out_sqrsum,
+            hc_scale,
+            hc_base,
+            residual_flat,
+            post_mix,
+            comb_mix,
+            layer_input,
+            norm_weight,
+            rms_eps,
+            hc_pre_eps,
+            hc_sinkhorn_eps,
+            hc_post_mult_value,
+            sinkhorn_repeat,
+            norm_eps,
+        )
+    elif norm_weight is None:
         mhc_pre_big_fuse_tilelang(
             gemm_out_mul,
             gemm_out_sqrsum,
@@ -488,6 +545,19 @@ def mhc_pre_broadcast_tilelang(
     assert norm_weight is not None
 
     num_tokens = residual.shape[0]
+    # fork (v100-skinny): worker-local capability (see _is_exact_sm70_glm_mhc).
+    capability = (
+        torch.cuda.get_device_capability(torch.cuda.current_device())
+        if current_platform.is_cuda()
+        else None
+    )
+    use_sm70_triton = (
+        use_fp16
+        and capability is not None
+        and capability == (7, 0)
+        and hidden_size == 4096
+        and hc_mult == 4
+    )
     residual_out = torch.empty(
         num_tokens,
         hc_mult,
@@ -505,7 +575,9 @@ def mhc_pre_broadcast_tilelang(
         num_tokens, hidden_size, dtype=activation_dtype, device=residual.device
     )
 
-    if use_fp16:
+    if use_sm70_triton:
+        n_splits = 2 if num_tokens <= 16 else 1
+    elif use_fp16:
         # The SM70 path uses the same FP32 accumulation as the regular
         # TileLang prenorm kernel. Split-K is deliberately disabled: its
         # V100 shape must satisfy the fixed 512-thread reduction contract.
@@ -522,7 +594,20 @@ def mhc_pre_broadcast_tilelang(
         n_splits, num_tokens, dtype=torch.float32, device=residual.device
     )
 
-    if use_fp16:
+    if use_sm70_triton:
+        from vllm.model_executor.kernels.mhc.triton import (
+            sm70_mhc_prenorm_staging,
+        )
+
+        logger.info_once("SM70 GLM mHC Triton broadcast-pre path enabled.")
+        sm70_mhc_prenorm_staging(
+            residual,
+            fn_broadcast,
+            gemm_out_mul,
+            gemm_out_sqrsum,
+            sqrsum_mult=hc_mult,
+        )
+    elif use_fp16:
         _tilelang_hc_prenorm_gemm(
             residual,
             fn_broadcast,
@@ -543,33 +628,95 @@ def mhc_pre_broadcast_tilelang(
             n_splits,
         )
 
-    mhc_pre_big_fuse_broadcast_with_norm_tilelang(
-        gemm_out_mul,
-        gemm_out_sqrsum,
-        hc_scale,
-        hc_base,
-        residual,
-        residual_out,
-        post_mix,
-        comb_mix,
-        layer_input,
-        norm_weight,
-        hidden_size,
-        rms_eps,
-        hc_pre_eps,
-        hc_sinkhorn_eps,
-        hc_post_mult_value,
-        sinkhorn_repeat,
-        norm_eps,
-        n_splits,
-        hc_mult,
-        use_fp16=use_fp16,
-    )
+    if use_sm70_triton:
+        from vllm.model_executor.kernels.mhc.triton import (
+            sm70_mhc_pre_norm_from_staging,
+        )
+
+        residual_out.copy_(residual.unsqueeze(1))
+        sm70_mhc_pre_norm_from_staging(
+            gemm_out_mul,
+            gemm_out_sqrsum,
+            hc_scale,
+            hc_base,
+            residual_out,
+            post_mix,
+            comb_mix,
+            layer_input,
+            norm_weight,
+            rms_eps,
+            hc_pre_eps,
+            hc_sinkhorn_eps,
+            hc_post_mult_value,
+            sinkhorn_repeat,
+            norm_eps,
+        )
+    else:
+        mhc_pre_big_fuse_broadcast_with_norm_tilelang(
+            gemm_out_mul,
+            gemm_out_sqrsum,
+            hc_scale,
+            hc_base,
+            residual,
+            residual_out,
+            post_mix,
+            comb_mix,
+            layer_input,
+            norm_weight,
+            hidden_size,
+            rms_eps,
+            hc_pre_eps,
+            hc_sinkhorn_eps,
+            hc_post_mult_value,
+            sinkhorn_repeat,
+            norm_eps,
+            n_splits,
+            hc_mult,
+            use_fp16=use_fp16,
+        )
     return (
         residual_out,
         post_mix.unsqueeze(-1),
         comb_mix.view(num_tokens, hc_mult, hc_mult),
         layer_input,
+    )
+
+
+def _mhc_pre_broadcast_tilelang_fake(
+    residual: torch.Tensor,
+    fn: torch.Tensor,
+    hc_scale: torch.Tensor,
+    hc_base: torch.Tensor,
+    rms_eps: float,
+    hc_pre_eps: float,
+    hc_sinkhorn_eps: float,
+    hc_post_mult_value: float,
+    sinkhorn_repeat: int,
+    n_splits: int = 1,
+    norm_weight: torch.Tensor | None = None,
+    norm_eps: float = 1e-6,
+    fn_broadcast: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    del (
+        hc_scale,
+        hc_base,
+        rms_eps,
+        hc_pre_eps,
+        hc_sinkhorn_eps,
+        hc_post_mult_value,
+        sinkhorn_repeat,
+        n_splits,
+        norm_weight,
+        norm_eps,
+        fn_broadcast,
+    )
+    num_tokens, hidden_size = residual.shape
+    hc_mult = fn.shape[1] // hidden_size
+    return (
+        residual.new_empty((num_tokens, hc_mult, hidden_size)),
+        residual.new_empty((num_tokens, hc_mult, 1), dtype=torch.float32),
+        residual.new_empty((num_tokens, hc_mult, hc_mult), dtype=torch.float32),
+        residual.new_empty((num_tokens, hidden_size)),
     )
 
 
@@ -579,15 +726,17 @@ def mhc_post_tilelang(
     post_layer_mix: torch.Tensor,
     comb_res_mix: torch.Tensor,
 ) -> torch.Tensor:
-    if residual.dtype == torch.float16:
-        return _mhc_post_torch_generic(x, residual, post_layer_mix,
-                                       comb_res_mix)
+    activation_dtype = _require_mhc_activation_dtype(residual, ("x", x))
+    if _is_exact_sm70_glm_mhc(residual):
+        from vllm.model_executor.kernels.mhc.triton import sm70_mhc_post
+
+        logger.info_once("SM70 GLM mHC Triton standalone-post path enabled.")
+        return sm70_mhc_post(x, residual, post_layer_mix, comb_res_mix)
 
     from vllm.model_executor.kernels.mhc.tilelang_kernels import (
         mhc_post_tilelang as _mhc_post_kernel,
     )
 
-    activation_dtype = _require_mhc_activation_dtype(residual, ("x", x))
     out = torch.empty_like(residual)
     _mhc_post_kernel(
         comb_res_mix,
@@ -633,15 +782,6 @@ def mhc_fused_post_pre_tilelang(
         comb_mix_cur: shape (..., hc_mult, hc_mult)
         layer_input_cur: shape (..., hidden_size)
     """
-
-    if residual.dtype == torch.float16:
-        res_cur = _mhc_post_torch_generic(x, residual, post_layer_mix,
-                                          comb_res_mix)
-        post_cur, comb_cur, li_cur = _mhc_pre_torch_generic(
-            res_cur, fn, hc_scale, hc_base, rms_eps, hc_pre_eps,
-            hc_sinkhorn_eps, hc_post_mult_value, sinkhorn_repeat,
-            norm_weight=norm_weight, norm_eps=norm_eps)
-        return res_cur, post_cur, comb_cur, li_cur
 
     from vllm.model_executor.kernels.mhc.tilelang_kernels import (
         compute_num_split,
@@ -711,22 +851,34 @@ def mhc_fused_post_pre_tilelang(
         else:
             n_splits = 1
 
+    # fork (v100-skinny): worker-local capability (see _is_exact_sm70_glm_mhc).
     capability = (
-        current_platform.get_device_capability() if current_platform.is_cuda() else None
+        torch.cuda.get_device_capability(torch.cuda.current_device())
+        if current_platform.is_cuda()
+        else None
     )
     use_sm70_fp32_stage = (
         envs.VLLM_SM70_DSV4_MHC_FP32_STAGE
         and use_small_fma
         and use_fp16
         and capability is not None
-        and capability.to_int() == 70
-        and num_tokens == 1
+        and capability == (7, 0)
+        and 1 <= num_tokens <= 8
         and hidden_size == 4096
         and hc_mult == 4
         and hc_mult3 == 24
-        and tile_n == 2
-        and n_splits == 8
+        and (
+            (num_tokens < 8 and tile_n == 2 and n_splits == 8)
+            or (num_tokens == 8 and tile_n == 3 and n_splits == 4)
+        )
     )
+    use_sm70_triton_large = (
+        norm_weight is not None
+        and _is_exact_sm70_glm_mhc(residual_flat, norm_weight)
+        and not use_small_fma
+    )
+    if use_sm70_triton_large:
+        n_splits = _sm70_mhc_n_splits(num_tokens)
 
     gemm_out_mul = torch.empty(
         n_splits,
@@ -810,19 +962,42 @@ def mhc_fused_post_pre_tilelang(
                 use_fp16=use_fp16,
             )
     else:
-        mhc_post_tilelang(
-            comb_res_mix_flat,
-            residual_flat,
-            post_layer_mix_flat,
-            x_flat,
-            residual_cur,
-            residual.shape[-2],
-            residual.shape[-1],
-            use_fp16=use_fp16,
-        )
+        if use_sm70_triton_large:
+            from vllm.model_executor.kernels.mhc.triton import sm70_mhc_post
+
+            logger.info_once("SM70 GLM mHC Triton large-M fused path enabled.")
+            sm70_mhc_post(
+                x_flat,
+                residual_flat,
+                post_layer_mix_flat,
+                comb_res_mix_flat,
+                residual_cur,
+            )
+        else:
+            mhc_post_tilelang(
+                comb_res_mix_flat,
+                residual_flat,
+                post_layer_mix_flat,
+                x_flat,
+                residual_cur,
+                residual.shape[-2],
+                residual.shape[-1],
+                use_fp16=use_fp16,
+            )
 
         residual_cur_2d = residual_cur.view(num_tokens, hc_mult * hidden_size)
-        if use_deep_gemm:
+        if use_sm70_triton_large:
+            from vllm.model_executor.kernels.mhc.triton import (
+                sm70_mhc_prenorm_staging,
+            )
+
+            sm70_mhc_prenorm_staging(
+                residual_cur_2d,
+                fn,
+                gemm_out_mul,
+                gemm_out_sqrsum,
+            )
+        elif use_deep_gemm:
             from vllm.utils.deep_gemm import tf32_hc_prenorm_gemm
 
             tf32_hc_prenorm_gemm(
@@ -842,7 +1017,37 @@ def mhc_fused_post_pre_tilelang(
                 hc_mult,
             )
 
-    if norm_weight is None:
+    use_sm70_pre_norm = (
+        use_fp16
+        and capability is not None
+        and capability == (7, 0)
+        and norm_weight is not None
+        and hidden_size == 4096
+        and hc_mult == 4
+    )
+    if use_sm70_pre_norm:
+        from vllm.model_executor.kernels.mhc.triton import (
+            sm70_mhc_pre_norm_from_staging,
+        )
+
+        sm70_mhc_pre_norm_from_staging(
+            gemm_out_mul,
+            gemm_out_sqrsum,
+            hc_scale,
+            hc_base,
+            residual_cur,
+            post_mix_cur,
+            comb_mix_cur,
+            layer_input_cur,
+            norm_weight,
+            rms_eps,
+            hc_pre_eps,
+            hc_sinkhorn_eps,
+            hc_post_mult_value,
+            sinkhorn_repeat,
+            norm_eps,
+        )
+    elif norm_weight is None:
         mhc_pre_big_fuse_tilelang(
             gemm_out_mul,
             gemm_out_sqrsum,
@@ -958,10 +1163,20 @@ def hc_head_fused_kernel_tilelang(
     hc_eps: float,
 ) -> torch.Tensor:
     """Apply the fused hc_head kernel and preserve the activation dtype."""
-    if hs_flat.dtype == torch.float16:
-        return _hc_head_torch_generic(hs_flat, fn, hc_scale, hc_base,
-                                      rms_eps, hc_eps)
     activation_dtype = _require_mhc_activation_dtype(hs_flat)
+    if (
+        activation_dtype == torch.float16
+        and current_platform.is_cuda()
+        and torch.cuda.get_device_capability(torch.cuda.current_device()) < (8, 0)
+    ):
+        # fork (v100-skinny): the hc_head TileLang codegen crashes on
+        # pre-Ampere targets (verified on SM70 AND SM75: tvm-ffi raises
+        # during BuildTileLangCUDA and the exception path segfaults).
+        # hc_head runs once per forward on the last PP stage only, so the
+        # proven torch reference -- the production path to date -- stays.
+        return _hc_head_torch_generic(
+            hs_flat, fn, hc_scale, hc_base, rms_eps, hc_eps
+        )
     num_tokens, hc_mult, hidden_size = hs_flat.shape
     out = torch.empty(
         num_tokens, hidden_size, dtype=activation_dtype, device=hs_flat.device
@@ -1004,6 +1219,12 @@ direct_register_custom_op(
     op_func=mhc_pre_tilelang,
     mutates_args=[],
     fake_impl=_mhc_pre_tilelang_fake,
+)
+direct_register_custom_op(
+    op_name="mhc_pre_broadcast_tilelang",
+    op_func=mhc_pre_broadcast_tilelang,
+    mutates_args=[],
+    fake_impl=_mhc_pre_broadcast_tilelang_fake,
 )
 direct_register_custom_op(
     op_name="mhc_post_tilelang",

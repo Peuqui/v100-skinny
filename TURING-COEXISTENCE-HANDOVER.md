@@ -1269,3 +1269,19 @@ code 28,6 tok/s. Entwurf comment-441-grouped-moe-offer.md auf die
 neuen Zahlen umgeschrieben (inkl. ehrlicher Notiz, dass die fruehere
 Grid-Version die T=1-Lane verlor und der Fix sie drehte).
 Endzustand 20:00: GPUs frei, kein Server.
+
+### 2026-09-03 20:15 — Commits a1ac62c gepusht (Remote `fork`!), #441-Angebot GEPOSTET
+
+Push-Falle: `origin` zeigt auf dnv2003/v100-skinny (403) — Pushes gehen
+an das Remote **fork** (git@github.com:Peuqui/v100-skinny.git). Commits
+10f3d27 + a1ac62c auf pp-mtp-merge gepusht. Vor dem Posten letzter
+Gegenlese-Pass: drei veraltete Zahlen im Entwurf korrigiert (Full-Layer
+1,35-1,37x/1,24-1,29x nach compact-Umbau; FN-Synth 7-9x bei T=1;
+DSv4-A/B-Spanne 1,03-1,38x inkl. T=2). Kommentar gepostet:
+https://github.com/1CatAI/1Cat-vLLM/issues/441#issuecomment-5527353132
+— auf Maintainer-Antwort achten (Port-PR-Angebot steht).
+
+**NÄCHSTE STATION (Peuqui-Beschluss):** 2x2-Gitter fuer DSv4 (TP2 je
+Kartenklasse + PP darueber, 3 serielle Stationen statt 5; Ausgangspunkte
+MERGE-PROJECT-HANDOVER.md — Blocker von damals: heterogener
+Graph-Capture, K>0-Spec im Upstream-Builder). Davor ggf. Doku-Nachcommit.

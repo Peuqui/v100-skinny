@@ -1,8 +1,9 @@
 # Entwurf: Kommentar in #441 — Angebot grouped NVFP4-MoE-Decode-Kernel (pre-Ampere)
 
-> Status: ENTWURF, wartet auf Freigabe Peuqui. Ziel: Interesse abfragen,
-> KEIN PR — Portierung in deren csrc/sm70_turbomind wird als Folge-PR
-> angeboten, falls die Maintainer Interesse signalisieren.
+> Status: GEPOSTET 2026-09-03 (Freigabe Peuqui) als
+> https://github.com/1CatAI/1Cat-vLLM/issues/441#issuecomment-5527353132
+> Ziel: Interesse abfragen, KEIN PR — Portierung in deren
+> csrc/sm70_turbomind wird als Folge-PR angeboten bei Interesse.
 > Zahlen-Quellen: scripts/nvfp4_skinny_moe_qpn_test.py (Standalone, echte
 > DSv4-Layer-5-Gewichte, V100 + RTX 8000), Boot 64/65 (Kohärenz + nsys).
 
@@ -15,7 +16,7 @@ fork and are wondering whether upstream would be interested in a port.
 What it does:
 
 - One launch per weight matrix and layer for the whole decode/verify batch
-  (tokens <= 8). Routing is device-side (argsort + scatter_add + cumsum),
+  (tokens <= 8). Routing is device-side (argsort + prefix sums + scatters),
   so there is no host sync and the kernel captures into CUDA graphs
   without an eager break.
 - Compute is mma.m8n8k4 (HMMA.884) on fragment-order prepacked weights
@@ -34,7 +35,7 @@ Numbers on real DeepSeek-V4-Flash expert weights (decode/verify point,
 6 tokens, ~29 active experts): w13+w2 kernel time 0.58 ms/layer vs
 0.87 ms for our previous SIMT grouped kernel — about 1.35x of the
 weight-traffic floor. Full layer (routing + both GEMMs + activation +
-combine) 1.40-1.46x faster on V100 and 1.27-1.36x on RTX 8000. In
+combine) 1.35-1.37x faster on V100 and 1.24-1.29x on RTX 8000. In
 5-GPU pipeline-parallel serving (2x RTX 8000 + 3x V100, DSpark K=5)
 this took a decode step from ~144 ms to ~113 ms; greedy outputs stayed
 bit-identical to our reference at the usual quota.
@@ -44,9 +45,8 @@ also ran it at the Qwen3.8 Flash Next TP1 expert shapes (512 experts,
 top-k 10, w13 1280x2560, w2 2560x640) with synthetic NVFP4 bytes
 (timing is weight-traffic-bound, so synthetic bytes are representative;
 correctness anchored against the checkpoint-layout SIMT kernel on the
-same bytes): w13+w2 3.2-3.4x faster at 1 token and 2.5-2.9x at 6-8
-tokens vs our SIMT grouped kernel, identical numerics on V100 and
-RTX 8000. One honest limitation: each expert matrix needs K % 64 == 0,
+same bytes): w13+w2 7-9x faster at 1 token and 2.7-3.5x at 6-8 tokens
+vs our SIMT grouped kernel, identical numerics on V100 and RTX 8000. One honest limitation: each expert matrix needs K % 64 == 0,
 so the FN TP4 W2 shard (K=160) would need padding or a relaxed tail —
 TP1/TP2 shapes are fine.
 
@@ -60,8 +60,8 @@ weights, V100:
 - Qwen3.6-35B-A3B (your smallest contract, E256/topk8, tiny experts):
   1.32x at T=1, 1.05-1.13x at T=2-8.
 - DeepSeek-V4-Flash (E64/topk6, large experts, real expert sharing):
-  1.22x at T=1, 1.27x at T=6 (the speculative verify point), 1.38x
-  at T=8.
+  1.03-1.38x across T=1-8, with 1.22x at T=1 and 1.27x at T=6 (the
+  speculative verify point).
 
 Two design points drive this: the launch grid runs over
 slot-count-many compact groups (a static bound, so it still captures

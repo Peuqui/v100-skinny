@@ -1359,3 +1359,25 @@ ueber Gefuehl), 16k-Fenster in Turn 3 knapp.
 Endzustand 22:15: GPUs frei, kein Server. NAECHSTER BLOCK: Phase 2 —
 die 6 ernsten Konflikt-Patches (mhc_tilelang, modelopt,
 gpu_model_runner, worker_mamba_utils, worker_utils, utils) auf 1.5.0.
+
+### 2026-09-03 23:00 — Phase 2 KOMPLETT: alle 22 Rebase-Konflikte aufgeloest
+
+fork_patches_150/ traegt jetzt 71 Patches + STATUS.txt (alle py_compile-
+gruen); von 83 Deploy-Zielen sind NEUN Patches upstream OBSOLET geworden:
+mhc_triton (unser eigener Backport), worker_utils (Mixed-Page-Zeroing
+generischer geloest), worker_mamba_utils (natives Qwen4Exp), model_runner,
+interfaces, vocab_parallel_embedding (FP8-int8-AllReduce uebernommen!),
+short_conv_attn, kv_cache_coordinator, compilation. Der komplette
+CSA-Linear-Cache-Komplex (unser DSv4-Layout!) ist upstream GELANDET —
+teils wortgleiche Kommentare; unsere PR-#7-/Issue-Beitraege sind sichtbar
+eingeflossen. Kombiniert statt ersetzt: modelopt (QPN8+TurboMind
+koexistieren), utils (Stacked-Shard: deren Typform + unsere
+renaming/shard-Durchreichung), gpu_model_runner (PLE-Partition-Pruefung
+statt PP-Verbot = Issue-#479-Kern, PP-Spec-Gate is_last_rank, E5-Hooks;
+6 Bloecke obsolet: deren _sync_mamba_accepted_token_state,
+IntermediateTensors-Unwrap, compressed_kernel_block_size).
+NAECHSTER BLOCK: bootstrap-Skript auf -150/fork_patches_150 portieren
+(Deploy-Liste um die 9 Obsoleten kuerzen, qwen4_exp-Eigenbauten raus),
+dann Boot-Gates: erst 27B-Regression (2x2, Gates gruen?), dann Flash-Next
+(PLE-Partition!), dann DSv4-PP5. Kohaerenz + Bench je Modell gegen die
+frischen Baselines (FN k=0: 32,2; DSv4: 113 ms/Step).

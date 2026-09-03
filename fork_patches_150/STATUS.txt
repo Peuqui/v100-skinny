@@ -1,0 +1,83 @@
+gdn_attn.py AUTO_MERGED
+gpu_model_runner.py KONFLIKT (manuell, siehe mergecheck)
+marlin.py UNVERAENDERT (kopiert)
+modelopt.py KONFLIKT (manuell, siehe mergecheck)
+torch_utils.py UNVERAENDERT (kopiert)
+attention.py AUTO_MERGED
+custom_all_reduce.py AUTO_MERGED
+qwen3_5_mtp.py AUTO_MERGED
+qwen3_5.py AUTO_MERGED
+cuda.py AUTO_MERGED
+vllm_config.py KONFLIKT (manuell, siehe mergecheck)
+kernel_config.py UNVERAENDERT (kopiert)
+linear_init.py AUTO_MERGED
+fp8.py KONFLIKT (manuell, siehe mergecheck)
+compressed_tensors.py AUTO_MERGED
+deepseek_v4_nvidia_model.py AUTO_MERGED
+deepseek_v4_mtp.py UNVERAENDERT (kopiert)
+nvfp4_moe_oracle.py UNVERAENDERT (kopiert)
+nvfp4_emulation_moe.py UNVERAENDERT (kopiert)
+nvfp4_skinny_moe.py FORK_EIGEN (kopiert)
+sparse_attn_indexer.py AUTO_MERGED
+mhc_tilelang.py KONFLIKT (manuell, siehe mergecheck)
+mhc_triton.py KONFLIKT (manuell, siehe mergecheck)
+deepseek_v4_attention.py AUTO_MERGED
+dsv4_cache_utils.py UNVERAENDERT (kopiert)
+dsv4_fused_compress_quant_cache.py AUTO_MERGED
+dsv4_fused_indexer_q.py UNVERAENDERT (kopiert)
+dsv4_dspark.py AUTO_MERGED
+dsv4_amd_rocm.py UNVERAENDERT (kopiert)
+spec_decode_dspark.py AUTO_MERGED
+flashmla_sparse.py UNVERAENDERT (kopiert)
+sm70_turbomind.py AUTO_MERGED
+dsv4_sm70_gemv.py KONFLIKT (manuell, siehe mergecheck)
+breakable_cudagraph.py UNVERAENDERT (kopiert)
+multiproc_executor.py AUTO_MERGED
+gpu_worker.py AUTO_MERGED
+parallel_state.py AUTO_MERGED
+dsv4_compressor.py AUTO_MERGED
+rocm_aiter_mla_sparse.py UNVERAENDERT (kopiert)
+import_utils.py UNVERAENDERT (kopiert)
+sparse_swa.py UNVERAENDERT (kopiert)
+qwen_gdn_linear_attn_sm75.py FORK_EIGEN (kopiert)
+gdn_attn_sm75.py FORK_EIGEN (kopiert)
+qpn8_blk.py FORK_EIGEN (kopiert)
+_custom_ops.py AUTO_MERGED
+compilation.py KONFLIKT (manuell, siehe mergecheck)
+scheduler.py AUTO_MERGED
+speculative.py KONFLIKT (manuell, siehe mergecheck)
+attention_layer_base.py AUTO_MERGED
+abstract.py AUTO_MERGED
+qwen_gdn_linear_attn.py AUTO_MERGED
+mamba_utils.py AUTO_MERGED
+flashinfer_utils.py AUTO_MERGED
+vocab_parallel_embedding.py KONFLIKT (manuell, siehe mergecheck)
+weight_utils.py AUTO_MERGED
+config.py KONFLIKT (manuell, siehe mergecheck)
+interfaces.py KONFLIKT (manuell, siehe mergecheck)
+qwen3_next.py KONFLIKT (manuell, siehe mergecheck)
+registry.py AUTO_MERGED
+utils.py KONFLIKT (manuell, siehe mergecheck)
+interface.py AUTO_MERGED
+transformers_utils_config.py AUTO_MERGED
+transformers_configs_init.py AUTO_MERGED
+qwen4_exp.py ERSETZT_DURCH_UPSTREAM (nicht kopiert)
+model_arch_config_convertor.py AUTO_MERGED
+short_conv_attn.py KONFLIKT (manuell, siehe mergecheck)
+backends_utils.py UNVERAENDERT (kopiert)
+kv_cache_coordinator.py KONFLIKT (manuell, siehe mergecheck)
+kv_cache_utils.py KONFLIKT (manuell, siehe mergecheck)
+sched_scheduler.py AUTO_MERGED
+single_type_kv_cache_manager.py KONFLIKT (manuell, siehe mergecheck)
+kv_cache_interface.py KONFLIKT (manuell, siehe mergecheck)
+llm_base_proposer.py AUTO_MERGED
+spec_decode_qwen4_exp.py ERSETZT_DURCH_UPSTREAM (nicht kopiert)
+block_table.py AUTO_MERGED
+model_runner.py KONFLIKT (manuell, siehe mergecheck)
+worker_mamba_utils.py KONFLIKT (manuell, siehe mergecheck)
+worker_utils.py KONFLIKT (manuell, siehe mergecheck)
+tilelang_target.py FORK_EIGEN (kopiert)
+triton_unified_attention.py AUTO_MERGED
+triton_attn.py UNVERAENDERT (kopiert)
+flash_attn.py UNVERAENDERT (kopiert)
+flash_attn_interface.py UNVERAENDERT (kopiert)

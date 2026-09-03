@@ -55,7 +55,7 @@ vocab_parallel_embedding.py OBSOLET (Upstream hat FP8-int8-AllReduce uebernommen
 weight_utils.py AUTO_MERGED
 config.py AUFGELOEST (theirs; 74z Fork-Hunks konfliktfrei)
 interfaces.py OBSOLET (nur redundanter Import)
-qwen3_next.py AUFGELOEST (theirs; 16z Fork-Hunks)
+qwen3_next.py OBSOLET (Split-Refactor diente nur dem alten qwen4_exp-Port; theirs-Chimaere rueckgebaut)
 registry.py AUTO_MERGED
 utils.py AUFGELOEST (Upstream hat Stacked-Shard-Feature nachgebaut; unsere renaming+shard-Durchreichung erhalten)
 interface.py AUTO_MERGED
@@ -79,5 +79,5 @@ worker_utils.py OBSOLET (Upstream loest Mixed-Page-Zeroing generischer)
 tilelang_target.py FORK_EIGEN (kopiert)
 triton_unified_attention.py AUTO_MERGED
 triton_attn.py UNVERAENDERT (kopiert)
-flash_attn.py UNVERAENDERT (kopiert)
-flash_attn_interface.py UNVERAENDERT (kopiert)
+flash_attn.py ZURUECKGESTELLT (sm75-FA2-Enablement braucht Drop-in-Build in -150)
+flash_attn_interface.py ZURUECKGESTELLT (dito)

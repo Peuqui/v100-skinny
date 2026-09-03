@@ -1055,4 +1055,96 @@ Einzelprompts den ~2-3-ms-Struktur-Gewinn. ENTSCHEIDUNG: behalten
 (strukturell richtig, Kohärenz-Quote unverändert, VRAM-Gewinn).
 
 Endzustand 15:00: GPUs frei, kein Server. Commits 66fe3a7 (Tagesstand)
-+ Folgecommit (qpn8_blk-Umstellung) auf pp-mtp-merge.
++ Folgecommit db9470a (qpn8_blk-Umstellung) auf pp-mtp-merge.
+
+### 2026-09-03 15:30 — lm_head-FP8: Vorab-Messung NEGATIV, Idee VERWORFEN
+
+Gate-Messung vor jeder Code-Änderung (offline, echter head.weight auf
+V100): e4m3-Blockquant [128,128] des BF16-Heads hat **2,64e-2 rel
+Gewichtsfehler** — e4m3 hat nur 3 Mantissenbits, der ~2-3-%-Fehler ist
+formatinhärent und ließe sich auch mit feineren Blöcken nicht unter
+~1e-2 drücken (nicht vergleichbar mit den 4e-4 der schon-quantisierten
+FP8-Layer — dort ist der Quantisierungsfehler im Checkpoint „eingebaut",
+wir rechnen nur exakt auf den vorhandenen Zahlen). Proxy-Flip-Messung
+(RMS-normierte synthetische Hiddens, 2560 Positionen): **5,27 %
+Argmax-Flips**, Logit-Rauschen median 1,8 bei Top1-Top2-Marge median
+3,6 — meilenwert vom vereinbarten Promille-Gate entfernt. Reale Hiddens
+hätten größere Margen, aber Rauschen/Marge ≈ 0,5 ist indiskutabel.
+llama.cpps Q8_0-Head ist INT8 (~7-8 effektive Bits, Fehler ~4e-3) —
+unsere QPN8-Kernel sind e4m3; ein präzisionsgleicher Head bräuchte
+einen neuen INT8-Pfad. VERWORFEN; Ersparnis wäre eh nur ~1,3 %.
+Der Head bleibt BF16 — Genauigkeit vor Tempo, wie vereinbart.
+
+### 2026-09-03 16:00 — MoE-Redesign UMGESETZT: moe_qpn (Tensor-Core + QPN-Prepack) — Standalone 1,3-1,45×
+
+**Design (importiert statt neu erfunden):** Neuer Kernel `skinny_nvfp4_moe_qpn`
+(kernels/skinny_kernels.cu, Binding `moe_qpn`) = moe_simt-Routing-Skelett
+(device-seitig perm/offsets, inaktive Experten exiten vor Gewichtszugriff,
+Multipass bei cnt>8, capture-sicher) × QPN2-Compute-Dataflow (mma.m8n8k4,
+SPLITK/NACC-Templates). Gewichte liegen dafür PER EXPERTE im QPN-Fragment-
+Layout ([tile N/32][group K/16][lane 32]×8B, dieselbe `_qpn_prepack`-
+Permutation wie die dense Route). `__launch_bounds__(32*SPLITK)` noetig
+(erster Launch starb an cudaErrorLaunchOutOfResources — der Pass-Loop kostet
+Register gegenueber dense qpn2).
+
+**Upstream-Check vorab (Tagespflicht):** 1Cat main hat v1.5.0 getaggt, unser
+QSA-Fix ist als 4a69044 drin; deren `nvfp4_sm70_moe.py` (TurboMind compact
+grouped) ist auf feste Contracts gegated (Qwen3.6/3.8, GLM-5.3 — DSv4 NICHT
+dabei) → kein Backport-Kandidat, Eigenbau aus Fork-Bausteinen war der Weg.
+
+**Standalone (scripts/nvfp4_skinny_moe_qpn_test.py, echte Layer-5-Gewichte):**
+Kernel T=6: w13 0,53→0,38 ms, w2 0,34→0,20 ms ⇒ Kernel-Summe 0,58 ms =
+**1,35× Traffic-Floor** (moe_simt: 2,3×). Full Layer 1,40-1,46× auf V100,
+1,27-1,36× auf RTX 8000. Sieger-Configs auf BEIDEN Archs identisch:
+w13 (16,1), w2 (8,1) — kein Turing-Sonderfall. max|diff| ≤2,4e-4 gegen die
+Checkpoint-Layout-Referenz, Multipass-Haertefall OK.
+
+**Route (fork_patches/nvfp4_skinny_moe.py, deployed):** Prepack IN-PLACE in
+`process_weights_after_loading` (Byte-gleiche Permutation von Gewichten UND
+Scale-Rastern; Shapes/Footprint unveraendert, kein VRAM-Doppel; laeuft in
+der Load-Phase vor der KV-Reservierung). Decode/Verify → `moe_qpn` (Configs
+via VLLM_SM70_NVFP4_MOE_QPN_CFG, Default "16,1,8,1"); Prefill-Loop →
+`gemm_qpn` M≤16 + 16er-Chunks (statt gemm_simt/gemm_wmma, die das alte
+Layout braeuchten). Beide Testskripte auf das neue Layout angepasst
+(grouped_test: moe_simt bleibt auf Checkpoint-Layout als layout-
+unabhaengiger Referenz-Anker).
+
+**BEFUND nebenbei — gemm_qpn_simt hat einen latenten Prepack-Mismatch:**
+rechnet auf echten Expert-Bytes strukturell falsch (max|diff| ~1e0),
+waehrend gemm_qpn auf denselben Packs bei M 1..16 korrekt ist. Produktiv
+unerreichbar (dense Route nutzt ihn nur unter VLLM_SKINNY_DROP_CT=1,
+Default 0) — die MoE-Route meidet ihn; wer DROP_CT je aktiviert, muss das
+erst fixen.
+
+**Erwartung Server:** MoE war 1,04 ms/Layer·Step (nsys V100) → ~0,29 ms
+weniger × 43 Layer ≈ 12,5 ms/Step ⇒ ~+9 % (Prognose ~23 Essay / ~29 Code).
+Boot + Kohaerenz + Bench: naechster Abschnitt.
+
+### 2026-09-03 17:00 — MoE-Redesign VALIDIERT im Server (Boot 64): 112-115 ms/Step (war 144-147)
+
+Boot ueber scripts/serve-deepseek-het-graphs.sh (unveraendert; die Extension
+baut den neuen Kernel automatisch aus dem Repo-Source). 0 ERRORs, Graphs
+capturen, QPN-Prepack laeuft im Weight-Load jeder Stufe.
+
+**Kohaerenz: 8/8, davon 5/8 bitidentisch zur nvidia-base-Referenz — exakt
+die akzeptierte Quote** (results-coherence-het-k5-moeqpn.json; Abweichler
+sind die bekannten fp16-Drift-Freitexte).
+
+**Struktur-Messgroesse ms/Step (wall/drafts via /metrics, 200-Token-Laeufe):
+essay 112,8 / code 114,5 ms — vor dem Umbau 144/146,5 ⇒ −21 %.** Damit ist
+llama.cpps Schrittlatenz (~110 ms je 6-Token-Schritt) praktisch erreicht.
+Der Gewinn liegt UEBER der 12,5-ms-Prognose aus dem Layer-Anteil — der
+Drafter-Block und die Verify-Pfade fahren dieselbe MoE-Route mit.
+tok/s (Scratchpad dsv4_bench.py, eigene Prompts, Akzeptanz-Lotterie
+beachten): essay 25,2 (Akz. 38 %), code 28,1 (Akz. 46 %).
+
+Endzustand 17:00: GPUs frei, kein Server. UNCOMMITTED: kernels/
+skinny_kernels.cu (moe_qpn), fork_patches/nvfp4_skinny_moe.py (Route +
+in-place-Prepack), scripts/nvfp4_skinny_moe_qpn_test.py (neu),
+scripts/nvfp4_skinny_moe_grouped_test.py (Pack-Anpassung), Kohaerenz-JSON,
+Handover. venv ist deployt (cp), bootstrap-Zeile existierte schon.
+
+**Verbleibende Hebel:** Drafter-Solo-Phase neu vermessen (14,2 ms-Zahl ist
+nach diesem Umbau veraltet — der Drafter-MoE wurde mitbeschleunigt), dann
+Drafter-Quantisierung bewerten; RTX-Tiny-GEMM-Rest (lm_head bleibt BF16,
+VERWORFEN-Notiz 15:30 beachten).

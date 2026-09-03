@@ -4,13 +4,15 @@
 
 Fork addition (v100-skinny). The chunked emulation proved the Volta port
 end to end but dequantizes every selected expert to fp16 per forward. The
-fork already ships benchmarked NVFP4 GEMMs (``skinny_nvfp4_v11``) whose
-documented input layout -- codes uint8 [N][K/2], scales uint8 [N][K/16]
-fp8-e4m3, one global scale -- is exactly what a compressed-tensors NVFP4
-MoE checkpoint stores per expert (proved on real checkpoint bytes by
-``scripts/nvfp4_expert_gemm_test.py``: 10/10, rel_err ~6e-4). So the MoE
-needs no new kernel and no repacking: each router-selected expert's
-weight slice feeds ``gemm_simt``/``gemm_wmma`` unchanged.
+fork already ships benchmarked NVFP4 GEMMs (``skinny_nvfp4_v11``); expert
+weights are re-permuted IN PLACE into the QPN fragment order at load time
+(``process_weights_after_loading`` -> ``_qpn_prepack`` per expert -- a
+byte-equal permutation, so the weight footprint is unchanged and the
+parameter shapes stay checkpoint-shaped). Both serving paths read that
+layout: the grouped decode/verify kernel ``moe_qpn`` (mma.m8n8k4,
+device-side routing, tokens <= 8; 1.3-1.4x over the SIMT predecessor on
+real DeepSeek-V4 experts, V100 and RTX 8000) and the per-expert prefill
+loop via ``gemm_qpn``.
 
 Deliberate deviation from the emulation: activations stay fp16 (w4a16),
 matching how every NVFP4 *linear* layer in this fork is served. The
@@ -19,10 +21,9 @@ it keeps MoE and linear treatment consistent.
 
 Compute order per expert: gather tokens -> gemm(w13 slice) -> activation
 (the inherited helper applies swiglu_limit when the model sets one) ->
-gemm(w2 slice) -> weighted scatter-add. M-dispatch follows the measured
-linear-path frontier: simt M<=7, wmma M<=64, 64-row chunks above (the
-prefill band re-reads expert weights once per chunk; acceptable until a
-grouped kernel exists).
+gemm(w2 slice) -> weighted scatter-add. Prefill M-dispatch: qpn M<=16,
+16-row chunks above (a chunk re-reads expert weights once; the
+decode/verify regime never chunks).
 """
 
 import os
@@ -42,24 +43,30 @@ from vllm.model_executor.layers.fused_moe.experts.triton_moe import TritonExpert
 logger = init_logger(__name__)
 
 _SKINNY_MOE_ENABLED = os.environ.get("VLLM_SM70_NVFP4_MOE_SKINNY", "1") == "1"
-# Measured linear-path frontier (seam_bench): simt owns M<=7, wmma above.
-_SIMT_MAX_M = 7
 # Grouped kernel bound: rows per expert <= tokens, and the kernel holds 8.
 _GROUPED_MAX_TOKENS = 8
-_WMMA_MAX_M = 64
+# QPN-prepacked prefill band: qpn (mma.m8n8k4) serves M<=16, chunks above.
+# NOTE gemm_qpn_simt is NOT used here: it disagrees with the current
+# _qpn_prepack order on real expert bytes (latent -- the dense route only
+# reaches it under VLLM_SKINNY_DROP_CT=1, which is off in production).
+_QPN_MAX_M = 16
+# moe_qpn launch configs (splitk, nacc) per weight matrix, measured winners
+# on real DeepSeek-V4 layer-5 experts (scripts/nvfp4_skinny_moe_qpn_test.py,
+# identical frontier on V100 and RTX 8000): w13 (16,1), w2 (8,1).
+_MOE_QPN_CFG = tuple(
+    int(v) for v in os.environ.get(
+        "VLLM_SM70_NVFP4_MOE_QPN_CFG", "16,1,8,1").split(","))
 
 
 def _expert_gemm(ext, x: torch.Tensor, codes: torch.Tensor,
-                 scales: torch.Tensor, gscale: float) -> torch.Tensor:
-    """One expert's GEMM at any M, using the existing skinny kernels."""
+                 scales: torch.Tensor, gscale: float, n: int) -> torch.Tensor:
+    """One expert's GEMM at any M, on QPN-prepacked weight fragments."""
     m = x.size(0)
-    if m <= _SIMT_MAX_M:
-        return ext.gemm_simt(x, codes, scales, gscale)
-    if m <= _WMMA_MAX_M:
-        return ext.gemm_wmma(x, codes, scales, gscale)
+    if m <= _QPN_MAX_M:
+        return ext.gemm_qpn(x, codes, scales, gscale, n)
     return torch.cat([
-        ext.gemm_wmma(x[i:i + _WMMA_MAX_M], codes, scales, gscale)
-        for i in range(0, m, _WMMA_MAX_M)
+        ext.gemm_qpn(x[i:i + _QPN_MAX_M], codes, scales, gscale, n)
+        for i in range(0, m, _QPN_MAX_M)
     ])
 
 
@@ -100,12 +107,12 @@ def skinny_moe_forward(
         x_e = hidden_states.index_select(0, rows)
 
         y13 = _expert_gemm(ext, x_e, w1[expert], w1_scales_u8[expert],
-                           g1[expert])
+                           g1[expert], w1.size(1))
         inter = torch.empty((x_e.size(0), inter_dim), dtype=y13.dtype,
                             device=device)
         activation_fn(inter, y13)
         y = _expert_gemm(ext, inter, w2[expert], w2_scales_u8[expert],
-                         g2[expert])
+                         g2[expert], w2.size(1))
 
         y.mul_(w_flat.index_select(0, slot_idx).unsqueeze(1).to(y.dtype))
         output.index_add_(0, rows, y)
@@ -141,6 +148,37 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
     def quant_dtype(self) -> torch.dtype | str | None:
         # w4a16: activations are never quantized.
         return None
+
+    def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+        """Re-permute expert weights + scale rasters into QPN fragment
+        order, in place (byte-equal permutation; shapes and footprint
+        unchanged). Runs once per layer during weight loading, before the
+        KV-cache pool is reserved, so the per-expert transients are safe.
+        Every serving path below reads this layout; there is no
+        checkpoint-layout copy left afterwards.
+        """
+        from vllm.model_executor.kernels.linear.nvfp4.marlin import (
+            _qpn_prepack,
+        )
+        w13, w2 = layer.w13_weight.data, layer.w2_weight.data
+        s13 = self.w1_scale_val.view(torch.uint8)
+        s2 = self.w2_scale_val.view(torch.uint8)
+        for name, w, s in (("w13", w13, s13), ("w2", w2, s2)):
+            if w.size(1) % 32 or (w.size(2) * 2) % 64:
+                raise RuntimeError(
+                    f"skinny NVFP4 MoE requires QPN-eligible expert shapes "
+                    f"(N % 32, K % 64); got {name} N={w.size(1)} "
+                    f"K={w.size(2) * 2}")
+        for e in range(w13.size(0)):
+            qc, qs = _qpn_prepack(w13[e], s13[e])
+            w13[e].view(-1).copy_(qc)
+            s13[e].view(-1).copy_(qs)
+            qc, qs = _qpn_prepack(w2[e], s2[e])
+            w2[e].view(-1).copy_(qc)
+            s2[e].view(-1).copy_(qs)
+        logger.info_once(
+            "Skinny NVFP4 MoE: expert weights re-permuted to QPN fragment "
+            "order in place (%d experts)", w13.size(0))
 
     @staticmethod
     def _supports_current_device() -> bool:
@@ -248,15 +286,17 @@ class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
         offsets[1:] = torch.cumsum(counts, 0)
         y13 = torch.empty((num_tokens * top_k, w1.size(1)),
                           dtype=hidden_states.dtype, device=device)
-        ext.moe_simt(hidden_states, w1, self._w1_scales_u8, self._g1_t, perm,
-                     offsets, top_k, y13, False, num_tokens)
+        ext.moe_qpn(hidden_states, w1, self._w1_scales_u8, self._g1_t, perm,
+                    offsets, top_k, y13, False, num_tokens,
+                    _MOE_QPN_CFG[0], _MOE_QPN_CFG[1])
         inter = torch.empty((num_tokens * top_k, inter_dim), dtype=y13.dtype,
                             device=device)
         self.activation(activation, inter, y13)
         y2 = torch.empty((num_tokens * top_k, w2.size(1)), dtype=y13.dtype,
                          device=device)
-        ext.moe_simt(inter, w2, self._w2_scales_u8, self._g2_t, perm, offsets,
-                     top_k, y2, True, num_tokens)
+        ext.moe_qpn(inter, w2, self._w2_scales_u8, self._g2_t, perm, offsets,
+                    top_k, y2, True, num_tokens,
+                    _MOE_QPN_CFG[2], _MOE_QPN_CFG[3])
         weighted = y2.view(num_tokens, top_k, -1).float() * topk_weights.to(
             torch.float32).unsqueeze(-1)
         output.copy_(weighted.sum(1).to(output.dtype))

@@ -9,7 +9,7 @@ Usage: VLLM_SKINNY_NVFP4_SRC=kernels/skinny_kernels.cu python scripts/nvfp4_skin
 import sys, time, torch
 from safetensors import safe_open
 from vllm.model_executor.layers.fused_moe.experts.nvfp4_skinny_moe import skinny_moe_forward
-from vllm.model_executor.kernels.linear.nvfp4.marlin import _get_skinny_ext
+from vllm.model_executor.kernels.linear.nvfp4.marlin import _get_skinny_ext, _qpn_prepack
 from vllm.model_executor.layers.fused_moe.utils import swiglu_limit_func
 shard = "/home/mp/models/DeepSeek-V4-Flash-nvfp4-DSpark/model-00007-of-00046.safetensors"
 E = 64
@@ -31,6 +31,16 @@ ext = _get_skinny_ext()
 act = lambda out, inp: swiglu_limit_func(out, inp, 10.0)
 print("device:", torch.cuda.get_device_name(), "| ext moe_simt:", hasattr(ext, "moe_simt"))
 
+# The serving loop path now reads QPN fragment order (see
+# nvfp4_skinny_moe.py); moe_simt below stays on the checkpoint layout.
+p13 = [_qpn_prepack(w13_c[e], w13_su[e]) for e in range(E)]
+p2 = [_qpn_prepack(w2_c[e], w2_su[e]) for e in range(E)]
+qc13v = torch.stack([p[0] for p in p13]).view_as(w13_c).contiguous()
+qs13v = torch.stack([p[1] for p in p13]).view_as(w13_su).contiguous()
+qc2v = torch.stack([p[0] for p in p2]).view_as(w2_c).contiguous()
+qs2v = torch.stack([p[1] for p in p2]).view_as(w2_su).contiguous()
+del p13, p2
+
 def grouped(hs, ids, w):
     T, topk = ids.shape
     flat = ids.reshape(-1).to(torch.int32)
@@ -47,8 +57,8 @@ def grouped(hs, ids, w):
 
 def loop(hs, ids, w):
     out = torch.empty(hs.size(0), hidden, dtype=torch.float16, device="cuda")
-    skinny_moe_forward(ext=ext, output=out, hidden_states=hs, w1=w13_c, w2=w2_c,
-        w1_scales_u8=w13_su, w2_scales_u8=w2_su, g1=g13, g2=g2,
+    skinny_moe_forward(ext=ext, output=out, hidden_states=hs, w1=qc13v, w2=qc2v,
+        w1_scales_u8=qs13v, w2_scales_u8=qs2v, g1=g13, g2=g2,
         topk_weights=w, topk_ids=ids, inter_dim=inter, activation_fn=act)
     return out
 

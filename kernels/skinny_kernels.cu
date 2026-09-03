@@ -2479,9 +2479,178 @@ void skinny_moe_simt(torch::Tensor x, torch::Tensor codes, torch::Tensor scales,
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
+// ---------------------------------------------------------------------------
+// Grouped MoE QPN kernel (fork addition, v100-skinny): the moe_simt routing
+// skeleton (device-side perm/offsets, inactive experts exit before touching
+// their weights, tokens <= 8, CUDA-graph safe) driving the QPN2 tensor-core
+// dataflow (mma.m8n8k4 on fragment-order prepacked weights, SPLITK warps
+// splitting K on one N=32 tile, NACC independent accumulator fragments).
+// Weights must be prepacked per expert with the dense shim's _qpn_prepack
+// permutation: [E][tile N/32][group K/16][lane 32] x 8B codes + 1B scales.
+// A rows come through the slot indirection (token-major x for w13,
+// slot-major for w2) instead of qpn2's contiguous x.
+// ---------------------------------------------------------------------------
+template <int SPLITK, int NACC>
+__global__ void __launch_bounds__(32 * SPLITK)
+skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
+                                     const uint8_t *__restrict__ qscales,
+                                     const float *__restrict__ gscales,
+                                     const half *__restrict__ x,
+                                     half *__restrict__ y_slots,
+                                     const int *__restrict__ perm,
+                                     const int *__restrict__ offsets,
+                                     int N, int K, int topk,
+                                     int x_slot_major) {
+  constexpr int MMAX = 8;
+  __shared__ float cs[SPLITK][256];
+  __shared__ const half *xrows[MMAX];
+  __shared__ int slots[MMAX];
+
+  const int e = blockIdx.y;
+  const int beg = offsets[e];
+  const int cnt = offsets[e + 1] - beg;
+  if (cnt <= 0) return;  // block-uniform: inactive expert, no weight read
+
+  const int lane = threadIdx.x & 31, warp = threadIdx.x >> 5;
+  const int tile = blockIdx.x;
+  const int qp = (lane >> 2) & 3;
+  const int r = (lane & 3) + ((lane & 16) ? 4 : 0);
+  const int G = K >> 4, Gq = G / SPLITK;
+  const int g0 = warp * Gq;
+  const uint2 *cb = reinterpret_cast<const uint2 *>(qcodes) +
+                    ((size_t)e * (N >> 5) + tile) * G * 32 + lane;
+  const uint8_t *sb =
+      qscales + ((size_t)e * (N >> 5) + tile) * G * 32 + lane;
+  const half2 gm2 = __float2half2_rn(gscales[e] * 16384.f);
+
+  // Same multi-pass as moe_simt: hash routing can hand one expert more
+  // than MMAX slots; the rare extra pass re-reads this tile's weights.
+  for (int base = 0; base < cnt; base += MMAX) {
+    const int rows = min(MMAX, cnt - base);
+    __syncthreads();  // previous pass done with slots/xrows/cs
+    if (threadIdx.x < MMAX) {
+      const int m = threadIdx.x;
+      const int slot = m < rows ? perm[beg + base + m] : 0;
+      slots[m] = slot;
+      xrows[m] = x + (size_t)(x_slot_major ? slot : slot / topk) * K;
+    }
+    __syncthreads();
+    const half *xr = r < rows ? xrows[r] : nullptr;
+
+    float c[NACC][8];
+#pragma unroll
+    for (int a = 0; a < NACC; a++)
+#pragma unroll
+      for (int i = 0; i < 8; i++) c[a][i] = 0.f;
+
+#pragma unroll 4
+    for (int g = g0; g < g0 + Gq; g++) {
+      const uint2 q2 = __ldcs(cb + (size_t)g * 32);
+      const half2 sc2 =
+          __hmul2(fp8e4m3_to_half2(__ldg(sb + (size_t)g * 32)), gm2);
+      half2 b[8];
+      dequant8_tm(q2.x, sc2, b + 0);
+      dequant8_tm(q2.y, sc2, b + 4);
+      const unsigned *B = reinterpret_cast<const unsigned *>(b);
+      uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
+      if (xr) {
+        a01 = *reinterpret_cast<const uint4 *>(xr + g * 16);
+        a23 = *reinterpret_cast<const uint4 *>(xr + g * 16 + 8);
+      }
+      const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+      const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+      MMA_8N8K4(c[0], A0[0], A0[1], B[0], B[1]);
+      MMA_8N8K4(c[1 % NACC], A0[2], A0[3], B[2], B[3]);
+      MMA_8N8K4(c[2 % NACC], A1[0], A1[1], B[4], B[5]);
+      MMA_8N8K4(c[3 % NACC], A1[2], A1[3], B[6], B[7]);
+    }
+
+#pragma unroll
+    for (int a = 1; a < NACC; a++)
+#pragma unroll
+      for (int i = 0; i < 8; i++) c[0][i] += c[a][i];
+
+#pragma unroll
+    for (int i = 0; i < 8; i++) {
+      const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+      const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+      cs[warp][row * 32 + qp * 8 + col] = c[0][i];
+    }
+    __syncthreads();
+    for (int t = threadIdx.x; t < 256; t += blockDim.x) {
+      float v = 0.f;
+#pragma unroll
+      for (int w = 0; w < SPLITK; w++) v += cs[w][t];
+      const int row = t >> 5, col = t & 31;
+      if (row < rows)
+        y_slots[(size_t)slots[row] * N + (size_t)tile * 32 + col] =
+            __float2half(v);
+    }
+  }
+}
+
+// y_slots[S, N] (S = tokens*topk, slot-major) = x[row(slot)] @ W[expert(slot)]
+// with W in per-expert QPN fragment order (see _qpn_prepack).
+void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
+                    torch::Tensor qscales, torch::Tensor gscales,
+                    torch::Tensor perm, torch::Tensor offsets, int64_t topk,
+                    torch::Tensor y_slots, bool x_slot_major,
+                    int64_t num_tokens, int64_t splitk, int64_t nacc) {
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
+              qcodes.is_contiguous());
+  TORCH_CHECK(qscales.is_cuda() && qscales.dtype() == torch::kUInt8 &&
+              qscales.is_contiguous());
+  TORCH_CHECK(gscales.is_cuda() && gscales.dtype() == torch::kFloat &&
+              gscales.is_contiguous());
+  TORCH_CHECK(perm.is_cuda() && perm.dtype() == torch::kInt && perm.is_contiguous());
+  TORCH_CHECK(offsets.is_cuda() && offsets.dtype() == torch::kInt &&
+              offsets.is_contiguous());
+  TORCH_CHECK(y_slots.is_cuda() && y_slots.dtype() == torch::kHalf &&
+              y_slots.is_contiguous());
+  const int64_t T = num_tokens, K = x.size(1);
+  const int64_t E = gscales.size(0), N = y_slots.size(1);
+  TORCH_CHECK(x.size(0) == (x_slot_major ? T * topk : T), "x rows mismatch");
+  TORCH_CHECK(qcodes.numel() == E * N * (K >> 1), "qpn codes size");
+  TORCH_CHECK(qscales.numel() == E * N * (K >> 4), "qpn scales size");
+  TORCH_CHECK(offsets.size(0) == E + 1);
+  TORCH_CHECK(perm.size(0) == T * topk && y_slots.size(0) == T * topk);
+  TORCH_CHECK(T <= 8, "grouped qpn MoE serves <= 8 tokens (decode/verify); got ", T);
+  TORCH_CHECK(K % 64 == 0 && (K / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(N % 32 == 0, "N % 32");
+  const dim3 grid((unsigned)(N / 32), (unsigned)E);
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+#define LAUNCH_MOE_QPN(SPv, NAv)                                            \
+  skinny_nvfp4_moe_qpn<SPv, NAv>                                            \
+      <<<grid, dim3(32 * SPv), 0, stream>>>(                                \
+          qcodes.data_ptr<uint8_t>(), qscales.data_ptr<uint8_t>(),          \
+          gscales.data_ptr<float>(),                                        \
+          reinterpret_cast<const half *>(x.data_ptr<at::Half>()),           \
+          reinterpret_cast<half *>(y_slots.data_ptr<at::Half>()),           \
+          perm.data_ptr<int>(), offsets.data_ptr<int>(), (int)N, (int)K,    \
+          (int)topk, x_slot_major ? 1 : 0)
+
+  const int key = (int)(splitk * 10 + nacc);
+  switch (key) {
+    case 81: LAUNCH_MOE_QPN(8, 1); break;
+    case 82: LAUNCH_MOE_QPN(8, 2); break;
+    case 161: LAUNCH_MOE_QPN(16, 1); break;
+    case 162: LAUNCH_MOE_QPN(16, 2); break;
+    case 321: LAUNCH_MOE_QPN(32, 1); break;
+    case 322: LAUNCH_MOE_QPN(32, 2); break;
+    default: TORCH_CHECK(false, "moe_qpn splitk in {8,16,32}, nacc in {1,2}");
+  }
+#undef LAUNCH_MOE_QPN
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("moe_simt", &skinny_moe_simt,
         "grouped NVFP4 MoE GEMM (SIMT, device-side routing, tokens<=8)");
+  m.def("moe_qpn", &skinny_moe_qpn,
+        "grouped NVFP4 MoE GEMM (mma.m8n8k4 on prepacked fragments, "
+        "device-side routing, tokens<=8)");
   m.def("gemm_qpn8", &skinny_gemm_qpn8,
         "skinny FP8 E4M3 GEMM (QPN8, M<=8)");
   m.def("qpn8_blk_dequant", &skinny_qpn8_blk_dequant,

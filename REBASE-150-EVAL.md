@@ -68,3 +68,27 @@ Gesamtbild: 18 unveraendert + 36 sauber + 22 Konflikt (davon ~6 ernst)
   Obsoleszenz-Pruefungen (Punkt 3), zuletzt die schweren Baustellen
   (Punkt 4) — jeweils mit Kohaerenz-Gates. DSv4-PP5 bleibt bis zum
   Abschluss auf der 1.3.0-venv produktiv (kein Regressions-Risiko).
+
+## Phase-1-Smoke-Protokoll (2026-09-03 abends, RadixArk-FN auf Stock-1.5.0, 2x2)
+
+Drei Boot-Gates in Serie (Skript scratchpad/smoke-flashnext-150.sh):
+1. `--language-model-only` ist PFLICHT (deren SM70-Route wirft sonst
+   NotImplementedError fuer den Vision-Tower — wie unser 1.3.0-Port).
+2. `VLLM_PLE_CPU_OFFLOAD` unterstuetzt KEIN PP ("Unsupported settings:
+   PP=2") — deren PLE-Offload ist TP-only (Referenz TP4). Auf unserer
+   Kiste traegt daher die RTX-TP2-Stufe die PLE selbst
+   (VLLM_PP_LAYER_PARTITION=20,28 statt 24,24).
+3. **UPSTREAM-PP-BUG gefunden:** `hyper_connection_mixer` wird nur auf dem
+   letzten PP-Rank instanziert (nvidia/model.py ~489), aber load_weights
+   skippt seine Checkpoint-Tensoren auf den anderen Raengen nicht →
+   ValueError auf PP0. Stock-1.5.0 hat Qwen4Exp offenbar nie unter PP
+   gefahren. Minimal-Fix in der -150-venv deployt (skip_substrs +=
+   "hyper_connection_mixer." wenn nicht last_rank) — als Smoke-Fix
+   dokumentiert, gehoert in fork_patches_150 UND als Issue/PR an 1Cat
+   (Freigabe Peuqui fuer Outward noetig).
+
+Messplan-Erweiterung (Peuqui): Vergleich DREISEITIG — Stock-1.5.0 vs
+1.5.0+Patches vs FRISCHER 1.3.0+Patches-Kontrollboot desselben Modells
+(alte 32,2-Baseline vom 28.08. ist nach moe_qpn/mHC/QPN8-sm75 vermutlich
+ueberholt; FN lief damals auf MARLIN-MoE). Sprachzerfall-Test in DE UND
+EN (1Cats Testsprache — erklaert ggf., warum deren Audits nichts sehen).

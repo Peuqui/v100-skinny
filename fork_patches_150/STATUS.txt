@@ -8,10 +8,10 @@ custom_all_reduce.py AUTO_MERGED
 qwen3_5_mtp.py AUTO_MERGED
 qwen3_5.py AUTO_MERGED
 cuda.py AUTO_MERGED
-vllm_config.py KONFLIKT (manuell, siehe mergecheck)
+vllm_config.py AUFGELOEST (beide Funktionen: any-visible-Capability + deren MTP-Capture)
 kernel_config.py UNVERAENDERT (kopiert)
 linear_init.py AUTO_MERGED
-fp8.py KONFLIKT (manuell, siehe mergecheck)
+fp8.py AUFGELOEST (Import-Union; QPN8-Hunks konfliktfrei)
 compressed_tensors.py AUTO_MERGED
 deepseek_v4_nvidia_model.py AUTO_MERGED
 deepseek_v4_mtp.py UNVERAENDERT (kopiert)
@@ -30,7 +30,7 @@ dsv4_amd_rocm.py UNVERAENDERT (kopiert)
 spec_decode_dspark.py AUTO_MERGED
 flashmla_sparse.py UNVERAENDERT (kopiert)
 sm70_turbomind.py AUTO_MERGED
-dsv4_sm70_gemv.py KONFLIKT (manuell, siehe mergecheck)
+dsv4_sm70_gemv.py AUFGELOEST (worker-lokal + deren Zusatz-Checks)
 breakable_cudagraph.py UNVERAENDERT (kopiert)
 multiproc_executor.py AUTO_MERGED
 gpu_worker.py AUTO_MERGED
@@ -43,19 +43,19 @@ qwen_gdn_linear_attn_sm75.py FORK_EIGEN (kopiert)
 gdn_attn_sm75.py FORK_EIGEN (kopiert)
 qpn8_blk.py FORK_EIGEN (kopiert)
 _custom_ops.py AUTO_MERGED
-compilation.py KONFLIKT (manuell, siehe mergecheck)
+compilation.py OBSOLET (Upstream-Superset)
 scheduler.py AUTO_MERGED
-speculative.py KONFLIKT (manuell, siehe mergecheck)
+speculative.py AUFGELOEST (theirs; 50z Fork-Hunks konfliktfrei)
 attention_layer_base.py AUTO_MERGED
 abstract.py AUTO_MERGED
 qwen_gdn_linear_attn.py AUTO_MERGED
 mamba_utils.py AUTO_MERGED
 flashinfer_utils.py AUTO_MERGED
-vocab_parallel_embedding.py KONFLIKT (manuell, siehe mergecheck)
+vocab_parallel_embedding.py OBSOLET (Upstream hat FP8-int8-AllReduce uebernommen)
 weight_utils.py AUTO_MERGED
-config.py KONFLIKT (manuell, siehe mergecheck)
-interfaces.py KONFLIKT (manuell, siehe mergecheck)
-qwen3_next.py KONFLIKT (manuell, siehe mergecheck)
+config.py AUFGELOEST (theirs; 74z Fork-Hunks konfliktfrei)
+interfaces.py OBSOLET (nur redundanter Import)
+qwen3_next.py AUFGELOEST (theirs; 16z Fork-Hunks)
 registry.py AUTO_MERGED
 utils.py AUFGELOEST (Upstream hat Stacked-Shard-Feature nachgebaut; unsere renaming+shard-Durchreichung erhalten)
 interface.py AUTO_MERGED
@@ -63,17 +63,17 @@ transformers_utils_config.py AUTO_MERGED
 transformers_configs_init.py AUTO_MERGED
 qwen4_exp.py ERSETZT_DURCH_UPSTREAM (nicht kopiert)
 model_arch_config_convertor.py AUTO_MERGED
-short_conv_attn.py KONFLIKT (manuell, siehe mergecheck)
+short_conv_attn.py OBSOLET (identisch bis Import)
 backends_utils.py UNVERAENDERT (kopiert)
-kv_cache_coordinator.py KONFLIKT (manuell, siehe mergecheck)
-kv_cache_utils.py KONFLIKT (manuell, siehe mergecheck)
+kv_cache_coordinator.py OBSOLET (participating_block_sizes-Umbau ersetzt Filter)
+kv_cache_utils.py AUFGELOEST (theirs — CSA-Komplex upstream gelandet; 54z Fork-Hunks)
 sched_scheduler.py AUTO_MERGED
-single_type_kv_cache_manager.py KONFLIKT (manuell, siehe mergecheck)
-kv_cache_interface.py KONFLIKT (manuell, siehe mergecheck)
+single_type_kv_cache_manager.py AUFGELOEST (theirs KpoolTailManager; 22z Fork-Hunks)
+kv_cache_interface.py AUFGELOEST (theirs; 104z Fork-Hunks konfliktfrei)
 llm_base_proposer.py AUTO_MERGED
 spec_decode_qwen4_exp.py ERSETZT_DURCH_UPSTREAM (nicht kopiert)
 block_table.py AUTO_MERGED
-model_runner.py KONFLIKT (manuell, siehe mergecheck)
+model_runner.py OBSOLET (Upstream kennt CircularBufferSpec/slot_mapping nativ)
 worker_mamba_utils.py OBSOLET (natives 1.5.0-Qwen4Exp ersetzt unseren Gruppen-Mechanismus)
 worker_utils.py OBSOLET (Upstream loest Mixed-Page-Zeroing generischer)
 tilelang_target.py FORK_EIGEN (kopiert)

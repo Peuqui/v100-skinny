@@ -39,6 +39,21 @@ per `git diff v1.3.0 v1.5.0 -- <pfad>` klassifiziert (Repo-Klon
    gdn_attn.py (+597), short_conv_attn.py (+529), vllm_config.py (+396).
    Rohdaten: benchmarks/rebase-150-classify-2026-09-03.txt.
 
+## Probe-Merge-Ergebnis (git merge-file, 3-Wege je Datei, 2026-09-03 abends)
+
+Der Kollisionsgrad ist maschinell gemessen (Basis v1.3.0, ours =
+fork_patch, theirs = v1.5.0; benchmarks/rebase-150-mergecheck-2026-09-03
+.txt): **36 der 58 upstream-geaenderten Dateien mergen KONFLIKTFREI**
+(Upstream aenderte andere Stellen als wir — rein mechanische Arbeit).
+**22 Dateien haben echte Konflikte**, stark konzentriert:
+worker_mamba_utils (26 Hunks), gpu_model_runner (16), worker_utils (7),
+mhc_tilelang (6), utils (5), modelopt (4) — der Rest 1-3 Hunks, und
+mehrere davon sind Obsoleszenz-Gewinne statt Arbeit (mhc_triton = unser
+HEAD-Backport vs. das Original; speculative = Idempotenz-Fix evtl.
+upstream; qwen3_5/gdn-Komplex = deren eigene SM70-Weiterentwicklung).
+Gesamtbild: 18 unveraendert + 36 sauber + 22 Konflikt (davon ~6 ernst)
++ 2 geloescht (qwen4_exp durch Upstream-Paket ersetzt) + 5 fork-eigene.
+
 ## Empfohlener Fahrplan
 
 - **Phase 1 (Smoke, vor jeder Rebase-Arbeit):** Flash-Next-NVFP4-

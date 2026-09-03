@@ -1,0 +1,58 @@
+gdn_attn.py MERGE_SAUBER
+gpu_model_runner.py KONFLIKT(16 Hunks)
+modelopt.py KONFLIKT(4 Hunks)
+attention.py MERGE_SAUBER
+custom_all_reduce.py MERGE_SAUBER
+qwen3_5_mtp.py MERGE_SAUBER
+qwen3_5.py MERGE_SAUBER
+cuda.py MERGE_SAUBER
+vllm_config.py KONFLIKT(1 Hunks)
+linear_init.py MERGE_SAUBER
+fp8.py KONFLIKT(1 Hunks)
+compressed_tensors.py MERGE_SAUBER
+deepseek_v4_nvidia_model.py MERGE_SAUBER
+sparse_attn_indexer.py MERGE_SAUBER
+mhc_tilelang.py KONFLIKT(6 Hunks)
+mhc_triton.py KONFLIKT(1 Hunks)
+deepseek_v4_attention.py MERGE_SAUBER
+dsv4_fused_compress_quant_cache.py MERGE_SAUBER
+dsv4_dspark.py MERGE_SAUBER
+spec_decode_dspark.py MERGE_SAUBER
+sm70_turbomind.py MERGE_SAUBER
+dsv4_sm70_gemv.py KONFLIKT(1 Hunks)
+multiproc_executor.py MERGE_SAUBER
+gpu_worker.py MERGE_SAUBER
+parallel_state.py MERGE_SAUBER
+dsv4_compressor.py MERGE_SAUBER
+_custom_ops.py MERGE_SAUBER
+compilation.py KONFLIKT(1 Hunks)
+scheduler.py MERGE_SAUBER
+speculative.py KONFLIKT(1 Hunks)
+attention_layer_base.py MERGE_SAUBER
+abstract.py MERGE_SAUBER
+qwen_gdn_linear_attn.py MERGE_SAUBER
+mamba_utils.py MERGE_SAUBER
+flashinfer_utils.py MERGE_SAUBER
+vocab_parallel_embedding.py KONFLIKT(3 Hunks)
+weight_utils.py MERGE_SAUBER
+config.py KONFLIKT(1 Hunks)
+interfaces.py KONFLIKT(1 Hunks)
+qwen3_next.py KONFLIKT(1 Hunks)
+registry.py MERGE_SAUBER
+utils.py KONFLIKT(5 Hunks)
+interface.py MERGE_SAUBER
+transformers_utils_config.py MERGE_SAUBER
+transformers_configs_init.py MERGE_SAUBER
+model_arch_config_convertor.py MERGE_SAUBER
+short_conv_attn.py KONFLIKT(3 Hunks)
+kv_cache_coordinator.py KONFLIKT(2 Hunks)
+kv_cache_utils.py KONFLIKT(3 Hunks)
+sched_scheduler.py MERGE_SAUBER
+single_type_kv_cache_manager.py KONFLIKT(3 Hunks)
+kv_cache_interface.py KONFLIKT(3 Hunks)
+llm_base_proposer.py MERGE_SAUBER
+block_table.py MERGE_SAUBER
+model_runner.py KONFLIKT(2 Hunks)
+worker_mamba_utils.py KONFLIKT(26 Hunks)
+worker_utils.py KONFLIKT(7 Hunks)
+triton_unified_attention.py MERGE_SAUBER

@@ -1,6 +1,6 @@
 # PR-Entwurf: [Bugfix+Perf][SM70/SM75] Pre-Ampere QSA sparse launch profile
 
-**Status:** Entwurf 2026-09-03, wartet auf Freigabe Peuqui (Branch + Push + PR).
+**Status:** Antwort an valentijnvenus GEPOSTET 2026-09-03 (https://github.com/1CatAI/1Cat-vLLM/issues/441#issuecomment-5523207906); der PR selbst (Branch + Push + Einreichen) wartet weiter auf Freigabe Peuqui.
 **Kontext:** Nachgang zu Issue #441 und dem geschlossenen PR #455 (Dispatch-
 Irrtum unsererseits — upstream lädt auf CUDA `nvidia/`, nicht `amd/`).
 Maintainer yangzhuxinyzx nannte als Kandidaten: Gate `< 80` + smem-Clamp in

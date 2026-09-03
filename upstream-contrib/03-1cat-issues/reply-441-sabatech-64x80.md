@@ -1,6 +1,6 @@
 # Antwort-Entwurf für SabaTech-dev in Issue #441 (flash_attn_v100 64x80-Tile)
 
-**Status:** Entwurf 2026-09-03, wartet auf Freigabe Peuqui.
+**Status:** GEPOSTET 2026-09-03 (Freigabe Peuqui) — https://github.com/1CatAI/1Cat-vLLM/issues/441#issuecomment-5523207244
 **Quelle des Diffs:** lokaler Sparse-Clone `~/Projekte/1Cat-vLLM`, Worktree
 gegen Tag v1.3.0 (`git diff v1.3.0 -- flash-attention-v100`). Die Änderung
 ist vollständig — ein Tile-Makro-Paar in `fused_mha_forward_paged.cu`.

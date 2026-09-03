@@ -1,0 +1,29 @@
+# QSA-A/B upstream-nvidia-Datei (origin/main ca73a34) auf sm70+sm75, 2026-09-03
+# Harness: tools/qsa_nvidia_ab.py — Flash-Next TP2 (12H/1KV/D256, TOPK 2048, PAGE 16, bf16, KV 16k), Mediane aus 30 Iter.
+# Fazit: default auf sm75 = OutOfResources fuer alle Prefill-Regime (N64-Tile > 64 KiB smem);
+#        sm70-Retune erzwungen repariert nur >=512 Programme; N16@W4 laeuft ueberall und gewinnt (sm70 1,2-2,6x; sm75 1,16-1,20x).
+#        Decode-Regime (rows<=8): GB300-Tabelle bereits optimal, nicht anfassen.
+
+== V100 (sm70) ==
+device: Tesla V100-PCIE-32GB sm70
+rows=    1  default[N16/S64/W4]=  0.070ms  gb300[N16/S64/W4]=  0.071ms  sm70ret[N16/S64/W4]=  0.069ms  ours16[N16/S8/W4]=  0.232ms
+rows=    6  default[N16/S32/W4]=  0.172ms  gb300[N16/S32/W4]=  0.172ms  sm70ret[N16/S32/W4]=  0.175ms  ours16[N16/S8/W4]=  0.236ms
+rows=    8  default[N16/S32/W4]=  0.206ms  gb300[N16/S32/W4]=  0.205ms  sm70ret[N16/S32/W4]=  0.205ms  ours16[N16/S8/W4]=  0.234ms
+rows=   64  default[N64/S8/W4]=  2.505ms  gb300[N64/S8/W2]= 13.384ms  sm70ret[N64/S8/W4]=  2.399ms  ours16[N16/S8/W4]=  1.114ms
+rows=  256  default[N64/S8/W4]=  9.099ms  gb300[N64/S8/W2]= 50.619ms  sm70ret[N64/S8/W4]=  9.127ms  ours16[N16/S8/W4]=  3.540ms
+rows=  512  default[N32/S4/W4]=  8.757ms  gb300[N64/S4/W2]=100.691ms  sm70ret[N32/S4/W4]=  8.627ms  ours16[N16/S4/W4]=  6.957ms
+rows= 1024  default[N32/S1/W4]= 17.267ms  gb300[N64/S1/W2]=262.674ms  sm70ret[N32/S1/W4]= 17.178ms  ours16[N16/S1/W4]= 14.712ms
+rows= 2048  default[N32/S1/W4]= 32.936ms  gb300[N64/S1/W2]=525.237ms  sm70ret[N32/S1/W4]= 32.976ms  ours16[N16/S1/W4]= 27.390ms
+DONE
+
+== RTX 8000 (sm75) ==
+device: Quadro RTX 8000 sm75
+rows=    1  default[N16/S64/W4]=  0.085ms  gb300[N16/S64/W4]=  0.085ms  sm70ret[N16/S64/W4]=  0.083ms  ours16[N16/S8/W4]=  0.220ms
+rows=    6  default[N16/S32/W4]=  0.264ms  gb300[N16/S32/W4]=  0.264ms  sm70ret[N16/S32/W4]=  0.265ms  ours16[N16/S8/W4]=  0.348ms
+rows=    8  default[N16/S32/W4]=  0.336ms  gb300[N16/S32/W4]=  0.334ms  sm70ret[N16/S32/W4]=  0.335ms  ours16[N16/S8/W4]=  0.346ms
+rows=   64  default=FAIL(OutOfResources)  gb300=FAIL(OutOfResources)  sm70ret=FAIL(OutOfResources)  ours16[N16/S8/W4]=  2.079ms
+rows=  256  default=FAIL(OutOfResources)  gb300=FAIL(OutOfResources)  sm70ret=FAIL(OutOfResources)  ours16[N16/S8/W4]=  6.304ms
+rows=  512  default=FAIL(OutOfResources)  gb300=FAIL(OutOfResources)  sm70ret[N32/S4/W4]= 14.414ms  ours16[N16/S4/W4]= 12.285ms
+rows= 1024  default=FAIL(OutOfResources)  gb300=FAIL(OutOfResources)  sm70ret[N32/S1/W4]= 29.271ms  ours16[N16/S1/W4]= 25.228ms
+rows= 2048  default=FAIL(OutOfResources)  gb300=FAIL(OutOfResources)  sm70ret[N32/S1/W4]= 56.962ms  ours16[N16/S1/W4]= 48.745ms
+DONE

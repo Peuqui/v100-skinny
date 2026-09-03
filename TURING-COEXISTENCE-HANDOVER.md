@@ -1,5 +1,61 @@
 # Übergabe: sm75-Koexistenz im v100-skinny-Fork
 
+> **SCHNELLEINSTIEG — Stand 2026-09-03 10:15 (gilt vor allem, was darunter steht).**
+> Das Dokument ist ein chronologisches Logbuch ab 2026-09-01; die Abschnitte
+> darunter beschreiben teils überholte Zwischenstände. Für den aktuellen Stand
+> reicht dieser Block plus die letzten zwei Abschnitte („nsys-Per-Kernel-Profil"
+> und „mHC fp16 freigeschaltet").
+
+**Erreicht:** DeepSeek-V4-Flash (NVFP4, 43 Layer) läuft unter vLLM auf allen
+5 Karten (2× RTX 8000 sm75 + 3× V100 sm70) mit DSpark-Spekulation K=5,
+CUDA-Graphs (breakable capture), grouped NVFP4-MoE-Kernel und seit 10:15 dem
+freigeschalteten mHC-fp16-Kernelpfad (Upstream-Backport statt Torch-Generic).
+Kohärenz 8/8 gegen die Referenz (5/8 bitidentisch — gleiche Quote wie alle
+akzeptierten Läufe). **Essay 21,3 tok/s, Code 26,7 tok/s** (llama.cpp auf
+derselben Maschine: 21 / 38 — Prosa ist eingeholt). Start der Arbeit war 3,6.
+
+**So startet man es:** `scripts/serve-deepseek-het-graphs.sh` (Port 19998,
+Modell `dsv4-manual`). Topologie darin: `CUDA_VISIBLE_DEVICES=0,1,4,3,2`
+(RTX, V100, V100, V100, RTX), `VLLM_PP_LAYER_PARTITION=11,8,8,8,8`, Drafter
+(10,7 GiB) auf der letzten RTX, util 0.95, `--num-gpu-blocks-override 512`,
+`VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=64`, batched 64, Capture-Größen [6],
+`VLLM_DISABLE_SHARED_EXPERTS_STREAM=1`. Boot ~9 min. Kohärenzprobe:
+`scripts/deepseek_coherence.py --url http://127.0.0.1:19998 --model dsv4-manual`.
+Referenz: `results-coherence-nvidia-base.json`.
+
+**Code-Stand:** Fork-Branch `pp-mtp-merge`, committed bis `8e27308`
+(davor `dda7ad2`, `0b5093a`); danach nur Doku/Benchmark-Dateien. Alle
+Patches liegen in `fork_patches/` (Deploy über `scripts/bootstrap-sm70.sh`,
+Tabelle in `fork_patches/README.md`); der MoE-Kernel in
+`kernels/skinny_kernels.cu` (`moe_simt`, Test
+`scripts/nvfp4_skinny_moe_grouped_test.py`). Das venv `.venv-sm70-130`
+entspricht dem deployten Stand.
+
+**Nächste Hebel (Hebel 1 = mHC ist ERLEDIGT, siehe 10:15-Abschnitt):**
+1. ~~mHC-Pfad unter fp16~~ ERLEDIGT 10:15 — Upstream-Backport, 13/20 →
+   21,3/26,7 tok/s. Das nsys-Profil ist damit veraltet; vor weiteren
+   Hebeln NEU profilieren (`QnxKernelTrace` war mutmaßlich Teil des
+   Torch-Pfads und könnte mit verschwunden sein).
+2. Sparse-Decode: ROCm-Triton-Impl (`amd/rocm.py`) gegen `sm70/sparse_kernels.py`
+   messen (war 0,65 ms/Layer).
+3. MoE w13/w2 + Aktivierung in einen Launch (war ~0,3 ms).
+
+**Geschlossene Fragen (nicht neu aufrollen):** Drafter-Akzeptanz ist auf
+llama.cpp-Niveau (32 vs 28 % Prosa, 64 vs 69 % Code) — kein 8-Bit-Drafter.
+Die 21 „exakt sm70"-Weichen sind worker-lokal bzw. strukturell gegated.
+PR #455 (QSA) ist zu Recht geschlossen (Dispatch-Irrtum, siehe 06:50).
+
+**Werkzeug-Fallen:** Boots mit `setsid nohup … & disown` in EIGENEM Aufruf
+starten, in einem SEPARATEN Aufruf warten (Tool-Timeout killt sonst die
+Prozessgruppe); Prozesse über `nvidia-smi --query-compute-apps=pid` und
+`pgrep -f "[a]pi_server"` beenden, nie `pkill -f`; bei „Deadlock" zuerst
+`grep ERROR` je Worker; nach Interface-Patches an Modellklassen
+`~/.cache/vllm/modelinfos/*.json` löschen; Triton-A/B je Karte mit eigenem
+`CUDA_VISIBLE_DEVICES`; ModelOpt `weight_scale_2` ist der Dequant-
+Multiplikator; `nsys`/`ncu` liegen unter /usr/bin (Rezept: 06:50-Abschnitt).
+
+---
+
 > Stand 2026-09-01 nachts. Ziel der nächsten Instanz: den Fork so
 > ertüchtigen, dass **gemischte Karten** (2× RTX 8000 sm75 + 3× Tesla V100
 > sm70) zusammenarbeiten. Auslöser war der gescheiterte Versuch,
@@ -629,3 +685,189 @@ Essay **13,1 tok/s** (Akzeptanz 32 %), Code-Prompt **20,4 tok/s**
 (Akzeptanz 64 %), Sequenz/Liste 15–16 tok/s. Tag gesamt: 3,6 → 13–20 tok/s.
 Offen: Stufenlatenz-Trace mit grouped MoE (welcher Anteil bleibt: Attention/
 Indexer eager-Breaks, PP-Nähte), Akzeptanz bei Prosa (Q8-Drafter-Frage).
+
+### 2026-09-03 01:30 — Punkt 2 abgeschlossen: KEINE Akzeptanz-Lücke zu llama.cpp
+
+Direkter Vergleich, gleiche Prompts, temperature 0, gleicher DSpark-Drafter
+(llama.cpp: dspark-…-Q8_0.gguf = Q8 nur für Attention, Experten MXFP4 —
+also ebenfalls 4-Bit-Experten, nicht „8-Bit-Drafter"):
+
+| Prompt | llama.cpp Akzeptanz | vLLM (unser) | llama.cpp tok/s | vLLM tok/s |
+|---|---:|---:|---:|---:|
+| Essay (Prosa) | 27,9 % (208/745) | 32 % | 21,2 | 13,1 |
+| Code (CSV-Parser) | 68,8 % (231/336) | 64 % | 37,8 | 20,4 |
+
+Die 61–65 % der Performance-History waren anderer Inhalt. Der Drafter-Pfad
+ist damit auf Augenhöhe; der 8-Bit-Drafter entfällt (und passte
+speichermäßig ohnehin nicht: FP8-Experten ≈ 19 GiB auf PP4).
+**Die gesamte Restlücke ist Schrittlatenz:** llama.cpp ~110 ms je
+6-Token-Verify-Schritt (≈2,5 ms/Layer über 5 Karten), wir ~200 ms
+(≈4,2 ms/Layer; GPU-Zeit laut PP4-Sample-Trace 180 ms, Drafter 5 ms).
+Nächster Schritt: Per-Stufen-Rechenzeit unter Graphs (SEAM-Trace mit
+CUDA_LAUNCH_BLOCKING, sonst laufen die Zeitstempel der GPU voraus).
+
+### 2026-09-03 02:00 — Per-Stufen-Rechenzeit unter Graphs (CUDA_LAUNCH_BLOCKING, Boot 58)
+
+Ein Decode-Schritt (6 Token), Seam-Zeitstempel = GPU-Zeit dank LAUNCH_BLOCKING
+(leicht überhöht, ~234 statt ~200 ms): PP0 RTX 11 Layer+embed **54 ms**,
+PP1/2/3 V100 8 Layer **38/38/37 ms**, PP4 RTX 8 Layer+Drafter+Sampling
+**67 ms**. ⇒ ~4,5–4,9 ms je Layer auf ALLEN Stufen; kein Ausreißer.
+Zum Vergleich llama.cpp ~2,5 ms/Layer. Die Restlücke steckt in den Kernel-
+Kosten je Layer (MoE grouped ~1,0 ms, Rest Attention/Indexer/mHC/Norms/
+Shared-Experts). Nächster Schritt: Per-Kernel-Profil (nsys, Boot 59).
+
+### 2026-09-03 06:50 — PR #455 (QSA) von 1Cat geschlossen: Dispatch-Irrtum unsererseits
+
+Maintainer yangzhuxinyzx (und Leonccaa im Review): upstream-main dispatcht
+`qwen4_exp/__init__.py` rein nach `is_rocm()`; CUDA (auch V100/RTX) lädt
+den `nvidia/`-Baum. Die Weiche „Capability < 80 → `amd/`" ist eine
+Ergänzung UNSERES Ports (weil `nvidia/` `cute_dsl.skinny_gemm` braucht,
+das im 1.3.0-Wheel fehlt; `amd/` hat dafür einen No-Op). Unser
+`tools/qsa_bench.py` und alle Produktionslogs (32× `amd/ops/qsa`) messen
+den amd-Baum — die 19,3×/4,2× aus #441 gelten für die dort untunte
+GB300-Tabelle; `nvidia/ops/qsa.py` hat bereits einen sm70-Retune
+(4 Warps, BLOCK_N 32 ab 512 Programmen). Antwort mit Eingeständnis
+gepostet (issuecomment-5520570087). Was upstream real bleibt: Turing
+(sm75) ist vom `is_sm70`-Retune ausgenommen, und das 80-KiB-Tile kann
+auf 64 KiB nicht starten → Kandidat für einen NEUEN PR gegen
+`nvidia/ops/qsa.py` (Gate `< 80` + smem-Clamp), aber erst nach Benchmark
+N16 gegen deren N32/N64@W4 auf V100 und RTX 8000 mit der nvidia-Datei.
+Lektion: vor Upstream-PRs den Dispatch auf UPSTREAM-main verifizieren,
+nicht auf dem Fork.
+
+### 2026-09-03 07:00 — nsys-Per-Kernel-Profil (Boot 59; benchmarks/nsys-dsv4-het-2026-09-03.txt)
+
+Letzte 60 s (Essay 200 + Code 200 Token, ~160 Decode-Schritte). Die
+NCCL-SendRecv-Zeit auf den Stufen 1–4 (6–14,5 s von 60) ist Pipeline-
+Wartezeit (GPU spinnt im Recv), keine Rechenzeit. Rechenzeit je Layer und
+Schritt auf PP0 (RTX, 11 Layer, ~3,7 ms/Layer):
+
+| Kernel | ms/Layer·Schritt | Launches/Layer·Schritt |
+|---|---:|---:|
+| `skinny_nvfp4_moe_simt` (grouped MoE) | 1,3 | 2 |
+| `_sparse_attn_decode_ragged_kernel` (ROCm-Triton-Sparse-Decode) | 0,65 | 1 |
+| `reduce_kernel` (torch-Reduktionen: RMSNorm/mean/amax) | 0,43 | ~68 |
+| `Kernel2` (TileLang-generiert) | 0,32 | ~6 |
+| `elementwise_kernel` + vectorized/unrolled | 0,43 | ~125 |
+| `QnxKernelTrace` (Tracing-Artefakt, im Code nicht auffindbar) | 0,20 | ~85 |
+| cuBLAS turing_fp16 GEMMs (wo_a/wo_b dequant16 u. a.) | 0,23 | 2 |
+
+Befund: neben MoE (35 %) und Sparse-Decode (18 %) gehen ~1,2 ms/Layer in
+**~280 Kleinst-Launches** der pre-Hopper-Torch-Referenzpfade (mHC generic
+`_mhc_post_torch_generic`/`_hc_head_torch_generic`, Norms, Indexer-Glue) —
+auch im Graph kostet jeder Knoten 2–5 µs. Die TileLang-mHC-Kernel werden
+unter fp16 bewusst umgangen (`if residual.dtype == torch.float16: generic`).
+
+Hebel in Reihenfolge des Ertrags:
+1. mHC-Pfad fusionieren (ein Triton-Kernel für post+pre statt ~30 Torch-Ops
+   je Layer) oder die TileLang-Kernel für fp16 freischalten — ~0,8 ms/Layer.
+2. `QnxKernelTrace` identifizieren/abschalten — 0,2 ms/Layer geschenkt.
+3. Sparse-Decode-Kernel: ROCm-Triton-Impl gegen die sm70-Triton-Sparse-Kernel
+   (`sm70/sparse_kernels.py`, jetzt worker-lokal aktiv) messen — 0,65 ms.
+4. MoE: w13/w2-Launch fusionieren (Aktivierung in-Kernel) — ~0,3 ms.
+Ziel ~2,5 ms/Layer (llama.cpp-Niveau) ⇒ ~110 ms/Schritt ⇒ ~22 tok/s Prosa,
+~40 tok/s Code.
+
+Endzustand 07:00: GPUs frei, kein Server. Fork: alles committed bis
+8e27308, danach nur Doku/Benchmark-Dateien (uncommitted).
+
+### 2026-09-03 10:15 — Hebel 1 ERLEDIGT: mHC fp16 freigeschaltet (Upstream-Backport) — 21,3/26,7 tok/s
+
+**Kernbefund:** Der Fork-Patch `mhc_tilelang.py` stammte aus der Zeit vor dem
+1.3.0-Rebase („TileLang-Kernel sind hart bf16") und bog an allen vier Public-
+Entries fp16 in die Torch-Generic-Pfade ab — dabei sind die TileLang-Kernel
+im 1.3.0-Wheel längst dtype-parametrisiert (`use_fp16`), und Upstream-HEAD
+(187b932) hat zusätzlich eine reine sm70-Triton-Dekoderoute samt FP32-Stage
+(`docs/design/sm70_deepseek_v4_mhc_decode.md`, dort bitweise verifiziert,
++7 % TPOT auf V100). Die Bypässe maskierten das alles.
+
+**Umsetzung (importiert, nicht nachgebaut):** `fork_patches/mhc_tilelang.py`
+neu = Upstream-HEAD-Datei + Fork-Block (Torch-Referenzen + `mhc_post_fp32`
+für die DSpark-Aux-Extraktion), Bypässe raus. NEU `fork_patches/mhc_triton.py`
+= Upstream-HEAD `kernels/mhc/triton.py` (sm70_mhc_prenorm_staging /
+sm70_mhc_post / sm70_mhc_pre_norm_from_staging; das Wheel hat nur den
+partiellen hc_head_triton). Drei nötige Anpassungen:
+1. Capability-Checks worker-lokal (`torch.cuda.get_device_capability(
+   torch.cuda.current_device())`) statt Device 0 — sonst verlieren die
+   V100-Stufen im Het-Boot ihre sm70-Route (bekannte Device-0-Falle).
+2. M=1: Upstream verlangt hart den nativen Op `_C.sm70_glm_mhc_pre_norm_out`
+   (im 1.3.0-Wheel nicht vorhanden, kam nach dem Wheel-Build). Fork: M=1
+   läuft denselben Triton-Finalstage wie M>1 (Grid (1,), gleiche Mathematik).
+3. hc_head: TileLang-Codegen CRASHT auf pre-Ampere (sm70 UND sm75 verifiziert,
+   tvm-ffi-Exception segfaultet beim Traceback-Rendern) → auf < sm80 bleibt
+   die Torch-Referenz. Kostet nichts: läuft 1× pro Step auf der letzten Stufe.
+
+**Werkzeug-Falle (neu):** TileLang-JIT außerhalb des Serve-Skripts braucht
+`CUDA_HOME=…/.cuda-nvcc-deb/usr/local/cuda-12.8` — das System-nvcc (12.0)
+bricht bei sm70 an bf16-Template-Intrinsics in tl_templates/cuda/common.h.
+Und: Exceptions aus dem tvm-ffi-Callback (Compile-Fehler) reißen den Prozess
+per Segfault — Kernel einzeln in Repros testen, stdout ungepuffert.
+
+**Verifikation:** A/B gegen die Torch-Referenz auf V100 UND RTX 8000, alle
+Entries (fused/post/pre/broadcast/hc_head), M=1/6/64: max rel ≤ 4e-4
+(fp16-Rauschen), keine NaN. Server Boot 60 (boot-dsv4-k5-mhc.out): Kohärenz
+8/8, davon 5/8 bitidentisch — exakt die Quote der akzeptierten Läufe
+(grouped, graphs). Akzeptanz gesamt 51 % (1002/1960 über Kohärenz+Bench,
+Positionsprofil 86/67/45/36 %). **Essay 21,3 tok/s (war 13,1), Code 26,7
+(war 20,4)**; llama.cpp-Referenz 21/38 — Prosa eingeholt.
+
+**Deploy:** Beide Dateien nach site-packages kopiert; bootstrap-sm70.sh um
+`deploy mhc_triton.py` ergänzt; fork_patches/README.md um beide Zeilen
+ergänzt (Tabelle war unvollständig). Alles UNCOMMITTED.
+
+**Offen/nächstes:** nsys-Profil neu ziehen (das 07:00-Profil ist überholt;
+`QnxKernelTrace` war vermutlich Teil des Torch-mHC-Pfads), dann Hebel
+Sparse-Decode-A/B und MoE-w13/w2-Fusion neu bewerten. Code (26,7 vs 38)
+bleibt das Ziel.
+
+### 2026-09-03 10:20 — Re-Profil nach mHC-Backport (Boot 61; benchmarks/nsys-dsv4-het-mhc-2026-09-03.txt)
+
+nsys via `nsys launch --session-new=… --trace=cuda --cuda-graph-trace=node
+--trace-fork-before-exec=true bash scripts/serve-…sh`, dann `nsys start/stop`
+um das Benchfenster (Rezept jetzt reproduzierbar; qdstrm →
+/usr/lib/nsight-systems/host-linux-x64/QdstrmImporter → `nsys export --type
+sqlite` → scratchpad/nsys_kernsum.py). Unter Profiler: 19,7/24,6 tok/s.
+
+**mHC-Hebel bestätigt abgeräumt:** `QnxKernelTrace` ist KOMPLETT verschwunden
+(war also Teil des Torch-mHC-Pfads), `reduce_kernel`/`elementwise` auf den
+V100-Stufen um Größenordnungen runter (91k → 21k Launches). mHC kostet je
+V100-Layer·Step jetzt ~0,1 ms (pre_norm 0,04×2 + dot-stage 0,01 + Rest)
+statt ~0,8. Auf den RTX-Stufen: `mhc_fused_tilelang_kernel` 0,04 ms/Call.
+
+**Neue Rangliste Rechenzeit je V100-Layer·Step (346 Steps im Fenster):**
+MoE grouped 1,04 ms > Sparse-Decode 0,77 ms > wo-GEMMs 0,18 >
+skinny_fp8_qpn8 0,14 > Kernel2 0,08 > mHC 0,1 > Elementwise-Rest ~0,13
+⇒ ~2,5 ms Compute/Layer — das llama.cpp-Niveau ist auf Kernelebene
+praktisch erreicht; die verbleibende Tempolücke bei Code (26,7 vs 38)
+steckt jetzt in Schrittfixkosten (Drafter+Sampling auf PP4, PP-Nähte),
+nicht mehr in den Layer-Kernels. Hebel-Reihenfolge unverändert sinnvoll:
+MoE-w13/w2-Fusion (~0,3), Sparse-Decode-A/B (~0,2–0,3 realistisch).
+
+Endzustand 10:25: GPUs frei, kein Server. mHC-Backport + Doku UNCOMMITTED.
+
+### 2026-09-03 11:00 — QSA-PR-Gate ERFÜLLT: N16 gewinnt auf beiden Archs, sm75 ist upstream sogar KAPUTT
+
+Anlass: SabaTech-dev-Kommentar in #441 (haben unsere QSA-Tiles adoptiert,
+wollen das flash_attn_v100-64x80-Diff) + valentijnvenus bittet um PR.
+Das Benchmark-Gate aus dem 06:50-Abschnitt (N16 vs N32/N64@W4 mit der
+NVIDIA-Datei auf beiden Karten) ist jetzt erledigt: Harness
+`tools/qsa_nvidia_ab.py` lädt die origin/main-Datei (ca73a34) per importlib
+und übersteuert NUR `_qsa_sparse_launch_profile` je Messpunkt; Ergebnisse
+`benchmarks/qsa-nvidia-ab-2026-09-03.txt`. Kernbefunde:
+1. **sm75-Korrektheitsbug upstream:** GB300-Tabelle wählt N64 für alle
+   Prefill-Regime; bei D=256 → Triton OutOfResources auf Turings 64 KiB —
+   der Kernel startet auf sm75 GAR NICHT (alle rows ≥ 64). Deren
+   sm70-Retune, auf sm75 erzwungen, repariert nur ≥512 Programme.
+2. **N16@W4 läuft überall und gewinnt:** sm70 1,2–2,6×, sm75 1,16–1,20×
+   gegen das beste lauffähige Upstream-Profil, Numerik identisch.
+3. **Decode-Kleinstprofile nicht anfassen** (GB300 dort bereits optimal;
+   unser S8 wäre bei rows=1 3× langsamer).
+PR-Entwurf (Patch, Zahlen, Maintainer-Frage N32-vs-N16) liegt in
+`upstream-contrib/03-1cat-issues/pr-qsa-pre-ampere-tiles.md`; Antwort-
+Entwurf für SabaTech (64x80-Diff, sauber aus `git diff v1.3.0` im
+1Cat-Clone extrahiert) in `reply-441-sabatech-64x80.md`. BEIDES wartet
+auf Freigabe Peuqui (Posten/Branch/Push = outward-facing).
+
+Endzustand 11:00: GPUs frei, kein Server. Uncommitted: mHC-Backport
+(fork_patches + bootstrap + README), tools/qsa_nvidia_ab.py, zwei
+Benchmark-Dateien, zwei upstream-contrib-Entwürfe, Handover.

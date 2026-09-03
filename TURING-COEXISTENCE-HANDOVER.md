@@ -1301,3 +1301,16 @@ Ertrag real geschaetzt einstellige ms, Aufwand hoch. FAZIT: das
 Kernel-/Schrittlatenz-Kapitel fuer DSv4-PP5 ist AUSOPTIMIERT; weitere
 Tempoarbeit lohnt erst wieder bei Flash-Next (2x2-Gitter steht bereit,
 MERGE-Handover Session 4) bzw. nach 1Cat-Antwort (Port-PR).
+
+### 2026-09-03 21:00 — Branch-/Veroeffentlichungspolitik (Peuqui-Entscheid)
+
+Arbeitsmodus ab jetzt: **Branch `work`** (taeglicher Stand, Push auf fork
+erlaubt — eigener Fork, Push-Freigabe pauschal fuer work). `pp-mtp-merge`
+ist EINGEFROREN auf dem letzten kuratierten Stand (3552c6e) und wird nur
+noch auf Peuqui-Freigabe aktualisiert; **PR dnv2003#7 ist auf DRAFT**
+(wuchs vorher mit jedem Push live mit — Befund 20:30).
+Veroeffentlichung an 1Cat als PIPELINE fokussierter Pakete (Peuqui-GO):
+(1) Bugfix-Serie "Qwen4Exp unter PP" (hyper_connection_mixer-Loader u.a.),
+(2) moe_qpn-Port (laeuft, #441-Antwort abwarten), (3) PP-Enablement/PLE-
+Kaskade nach 1.5.0-Rebase, (4) sm75/Device-0-Serie. Jedes Paket einzeln
+wasserdicht (Tests, A/B, Kohaerenz); kein Big-Bang-PR.

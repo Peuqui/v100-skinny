@@ -3061,11 +3061,20 @@ class GPUModelRunner(
         rather than shared by every mamba layer.
         """
         if self._mamba_state_copy_funcs is None:
-            mamba_groups = mamba_utils.get_mamba_groups(self.kv_cache_config)
-            mamba_types = {spec.mamba_type for spec in mamba_groups}
-            copy_funcs = self.model.get_mamba_state_copy_funcs(mamba_types)
-            mamba_utils.validate_mamba_state_copy_funcs(mamba_groups, copy_funcs)
-            self._mamba_state_copy_funcs = copy_funcs
+            # Diese Stelle war stehengebliebener Upstream-Code: dort liefert
+            # get_mamba_groups ein dict[MambaSpec, list[int]], hier ein
+            # (group_ids, spec)-Tupel — das Iterieren ergab also Listen statt
+            # Specs (AttributeError 'list' object has no attribute
+            # 'mamba_type'). get_mamba_types ist der zur Fork-Signatur
+            # passende Helfer. Die frueher hier aufgerufene Validierung gibt
+            # es nicht mehr; sie sitzt in _get_copy_funcs_for_group und
+            # prueft pro Gruppe zur Nutzungszeit. Erreichbar ist der Zweig
+            # nur ueber mamba_cache_mode == "align", also nur mit
+            # eingeschaltetem Prefix-Caching — deshalb fiel er nie auf.
+            mamba_types = mamba_utils.get_mamba_types(self.kv_cache_config)
+            self._mamba_state_copy_funcs = self.model.get_mamba_state_copy_funcs(
+                mamba_types
+            )
         return self._mamba_state_copy_funcs
 
     def _get_mamba_bufs(self) -> mamba_utils.MambaBuffers:

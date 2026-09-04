@@ -107,3 +107,66 @@ als Basis + unsere PP/PLE-Kaskade-Deltas (Kern von PR dnv2003#7) darauf
 portieren. Der dreiseitige Vergleich wird zweiseitig (Stock disqualifiziert
 sich fuer PP); naechster Messpunkt: FRISCHER 1.3.0+Patches-Kontrollboot
 (RadixArk roh, k=0) als aktuelle Baseline statt der 32,2 vom 28.08.
+
+## Rebase-Nachlese: toter Align-Pfad in gpu_model_runner (2026-09-04, GEFIXT)
+
+Beim Rebase blieb `_get_mamba_state_copy_funcs` als Upstream-Code
+stehen, obwohl der Fork die Vertraege darunter geaendert hat:
+
+| | Upstream 1.5.0 | dieser Fork |
+|---|---|---|
+| `mamba_utils.get_mamba_groups` | `dict[MambaSpec, list[int]]` | `tuple[list[int], MambaSpec]` |
+| `validate_mamba_state_copy_funcs` | vorhanden | entfernt, Pruefung wanderte in `_get_copy_funcs_for_group` (pro Gruppe, zur Nutzungszeit) |
+| `get_mamba_types` | fehlt | vorhanden, genau fuer diesen Aufruf |
+
+Der stehengebliebene Aufrufer iterierte das Tupel, als waere es eine
+Spec-Liste — `AttributeError: 'list' object has no attribute
+'mamba_type'`, EngineCore tot beim ersten Request. Dahinter haette
+sofort der zweite Defekt gewartet: der Aufruf des im Fork nicht mehr
+existierenden Validators.
+
+Warum es niemandem auffiel: Der Zweig ist nur ueber
+`mamba_cache_mode == "align"` erreichbar, und den nimmt vLLM nur bei
+eingeschaltetem Prefix-Caching. 1.5.0 schaltet Prefix-Caching fuer
+Hybrid-Modelle per Default AB (`config/model.py`,
+`is_prefix_caching_supported`: Hybride seien "still experimental") —
+1.3.0 fuhr es an. Der gesamte Align-Pfad war damit seit dem Rebase
+unerreichbar und ungetestet.
+
+FIX: `get_mamba_types(self.kv_cache_config)` statt der Handarbeit auf
+dem Tupel; der Validator-Aufruf entfaellt ersatzlos, weil
+`_get_copy_funcs_for_group` dieselbe Zusicherung pro Gruppe prueft.
+
+VERIFIZIERT 2026-09-04, 27B NVFP4 TP1 auf RTX 8000, greedy (T=0, fester
+Seed), 1425-Token-Prompt: Cache trifft (784 Token), und die Antworten
+sind kalt, mit vollem Cache-Treffer und bei Teiltreffer zeichengleich.
+Null EngineCore-Fehler.
+
+LEHRE FUER DEN NAECHSTEN REBASE: Geaenderte Helfer-Signaturen in
+`mamba_utils` ziehen Aufrufer in `gpu_model_runner` nach sich, die der
+3-Wege-Merge NICHT anfasst, weil ihr Text auf beiden Seiten identisch
+ist. Pfade hinter Default-off-Schaltern (hier Prefix-Caching) fallen
+durch jedes Boot-Gate — sie brauchen einen eigenen Smoke-Lauf mit
+eingeschaltetem Schalter.
+
+### Nachtrag: Align-Pfad MIT spekulativem Dekodieren verifiziert
+
+Der erste Korrektheitstest lief ohne Spekulation, liess also den Zweig
+`with_postprocess_align = (speculative_config is not None and
+is_hybrid)` ungeprueft. Nachgeholt 2026-09-04 mit der von der
+Kalibration selbst gebauten Kommandozeile (`VllmSpec.build_cmd`,
+k=4, `--speculative-config method=mtp`), 27B NVFP4 TP1, greedy:
+
+| Prompt | Bloecke a 816 | cached | Antwort |
+|---|---|---|---|
+| 1.345 Tok | 1 | 0 | identisch |
+| 6.925 Tok | 8 | 5.712 (= 7 x 816) | identisch |
+
+Kein Absturz, keine Zustandskorruption, null EngineCore-Fehler.
+Wiederholter Aufruf 21,1 s -> 4,5 s.
+
+WICHTIG FUER TESTS: Spekulation verschiebt die Blockgeometrie (816
+statt 784 Token), und gecacht werden nur ABGESCHLOSSENE Bloecke vor dem
+laufenden. Ein Prompt mit nur einem vollen Block liefert deshalb null
+Treffer und sieht wie ein kaputter Cache aus — er ist bloss zu kurz.
+Messungen brauchen mehrere Bloecke.

@@ -1761,3 +1761,29 @@ der vLLM-Version, und gelten daher weiter:
   den EngineCore-Tod ueberlebt und der Watchdog nur `proc.poll()` prueft:
   20 min Timeout statt Retry. In AIfred gefixt (Log-Signaturen in der
   Warteschleife, s. dortiges Repo, uncommitted->committed 04.09.).
+
+### 2026-09-04 10:15 — DSv4-Gegenprobe TurboMind: GRUEN, Env-Konflikt aufgeloest
+
+Offene Frage vor dem Schwenk war: Flash-Next BRAUCHT auf 1.5.0
+`VLLM_SM70_NVFP4_TURBOMIND=1` + `QUANT_BACKEND=auto` (mit marlin wirft
+1.5.0 `NotImplementedError: ModelOpt NVFP4 MoE on SM70 requires the
+TurboMind backend`), DSv4 war aber nur mit marlin getestet — und die
+Runtime-SSOT kennt nur EINEN Env-Satz fuer alle Modelle.
+
+Gegenprobe gefahren (Produktionsrezept, venv-150, nur TURBOMIND=1 +
+QUANT_BACKEND=auto statt 0/marlin): **Kohaerenz 8/8**, Tempo essay 27,5 /
+code 28,0 tok/s — gegen 27,4/28,0 der marlin-Variante also im Rauschen.
+DSv4 nutzt den Skinny-NVFP4-MoE-Pfad (VLLM_SKINNY_NVFP4=1), der
+ModelOpt-RoutedExperts-Gate greift dort gar nicht; der QUANT_BACKEND
+betrifft nur die Linear-Route, und dort ist TurboMind gleichwertig.
+
+FAZIT: einheitlicher Env-Satz TURBOMIND=1 / QUANT_BACKEND=auto ist fuer
+BEIDE Modelle tragfaehig. Kein modellabhaengiger Sonderfall noetig, die
+Runtime-SSOT bleibt eine Wahrheit. Damit ist die letzte technische
+Blockade des -150-Schwenks weg; offen sind nur noch der
+AIfred-Persona-Sprachtest (Peuqui) und das Schwenk-Go.
+
+Die Env-Umstellung selbst gehoert BEWUSST ins Schwenk-Paket, nicht
+davor: auf -130 ist TurboMind/auto ungetestet, und solange der Schalter
+`~/vllm/venv` auf 130 zeigt, liefe die Kalibration sonst in eine
+ungepruefte Kombination.

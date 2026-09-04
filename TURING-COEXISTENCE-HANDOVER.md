@@ -22,16 +22,28 @@
 > gdn_attn ist reine -1,4ms-Optimierung). Wer
 > deploy-fork-patches-150.sh neu laeuft, stellt die Patches wieder her.
 >
-> **ERLEDIGT 2026-09-04: K>=2-Spec-Degeneration GEFIXT** — Taeter war
-> der E5-Metadata-Cache (default AN): `_e5_fast_prepare_v2` replizierte
-> den 1.3.0-Accepted-Sync (liest input_batch-Tensoren), 1.5.0 hat den
-> Producer-Kontrakt auf runner-owned Snapshots + Row-Map umgestellt
-> (`_sync_mamba_accepted_token_state`); in E5-Hit-Ketten froren die
-> Accept-Counts ein -> GDN-States rollten falsch. Fix: eine Zeile,
-> E5-Pfad ruft jetzt dieselbe _sync wie die Full-Runde. Details im
-> 09-04-Abschnitt. WICHTIG: Kohaerenzproben bei Instruct-Modellen NUR
-> via /v1/chat mit reasoning-Feld und genug max_tokens
-> (Raw-Completions = Phantom-Salat).
+> **NACHT 2026-09-04 — ALLE DREI GATES AUF -150 GRUEN** (Details in
+> den 09-04-Abschnitten unten, Commits 37d8794..0887eeb auf work):
+> 1. K>=2-Spec-Degeneration GEFIXT (E5-Cache sprach das 1.3.0-
+>    Accepted-Protokoll; eine Zeile: _sync_mamba_accepted_token_state).
+> 2. FA2-Trio + Drop-in-.so nach -150 (Wheel-FA2 unveraendert, 1:1).
+> 3. 27B-Gate: 11 Gates, K=7 3/3, RTX waehlt FLASH_ATTN; Tempo
+>    methodikgleich auf -130-Niveau (die 85er-Alt-Latte ist
+>    Vor-Rebase-Generation, auch auf heutigem -130 unerreichbar).
+> 4. DSv4-PP5-Gate: Kohaerenz 8/8, essay 27,4/code 28,0 (Prod
+>    25,2/28,1) — nur first_spec-Drift zu fixen.
+> 5. FN-Gate: PLE-Split-Port + Turing-GDN-Weiche + QSA-#469-Backport
+>    -> 37,0 tok/s (+15 % ueber 32,2), Zerfalls-Sonde DE+EN sauber,
+>    Coandă beidsprachig. Betriebspunkt: 24,24 + PLE_HOST_GIB=6 +
+>    TURBOMIND=1 QUANT_BACKEND=auto.
+> 6. 27B-Regressionsboot NACH allen FN-Fixes: unveraendert gruen.
+>
+> **VOR DEM PRODUKTIONS-SCHWENK fehlen nur noch:** (a) AIfred-Persona-
+> Sprachzerfalls-Test (inject-API, braucht Peuqui), (b) Peuquis
+> Schwenk-Go. Danach Upstream-Pakete schnueren (PLE-Split, QSA-Wheel-
+> Delta, first_spec, PLE-PP-Gates = Paket 3; E5-Fix ist forkintern).
+> WICHTIG: Kohaerenzproben bei Instruct-Modellen NUR via /v1/chat mit
+> reasoning-Feld und genug max_tokens (Raw-Completions = Phantom-Salat).
 >
 > **Upstream-Faeden (taeglicher Check):** #441 (MoE-Angebot, offen),
 > #479 (PP-Issue, offen), **#485 (PR Paket 1a, eingereicht 01:50)**.
@@ -39,11 +51,11 @@
 > sonst Pauschalfreigabe (Tests/Installs/Downloads). Branch `work` =
 > Arbeit (Push frei), `pp-mtp-merge` eingefroren (PR dnv2003#7 = Draft).
 >
-> **Danach in Reihenfolge:** FA2-Drop-in-Build nach -150 portieren
-> (SM75-ENABLEMENT-PLAN.md) → FN-Gate auf 150 (RadixArk liegt im
-> HF-Cache; Sprachzerfall-Test DE+EN ueber AIfred-Persona!) →
-> DSv4-PP5-Gate auf 150 (gegen 113 ms/Step) → erst dann Produktions-
-> Schwenk. Ganz hinten: heterogenes PP3 (Peuqui: allerletzter Punkt).
+> **Danach in Reihenfolge (Stand nach der Nacht 04.09.: alles
+> erledigt bis auf den Schwenk):** ~~FA2-Drop-in~~ ERLEDIGT →
+> ~~FN-Gate~~ ERLEDIGT (nur der Persona-Sprachtest via AIfred wartet
+> auf Peuqui) → ~~DSv4-PP5-Gate~~ ERLEDIGT → Produktions-Schwenk
+> (Peuqui-Go). Ganz hinten: heterogenes PP3 (allerletzter Punkt).
 
 ---
 

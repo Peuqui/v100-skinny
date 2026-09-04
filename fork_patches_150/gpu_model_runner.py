@@ -14025,6 +14025,9 @@ class GPUModelRunner(
         if (
             self.speculative_config
             and self.speculative_config.uses_extract_hidden_states()
+            # PP-Fix: der Drafter lebt nur auf der letzten Stufe; ohne den
+            # Rank-Guard wird aus dem AttributeError nur ein AssertionError.
+            and get_pp_group().is_last_rank
         ):
             assert isinstance(self.drafter, ExtractHiddenStatesProposer)
             # validate all draft model layers belong to the same kv cache

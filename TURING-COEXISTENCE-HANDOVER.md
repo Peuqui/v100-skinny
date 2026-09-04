@@ -13,14 +13,12 @@
 > **Baustelle: 1.5.0-Rebase** (`.venv-sm70-150`, fork_patches_150/ +
 > STATUS.txt + DEPLOY-TARGETS.txt, Deploy via
 > scripts/deploy-fork-patches-150.sh). 27B-Gate: Boots gruen, jetzt
-> AUCH K=7 voll kohaerent (K>=2-Regression GEFIXT, s.u.); Tempo-Zahlen
-> im 09-04-Abschnitt (FA2-Trio-Luecke bleibt). **VENV-IST-ZUSTAND
-> weicht vom Skript-Deploy ab:** nach der Bisektion liegen gdn_attn.py
-> und llm_base_proposer.py bewusst auf STOCK (.pre_deploy
-> zurueckkopiert; beide beim 27B unschuldig — llm_base_proposer-Stock
-> ist bis auf einen Qwen4Exp-Listeneintrag identisch mit ours,
-> gdn_attn ist reine -1,4ms-Optimierung). Wer
-> deploy-fork-patches-150.sh neu laeuft, stellt die Patches wieder her.
+> AUCH K=7 voll kohaerent (K>=2-Regression GEFIXT, s.u.).
+> **VENV-IST-ZUSTAND (04.09. 11:20): VOLLSTAENDIG — 79 von 79
+> Deploy-Zielen identisch zu fork_patches_150.** Die waehrend der
+> Bisektion zurueckgestellten gdn_attn.py und llm_base_proposer.py sind
+> wieder drin (beide waren freigesprochen, die Ursache lag im
+> E5-Cache). Aktiv ist `~/vllm/venv -> venv-150`.
 >
 > **NACHT 2026-09-04 — ALLE DREI GATES AUF -150 GRUEN** (Details in
 > den 09-04-Abschnitten unten, Commits 37d8794..0887eeb auf work):

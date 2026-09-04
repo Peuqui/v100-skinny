@@ -1,5 +1,5 @@
 export CUDA_DEVICE_ORDER=PCI_BUS_ID
-export CUDA_HOME=/home/mp/Projekte/v100-skinny/.cuda-nvcc-deb/usr/local/cuda-12.8
+export CUDA_HOME=/home/mp/vllm/cuda
 export TORCH_CUDA_ARCH_LIST=7.0
 export VLLM_SM70_E5_CACHE=0 VLLM_SM70_NVFP4_TURBOMIND=0 VLLM_SM70_QUANT_BACKEND=marlin
 export VLLM_SKINNY_NVFP4=1 VLLM_SKINNY_QPN=1 VLLM_SKINNY_QPN2=1
@@ -15,7 +15,7 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 export NCCL_P2P_DISABLE=1
 export CUDA_VISIBLE_DEVICES=0,1,4,3,2
 export VLLM_PP_LAYER_PARTITION=11,8,8,8,8
-exec /home/mp/Projekte/v100-skinny/.venv-sm70-130/bin/python \
+exec /home/mp/vllm/venv/bin/python \
   -m vllm.entrypoints.openai.api_server \
   --model /home/mp/models/DeepSeek-V4-Flash-nvfp4-DSpark \
   --served-model-name dsv4-manual --trust-remote-code --dtype half \

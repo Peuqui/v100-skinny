@@ -86,3 +86,6 @@ fa_utils.py vllm/v1/attention/backends/fa_utils.py
 qwen4_exp_model_state.py vllm/models/qwen4_exp/nvidia/model_state.py
 qwen4_exp_model_state.py vllm/models/qwen4_exp/amd/model_state.py
 ple_offload_worker.py vllm/v1/ple_offload/worker.py
+qwen4_exp_common_ple.py vllm/models/qwen4_exp/common/ple.py
+qwen4_exp_ple_layer_nvidia.py vllm/models/qwen4_exp/nvidia/ple_layer.py
+qwen4_exp_ops_qsa.py vllm/models/qwen4_exp/nvidia/ops/qsa.py

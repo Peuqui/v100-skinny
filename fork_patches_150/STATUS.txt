@@ -84,3 +84,5 @@ flash_attn_interface.py PORTIERT 2026-09-04 (worker-lokale Capability >=7.5; Whe
 fa_utils.py PORTIERT 2026-09-04 (worker-lokale FA-Version statt Device-0; Basis 1.5.0-Wheel + unser Block; Drop-in _vllm_fa2_C.abi3.so aus build-sm75 in -150 deployed, Original als .pre_deploy)
 qwen4_exp_model_state.py NEU 2026-09-04 (zweites 1.5.0-PLE-PP-Verbot -> Partition-Pruefung wie im Runner; nvidia+amd identisch, 2 Deploy-Ziele)
 ple_offload_worker.py NEU 2026-09-04 (Offload-Kind erbt VLLM_PP_LAYER_PARTITION nicht — isolierte PP1-Welt)
+qwen4_exp_common_ple.py NEU 2026-09-04 (Split-Helfer aus 1.3.0-fork qwen4_exp_models/common/ple.py — natives 1.5.0-File ist exaktes Subset)
+qwen4_exp_ple_layer_nvidia.py NEU 2026-09-04 (PinnedHostEmbedding auf Split-Placement VRAM+Host, lazy materialize, Doppel-Gather; _should_use_pinned_host_ple worker-lokal + pre-Ampere; amd-Baum unangetastet, hat kein PinnedHost)

@@ -528,6 +528,16 @@ class CircularBufferSpec(AttentionSpec):
 
     head_size_v: int = 0
 
+    def is_uniform_with_collection(
+        self, kv_cache_specs: dict[str, "KVCacheSpec"]
+    ) -> bool:
+        # 1.3.0 semantics: the ring group is uniform when every member is a
+        # ring spec (block sizes are pre-checked by is_uniform_type).
+        return all(
+            isinstance(spec, CircularBufferSpec)
+            for spec in kv_cache_specs.values()
+        )
+
     @property
     def real_page_size_bytes(self) -> int:
         return (
@@ -794,10 +804,6 @@ class UniformTypeKVCacheSpecs(KVCacheSpec):
                 isinstance(spec, SlidingWindowMLASpec)
                 and spec.sliding_window == one_spec.sliding_window
                 for spec in kv_cache_specs.values()
-            )
-        elif isinstance(one_spec, CircularBufferSpec):
-            return all(
-                isinstance(spec, CircularBufferSpec) for spec in kv_cache_specs.values()
             )
         elif isinstance(one_spec, FullAttentionSpec):
             return all(

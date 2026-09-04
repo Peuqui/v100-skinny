@@ -1769,6 +1769,13 @@ class QwenGatedDeltaNetAttentionForkCall(QwenGatedDeltaNetAttention):
     def forward(  # type: ignore[override]
         self,
         hidden_states: torch.Tensor,
-        output: torch.Tensor,
-    ) -> None:
-        output.copy_(self._forward_method(hidden_states))
+        output: torch.Tensor | None = None,
+    ) -> torch.Tensor | None:
+        # Fork extension (v100-skinny): the 1.5.0 Qwen4Exp decoder also uses
+        # the output-kwarg convention, but passes output=None on the fused
+        # direct path and consumes the RETURN value there. Serve both.
+        result = self._forward_method(hidden_states)
+        if output is None:
+            return result
+        output.copy_(result)
+        return None

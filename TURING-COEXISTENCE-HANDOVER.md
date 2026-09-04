@@ -1631,3 +1631,49 @@ Produktionswerten trotzdem sauber durch.
 Offen vor dem Produktions-Schwenk: FN-PLE-Split-Port (Paket 3) und
 der AIfred-Persona-Sprachtest (braucht Peuqui). Der Schwenk selbst
 ist Peuqui-Entscheid.
+
+### 2026-09-04 nachts (spaeter) — FN-Gate auf -150 KOMPLETT GRUEN: PLE-Split-Port fertig, 37,0 tok/s
+
+Der PLE-Split-Port ist in DERSELBEN Nacht gelungen — der Schluessel:
+1Cat hat unseren UVA-Pinned-FP8-Ansatz upstream schon uebernommen
+(`Qwen4ExpPinnedHostEmbedding` + `qwen4_exp_ple_pinned_gather`-Triton-
+Op); es fehlte nur das SPLIT-Placement. Portiert (kopieren statt
+erfinden, Quellen: 1.3.0-fork qwen4_exp_models):
+1. `qwen4_exp_common_ple.py`: Fork-common/ple.py 1:1 (natives File war
+   exaktes Subset) — plan_ple_placement, copy_split, auto-Budget.
+2. `qwen4_exp_ple_layer_nvidia.py`: PinnedHostEmbedding auf Split
+   umgebaut — lazy materialize beim ersten Checkpoint-Shard (dann ist
+   die Stufe voll alloziert und das Auto-Budget messbar), Device-Teil
+   + pinned Host-Teil, Doppel-Gather ueber den vorhandenen Triton-Op
+   (UVA-Ptr fuer Host, gecachter data_ptr fuer Device — data_ptr() im
+   Forward bricht Dynamo: DataPtrVariable), Ids-Split nach Fork-Regel
+   (beide Gathers laufen immer, kein Sync). Aktivierung
+   `_should_use_pinned_host_ple` worker-lokal + pre-Ampere (<80),
+   statt Device-0-cap==70 (#412-Klasse).
+3. Turing-GDN-Weiche in `qwen4_exp_nvidia_model.py` (aus qwen3_5.py /
+   fork-amd-model.py kopiert): RTX-Worker instanziieren das
+   sm75-GDN-Modul (Triton/FLA-Prefill) statt des TileLang-Kernels
+   (86016 B smem > 64 KiB Turing). Dazu ForkCall-Adapter im
+   sm75-Modul auf beide Call-Konventionen erweitert (output=None +
+   Return fuer den 1.5.0-Qwen4Exp-Decoder).
+4. `qwen4_exp_ops_qsa.py`: #469-Launch-Profile-Backport (BLOCK_N 16
+   pre-Ampere) — der gemergte Upstream-Fix ist im 1.5.0-Wheel noch
+   nicht enthalten; ohne ihn stirbt der QSA-Langkontext-Prefill auf
+   der RTX-Stufe (OutOfResources 81920 > 65536).
+Ausserdem gefixt: kv_cache_interface `is_uniform_with_collection`
+fehlte auf CircularBufferSpec (Merge-Artefakt: theirs' KpoolTail-
+Muster uebernommen, Methode vergessen, alter elif-Zweig tot).
+
+**ERGEBNIS (Boot 6, Betriebspunkt 24,24 + PLE_HOST_GIB=6 +
+TURBOMIND=1 QUANT_BACKEND=auto):** Tempo **37,0 tok/s** (Baseline
+32,2 -> +15 %!), Kohaerenz 3/3, Zerfalls-Sonde DE+EN (je 3 Turns,
+7,5k-Systemkontext): NULL Zeichenlecks, **Coandă-Fangfrage in BEIDEN
+Sprachen geloest**. PLE-Placement je Stufe-0-Rang: 119,7M Zeilen
+device (17,84 GiB) + 40,3M pinned host (6,0 GiB).
+
+**ALLE DREI GATES AUF -150 GRUEN** (27B, DSv4, FN). Vor dem
+Produktions-Schwenk fehlt nur noch der echte AIfred-Persona-
+Sprachzerfalls-Test (inject-API, braucht Peuqui) und Peuquis
+Schwenk-Go. Danach: die Nacht-Fixes als Upstream-Pakete schnueren
+(K>=2-E5-Fix ist forkintern; PLE-Split + QSA-Wheel-Delta +
+first_spec + PLE-PP-Gates = Paket-3-Material).

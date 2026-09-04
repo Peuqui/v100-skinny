@@ -654,3 +654,19 @@ Apache-2.0 for [`fork_patches/`](fork_patches/). See
   url     = {https://github.com/dnv2003/v100-skinny}
 }
 ```
+
+## Verzeichnisstruktur (aufgeraeumt 2026-09-04)
+
+    fork_patches/       Patches gegen 1Cat-vLLM 1.3.0 (Produktionsstand)
+    fork_patches_150/   Patches gegen 1.5.0 (Rebase) + STATUS/DEPLOY-TARGETS
+    kernels/            skinny_kernels.cu (QPN/MoE-Kernelfamilie)
+    scripts/            Boot-, Deploy- und Messwerkzeuge
+    benchmarks/         kuratierte Messreihen (versioniert)
+    results/            Kohaerenz-Ergebnisse der Boots (versioniert)
+    backups/            Originale vor Patches
+    logs/               Boot-Logs und Ad-hoc-Ausgaben (gitignored)
+
+Die Laufzeitumgebung liegt bewusst NICHT hier, sondern haengt unter
+`~/vllm` (Indirektionsschicht, siehe `~/vllm/README.md`): `~/vllm/venv`
+ist der Schalter zwischen 1.3.0 und 1.5.0, `~/vllm/cuda` das CUDA-Deb.
+Configs und Skripte sollen auf diese Pfade zeigen, nicht auf die echten.

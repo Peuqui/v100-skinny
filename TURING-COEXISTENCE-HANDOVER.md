@@ -46,7 +46,9 @@
 > reasoning-Feld und genug max_tokens (Raw-Completions = Phantom-Salat).
 >
 > **Upstream-Faeden (taeglicher Check):** #441 (MoE-Angebot, offen),
-> #479 (PP-Issue, offen), **#485 (PR Paket 1a, eingereicht 01:50)**.
+> #479 (PP-Issue, offen), **#485 (PR Paket 1a, eingereicht 01:50)**,
+> **#439 (fremder PP-Spec-Crash, unsere Analyse gepostet 04.09. 09:07 —
+> Antwort auf die gloo/NCCL-Transportfrage abwarten, dann Paket 3)**.
 > Pipeline-Reihenfolge im 21:00-Abschnitt. PRs NUR nach Peuqui-Sichtung;
 > sonst Pauschalfreigabe (Tests/Installs/Downloads). Branch `work` =
 > Arbeit (Push frei), `pp-mtp-merge` eingefroren (PR dnv2003#7 = Draft).
@@ -1689,3 +1691,37 @@ Sprachzerfalls-Test (inject-API, braucht Peuqui) und Peuquis
 Schwenk-Go. Danach: die Nacht-Fixes als Upstream-Pakete schnueren
 (K>=2-E5-Fix ist forkintern; PLE-Split + QSA-Wheel-Delta +
 first_spec + PLE-PP-Gates = Paket-3-Material).
+
+### 2026-09-04 09:07 — 1Cat-Issue #439: fremder PP-Spec-Crash, Analyse gepostet
+
+@DSYZayn (Anwender, kein Kernentwickler) meldete am 01.09. "'GPUModelRunner'
+object has no attribute 'drafter'" bei DSv4-Flash TP4xPP2 und hakte am
+04.09. 02:29 nach ("still there in v1.5.0"). Das ist GENAU unser
+Bisektionsbefund aus der Nacht (Stock-Runner bootet nicht).
+
+Verifiziert gegen origin/main (fbcef6e), inkl. seines Screenshots:
+* Crash-Pfad ist die PROFILIERUNG, nicht execute_model:
+  determine_available_memory (gpu_worker.py:513) -> profile_run ->
+  _dummy_run (11482) -> _build_attention_metadata (10959) ->
+  isinstance(self.drafter, ...). Sein Log zeigt Worker_PP0_TP0..TP3 als
+  Sterbende, waehrend die PP1-Worker noch TileLang kompilieren — also
+  Nicht-letzter Rang, wie erwartet.
+* self.drafter wird NUR unter `speculative_config and is_last_rank`
+  zugewiesen; _build_attention_metadata probt es 3x nur unter
+  `speculative_config`. load_model schuetzt sich bereits mit
+  `hasattr(self, "drafter")` — Muster im File bekannt, hier vergessen.
+* ZWEITE Absturzstelle (bisher unbeachtet): initialize_kv_cache hat
+  `assert isinstance(self.drafter, ExtractHiddenStatesProposer)` unter
+  uses_extract_hidden_states(), ebenfalls auf allen Raengen. Mit
+  drafter=None wird aus dem AttributeError ein AssertionError.
+* Upstream HAT die Bausteine schon: _count_contiguous_spec_tokens und
+  _copy_valid_sampled_token_count sind byte-identisch zu unseren (nie
+  angefasst) — nur Transport + Empfangspfad fehlen (~120 Zeilen bei uns).
+
+Bewusst KEIN Zweizeiler-PR: er beseitigt den Absturz, aber die
+Nicht-letzten Raenge laufen danach auf stale State — waere ein Halbfix.
+Stattdessen Analyse + Angebot gepostet, mit der Transport-Designfrage
+(unser gloo-cpu_group-Umweg ist USB4-spezifisch, auf normaler Hardware
+waere NCCL richtig). Naechster Schritt haengt an deren Antwort: entweder
+die zwei Absturzstellen als kleiner PR (transport-unabhaengig!) oder
+gleich die Serie = Paket 3. Duplikats-Checks (AGENTS.md) waren sauber.

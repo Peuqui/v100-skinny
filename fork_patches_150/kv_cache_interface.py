@@ -952,7 +952,9 @@ class KVCacheConfig:
         for group in self.kv_cache_groups:
             group_spec = group.kv_cache_spec
             if isinstance(group_spec, UniformTypeKVCacheSpecs):
-                group_spec = group_spec.first_spec
+                # 1.5.0 dropped the 1.3.0 first_spec property; the group is
+                # uniform by construction, so any member decides the type.
+                group_spec = next(iter(group_spec.kv_cache_specs.values()))
             if isinstance(group_spec, MambaSpec):
                 return True
         return False

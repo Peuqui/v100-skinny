@@ -1607,3 +1607,27 @@ Upstream-Paket 3 (PP-Enablement/PLE).
 Reihenfolge-Entscheid der Nacht: DSv4-PP5-Gate vorgezogen (der
 Produktions-Schwenk haengt an DSv4, und der FN-Sprachzerfalls-Test
 braucht ohnehin Peuqui/AIfred-Persona).
+
+### 2026-09-04 nachts — DSv4-PP5-Gate auf -150 BESTANDEN (8/8, Tempo >= Produktion)
+
+Boot-Rezept = exakt scripts/serve-deepseek-het-graphs.sh, nur venv-150
++ Port 8030 (Kopie im Scratchpad; Skript unveraendert — Produktion
+bleibt -130). EIN Portierungsfehler zu fixen: unser
+kv_cache_interface-Hunk (has_mamba_layers, UniformType-Zweig) nutzte
+das 1.3.0-`first_spec`-Property, das 1.5.0 nicht mehr hat — ersetzt
+durch `next(iter(kv_cache_specs.values()))` (Gruppe ist uniform).
+
+Ergebnis Boot 2: **Kohaerenz 8/8** (Paris/1591/10/seq/Mercury/Prosa/
+Code/exakte longctx-Liste — deckungsgleich mit der nvidia-base-
+Referenzsemantik; results-coherence-het-150.json im Scratchpad,
+Kopie unten in benchmarks/). **Tempo essay 27,4 / code 28,0 tok/s**
+(Produktion -130: 25,2/28,1) — essay +9 %, code gleich; die
+llama.cpp-Schrittlatenz-Parität (113 ms/Step) haelt auf 1.5.0.
+Auffaellig am Rande: neue 1.5.0-Memory-Profiler-Warnung
+(VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS) — Boot laeuft mit den
+Produktionswerten trotzdem sauber durch.
+
+**Schwenk-Lage damit:** 27B-Gate GRUEN (K-Fix + FA2), DSv4-Gate GRUEN.
+Offen vor dem Produktions-Schwenk: FN-PLE-Split-Port (Paket 3) und
+der AIfred-Persona-Sprachtest (braucht Peuqui). Der Schwenk selbst
+ist Peuqui-Entscheid.

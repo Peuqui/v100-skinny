@@ -1735,13 +1735,19 @@ geschrieben wurde — er haette fuer 1.3.0 gegolten, wir schwenken aber auf
 1.5.0. Die folgenden Befunde haengen an Hardware und Checkpoint, nicht an
 der vLLM-Version, und gelten daher weiter:
 
-* **TP2 ueber die beiden RTX 8000 gewinnt.** Voller nativer Kontext
-  262.144, short 41,9 tok/s, long@28.843 prefill 507 / decode 29,6.
+* **Das TP2xPP2-Gitter ist der Betriebspunkt der Wahl** (Peuqui-Einwand
+  04.09., und die Siegerregel sieht es genauso): Kontext 262.144, long
+  decode 29,5 gegen 29,6 bei TP2 — 0,34 % Unterschied, also Patt nach
+  LONG_TIE_BREAK_REL=0.05 — aber **prefill 833 statt 507 tok/s (+64 %)**.
+  Bei RAG-Kontext, langer Historie und Persona-Prompts dominiert der
+  Prefill die spuerbare Wartezeit (TTFT); 2,6 % weniger Kurz-Decode sind
+  dagegen nicht spuerbar. `_beats()` in vllm_flow.py bricht das Patt genau
+  so (LONG_TIE_BREAK_PREFILL_REL=0.10) und nennt im Kommentar sogar
+  "Gitter 836 vs. TP2 504" als Beispielfall.
+* **TP2 ueber die beiden RTX 8000** ist der Zweitplatzierte: gleicher
+  Kontext 262.144, short 41,9 tok/s, long@28.843 prefill 507 / decode 29,6.
 * **TP1 auf einer RTX 8000 ist chancenlos** — vLLM deckelt den Kontext auf
   52.528 (Retry), short 27,4 / long 25,0.
-* **Das TP2xPP2-Gitter bringt nichts fuer Decode**: gleicher Kontext
-  262.144, short 40,8 (minimal unter TP2), ABER prefill 833 statt 507 —
-  fuer prefill-lastige Lasten interessant, fuer Decode nicht.
 * **k=2 ist der Sweetspot, nicht k=7.** Profil auf TP2-RTX:
   k=7 long 26,6 / short 55,9 (accept 29 %), k=6 29,8/60,0 (34 %),
   k=5 30,7/63,7 (40 %), k=3 35,7/68,1 (66 %), **k=2 37,5/69,0 (97 %)**,

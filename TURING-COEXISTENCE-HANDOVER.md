@@ -1725,3 +1725,33 @@ Stattdessen Analyse + Angebot gepostet, mit der Transport-Designfrage
 waere NCCL richtig). Naechster Schritt haengt an deren Antwort: entweder
 die zwei Absturzstellen als kleiner PR (transport-unabhaengig!) oder
 gleich die Serie = Paket 3. Duplikats-Checks (AGENTS.md) waren sauber.
+
+### 2026-09-04 vormittags — 27B-Topologie-/k-Befunde aus der AIfred-Kalibration (auf -130)
+
+Zwei Kalibrationslaeufe ueber AIfred (Qwen3.8-27B-NVFP4-vllm, venv-130,
+Seitenkanal-Zelle "Qwen3VL-4B x kein TTS" -> nur 4 GPUs eligible, GPU 3
+bleibt fuer Vigilantia). Lauf abgebrochen, BEVOR ein Betriebspunkt
+geschrieben wurde — er haette fuer 1.3.0 gegolten, wir schwenken aber auf
+1.5.0. Die folgenden Befunde haengen an Hardware und Checkpoint, nicht an
+der vLLM-Version, und gelten daher weiter:
+
+* **TP2 ueber die beiden RTX 8000 gewinnt.** Voller nativer Kontext
+  262.144, short 41,9 tok/s, long@28.843 prefill 507 / decode 29,6.
+* **TP1 auf einer RTX 8000 ist chancenlos** — vLLM deckelt den Kontext auf
+  52.528 (Retry), short 27,4 / long 25,0.
+* **Das TP2xPP2-Gitter bringt nichts fuer Decode**: gleicher Kontext
+  262.144, short 40,8 (minimal unter TP2), ABER prefill 833 statt 507 —
+  fuer prefill-lastige Lasten interessant, fuer Decode nicht.
+* **k=2 ist der Sweetspot, nicht k=7.** Profil auf TP2-RTX:
+  k=7 long 26,6 / short 55,9 (accept 29 %), k=6 29,8/60,0 (34 %),
+  k=5 30,7/63,7 (40 %), k=3 35,7/68,1 (66 %), **k=2 37,5/69,0 (97 %)**,
+  k=1 29,2/59,2 (85 %). Der MTP-Block des Checkpoints traegt also nur
+  wenige Tokens zuverlaessig — hohe k kosten mehr Verify als sie bringen.
+  ACHTUNG: auf -150 neu zu messen, dort war K>=2 bis heute Nacht kaputt.
+* **TP2 ueber die V100-Klasse scheitert an GMU 0.97** (OOM beim
+  KV-Cache-Init, 788 MiB frei bei 1,19 GiB Bedarf). Auf -130 lief dieselbe
+  Topologie am 31.08. mit GMU 0.94 problemlos — die OOM-Retry-Leiter hatte
+  das damals selbst gefunden. Heute lief sie nicht an, weil der API-Server
+  den EngineCore-Tod ueberlebt und der Watchdog nur `proc.poll()` prueft:
+  20 min Timeout statt Retry. In AIfred gefixt (Log-Signaturen in der
+  Warteschleife, s. dortiges Repo, uncommitted->committed 04.09.).

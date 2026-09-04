@@ -1787,3 +1787,37 @@ Die Env-Umstellung selbst gehoert BEWUSST ins Schwenk-Paket, nicht
 davor: auf -130 ist TurboMind/auto ungetestet, und solange der Schalter
 `~/vllm/venv` auf 130 zeigt, liefe die Kalibration sonst in eine
 ungepruefte Kombination.
+
+### 2026-09-04 11:10 — SCHWENK AUF -150 VOLLZOGEN + dritte PP-Spec-Absturzstelle gefunden
+
+**Schwenk:** `~/vllm/venv -> venv-150` (Einzeiler, jederzeit zurueck mit
+`ln -sfn ~/vllm/venv-130 ~/vllm/venv`). Runtime-SSOT auf TurboMind/auto
+umgestellt. Die 83 CUDA-Symlinks folgen dem Schalter automatisch — die
+Falle vom 03.09. kann strukturell nicht mehr auftreten.
+OFFEN/UNGETESTET: 27B mit TurboMind (nur mit marlin verifiziert). Die
+llama-swap-Eintraege von DSv4 und 27B stehen bewusst noch auf marlin =
+die getestete Kombination; nur die SSOT (fuer Kalibration/neue Seeds)
+traegt TurboMind.
+
+**PR-Nachweis fuer #439 gefahren** (Stock-1.5.0-Runner + NUR unsere 11
+Zeilen, 27B TP2/PP2 k=7): Der AttributeError ist WEG (0 Treffer), der
+Boot laeuft bis in die Speicher-Profilierung — und stirbt dort an einer
+DRITTEN Stelle, die ich im #439-Kommentar noch nicht kannte:
+
+    gpu_model_runner.py:11133, in _dummy_run
+        assert isinstance(self.drafter, EagleProposer | DFlashProposer
+                          | DraftModelProposer | ExtractHiddenStatesProposer
+                          | Gemma4Proposer)
+
+gegated nur auf `use_eagle() or uses_draft_model() or
+uses_extract_hidden_states()`. Pikant: WENIGE ZEILEN DARUEBER behandelt
+derselbe Code den Nicht-letzten Rang explizit
+(`assert not get_pp_group().is_last_rank` im Intermediate-Tensor-Zweig)
+— und vergisst den Guard dann direkt danach. Unser Fork hat dort den
+`is_last_rank`-Guard seit dem 24.08.
+
+Damit ist die Kernaussage des #439-Kommentars EMPIRISCH BELEGT: ein
+Crash-Fix allein reicht nicht, der Melder liefe in den naechsten Fehler.
+Fuer den PR heisst das: drei Absturzstellen, nicht zwei. Branch
+`pp-spec-drafter-guard` im 1Cat-Klon (11 Zeilen) muss um die dritte
+ergaenzt werden, BEVOR er eingereicht wird.

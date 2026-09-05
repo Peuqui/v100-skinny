@@ -10943,6 +10943,33 @@ class GPUModelRunner(
             self.input_batch.spec_num_accepted_tokens_cpu_tensor[:num_r].copy_(
                 valid_counts, non_blocking=True
             )
+            # 1.5.0 accepted-count contract (2026-09-05): the next
+            # _prepare_inputs no longer reads the InputBatch tensors above.
+            # _sync_mamba_accepted_token_state rebuilds them from the
+            # runner-owned snapshot (num_accepted_tokens.cpu /
+            # spec_state_slot_selectors.cpu) plus the req-id row map — and
+            # writes 1 for every request it cannot find there. Without the
+            # three lines below, rank 0 of a PP deployment therefore fed
+            # num_accepted_tokens == 1 into every sm75 GDN layer after each
+            # speculative step: the recurrent state resumed from slot 0
+            # (state after the FIRST verifier token) and the conv window was
+            # never rolled, so all accepted draft tokens were missing from
+            # the 38 stage-0 GDN states while the token stream carried them.
+            # Symptom: fluent but corrupted output under MTP with PP only
+            # (fused words, dropped tokens, English fragments); greedy k>0
+            # differed from greedy k=0. Without PP (TP1/TP2 on either card
+            # class) greedy k>0 was byte-identical to k=0. Mirrors the
+            # non-align branch of _update_states_after_model_execute.
+            self.num_accepted_tokens.cpu[:num_r].copy_(
+                valid_counts, non_blocking=True
+            )
+            self.spec_state_slot_selectors.cpu[:num_r].copy_(
+                valid_counts, non_blocking=True
+            )
+            self._mamba_accepted_token_state_rows = {
+                req_id: (i, self.requests[req_id])
+                for i, req_id in enumerate(self.input_batch.req_ids[:num_r])
+            }
             if self.num_accepted_tokens_event is not None:
                 self.num_accepted_tokens_event.record()
         else:

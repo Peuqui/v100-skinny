@@ -1546,6 +1546,10 @@ UNGETESTET/unbestaetigt: der SM75-Zweig in
 noch die Row-Map des 1.5.0-Kontrakts — beim 27B-2x2 empirisch
 unauffaellig (beide Boots 3/3 inkl. Essay), beim DSv4-PP5-Gate mit
 RTX-Zwischenstufen im Blick behalten.
+**NACHTRAG 2026-09-05: BESTAETIGT und GEFIXT.** Genau dieser Bruch war
+die Ausgabe-Zerfaserung des 27B unter MTP (Abschnitt „2026-09-05 —
+PP-Spekulation zerfasert" unten). Die 3/3-Kurzsonden konnten ihn nicht
+sehen; lange greedy Ausgaben gegen k=0 schon.
 
 ### 2026-09-04 nachts — FA2-Drop-in nach -150 PORTIERT, 27B-Gate GRUEN
 
@@ -1819,3 +1823,65 @@ Crash-Fix allein reicht nicht, der Melder liefe in den naechsten Fehler.
 Fuer den PR heisst das: drei Absturzstellen, nicht zwei. Branch
 `pp-spec-drafter-guard` im 1Cat-Klon (11 Zeilen) muss um die dritte
 ergaenzt werden, BEVOR er eingereicht wird.
+
+### 2026-09-05 — PP-Spekulation zerfasert: Ursache gefunden, gefixt, verifiziert
+
+**Symptom (AIfred-Session 04.09. 20:24, 27B Gitter 2x2, MTP k=5):**
+fluessig-falscher Text ab dem ersten Satz — verschmolzene Woerter
+("Ebeneverlaufen", "fuehrediesenBegriff"), verlorene Token an Grenzen
+("neue Verbinde2. Risiko", Satz bricht ab "erzeugt und koennen."),
+englische Bruchstuecke im Wort ("Wavequantenwellengleichung",
+"Lightuebertreten"), Denkleistung beschaedigt (Coanda nicht erkannt),
+fruehes EOS und wortgleiche Wiederholungen. Akzeptanz 18-37 %.
+
+**Bisektion (greedy, byteweise gegen k=0, drei 30-Saetze-Fragen mit
+9,4k-Token-Persona-Prompt):**
+
+| Topologie | k | Ergebnis |
+|---|---|---|
+| Gitter TP2xPP2 | 0 | sauber (alle Samplings, mit/ohne Cache) |
+| Gitter TP2xPP2 | 1, 2, 5 | ZERFASERT, mit und ohne Prefix-Cache |
+| TP2 nur RTX 8000 (0,2), kein PP | 5 | byteidentisch mit k=0 |
+| TP2 nur V100 (1,3), kein PP | 2 | byteidentisch mit k=0 |
+
+Prefix-Cache (Align) und Sampling (T 1,0 ohne min_p) sind damit
+UNSCHULDIG. Der Fehler existiert nur mit Pipeline-Parallelismus.
+
+**Ursache:** genau der oben als "UNGETESTET" notierte Nebenbefund.
+`_pp_receive_spec_decode_state` (sm75-Zweig, Rang 0 = RTX-Stufe)
+schrieb valid_counts in .gpu und die InputBatch-Tensoren — die Ziele des
+1.3.0-Vertrags. `_prepare_inputs` liest seit dem Rebase aber den
+1.5.0-Vertrag: `_sync_mamba_accepted_token_state` baut die InputBatch-
+Tensoren aus dem runner-owned Snapshot (`num_accepted_tokens.cpu`) plus
+Row-Map `_mamba_accepted_token_state_rows` neu — und schreibt 1 fuer jede
+Zeile, die es dort nicht findet. Beide fuellt nur
+`_update_states_after_model_execute`, das nur auf dem letzten Rang
+laeuft. Folge auf Rang 0: num_accepted_tokens == 1 in jedem sm75-GDN-
+Layer nach jedem Spekulationsschritt (gdn_attn_sm75 -> causal_conv1d_update
+mit Roll 0, fused_recurrent mit Startslot 0 = Zustand nach dem ERSTEN
+Verifier-Token). Die akzeptierten Draft-Token standen im Textstrom,
+fehlten aber im rekurrenten Zustand der 38 Stufe-0-Layer.
+
+**Fix (fork_patches_150/gpu_model_runner.py, sm75-Zweig):** Snapshot
+`.cpu` beider Puffer per non_blocking-Kopie fuellen und die Row-Map
+setzen — Spiegel des Nicht-Align-Zweigs auf dem letzten Rang. Drei
+Zeilen.
+
+**Verifikation (greedy, Gitter 2x2):** k=2 ohne Cache 663/614/806 Token,
+k=2 mit Cache Q1+Q2 BYTEIDENTISCH mit k=0, Q3 sauber (Divergenz bei
+Wort 25, gleiche harmlose Formulierungsdivergenz wie k=0 Cache-an/aus).
+Akzeptanz 68 % (vorher 37 %). k=5 Produktivkonfiguration: s.u.
+
+**Nebenbei portiert:** Upstream #472 (gemerged als #496): Align-Prefill
+konnte verhungern, wenn `_mamba_block_aligned_split` dauerhaft 0
+liefert — betrifft uns, da Prefix-Caching = Align-Modus mit 816er
+Bloecken jetzt produktiv ist. Einzeiler in sched_scheduler.py.
+
+**Lehren:** (1) Spekulation ist nur dann bewiesen, wenn lange GREEDY-
+Ausgaben byteweise mit k=0 uebereinstimmen — Kohaerenz-Kurzsonden und
+"3/3 inkl. Essay" sehen Zustandsdrift nicht. (2) Ein "statischer
+Nebenbefund" mit "empirisch unauffaellig" ist kein Freispruch, sondern
+ein offener Test. (3) Ultracode-Agenten liefen ins Sitzungslimit (2x
+je >1M Token, fast alles verloren); der eine fertige Leser hatte die
+Ursache exakt — die Bisektion auf der Hardware war der billigere und
+entscheidende Beweis.

@@ -1885,3 +1885,42 @@ ein offener Test. (3) Ultracode-Agenten liefen ins Sitzungslimit (2x
 je >1M Token, fast alles verloren); der eine fertige Leser hatte die
 Ursache exakt — die Bisektion auf der Hardware war der billigere und
 entscheidende Beweis.
+
+### 2026-09-05 abends — sm75 hält drei Gewichts-Layouts: DROP_CT sofort, Dense-Prefill als Ein-Layout-Lösung
+
+Anlass: Auf der RTX 8000 belegt der 27B-Checkpoint (20,4 GiB) beim Laden 39,27 GiB, auf der
+V100 20,21 GiB. Es ist Gewicht, nicht KV. Der Skinny-Pfad in marlin.py hält je NVFP4-Layer
+drei Layouts derselben Gewichte (je ~9,6 GiB = 8,56 GiB Codes + 1,07 GiB Skalen laut
+safetensors-Headern): den nativen Stash (WMMA-Route M 17..64), das QPN-Prepack (Decode M<=16)
+und die Marlin-Umpackung (Prefill).
+
+Messung TP1/RTX (Ladevolumen / KV-Budget bei GMU 0,9, mml 8192):
+Produktion 39,27 / ~6 GiB (bei 0,98) — DROP_CT=1: 29,49 / 11,73 GiB — nur Marlin: 19,08 / 22,51 GiB.
+Mikro-Benchmark (ms je GEMM, gate_up N=34816 K=5120): Marlin 0,58 (M1) / 0,46 (M24) / 27,4 (M2048);
+WMMA-auf-Stash 0,86 (M24) / 1,59 (M64) — also LANGSAMER als Marlin auf Turing (Frontier stammt
+von der V100); QPN2 0,18 (M1) / 0,30 (M8). Fazit: der native Stash bringt auf sm75 nichts.
+
+Sofortmassnahme: `VLLM_SKINNY_DROP_CT=1` in AIfred data/vllm_runtime.yaml base_env (Peuqui
+2026-09-05). greedy-Ausgaben byte-identisch zu vorher (Prefill M=24/28 lief ueber Marlin statt
+WMMA). Erste Kalibration damit: TP1/RTX cappt jetzt bei ~238k Kontext statt 52k.
+
+Ein-Layout-Loesung (Plan A, env-gesperrt `VLLM_SKINNY_DENSE_PREFILL=1`, Default 0):
+- fork_patches_150/nvfp4_qpn_dequant.py: Triton-Kernel QPN-Prepack -> dichtes fp16 [N,K]
+  (zwei 32-Bit-Loads je Lane, Stores in natuerlicher k-Ordnung; e2m1/e4m3 arithmetisch, weil
+  Volta/Turing keine fp8-Konvertierung haben). V100: 1,8 ms (gate_up), 1,0 ms (down).
+  Exakt gleich dem nativen Checkpoint-Dequant (Tests).
+- marlin.py: `_make_dense_only` nach dem QPN-Prepack — nativer Stash, natives Gewicht und
+  Marlin entfallen; Custom-Op-Route "dense" fuer M>16 = qpn_dequant in einen transienten Puffer
+  je (n,k) (~0,6 GiB gesamt) + torch.nn.functional.linear (cuBLAS fp16 Tensor-Cores).
+  Selbstcheck-Referenz ist im Dense-Modus die cuBLAS-Route.
+- Tests: tests/test_nvfp4_qpn_dequant.py (Kernel == Referenz == nativ; GEMM vs qpn2/qpn/wmma/
+  Marlin < 2e-2), tests/test_skinny_dense_prefill.py (nur QPN resident, apply_weights bei
+  M 1..2048 gegen native Werte, Route-Label). 19/19 gruen auf der V100 (PCI-Index 4!).
+- Erwartung RTX (offen, E2E nach der laufenden Kalibration): Ladevolumen ~19,5 GiB, KV ~22 GiB;
+  Prefill-GEMM M=2048 cuBLAS ~9 ms (V100: 8,7 ms) + 1,8 ms Dequant gegen 27,4 ms Marlin.
+- Offen: greedy-Identitaet ist NICHT zu erwarten (cuBLAS rundet anders als Marlin) -> Bisect-
+  Werkzeug + Kalibrations-Kohaerenz; danach Env-Default fuer sm75 auf DROP_CT=1/DENSE=1.
+
+Nebenbefund Speicherprofil (1Cat PR #518, im Fork deployt): kalter torch.compile blaehte Peak
+und Nicht-Torch um 2,5 GiB auf; jetzt Aufwaermlauf vor der Messung. Rest-Effekt: ein kalter
+Boot verbucht ~0,64 GiB persistente Compile-Artefakte (real, bleibt) -> Cap ~4 % tiefer als warm.

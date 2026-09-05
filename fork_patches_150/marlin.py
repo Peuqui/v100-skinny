@@ -59,6 +59,13 @@ _QPN_DROP_CT = os.environ.get("VLLM_SKINNY_DROP_CT", "0") == "1"
 # same bytes — kernel and launch geometry only. VLLM_SKINNY_QPN2=0
 # restores the fixed-4-warp kernel.
 _QPN2_ENABLED = os.environ.get("VLLM_SKINNY_QPN2", "1") == "1"
+# Dense prefill (VLLM_SKINNY_DENSE_PREFILL=1): the QPN prepack is the ONLY
+# resident layout. M<=16 keeps the QPN kernels; larger M dequantizes the
+# layer into a transient fp16 buffer and runs cuBLAS. No marlin repack, no
+# checkpoint-native stash: one weight copy instead of three (~10 GiB each
+# on Qwen3.8-27B). Measured 2026-09-05 on the RTX 8000: marlin FP4 reaches
+# ~27 TFLOPS at M=2048, cuBLAS fp16 about three times that.
+_DENSE_PREFILL = os.environ.get("VLLM_SKINNY_DENSE_PREFILL", "0") == "1"
 # (K, N) -> (splitk, nacc), measured winners; heuristic covers the rest.
 # graph-mode winners (qpn_graphmatrix 2026-08-17): captured-replay is
 # the serving regime and reshuffles two cells vs the eager matrix.
@@ -120,6 +127,22 @@ def _qpn_prepack(codes: torch.Tensor, scales: torch.Tensor):
                            g.view(1, groups, 1).expand(tt, groups, 32)]
     del nib
     return qc.view(-1).contiguous(), qs.view(-1).contiguous()
+
+
+def _make_dense_only(layer) -> None:
+    """Keep only the QPN prepack: free the checkpoint-native stash and the
+    native packed weight; leave empty placeholders so the custom-op
+    signature (marlin_w/marlin_s/workspace) stays uniform."""
+    empty = layer.skinny_qpn_codes.data.new_empty(0)
+    layer.skinny_codes.data = empty
+    layer.skinny_scales.data = empty
+    layer.weight = torch.nn.Parameter(empty, requires_grad=False)
+    layer.weight_scale = torch.nn.Parameter(empty, requires_grad=False)
+    layer.workspace = empty
+    logger.info_once(
+        "SM70 skinny NVFP4 dense prefill: QPN prepack is the only resident "
+        "weight layout; M>16 runs cuBLAS on a transient fp16 buffer."
+    )
 
 
 def _qpn_stash(layer) -> None:
@@ -217,7 +240,8 @@ def _skinny_linear(x: torch.Tensor, codes: torch.Tensor, scales: torch.Tensor,
         and m <= _SKINNY_MAX_M and k % 128 == 0 and n % 64 == 0
     route = "qpn2" if qpn2_cfg is not None else "qpn" if use_qpn \
         else "qpn1" if use_qpn1 \
-        else "simt" if use_simt else "wmma" if use_wmma else "marlin"
+        else "simt" if use_simt else "wmma" if use_wmma \
+        else "dense" if marlin_w.numel() == 0 else "marlin"
     # Route map: the op body runs at capture/compile/eager time, so one
     # line per unique (route, M) documents what each graph replays.
     key = (route, m, n, k)
@@ -237,11 +261,31 @@ def _skinny_linear(x: torch.Tensor, codes: torch.Tensor, scales: torch.Tensor,
         ext = _get_skinny_ext()
         fn = ext.gemm_simt if use_simt else ext.gemm_wmma
         return fn(x, codes, scales, gscale)
+    if marlin_w.numel() == 0:
+        return _dense_linear(x, qpn_codes, qpn_scales, gscale, n, k)
     return apply_fp4_marlin_linear(
         input=x, weight=marlin_w, weight_scale=marlin_s,
         weight_global_scale=marlin_gs, workspace=workspace,
         size_n=n, size_k=k, bias=None,
     )
+
+
+# One transient fp16 buffer per distinct (n, k): ~0.6 GiB for the 27B's
+# two projection shapes instead of a marlin copy of every layer.
+_dense_buffers: dict[tuple[int, int], torch.Tensor] = {}
+
+
+def _dense_linear(x: torch.Tensor, qpn_codes: torch.Tensor,
+                  qpn_scales: torch.Tensor, gscale: float,
+                  n: int, k: int) -> torch.Tensor:
+    from .qpn_dequant import qpn_dequant
+
+    buf = _dense_buffers.get((n, k))
+    if buf is None or buf.device != x.device:
+        buf = torch.empty(n, k, dtype=torch.float16, device=x.device)
+        _dense_buffers[(n, k)] = buf
+    w = qpn_dequant(qpn_codes, qpn_scales, gscale, n, k, out=buf)
+    return torch.nn.functional.linear(x, w)
 
 
 @_skinny_linear.register_fake
@@ -304,9 +348,22 @@ class MarlinNvFp4LinearKernel(NvFp4LinearKernel):
                 "SM70 skinny NVFP4 path enabled for M<=%d (QPN %s).",
                 _SKINNY_MAX_M, "on" if _QPN_ENABLED else "off"
             )
+            if _DENSE_PREFILL and layer.skinny_qpn_codes.numel() > 0:
+                _make_dense_only(layer)
+                return
         prepare_fp4_layer_for_marlin(layer)
 
     def _marlin_apply(self, layer, x, bias):
+        if layer.weight.numel() == 0:
+            # dense-only layer: the reference is the cuBLAS route itself
+            k = layer.input_size_per_partition
+            n = layer.output_size_per_partition
+            y = _dense_linear(x.reshape(-1, k).contiguous(),
+                              layer.skinny_qpn_codes, layer.skinny_qpn_scales,
+                              layer.skinny_gscale, n, k)
+            if bias is not None:
+                y = y + bias
+            return y.reshape(x.shape[:-1] + (n,))
         return apply_fp4_marlin_linear(
             input=x,
             weight=layer.weight,

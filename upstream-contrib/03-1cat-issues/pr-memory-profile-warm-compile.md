@@ -1,7 +1,7 @@
 # PR-Entwurf: 1CatAI/1Cat-vLLM — KV-Budget misst den warmen Forward, nicht den kalten torch.compile
 
 Stand 2026-09-05. Branch `memory-profile-warm-compile`, Basis origin/main 755baae.
-Status: committed (Branch memory-profile-warm-compile, auf fork Peuqui/1Cat-vLLM gepusht), PR NICHT eröffnet. Fork-Port in fork_patches_150/gpu_worker.py deployt 2026-09-05 ~20:26.
+Status: committed (Branch memory-profile-warm-compile, auf fork Peuqui/1Cat-vLLM gepusht), PR eröffnet: https://github.com/1CatAI/1Cat-vLLM/pull/518. Fork-Port in fork_patches_150/gpu_worker.py deployt 2026-09-05 ~20:26.
 Kein eigenes Issue — Befund aus unserer Kalibration (RTX 8000 cappte 94k -> 52k Kontext).
 
 Geänderte Dateien (2):
@@ -92,7 +92,9 @@ charged.
 
 Duplicate check (per AGENTS.md): `gh pr list --state open --search
 "determine_available_memory"`, `--search "memory profiling"`,
-`--search "profile_run"` (none). Verified against origin/main 755baae today.
+`--search "profile_run"`: the hits are #511 (mentions the function in its
+description) and #470 (bounds an AWQ kernel scratch), neither touches the
+profiling measurement. Verified against origin/main 755baae today.
 
 ## Test Plan
 

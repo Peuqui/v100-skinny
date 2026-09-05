@@ -1,6 +1,7 @@
 gdn_attn.py vllm/v1/attention/backends/gdn_attn.py
 gpu_model_runner.py vllm/v1/worker/gpu_model_runner.py
 marlin.py vllm/model_executor/kernels/linear/nvfp4/marlin.py
+nvfp4_qpn_dequant.py vllm/model_executor/kernels/linear/nvfp4/qpn_dequant.py
 modelopt.py vllm/model_executor/layers/quantization/modelopt.py
 torch_utils.py vllm/utils/torch_utils.py
 attention.py vllm/model_executor/layers/attention/attention.py

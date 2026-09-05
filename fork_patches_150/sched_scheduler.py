@@ -441,12 +441,19 @@ class Scheduler(SchedulerInterface):
 
         end = start + num_new_tokens
         if end < prefill_end:
-            max_prefill_tokens = self.max_num_scheduled_tokens
-            long_prefill_threshold = self.scheduler_config.long_prefill_token_threshold
-            if long_prefill_threshold > 0:
-                max_prefill_tokens = min(max_prefill_tokens, long_prefill_threshold)
             aligned_end = end // block_size * block_size
-            if aligned_end > start or block_size <= max_prefill_tokens:
+            # Upstream #472 (merged as #496, 2026-09-05): only take the aligned
+            # end when it advances past `start`. Otherwise this returns 0, the
+            # caller treats that as "cannot schedule", and the request is
+            # skipped on every step while it holds its KV blocks -- the chunk
+            # available this step being shorter than one state block is a
+            # property of the request, so it recurs and the request starves.
+            # Scheduling the shorter, unaligned chunk only skips this block's
+            # Mamba state checkpoint; it cannot straddle two state blocks
+            # because `aligned_end <= start` implies `end < next boundary`.
+            # Relevant here since prefix caching (= align mode, 816-token
+            # state blocks) is on for the hybrid production entries.
+            if aligned_end > start:
                 end = aligned_end
 
         # The align allocator materializes one recurrent-state column per

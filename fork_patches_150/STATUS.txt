@@ -33,7 +33,7 @@ sm70_turbomind.py AUTO_MERGED
 dsv4_sm70_gemv.py AUFGELOEST (worker-lokal + deren Zusatz-Checks)
 breakable_cudagraph.py UNVERAENDERT (kopiert)
 multiproc_executor.py AUTO_MERGED
-gpu_worker.py AUTO_MERGED
+gpu_worker.py AUTO_MERGED — 2026-09-05: Speicherprofil misst den zweiten (warmen) Forward, kalter torch.compile blaeht Peak/Non-Torch nicht mehr auf (RTX: KV 3.5 -> 6.0 GiB); deployt 2026-09-05
 parallel_state.py AUTO_MERGED — 2026-09-05: is_last_pp_first_tp_rank() ergaenzt (#414-Port), deployt 2026-09-05
 dsv4_compressor.py AUTO_MERGED
 rocm_aiter_mla_sparse.py UNVERAENDERT (kopiert)

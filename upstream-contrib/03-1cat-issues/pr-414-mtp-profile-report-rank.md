@@ -2,7 +2,7 @@
 
 Stand 2026-09-05. Branch `pp-mtp-profile-report-rank` im Checkout
 `~/Projekte/vllm-research/1Cat-vLLM`, Basis origin/main 755baae.
-Status: committed als e375cc3, gepusht nach fork Peuqui/1Cat-vLLM (Branch pp-mtp-profile-report-rank). PR NICHT eröffnet. Fork-Port in fork_patches_150 deployt 2026-09-05 18:3x, Rig-Nachweis unten.
+Status: committed als e375cc3, gepusht nach fork Peuqui/1Cat-vLLM (Branch pp-mtp-profile-report-rank). PR eröffnet: https://github.com/1CatAI/1Cat-vLLM/pull/512 Fork-Port in fork_patches_150 deployt 2026-09-05 18:3x, Rig-Nachweis unten.
 Diff: `pr-414-mtp-profile-report-rank.diff` (daneben) bzw. `git diff` im Checkout.
 
 Geänderte Dateien (6, 201+/10-):

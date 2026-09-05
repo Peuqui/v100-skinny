@@ -1,0 +1,357 @@
+diff --git a/tests/distributed/test_pipeline_partition.py b/tests/distributed/test_pipeline_partition.py
+index 4df6f43..9402347 100644
+--- a/tests/distributed/test_pipeline_partition.py
++++ b/tests/distributed/test_pipeline_partition.py
+@@ -65,3 +65,36 @@ def test_uneven_auto_partition(
+     indices: tuple[int, int],
+ ):
+     assert indices == get_pp_indices(num_hidden_layers, pp_rank, pp_size)
++
++
++@pytest.mark.parametrize(
++    ("layer_indices", "num_layers", "pp_size", "partition", "expected"),
++    [
++        # Flash-Next shape: 48 layers, PLE on decoder layer 1, even split.
++        pytest.param([1], 48, 2, None, ([], 24), id="even-split-on-rank0"),
++        pytest.param([1, 30], 48, 2, None, ([30], 24), id="even-split-misplaced"),
++        pytest.param([1], 48, 1, None, ([], 48), id="pp1-never-misplaced"),
++        # VLLM_PP_LAYER_PARTITION decides, not the even split.
++        pytest.param([1], 48, 2, "2,46", ([], 2), id="custom-split-keeps-rank0"),
++        pytest.param([1], 48, 2, "1,47", ([1], 1), id="custom-split-misplaces"),
++        pytest.param([0, 5, 9], 12, 3, "4,4,4", ([5, 9], 4), id="pp3-sorted"),
++    ],
++)
++def test_get_layers_outside_first_pp_rank(
++    monkeypatch: pytest.MonkeyPatch,
++    layer_indices,
++    num_layers,
++    pp_size,
++    partition,
++    expected,
++):
++    from vllm.distributed.utils import get_layers_outside_first_pp_rank
++
++    if partition is None:
++        monkeypatch.delenv("VLLM_PP_LAYER_PARTITION", raising=False)
++    else:
++        monkeypatch.setenv("VLLM_PP_LAYER_PARTITION", partition)
++
++    assert (
++        get_layers_outside_first_pp_rank(layer_indices, num_layers, pp_size) == expected
++    )
+diff --git a/tests/models/qwen4_exp/test_ple.py b/tests/models/qwen4_exp/test_ple.py
+index a9b64cf..6ca1c25 100644
+--- a/tests/models/qwen4_exp/test_ple.py
++++ b/tests/models/qwen4_exp/test_ple.py
+@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
+ from types import SimpleNamespace
+ 
+ import pytest
++import regex as re
+ import torch
+ from torch import nn
+ from torch.nn import functional as F
+@@ -771,3 +772,60 @@ def test_ple_state_shape_reserves_speculative_tokens() -> None:
+     module.num_spec_tokens = 3
+ 
+     assert module.get_state_shape()[0] in ((32, 12), (12, 32))
++
++
++# ---------------------------------------------------------------------------
++# PP gate: the pipeline partition decides, not the pipeline size (#479)
++# ---------------------------------------------------------------------------
++
++
++def _text_config(ple_layer_ids, num_hidden_layers=48):
++    return SimpleNamespace(
++        ple_layer_ids=ple_layer_ids, num_hidden_layers=num_hidden_layers
++    )
++
++
++@pytest.mark.parametrize(
++    ("ple_layer_ids", "pp_size", "partition"),
++    [
++        pytest.param([2], 1, None, id="pp1"),
++        pytest.param([2], 2, None, id="pp2-even-split"),
++        pytest.param([2], 2, "2,46", id="pp2-custom-split-rank0-holds-layer1"),
++        pytest.param([2, 24], 2, None, id="pp2-two-ple-layers-on-rank0"),
++    ],
++)
++def test_ple_pp_gate_accepts_ple_layers_on_first_rank(
++    monkeypatch: pytest.MonkeyPatch, ple_layer_ids, pp_size, partition
++):
++    from vllm.models.qwen4_exp.common.ple import check_ple_layers_on_first_pp_rank
++
++    if partition is None:
++        monkeypatch.delenv("VLLM_PP_LAYER_PARTITION", raising=False)
++    else:
++        monkeypatch.setenv("VLLM_PP_LAYER_PARTITION", partition)
++
++    check_ple_layers_on_first_pp_rank(_text_config(ple_layer_ids), pp_size)
++
++
++@pytest.mark.parametrize(
++    ("ple_layer_ids", "pp_size", "partition", "misplaced"),
++    [
++        pytest.param([2, 30], 2, None, "[29]", id="pp2-even-split"),
++        # ple_layer_ids are 1-based: id 2 is decoder layer 1, which a 1,47
++        # split puts on the second stage.
++        pytest.param([2], 2, "1,47", "[1]", id="pp2-custom-split-off-by-one"),
++        pytest.param([2, 20, 40], 4, None, "[19, 39]", id="pp4-two-misplaced"),
++    ],
++)
++def test_ple_pp_gate_rejects_ple_layers_beyond_first_rank(
++    monkeypatch: pytest.MonkeyPatch, ple_layer_ids, pp_size, partition, misplaced
++):
++    from vllm.models.qwen4_exp.common.ple import check_ple_layers_on_first_pp_rank
++
++    if partition is None:
++        monkeypatch.delenv("VLLM_PP_LAYER_PARTITION", raising=False)
++    else:
++        monkeypatch.setenv("VLLM_PP_LAYER_PARTITION", partition)
++
++    with pytest.raises(RuntimeError, match=re.escape(f"decoder layers {misplaced}")):
++        check_ple_layers_on_first_pp_rank(_text_config(ple_layer_ids), pp_size)
+diff --git a/tests/v1/worker/test_gpu_model_runner_pp.py b/tests/v1/worker/test_gpu_model_runner_pp.py
+index d1c3569..62fa2a1 100644
+--- a/tests/v1/worker/test_gpu_model_runner_pp.py
++++ b/tests/v1/worker/test_gpu_model_runner_pp.py
+@@ -136,3 +136,82 @@ def test_mamba_neutral_pp_update_accepts_int32_slot_indices(monkeypatch) -> None
+     state.postprocess_state(idx_mapping, 0)
+ 
+     assert launches == [(idx_mapping, 1)]
++
++
++# ---------------------------------------------------------------------------
++# PLE under PP: the runner gate follows the partition, not the PP size (#479)
++# ---------------------------------------------------------------------------
++
++
++def _pp2_vllm_config_with_ple(ple_layer_ids: list[int]):
++    from vllm.config import (
++        CacheConfig,
++        ModelConfig,
++        ParallelConfig,
++        SchedulerConfig,
++        VllmConfig,
++    )
++
++    model_config = ModelConfig(model="facebook/opt-125m", dtype="float16", seed=42)
++    # Give the text config the PLE shape of a Qwen4Exp checkpoint.
++    model_config.hf_text_config.ple_layer_ids = ple_layer_ids
++    model_config.hf_text_config.ngram_size = 3
++    # A world of two ranks in a single-GPU test process: set after
++    # construction, the validator would otherwise count the local GPUs.
++    parallel_config = ParallelConfig()
++    parallel_config.pipeline_parallel_size = 2
++    return VllmConfig(
++        model_config=model_config,
++        cache_config=CacheConfig(
++            block_size=16, gpu_memory_utilization=0.9, cache_dtype="auto"
++        ),
++        scheduler_config=SchedulerConfig(
++            max_num_seqs=10,
++            max_num_batched_tokens=512,
++            max_model_len=512,
++            is_encoder_decoder=model_config.is_encoder_decoder,
++        ),
++        parallel_config=parallel_config,
++    )
++
++
++def _patch_pp_group(monkeypatch) -> None:
++    monkeypatch.setattr(
++        "vllm.v1.worker.gpu_model_runner.get_pp_group",
++        lambda: SimpleNamespace(
++            world_size=2,
++            rank=0,
++            rank_in_group=0,
++            ranks=[0, 1],
++            is_first_rank=True,
++            is_last_rank=False,
++        ),
++    )
++
++
++def test_runner_accepts_pp2_with_ple_layers_on_first_rank(monkeypatch) -> None:
++    from vllm.config import set_current_vllm_config
++    from vllm.platforms import current_platform
++    from vllm.v1.worker.gpu_model_runner import GPUModelRunner
++
++    _patch_pp_group(monkeypatch)
++    monkeypatch.delenv("VLLM_PP_LAYER_PARTITION", raising=False)
++    vllm_config = _pp2_vllm_config_with_ple([2])  # decoder layer 1 of 12
++    with set_current_vllm_config(vllm_config):
++        runner = GPUModelRunner(vllm_config, current_platform.device_type)
++    assert runner.uses_ngram_embedding
++
++
++def test_runner_rejects_pp2_with_ple_layer_on_second_rank(monkeypatch) -> None:
++    from vllm.config import set_current_vllm_config
++    from vllm.platforms import current_platform
++    from vllm.v1.worker.gpu_model_runner import GPUModelRunner
++
++    _patch_pp_group(monkeypatch)
++    monkeypatch.delenv("VLLM_PP_LAYER_PARTITION", raising=False)
++    vllm_config = _pp2_vllm_config_with_ple([10])  # decoder layer 9 of 12
++    with (
++        set_current_vllm_config(vllm_config),
++        pytest.raises(RuntimeError, match="first pipeline rank"),
++    ):
++        GPUModelRunner(vllm_config, current_platform.device_type)
+diff --git a/vllm/distributed/utils.py b/vllm/distributed/utils.py
+index ba0419a..eb7fe60 100644
+--- a/vllm/distributed/utils.py
++++ b/vllm/distributed/utils.py
+@@ -14,7 +14,7 @@ import sys
+ import time
+ import uuid
+ from collections import deque
+-from collections.abc import Sequence
++from collections.abc import Iterable, Sequence
+ from datetime import timedelta
+ from typing import Any
+ 
+@@ -140,6 +140,21 @@ def get_pp_indices(
+     return (start_layer, end_layer)
+ 
+ 
++def get_layers_outside_first_pp_rank(
++    layer_indices: Iterable[int], num_hidden_layers: int, pp_size: int
++) -> tuple[list[int], int]:
++    """Return the given layer indices the pipeline partition places beyond the
++    first rank, together with the exclusive end of the first rank's range.
++
++    Honours ``VLLM_PP_LAYER_PARTITION`` through :func:`get_pp_indices`, so a
++    caller that needs certain layers on the first rank can check the actual
++    split instead of refusing ``pp_size > 1`` outright.
++    """
++    _, first_rank_end = get_pp_indices(num_hidden_layers, 0, pp_size)
++    misplaced = sorted(index for index in layer_indices if index >= first_rank_end)
++    return misplaced, first_rank_end
++
++
+ def create_tcp_store(
+     host: str,
+     port: int,
+diff --git a/vllm/models/qwen4_exp/amd/model_state.py b/vllm/models/qwen4_exp/amd/model_state.py
+index ec2a0fe..c44415d 100644
+--- a/vllm/models/qwen4_exp/amd/model_state.py
++++ b/vllm/models/qwen4_exp/amd/model_state.py
+@@ -8,6 +8,7 @@ import torch
+ import torch.nn as nn
+ 
+ from vllm.config import VllmConfig
++from vllm.models.qwen4_exp.common.ple import check_ple_layers_on_first_pp_rank
+ from vllm.v1.worker.gpu.input_batch import InputBatch
+ from vllm.v1.worker.gpu.mm.encoder_cache import EncoderCache
+ from vllm.v1.worker.gpu.model_states.mamba_hybrid import MambaHybridModelState
+@@ -32,13 +33,9 @@ class Qwen4ExpModelState(MambaHybridModelState):
+             self.ngram_eos_token_id = 0
+             return
+ 
+-        if vllm_config.parallel_config.pipeline_parallel_size > 1:
+-            raise RuntimeError(
+-                "N-gram PLE embedding currently requires "
+-                "pipeline_parallel_size=1 because non-first pipeline ranks do "
+-                "not receive the raw input_ids required by PLE. Please run "
+-                "with PP=1."
+-            )
++        check_ple_layers_on_first_pp_rank(
++            config, vllm_config.parallel_config.pipeline_parallel_size
++        )
+ 
+         self.ngram_context_len = int(config.ngram_size) - 1
+         if self.ngram_context_len <= 0:
+diff --git a/vllm/models/qwen4_exp/common/ple.py b/vllm/models/qwen4_exp/common/ple.py
+index 8047f1a..c27adc7 100644
+--- a/vllm/models/qwen4_exp/common/ple.py
++++ b/vllm/models/qwen4_exp/common/ple.py
+@@ -3,9 +3,37 @@
+ """Common Qwen4Exp PLE helpers."""
+ 
+ from dataclasses import dataclass
++from typing import Any
+ 
+ import torch
+ 
++from vllm.distributed.utils import get_layers_outside_first_pp_rank
++
++
++def check_ple_layers_on_first_pp_rank(text_config: Any, pp_size: int) -> None:
++    """Refuse a pipeline split that puts a PLE layer beyond the first rank.
++
++    The n-gram context and ``query_start_loc`` a PLE layer consumes are only
++    prepared on the first pipeline rank, and later ranks receive no input ids
++    at all. ``ple_layer_ids`` are 1-based: id ``L`` attaches the PLE module to
++    decoder layer ``L - 1`` (see ``Qwen4ExpDecoderLayer``), so that is the
++    index the partition has to keep on rank 0.
++    """
++    if pp_size <= 1:
++        return
++    ple_decoder_layers = [int(layer_id) - 1 for layer_id in text_config.ple_layer_ids]
++    misplaced, first_rank_end = get_layers_outside_first_pp_rank(
++        ple_decoder_layers, int(text_config.num_hidden_layers), pp_size
++    )
++    if misplaced:
++        raise RuntimeError(
++            "N-gram PLE embedding requires every PLE layer on the first pipeline "
++            f"rank, which holds decoder layers 0..{first_rank_end - 1}, but the "
++            f"PLE modules of decoder layers {misplaced} fall on a later stage. "
++            "Either run with pipeline_parallel_size=1 or move the split with "
++            "VLLM_PP_LAYER_PARTITION so those layers stay on rank 0."
++        )
++
+ 
+ @dataclass(frozen=True)
+ class PLEShardOverlap:
+diff --git a/vllm/models/qwen4_exp/nvidia/model_state.py b/vllm/models/qwen4_exp/nvidia/model_state.py
+index ec2a0fe..c44415d 100644
+--- a/vllm/models/qwen4_exp/nvidia/model_state.py
++++ b/vllm/models/qwen4_exp/nvidia/model_state.py
+@@ -8,6 +8,7 @@ import torch
+ import torch.nn as nn
+ 
+ from vllm.config import VllmConfig
++from vllm.models.qwen4_exp.common.ple import check_ple_layers_on_first_pp_rank
+ from vllm.v1.worker.gpu.input_batch import InputBatch
+ from vllm.v1.worker.gpu.mm.encoder_cache import EncoderCache
+ from vllm.v1.worker.gpu.model_states.mamba_hybrid import MambaHybridModelState
+@@ -32,13 +33,9 @@ class Qwen4ExpModelState(MambaHybridModelState):
+             self.ngram_eos_token_id = 0
+             return
+ 
+-        if vllm_config.parallel_config.pipeline_parallel_size > 1:
+-            raise RuntimeError(
+-                "N-gram PLE embedding currently requires "
+-                "pipeline_parallel_size=1 because non-first pipeline ranks do "
+-                "not receive the raw input_ids required by PLE. Please run "
+-                "with PP=1."
+-            )
++        check_ple_layers_on_first_pp_rank(
++            config, vllm_config.parallel_config.pipeline_parallel_size
++        )
+ 
+         self.ngram_context_len = int(config.ngram_size) - 1
+         if self.ngram_context_len <= 0:
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 822bfbf..8c95efa 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -1405,8 +1405,14 @@ class GPUModelRunner(
+             self.ngram_eos_token_id = 0
+         if self.uses_ngram_embedding and self.ngram_context_len <= 0:
+             raise ValueError("N-gram embedding requires context length >= 1")
+-        if self.uses_ngram_embedding and parallel_config.pipeline_parallel_size > 1:
+-            raise RuntimeError("N-gram PLE embedding requires pipeline_parallel_size=1")
++        if self.uses_ngram_embedding:
++            from vllm.models.qwen4_exp.common.ple import (
++                check_ple_layers_on_first_pp_rank,
++            )
++
++            check_ple_layers_on_first_pp_rank(
++                model_config.hf_text_config, parallel_config.pipeline_parallel_size
++            )
+         self._ple_offload_connector: Any | None = None
+ 
+         self.cascade_attn_enabled = not self.model_config.disable_cascade_attn

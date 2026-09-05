@@ -1,5 +1,5 @@
 gdn_attn.py AUTO_MERGED
-gpu_model_runner.py AUFGELOEST (PLE-Partition-Pruefung statt PP-Verbot, PP-Spec-Gate, E5-Hooks; 6 Bloecke obsolet; 2026-09-04: K>=2-Regression gefixt — _e5_fast_prepare_v2 nutzt _sync_mamba_accepted_token_state statt des 1.3.0-Align, 27B-Gate 3/3)
+gpu_model_runner.py AUFGELOEST (PLE-Partition-Pruefung statt PP-Verbot, PP-Spec-Gate, E5-Hooks; 6 Bloecke obsolet; 2026-09-04: K>=2-Regression gefixt — _e5_fast_prepare_v2 nutzt _sync_mamba_accepted_token_state statt des 1.3.0-Align, 27B-Gate 3/3); 2026-09-05: #414-Port — MTP-Profil-Report vom Leader der letzten PP-Stufe (is_last_pp_first_tp_rank), NICHT deployt bis nach der 27B-Kalibration
 marlin.py UNVERAENDERT (kopiert)
 modelopt.py AUFGELOEST (QPN8- und TurboMind-Route koexistieren, env-Gate fuehrend)
 torch_utils.py UNVERAENDERT (kopiert)
@@ -34,7 +34,7 @@ dsv4_sm70_gemv.py AUFGELOEST (worker-lokal + deren Zusatz-Checks)
 breakable_cudagraph.py UNVERAENDERT (kopiert)
 multiproc_executor.py AUTO_MERGED
 gpu_worker.py AUTO_MERGED
-parallel_state.py AUTO_MERGED
+parallel_state.py AUTO_MERGED — 2026-09-05: is_last_pp_first_tp_rank() ergaenzt (#414-Port), deployt 2026-09-05
 dsv4_compressor.py AUTO_MERGED
 rocm_aiter_mla_sparse.py UNVERAENDERT (kopiert)
 import_utils.py UNVERAENDERT (kopiert)
@@ -70,7 +70,7 @@ kv_cache_utils.py AUFGELOEST (theirs — CSA-Komplex upstream gelandet; 54z Fork
 sched_scheduler.py AUTO_MERGED
 single_type_kv_cache_manager.py AUFGELOEST (theirs KpoolTailManager; 22z Fork-Hunks)
 kv_cache_interface.py AUFGELOEST (theirs; 104z Fork-Hunks konfliktfrei)
-llm_base_proposer.py AUTO_MERGED
+llm_base_proposer.py AUTO_MERGED — 2026-09-05: Proposer-Profil-Gate auf is_last_pp_first_tp_rank (#414-Port), deployt 2026-09-05
 spec_decode_qwen4_exp.py ERSETZT_DURCH_UPSTREAM (nicht kopiert)
 block_table.py AUTO_MERGED
 model_runner.py OBSOLET (Upstream kennt CircularBufferSpec/slot_mapping nativ)

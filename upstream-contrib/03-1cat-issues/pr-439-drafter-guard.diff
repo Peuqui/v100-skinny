@@ -1,0 +1,204 @@
+diff --git a/tests/v1/worker/test_gpu_model_runner.py b/tests/v1/worker/test_gpu_model_runner.py
+index e9eabca..cc30108 100644
+--- a/tests/v1/worker/test_gpu_model_runner.py
++++ b/tests/v1/worker/test_gpu_model_runner.py
+@@ -15,6 +15,7 @@ from vllm.config import (
+     ModelConfig,
+     ParallelConfig,
+     SchedulerConfig,
++    SpeculativeConfig,
+     VllmConfig,
+     set_current_vllm_config,
+ )
+@@ -1884,3 +1885,58 @@ def test_mamba_cache_raises_when_max_num_seqs_exceeds_blocks():
+ 
+         with pytest.raises(ValueError, match="max_num_seqs"):
+             runner.initialize_kv_cache(kv_cache_config)
++
++
++def _spec_config_for(vllm_config, method: str):
++    kwargs = dict(
++        target_model_config=vllm_config.model_config,
++        target_parallel_config=vllm_config.parallel_config,
++        method=method,
++        num_speculative_tokens=2,
++    )
++    if method == "ngram":
++        kwargs.update(prompt_lookup_min=2, prompt_lookup_max=3)
++    elif method == "draft_model":
++        kwargs["model"] = vllm_config.model_config.model
++    return SpeculativeConfig(**kwargs)
++
++
++@pytest.mark.parametrize("method", ["ngram", "draft_model", "extract_hidden_states"])
++def test_non_last_pp_rank_profiles_with_speculative_config(
++    dist_init, monkeypatch: pytest.MonkeyPatch, method: str
++):
++    """Regression for #439.
++
++    The draft model lives on the last PP rank only, so ``self.drafter`` is
++    created there only. Every rank, however, runs memory profiling
++    (``_dummy_run`` -> ``_build_attention_metadata``) and the KV-cache
++    initialisation, and both probe ``self.drafter``. On a non-last rank
++    that used to raise AttributeError before the first request arrived.
++    """
++    monkeypatch.setattr(
++        "vllm.v1.worker.gpu_model_runner.get_pp_group",
++        lambda: SimpleNamespace(
++            world_size=2,
++            rank=0,
++            rank_in_group=0,
++            is_first_rank=True,
++            is_last_rank=False,
++        ),
++    )
++    vllm_config = get_vllm_config()
++    vllm_config.speculative_config = _spec_config_for(vllm_config, method)
++    with set_current_vllm_config(vllm_config):
++        runner = GPUModelRunner(vllm_config, DEVICE_TYPE)
++        runner.load_model()
++        current_platform.update_block_size_for_backend(vllm_config)
++        kv_cache_config = get_kv_cache_configs(
++            vllm_config, [runner.get_kv_cache_spec()], [GiB_bytes]
++        )[0]
++        # The real initialize_kv_cache(), not the trimmed test helper: it is
++        # the entry point for three of the drafter-only assertions.
++        runner.initialize_kv_cache(kv_cache_config)
++        # force_attention takes the profiling run through
++        # _build_attention_metadata, the frame in the reported traceback.
++        runner._dummy_run(num_tokens=16, is_profile=True, force_attention=True)
++        # Non-last ranks build no drafter -- but the attribute must exist.
++        assert runner.drafter is None
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 822bfbf..5fc0404 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -1534,6 +1534,7 @@ class GPUModelRunner(
+                 | Gemma4Proposer
+                 | Step3p5MTPProposer
+                 | Qwen4ExpMTPProposer
++                | None
+             )
+             if self.speculative_config.method == "custom_class":
+                 self.drafter = create_custom_proposer(  # type: ignore[assignment]
+@@ -1607,6 +1608,15 @@ class GPUModelRunner(
+                 self.sampler, self.speculative_config, self.device
+             )
+ 
++        elif self.speculative_config:
++            # Non-last PP ranks never build a drafter (the entire draft
++            # model lives on the last rank, see the note above), but code
++            # that runs on every rank probes the attribute -- the
++            # attention-metadata builder does so during memory profiling,
++            # long before any request arrives. Bind it so those
++            # isinstance() checks fall through instead of raising
++            # AttributeError.
++            self.drafter = None
+         self.valid_sampled_token_count_gpu: torch.Tensor | None = None
+         if self.speculative_config:
+             draft_config = self.speculative_config.draft_model_config
+@@ -7654,10 +7664,11 @@ class GPUModelRunner(
+             draft_confidence_logits=draft_confidence_logits,
+         )
+         target_candidate_ids = self.rejection_sampler.take_last_target_candidate_ids()
+-        if target_candidate_ids is not None and hasattr(
+-            self.drafter, "update_dynamic_draft_vocab"
+-        ):
+-            self.drafter.update_dynamic_draft_vocab(
++        update_dynamic_draft_vocab = getattr(
++            getattr(self, "drafter", None), "update_dynamic_draft_vocab", None
++        )
++        if target_candidate_ids is not None and update_dynamic_draft_vocab is not None:
++            update_dynamic_draft_vocab(
+                 target_candidate_ids,
+                 sampler_output.sampled_token_ids,
+             )
+@@ -10214,13 +10225,13 @@ class GPUModelRunner(
+                     self.model = self.load_lora_model(
+                         self.model, self.vllm_config, self.device
+                     )
+-                if hasattr(self, "drafter"):
++                if (drafter := getattr(self, "drafter", None)) is not None:
+                     logger.info_once("Loading drafter model...")
+-                    if hasattr(self.drafter, "load_model"):
+-                        self.drafter.load_model(self.model)
++                    if hasattr(drafter, "load_model"):
++                        drafter.load_model(self.model)
+                     if (
+-                        hasattr(self.drafter, "model")
+-                        and is_mixture_of_experts(self.drafter.model)
++                        hasattr(drafter, "model")
++                        and is_mixture_of_experts(drafter.model)
+                         and self.parallel_config.enable_eplb
+                     ):
+                         assert not self.parallel_config.enable_elastic_ep, (
+@@ -10238,7 +10249,7 @@ class GPUModelRunner(
+                                 self.parallel_config, self.device
+                             )
+                         self.eplb_state.add_model(
+-                            self.drafter.model,
++                            drafter.model,
+                             spec_config.draft_model_config,
+                         )
+                         eplb_models += 1
+@@ -11160,10 +11171,14 @@ class GPUModelRunner(
+                     hidden_states
+                 )
+ 
+-            if self.speculative_config and (
+-                self.speculative_config.use_eagle()
+-                or self.speculative_config.uses_draft_model()
+-                or self.speculative_config.uses_extract_hidden_states()
++            if (
++                self.speculative_config
++                and get_pp_group().is_last_rank
++                and (
++                    self.speculative_config.use_eagle()
++                    or self.speculative_config.uses_draft_model()
++                    or self.speculative_config.uses_extract_hidden_states()
++                )
+             ):
+                 assert isinstance(
+                     self.drafter,
+@@ -12158,9 +12173,13 @@ class GPUModelRunner(
+         self.calculate_reorder_batch_threshold()
+ 
+         # Initialize drafter attention backend
+-        if self.speculative_config and (
+-            self.speculative_config.use_eagle()
+-            or self.speculative_config.uses_draft_model()
++        if (
++            self.speculative_config
++            and get_pp_group().is_last_rank
++            and (
++                self.speculative_config.use_eagle()
++                or self.speculative_config.uses_draft_model()
++            )
+         ):
+             assert isinstance(
+                 self.drafter,
+@@ -12211,9 +12230,13 @@ class GPUModelRunner(
+         )
+ 
+         # Initialize drafter's cudagraph dispatcher if using spec decode.
+-        if self.speculative_config and (
+-            self.speculative_config.use_eagle()
+-            or self.speculative_config.uses_extract_hidden_states()
++        if (
++            self.speculative_config
++            and get_pp_group().is_last_rank
++            and (
++                self.speculative_config.use_eagle()
++                or self.speculative_config.uses_extract_hidden_states()
++            )
+         ):
+             assert isinstance(
+                 self.drafter,
+@@ -12682,6 +12705,7 @@ class GPUModelRunner(
+         if (
+             self.speculative_config
+             and self.speculative_config.uses_extract_hidden_states()
++            and get_pp_group().is_last_rank
+         ):
+             assert isinstance(self.drafter, ExtractHiddenStatesProposer)
+             # validate all draft model layers belong to the same kv cache

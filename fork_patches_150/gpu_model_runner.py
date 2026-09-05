@@ -60,6 +60,7 @@ from vllm.distributed.parallel_state import (
     get_tp_group,
     graph_capture,
     is_global_first_rank,
+    is_last_pp_first_tp_rank,
     prepare_communication_buffer_for_model,
 )
 from vllm.distributed.utils import get_pp_indices
@@ -2184,7 +2185,9 @@ class GPUModelRunner(
 
         if calls != 1 and calls % _sm70_mtp_profile_interval() != 0:
             return
-        if not is_global_first_rank():
+        # The events come from the sampling path, which only the last PP
+        # stage runs; the global first rank never sees them when PP > 1.
+        if not is_last_pp_first_tp_rank():
             return
 
         preferred = [

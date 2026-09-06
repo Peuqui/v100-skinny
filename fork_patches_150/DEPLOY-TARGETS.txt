@@ -46,6 +46,7 @@ _custom_ops.py vllm/_custom_ops.py
 compilation.py vllm/config/compilation.py
 scheduler.py vllm/config/scheduler.py
 speculative.py vllm/config/speculative.py
+envs.py vllm/envs.py
 attention_layer_base.py vllm/model_executor/layers/attention_layer_base.py
 abstract.py vllm/model_executor/layers/mamba/abstract.py
 qwen_gdn_linear_attn.py vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py

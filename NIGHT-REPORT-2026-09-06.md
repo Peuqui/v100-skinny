@@ -160,3 +160,14 @@ Befunde:
 - Kurzkontext: RTX-Paar 61,2 vs V100-Paar 55,5 (+10 %); KV-Pool RTX 3x. Entscheidung RTX vs V100 offen
   (Peuqui, Single-User), Nachmessmodus kann den RTX-Punkt in ~30 min persistieren.
 - Sweep-Zeiten: V100-Sonden 3,4–4,1 min, RTX-Sonden 8 min (kalt), k=1 auf RTX 3,0 (Cache-Treffer von k=7/3).
+
+## 12. Nachmesslauf RTX-Paar (13:50–14:29, Nachmessmodus, warmer Cache) — Betriebspunkt RTX
+
+`scripts/vllm_resweep.py Qwen3.8-27B-NVFP4-vllm --topology "TP2 across RTX 8000 class"` (AIfred, neuer
+Nachmessmodus). Sonden je 3,3 min (Cache-Treffer). Ergebnis: **TP2 RTX-Paar (GPUs 0,2), k=3, 52,1 tok/s
+lang / 61,2 kurz, Prefill 516**, Chunk 2048 (4096: 52,2, kein Gewinn), GMU 0,98 (0,96: 51,7, verliert).
+Persistiert 14:29, llama-swap neu gestartet, Eintrag ohne DROP_CT/DENSE-Env-Zeilen (Fork-Defaults).
+Entscheid Peuqui: RTX wegen Kurzkontext (+10 %); Single-User, KV-Pool kein Kriterium. Neue Siegerregel
+(AIfred b7e75a0d): Turnzeit am Alltagskontext (12.000 Token, gewichtet zwischen Kurz- und Langpunkt,
+Prefill ueber die Lastannahme) — haette die RTX direkt gewaehlt.
+Matrix: data/logs/vllm_calibration/Qwen3.8-27B-NVFP4-vllm/measurement-matrix.json.

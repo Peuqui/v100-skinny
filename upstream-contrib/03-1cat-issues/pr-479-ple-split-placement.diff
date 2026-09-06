@@ -1,0 +1,847 @@
+diff --git a/tests/models/qwen4_exp/test_ple.py b/tests/models/qwen4_exp/test_ple.py
+index a9b64cf..ceaaaad 100644
+--- a/tests/models/qwen4_exp/test_ple.py
++++ b/tests/models/qwen4_exp/test_ple.py
+@@ -16,8 +16,12 @@ from vllm.model_executor.layers.quantization.fp8 import Fp8Config
+ from vllm.model_executor.model_loader.utils import device_loading_context
+ from vllm.models.qwen4_exp.common.ple import (
+     PLEShardOverlap,
++    auto_ple_host_budget_bytes,
++    available_host_bytes,
+     compute_ple_shard_overlap,
+     copy_ple_embedding_shard_,
++    copy_ple_embedding_shard_split_,
++    plan_ple_placement,
+ )
+ from vllm.models.qwen4_exp.nvidia.ple_layer import (
+     Qwen4ExpNGramEmbedding,
+@@ -28,85 +32,250 @@ from vllm.models.qwen4_exp.nvidia.ple_layer import (
+ )
+ 
+ 
+-@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA pinned memory")
+-def test_pinned_host_ple_allocates_tp_shard_without_device_table(
+-    monkeypatch: pytest.MonkeyPatch,
+-) -> None:
++def _patch_tp(monkeypatch: pytest.MonkeyPatch, rank: int, world_size: int) -> None:
+     monkeypatch.setattr(ple_module, "is_pin_memory_available", lambda: True)
+-    monkeypatch.setattr(embedding_module, "get_tensor_model_parallel_rank", lambda: 2)
+     monkeypatch.setattr(
+-        embedding_module, "get_tensor_model_parallel_world_size", lambda: 4
++        embedding_module, "get_tensor_model_parallel_rank", lambda: rank
+     )
+-    monkeypatch.setattr(parameter_module, "get_tensor_model_parallel_rank", lambda: 2)
+     monkeypatch.setattr(
+-        parameter_module, "get_tensor_model_parallel_world_size", lambda: 4
++        embedding_module, "get_tensor_model_parallel_world_size", lambda: world_size
++    )
++    monkeypatch.setattr(
++        parameter_module, "get_tensor_model_parallel_rank", lambda: rank
++    )
++    monkeypatch.setattr(
++        parameter_module, "get_tensor_model_parallel_world_size", lambda: world_size
+     )
+ 
+-    layer = Qwen4ExpPinnedHostEmbedding(
+-        num_embeddings=32,
+-        embedding_dim=8,
++
++def _pinned_layer(num_embeddings: int = 32, embedding_dim: int = 8):
++    return Qwen4ExpPinnedHostEmbedding(
++        num_embeddings=num_embeddings,
++        embedding_dim=embedding_dim,
+         params_dtype=torch.float16,
+         padding_size=8,
+         prefix="model.layers.2.ple.ngram_embedding",
+         quant_method=Qwen4ExpPLEFp8EmbeddingMethod(),
+     )
+ 
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA pinned memory")
++def test_pinned_host_ple_allocates_nothing_before_the_first_shard(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    _patch_tp(monkeypatch, rank=2, world_size=4)
++
++    layer = _pinned_layer()
++
+     assert layer.tp_size == 4
+-    assert layer.weight.shape == (8, 8)
++    # The loader contract is kept by a row-less CPU placeholder; the TP shard
++    # of 8 rows is only placed once the budget can see the real headroom.
++    assert layer.weight.shape == (0, 8)
+     assert layer.weight.dtype == torch.float8_e4m3fn
+     assert layer.weight.device.type == "cpu"
+-    assert layer.weight.is_pinned()
+     assert layer.weight._vllm_keep_on_cpu
+-    assert not layer.weight.is_meta
++    assert layer.ple_device_table is None and layer.ple_host_storage is None
+     assert not layer.weight_scale.is_meta
+     assert layer.weight_scale.dtype == torch.float16
+     assert layer._accelerator_weight_views == {}
+ 
+ 
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA pinned memory")
++def test_pinned_host_ple_splits_the_shard_by_host_budget(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    _patch_tp(monkeypatch, rank=2, world_size=4)
++    # 3 rows x 8 bytes fit the host budget, the other 5 rows stay on device.
++    monkeypatch.setattr(ple_module, "_ple_host_budget_bytes", lambda: 3 * 8)
++
++    layer = _pinned_layer()
++    layer.materialize_tables()
++
++    assert layer.ple_device_table is not None and layer.ple_host_storage is not None
++    assert layer.ple_device_table.shape == (5, 8)
++    assert layer.ple_device_table.device.type == "cuda"
++    assert layer.ple_host_storage.shape == (3, 8)
++    assert layer.ple_host_storage.is_pinned()
++    assert (layer._device_rows, layer._host_rows) == (5, 3)
++    # Idempotent: a second call keeps the tables.
++    device_table = layer.ple_device_table
++    layer.materialize_tables()
++    assert layer.ple_device_table is device_table
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA pinned memory")
++def test_pinned_host_ple_without_budget_keeps_everything_on_device(
++    monkeypatch: pytest.MonkeyPatch,
++) -> None:
++    _patch_tp(monkeypatch, rank=0, world_size=1)
++    monkeypatch.setattr(ple_module, "_ple_host_budget_bytes", lambda: 0)
++
++    layer = _pinned_layer(num_embeddings=8)
++    # Preparing the accelerator view (process_weights_after_loading) must not
++    # depend on a shard having been loaded, e.g. with dummy weights.
++    layer.prepare_accelerator_weight()
++
++    assert layer.ple_device_table is not None
++    assert layer.ple_device_table.shape == (8, 8)
++    assert layer.ple_host_storage is not None
++    assert layer.ple_host_storage.shape == (0, 8)
++    assert layer._host_rows == 0
++
++
+ @pytest.mark.skipif(
+     not torch.cuda.is_available() or torch.cuda.get_device_capability() != (7, 0),
+     reason="requires an exact SM70 CUDA device",
+ )
+-def test_pinned_host_ple_fp8_rows_are_gatherable_on_sm70(
++@pytest.mark.parametrize("host_rows", [0, 4, 8])
++def test_pinned_host_ple_fp8_rows_are_gatherable_across_the_split_on_sm70(
+     monkeypatch: pytest.MonkeyPatch,
++    host_rows: int,
+ ) -> None:
+-    monkeypatch.setattr(ple_module, "is_pin_memory_available", lambda: True)
+-    monkeypatch.setattr(embedding_module, "get_tensor_model_parallel_rank", lambda: 0)
+-    monkeypatch.setattr(
+-        embedding_module, "get_tensor_model_parallel_world_size", lambda: 1
+-    )
+-    monkeypatch.setattr(parameter_module, "get_tensor_model_parallel_rank", lambda: 0)
+-    monkeypatch.setattr(
+-        parameter_module, "get_tensor_model_parallel_world_size", lambda: 1
+-    )
++    _patch_tp(monkeypatch, rank=0, world_size=1)
+     monkeypatch.setattr(
+         embedding_module, "tensor_model_parallel_all_reduce", lambda tensor: tensor
+     )
+-    layer = Qwen4ExpPinnedHostEmbedding(
+-        num_embeddings=8,
+-        embedding_dim=8,
+-        params_dtype=torch.float16,
+-        padding_size=8,
+-        prefix="model.layers.2.ple.ngram_embedding",
+-        quant_method=Qwen4ExpPLEFp8EmbeddingMethod(),
+-    )
++    monkeypatch.setattr(ple_module, "_ple_host_budget_bytes", lambda: host_rows * 8)
++    layer = _pinned_layer(num_embeddings=8)
+     raw = torch.tensor(
+         [0x00, 0x01, 0x08, 0x38, 0x7E, 0x80, 0xB8, 0xFE],
+         dtype=torch.uint8,
+     ).repeat(8, 1)
+-    layer.weight.data.copy_(raw.view(torch.float8_e4m3fn))
++    # Distinct rows: row i carries the pattern rotated by i.
++    raw = torch.stack([raw[i].roll(i) for i in range(8)])
++    checkpoint = raw.view(torch.float8_e4m3fn)
++    copied = layer.load_shard(checkpoint, checkpoint_start=0, tp_start=0, tp_end=8)
++    assert copied == 8
++    assert (layer._device_rows, layer._host_rows) == (8 - host_rows, host_rows)
+     layer.weight_scale = nn.Parameter(
+         torch.tensor([0.25], dtype=torch.float16, device="cuda"),
+         requires_grad=False,
+     )
+     layer.prepare_accelerator_weight()
+ 
+-    output = layer(torch.tensor([0, 7], dtype=torch.int64, device="cuda"))
++    ids = torch.tensor([0, 3, 4, 7, 2], dtype=torch.int64, device="cuda")
++    output = layer(ids)
+     torch.accelerator.synchronize()
+ 
+     assert output.dtype == torch.float16
+-    expected = raw.view(torch.float8_e4m3fn).float() * 0.25
+-    torch.testing.assert_close(output.float().cpu(), expected[[0, 7]])
++    expected = checkpoint.float() * 0.25
++    torch.testing.assert_close(output.float().cpu(), expected[ids.cpu()])
++
++
++@pytest.mark.parametrize(
++    ("capability", "expected"),
++    [((7, 0), True), ((7, 5), True), ((8, 0), False), ((8, 9), False)],
++)
++def test_pinned_host_ple_decides_on_the_worker_device(
++    monkeypatch: pytest.MonkeyPatch, capability: tuple[int, int], expected: bool
++) -> None:
++    from vllm.platforms.interface import DeviceCapability
++
++    seen: list[int] = []
++
++    def fake_capability(device_id: int = 0) -> DeviceCapability:
++        seen.append(device_id)
++        return DeviceCapability(*capability)
++
++    monkeypatch.setattr(ple_module, "is_offload_process", lambda: False)
++    monkeypatch.setattr(ple_module.current_platform, "is_cuda", lambda: True)
++    monkeypatch.setattr(
++        ple_module.current_platform, "get_device_capability", fake_capability
++    )
++    monkeypatch.setattr(torch.accelerator, "current_device_index", lambda: 3)
++
++    config = SimpleNamespace(ple_offload_embedding=None)
++    assert ple_module._should_use_pinned_host_ple(config) is expected
++    # The worker's own device, not device 0 of the visible list.
++    assert seen == [3]
++    # An explicit config choice wins over the capability.
++    assert ple_module._should_use_pinned_host_ple(
++        SimpleNamespace(ple_offload_embedding=not expected)
++    ) is (not expected)
++
++
++def test_plan_ple_placement_spills_only_what_the_budget_holds() -> None:
++    assert plan_ple_placement(total_rows=10, row_bytes=8, host_budget_bytes=0) == (
++        plan_ple_placement(total_rows=10, row_bytes=8, host_budget_bytes=7)
++    )
++    placement = plan_ple_placement(
++        total_rows=10, row_bytes=8, host_budget_bytes=3 * 8 + 7
++    )
++    assert (placement.vram_rows, placement.host_rows) == (7, 3)
++    # A budget beyond the table never inflates the host part.
++    big = plan_ple_placement(total_rows=10, row_bytes=8, host_budget_bytes=10**9)
++    assert (big.vram_rows, big.host_rows) == (0, 10)
++    with pytest.raises(ValueError):
++        plan_ple_placement(total_rows=10, row_bytes=8, host_budget_bytes=-1)
++
++
++def test_copy_ple_embedding_shard_split_matches_the_single_copy() -> None:
++    checkpoint = torch.arange(20 * 4, dtype=torch.int8).view(20, 4)
++    # TP range [5, 15) of a 20-row table, checkpoint shards of 6 rows.
++    reference = torch.zeros(10, 4, dtype=torch.int8)
++    vram = torch.zeros(6, 4, dtype=torch.int8)
++    host = torch.zeros(4, 4, dtype=torch.int8)
++    for shard_index in range(4):
++        start = shard_index * 6
++        shard = checkpoint[start : start + 6]
++        copy_ple_embedding_shard_(
++            reference, shard, checkpoint_start=start, tp_start=5, tp_end=15
++        )
++        copy_ple_embedding_shard_split_(
++            vram, host, shard, checkpoint_start=start, tp_start=5, tp_end=15
++        )
++    torch.testing.assert_close(torch.cat([vram, host]), reference)
++    with pytest.raises(ValueError, match="exceeds the TP range"):
++        copy_ple_embedding_shard_split_(
++            torch.zeros(11, 4, dtype=torch.int8),
++            host,
++            checkpoint[:6],
++            checkpoint_start=0,
++            tp_start=5,
++            tp_end=15,
++        )
++
++
++def test_auto_ple_host_budget_spills_only_the_shortfall() -> None:
++    gib = 1024**3
++    common = dict(
++        device_total_bytes=48 * gib,
++        gpu_memory_utilization=0.95,
++        reserve_bytes=2 * gib,
++    )
++    # 45.6 usable - 20 weights - 10 KV - 2 reserve = 13.6 GiB room: a 10 GiB
++    # table fits entirely, a 20 GiB table spills 6.4 GiB.
++    assert (
++        auto_ple_host_budget_bytes(
++            table_bytes=10 * gib,
++            device_allocated_bytes=20 * gib,
++            kv_cache_bytes=10 * gib,
++            **common,
++        )
++        == 0
++    )
++    spill = auto_ple_host_budget_bytes(
++        table_bytes=20 * gib,
++        device_allocated_bytes=20 * gib,
++        kv_cache_bytes=10 * gib,
++        **common,
++    )
++    assert spill == 20 * gib - (int(48 * gib * 0.95) - 32 * gib)
++    # No room at all: the whole table goes to the host, never more.
++    assert (
++        auto_ple_host_budget_bytes(
++            table_bytes=20 * gib,
++            device_allocated_bytes=46 * gib,
++            kv_cache_bytes=10 * gib,
++            **common,
++        )
++        == 20 * gib
++    )
++
++
++def test_available_host_bytes_reads_meminfo() -> None:
++    available = available_host_bytes()
++    assert available is None or available > 0
+ 
+ 
+ def test_post_load_context_keeps_marked_parameter_on_cpu() -> None:
+diff --git a/vllm/envs.py b/vllm/envs.py
+index f686e9b..86a842d 100755
+--- a/vllm/envs.py
++++ b/vllm/envs.py
+@@ -768,6 +768,8 @@ if TYPE_CHECKING:
+     VLLM_PLE_OFFLOAD_AUTO_NUMA: bool = True
+     VLLM_PLE_OFFLOAD_PREFAULT: bool = True
+     VLLM_PLE_OFFLOAD_READY_TIMEOUT: float = 600.0
++    VLLM_QWEN4EXP_PLE_HOST_GIB: float | None = None
++    VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB: float | None = None
+     VLLM_LOG_MODEL_INSPECTION: bool = False
+     VLLM_DEBUG_MFU_METRICS: bool = False
+     VLLM_WEIGHT_OFFLOADING_DISABLE_PIN_MEMORY: bool = False
+@@ -4533,6 +4535,24 @@ environment_variables: dict[str, Callable[[], Any]] = {
+     "VLLM_PLE_OFFLOAD_READY_TIMEOUT": lambda: float(
+         os.getenv("VLLM_PLE_OFFLOAD_READY_TIMEOUT", "600")
+     ),
++    # Qwen4Exp pinned-host PLE: host memory in GiB, per tensor-parallel rank,
++    # for the part of the FP8 n-gram table that does not stay in device
++    # memory. Unset or "auto": derived from the device headroom left beside
++    # the weights and the KV cache of the requested context.
++    "VLLM_QWEN4EXP_PLE_HOST_GIB": lambda: (
++        None
++        if os.getenv("VLLM_QWEN4EXP_PLE_HOST_GIB", "auto").strip().lower()
++        in ("", "auto")
++        else float(os.getenv("VLLM_QWEN4EXP_PLE_HOST_GIB", "0"))
++    ),
++    # Device memory in GiB the automatic PLE placement keeps free for the
++    # activation peak and the CUDA graph pool. Unset: 8 % of the device,
++    # at most 4 GiB.
++    "VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB": lambda: (
++        None
++        if os.getenv("VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB", "").strip() == ""
++        else float(os.getenv("VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB", "0"))
++    ),
+     # Log model inspection after loading.
+     # If enabled, logs a transformers-style hierarchical view of the model
+     # with quantization methods and attention backends.
+diff --git a/vllm/models/qwen4_exp/common/ple.py b/vllm/models/qwen4_exp/common/ple.py
+index 8047f1a..ec180ed 100644
+--- a/vllm/models/qwen4_exp/common/ple.py
++++ b/vllm/models/qwen4_exp/common/ple.py
+@@ -3,9 +3,13 @@
+ """Common Qwen4Exp PLE helpers."""
+ 
+ from dataclasses import dataclass
++from typing import TYPE_CHECKING
+ 
+ import torch
+ 
++if TYPE_CHECKING:
++    from vllm.config import VllmConfig
++
+ 
+ @dataclass(frozen=True)
+ class PLEShardOverlap:
+@@ -73,3 +77,140 @@ def copy_ple_embedding_shard_(
+     with torch.no_grad():
+         target.copy_(source.to(device=target.device, dtype=target.dtype))
+     return overlap.row_count
++
++
++@dataclass(frozen=True)
++class PLEPlacement:
++    """How many PLE table rows live in device memory and how many on the host."""
++
++    vram_rows: int
++    host_rows: int
++
++    @property
++    def total_rows(self) -> int:
++        return self.vram_rows + self.host_rows
++
++
++def plan_ple_placement(
++    *,
++    total_rows: int,
++    row_bytes: int,
++    host_budget_bytes: int,
++) -> PLEPlacement:
++    """Place as many PLE rows as possible in device memory.
++
++    The table is addressed by hashes, so every row is equally likely to be read
++    and the split point carries no meaning beyond capacity: whatever does not
++    fit in device memory goes to the host. Rows are never dropped, so the
++    caller must provide a host budget large enough for the remainder.
++    """
++
++    if total_rows < 0 or row_bytes <= 0:
++        raise ValueError("total_rows must be non-negative and row_bytes positive")
++    if host_budget_bytes < 0:
++        raise ValueError("host budget must be non-negative")
++    host_rows = min(total_rows, host_budget_bytes // row_bytes)
++    return PLEPlacement(vram_rows=total_rows - host_rows, host_rows=host_rows)
++
++
++def copy_ple_embedding_shard_split_(
++    vram_table: torch.Tensor,
++    host_table: torch.Tensor,
++    loaded_weight: torch.Tensor,
++    *,
++    checkpoint_start: int,
++    tp_start: int,
++    tp_end: int,
++) -> int:
++    """Copy one checkpoint shard into a table split across device and host.
++
++    The split point is a row index in the TP-local range, so both halves are
++    plain sub-ranges of the same vocabulary interval and the single-target
++    copy above handles each of them unchanged.
++    """
++
++    boundary = tp_start + vram_table.shape[0]
++    if boundary > tp_end:
++        raise ValueError(
++            f"device part ({vram_table.shape[0]} rows) exceeds the TP range "
++            f"({tp_end - tp_start} rows)"
++        )
++    copied = 0
++    if vram_table.shape[0]:
++        copied += copy_ple_embedding_shard_(
++            vram_table,
++            loaded_weight,
++            checkpoint_start=checkpoint_start,
++            tp_start=tp_start,
++            tp_end=boundary,
++        )
++    if host_table.shape[0]:
++        copied += copy_ple_embedding_shard_(
++            host_table,
++            loaded_weight,
++            checkpoint_start=checkpoint_start,
++            tp_start=boundary,
++            tp_end=tp_end,
++        )
++    return copied
++
++
++def kv_cache_bytes_for_max_model_len(vllm_config: "VllmConfig") -> int:
++    """Bytes this rank's KV cache needs to serve ``max_model_len``.
++
++    Sums what every KV-owning layer of this pipeline stage declares. The specs
++    are the engine's own source of truth for that number -- the same ones the
++    allocator consults later -- so the estimate cannot drift from what is
++    actually reserved.
++    """
++
++    from vllm.config import get_layers_from_vllm_config
++    from vllm.model_executor.layers.attention_layer_base import AttentionLayerBase
++
++    layers = get_layers_from_vllm_config(vllm_config, AttentionLayerBase)  # type: ignore[type-abstract]
++    total = 0
++    for layer in layers.values():
++        spec = layer.get_kv_cache_spec(vllm_config)
++        if spec is not None:
++            total += spec.max_memory_usage_bytes(vllm_config)
++    return total
++
++
++def auto_ple_host_budget_bytes(
++    *,
++    table_bytes: int,
++    device_total_bytes: int,
++    device_allocated_bytes: int,
++    gpu_memory_utilization: float,
++    kv_cache_bytes: int,
++    reserve_bytes: int,
++) -> int:
++    """Host bytes needed so the requested context still fits beside the table.
++
++    The table stays in device memory and only what the context claims is
++    spilled -- never more. Spilling beyond that would be wasted: with pipeline
++    parallelism the weakest stage caps the block count for all of them, so
++    surplus room on this rank buys nothing while pinned host memory is the
++    scarcer resource.
++    """
++
++    if table_bytes < 0 or device_total_bytes <= 0:
++        raise ValueError("table and device sizes must be non-negative")
++    usable = int(device_total_bytes * gpu_memory_utilization)
++    room_for_table = usable - device_allocated_bytes - kv_cache_bytes - reserve_bytes
++    if room_for_table >= table_bytes:
++        return 0
++    return table_bytes - max(0, room_for_table)
++
++
++def available_host_bytes() -> int | None:
++    """Host memory the kernel currently reports as available, or None."""
++
++    try:
++        with open("/proc/meminfo") as meminfo:
++            for line in meminfo:
++                if line.startswith("MemAvailable:"):
++                    return int(line.split()[1]) * 1024
++    except OSError:
++        return None
++    return None
+diff --git a/vllm/models/qwen4_exp/nvidia/ple_layer.py b/vllm/models/qwen4_exp/nvidia/ple_layer.py
+index 5f12fd5..7c0cfc3 100644
+--- a/vllm/models/qwen4_exp/nvidia/ple_layer.py
++++ b/vllm/models/qwen4_exp/nvidia/ple_layer.py
+@@ -70,7 +70,14 @@ from vllm.v1.attention.backends.short_conv_attn import (
+ )
+ from vllm.v1.attention.backends.utils import NULL_BLOCK_ID
+ 
+-from ..common.ple import copy_ple_embedding_shard_
++from ..common.ple import (
++    auto_ple_host_budget_bytes,
++    available_host_bytes,
++    copy_ple_embedding_shard_,
++    copy_ple_embedding_shard_split_,
++    kv_cache_bytes_for_max_model_len,
++    plan_ple_placement,
++)
+ 
+ _MASK64 = (1 << 64) - 1
+ _SPLITMIX_GAMMA = 0x9E3779B97F4A7C15
+@@ -499,17 +506,64 @@ def _should_use_pinned_host_ple(config: Qwen4ExpTextConfig) -> bool:
+     explicit = getattr(config, "ple_offload_embedding", None)
+     if explicit is not None:
+         return bool(explicit)
+-    capability = current_platform.get_device_capability()
+-    return capability is not None and capability.to_int() == 70
++    if not current_platform.is_cuda():
++        return False
++    # Decide on THIS worker's device: on a heterogeneous pipeline the PLE
++    # stage is not necessarily device 0 of the visible list. Every
++    # pre-Ampere card takes the split placement, not only exact Volta: the
++    # generic path dequantizes the whole FP8 table to fp16 inside the
++    # compiled graph (47.7 GiB for Qwen3.8 Flash Next), which none of them
++    # can hold.
++    capability = current_platform.get_device_capability(
++        device_id=torch.accelerator.current_device_index()
++    )
++    return capability is not None and capability.major < 8
+ 
+ 
+-class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
+-    """TP-sharded FP8 PLE table backed directly by pinned host memory.
++def _ple_host_budget_bytes() -> int | None:
++    """Configured host bytes per rank for the PLE table, or None to derive them."""
++
++    budget_gib = envs.VLLM_QWEN4EXP_PLE_HOST_GIB
++    if budget_gib is None:
++        return None
++    if budget_gib < 0:
++        raise ValueError(
++            f"VLLM_QWEN4EXP_PLE_HOST_GIB must not be negative, got {budget_gib}"
++        )
++    return int(budget_gib * 1024**3)
++
+ 
+-    The base embedding is constructed on the meta device, so the full shard is
+-    never allocated on a GPU. Checkpoint shards copy directly into the pinned
+-    CPU parameter. A stable UVA view is created after loading and used only for
+-    embedding gathers.
++def _ple_vram_reserve_bytes(device_total_bytes: int) -> int:
++    """Device memory the automatic placement keeps free.
++
++    It covers the activation peak and the graph pool, which the engine only
++    measures after the weights are placed -- so they cannot be read here. On
++    a 48 GB card the gap between (weights + KV) and the utilization budget
++    stayed between 1.8 and 2.3 GiB; the default leaves a slightly wider
++    margin. Overshooting costs host memory, undershooting makes the KV
++    allocator fail late.
++    """
++
++    reserve_gib = envs.VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB
++    if reserve_gib is not None:
++        return int(reserve_gib * 1024**3)
++    return min(int(device_total_bytes * 0.08), 4 * 1024**3)
++
++
++class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
++    """TP-sharded FP8 PLE table split between device memory and pinned host.
++
++    The base embedding is constructed on the meta device, so nothing is
++    allocated up front. The real tables are built lazily on the first
++    checkpoint shard (or when the accelerator view is prepared), when every
++    other weight of this pipeline stage is already placed and the automatic
++    budget can measure the real headroom: rows that fit beside the weights,
++    the KV cache of the requested context and a reserve stay in device
++    memory, only the remainder goes to pinned host memory and is gathered
++    through a stable UVA view. ``VLLM_QWEN4EXP_PLE_HOST_GIB`` fixes the host
++    share instead. Gathers always read both halves (an unused half reads row
++    0), because branching on the ids would need a device-to-host sync on
++    every decode step.
+     """
+ 
+     def __init__(
+@@ -541,19 +595,23 @@ class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
+         meta_weight = self._parameters.get("weight")
+         if not isinstance(meta_weight, torch.Tensor):
+             raise RuntimeError("Qwen4Exp PLE meta weight was not initialized")
+-        host_weight = ModelWeightParameter(
++        self._meta_weight_shape = tuple(meta_weight.shape)
++        self._meta_weight_dtype = meta_weight.dtype
++        # Placeholder parameter: keeps the loader contract (a CPU-resident
++        # ``weight`` that must not be moved to the device) without holding
++        # rows; the tables live in ple_device_table / ple_host_storage.
++        placeholder = ModelWeightParameter(
+             data=torch.empty(
+-                tuple(meta_weight.shape),
++                (0, self.embedding_dim),
+                 dtype=meta_weight.dtype,
+                 device="cpu",
+-                pin_memory=True,
+             ),
+             input_dim=1,
+             output_dim=0,
+             weight_loader=self.weight_loader,
+         )
+-        host_weight._vllm_keep_on_cpu = True
+-        self.weight = host_weight
++        placeholder._vllm_keep_on_cpu = True
++        self.weight = placeholder
+         self.weight_scale = create_fp8_scale_parameter(
+             PerTensorScaleParameter,
+             [self.num_embeddings_per_partition],
+@@ -565,9 +623,111 @@ class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
+         self._accelerator_weight_views: dict[int, torch.Tensor] = {}
+         self._accelerator_weight_ptrs: dict[int, int] = {}
+         self._output_dtype = self.weight_scale.dtype
++        self._device_rows = 0
++        self._host_rows = 0
++        self._device_table_ptr = 0
++        self.ple_device_table: torch.Tensor | None = None
++        self.ple_host_storage: torch.Tensor | None = None
++
++    def _resolve_host_budget(self, device: torch.device) -> int:
++        """Host bytes for the table: as configured, or derived from headroom."""
++        explicit = _ple_host_budget_bytes()
++        if explicit is not None:
++            return explicit
++        vllm_config = get_current_vllm_config()
++        free_bytes, total_bytes = torch.cuda.mem_get_info(device)
++        kv_bytes = kv_cache_bytes_for_max_model_len(vllm_config)
++        reserve_bytes = _ple_vram_reserve_bytes(total_bytes)
++        gmu = vllm_config.cache_config.gpu_memory_utilization
++        table_bytes = self._meta_weight_shape[0] * self.embedding_dim
++        budget = auto_ple_host_budget_bytes(
++            table_bytes=table_bytes,
++            device_total_bytes=total_bytes,
++            device_allocated_bytes=total_bytes - free_bytes,
++            gpu_memory_utilization=gmu,
++            kv_cache_bytes=kv_bytes,
++            reserve_bytes=reserve_bytes,
++        )
+         logger.info(
+-            "Qwen4Exp PLE shard allocated in pinned host memory: %s",
+-            format_gib(self.weight.numel() * self.weight.element_size()),
++            "Qwen4Exp PLE auto placement: %s usable at gmu=%.2f, %s already "
++            "allocated, %s KV for %d tokens, %s reserve -> %s of the table go "
++            "to host memory",
++            format_gib(int(total_bytes * gmu)),
++            gmu,
++            format_gib(total_bytes - free_bytes),
++            format_gib(kv_bytes),
++            vllm_config.model_config.max_model_len,
++            format_gib(reserve_bytes),
++            format_gib(budget),
++        )
++        return budget
++
++    def materialize_tables(self) -> None:
++        """Allocate the device and host parts of the FP8 table (idempotent)."""
++        if self.ple_device_table is not None:
++            return
++        device = torch.device("cuda", torch.accelerator.current_device_index())
++        total_rows = self._meta_weight_shape[0]
++        host_budget = self._resolve_host_budget(device)
++        placement = plan_ple_placement(
++            total_rows=total_rows,
++            row_bytes=self.embedding_dim,
++            host_budget_bytes=host_budget,
++        )
++        needed = placement.host_rows * self.embedding_dim
++        available = available_host_bytes()
++        if needed and available is not None and needed > available:
++            raise RuntimeError(
++                f"Qwen4Exp PLE placement needs {format_gib(needed)} of pinned "
++                f"host memory but only {format_gib(available)} is available, "
++                "and every tensor-parallel rank pins its own share. Lower the "
++                "requested context or VLLM_QWEN4EXP_PLE_HOST_GIB."
++            )
++        self.ple_device_table = torch.empty(
++            (placement.vram_rows, self.embedding_dim),
++            dtype=self._meta_weight_dtype,
++            device=device,
++        )
++        self.ple_host_storage = torch.empty(
++            (placement.host_rows, self.embedding_dim),
++            dtype=self._meta_weight_dtype,
++            device="cpu",
++            pin_memory=placement.host_rows > 0,
++        )
++        self._device_rows = placement.vram_rows
++        self._host_rows = placement.host_rows
++        # Cached as a plain int: torch.compile cannot trace data_ptr() inside
++        # the forward, the same reason the host pointer is cached below.
++        self._device_table_ptr = self.ple_device_table.data_ptr()
++        logger.info(
++            "Qwen4Exp PLE table placement: %d of %d rows in device memory "
++            "(%s), %d rows in pinned host memory (%s)",
++            placement.vram_rows,
++            placement.total_rows,
++            format_gib(placement.vram_rows * self.embedding_dim),
++            placement.host_rows,
++            format_gib(placement.host_rows * self.embedding_dim),
++        )
++
++    def load_shard(
++        self,
++        loaded_weight: torch.Tensor,
++        *,
++        checkpoint_start: int,
++        tp_start: int,
++        tp_end: int,
++    ) -> int:
++        """Copy one checkpoint shard into whichever part owns its rows."""
++        self.materialize_tables()
++        assert self.ple_device_table is not None
++        assert self.ple_host_storage is not None
++        return copy_ple_embedding_shard_split_(
++            self.ple_device_table,
++            self.ple_host_storage,
++            loaded_weight,
++            checkpoint_start=checkpoint_start,
++            tp_start=tp_start,
++            tp_end=tp_end,
+         )
+ 
+     def get_accelerator_weight(self, device: torch.device) -> torch.Tensor:
+@@ -586,8 +746,13 @@ class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
+                 raise RuntimeError(
+                     "Qwen4Exp PLE UVA view must be prepared before CUDA graph capture"
+                 )
+-            with torch.accelerator.device_index(device_index):
+-                view = get_accelerator_view_from_cpu_tensor(self.weight)
++            self.materialize_tables()
++            assert self.ple_host_storage is not None
++            if self.ple_host_storage.numel():
++                with torch.accelerator.device_index(device_index):
++                    view = get_accelerator_view_from_cpu_tensor(self.ple_host_storage)
++            else:
++                view = self.ple_host_storage
+             self._accelerator_weight_views[device_index] = view
+             self._accelerator_weight_ptrs[device_index] = view.data_ptr()
+         return view
+@@ -598,29 +763,55 @@ class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
+         )
+ 
+     def embedding_lookup(self, input_: torch.Tensor) -> torch.Tensor:
+-        """Gather FP8 UVA rows and emit scaled model-dtype values."""
++        """Gather FP8 rows from the device/host split, emit scaled values."""
+ 
+         device_index = (
+             torch.accelerator.current_device_index()
+             if input_.device.index is None
+             else input_.device.index
+         )
+-        weight_ptr = self._accelerator_weight_ptrs.get(device_index)
+-        if weight_ptr is None:
++        host_ptr = self._accelerator_weight_ptrs.get(device_index)
++        if host_ptr is None:
+             self.get_accelerator_weight(input_.device)
+-            weight_ptr = self._accelerator_weight_ptrs[device_index]
++            host_ptr = self._accelerator_weight_ptrs[device_index]
++        flat_ids = input_.reshape(-1)
+         output = torch.empty(
+             (*input_.shape, self.embedding_dim),
+             dtype=self._output_dtype,
+             device=input_.device,
+         )
++        out_flat = output.reshape(-1, self.embedding_dim)
++        if self._host_rows == 0 or self._device_rows == 0:
++            table_ptr = self._device_table_ptr if self._host_rows == 0 else host_ptr
++            torch.ops.vllm.qwen4_exp_ple_pinned_gather(
++                flat_ids,
++                out_flat,
++                self.weight_scale,
++                table_ptr,
++                self.embedding_dim,
++            )
++            return output
++        boundary = self._device_rows
++        on_host = flat_ids >= boundary
++        zero = flat_ids.new_zeros(())
++        device_ids = torch.where(on_host, zero, flat_ids)
++        host_ids = torch.where(on_host, flat_ids - boundary, zero)
++        host_out = torch.empty_like(out_flat)
+         torch.ops.vllm.qwen4_exp_ple_pinned_gather(
+-            input_.reshape(-1),
+-            output.reshape(-1, self.embedding_dim),
++            device_ids,
++            out_flat,
+             self.weight_scale,
+-            weight_ptr,
++            self._device_table_ptr,
+             self.embedding_dim,
+         )
++        torch.ops.vllm.qwen4_exp_ple_pinned_gather(
++            host_ids,
++            host_out,
++            self.weight_scale,
++            host_ptr,
++            self.embedding_dim,
++        )
++        out_flat.copy_(torch.where(on_host.unsqueeze(-1), host_out, out_flat))
+         return output
+ 
+ 
+@@ -1177,13 +1368,23 @@ class Qwen4ExpNGramEmbedding(PleOffloadLayer):
+                     self._disk_mapped_paths.add(mapped_path)
+                     loaded.add("ngram_embedding.weight")
+                     continue
+-                copy_ple_embedding_shard_(
+-                    embedding.weight.data,
+-                    loaded_weight,
+-                    checkpoint_start=checkpoint_start,
+-                    tp_start=embedding.shard_indices.org_vocab_start_index,
+-                    tp_end=embedding.shard_indices.org_vocab_end_index,
+-                )
++                if isinstance(embedding, Qwen4ExpPinnedHostEmbedding):
++                    # Split placement: the embedding routes each shard into
++                    # its device or host part (tables built on first shard).
++                    embedding.load_shard(
++                        loaded_weight,
++                        checkpoint_start=checkpoint_start,
++                        tp_start=embedding.shard_indices.org_vocab_start_index,
++                        tp_end=embedding.shard_indices.org_vocab_end_index,
++                    )
++                else:
++                    copy_ple_embedding_shard_(
++                        embedding.weight.data,
++                        loaded_weight,
++                        checkpoint_start=checkpoint_start,
++                        tp_start=embedding.shard_indices.org_vocab_start_index,
++                        tp_end=embedding.shard_indices.org_vocab_end_index,
++                    )
+                 loaded.add("ngram_embedding.weight")
+                 continue
+             if disk_offload and name == "ngram_embedding.weight_scale":

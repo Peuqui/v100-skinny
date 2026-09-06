@@ -1,0 +1,766 @@
+diff --git a/tests/v1/spec_decode/test_dspark.py b/tests/v1/spec_decode/test_dspark.py
+index 3f3251c..46110ca 100644
+--- a/tests/v1/spec_decode/test_dspark.py
++++ b/tests/v1/spec_decode/test_dspark.py
+@@ -99,6 +99,10 @@ def test_deepseek_v4_dspark_checkpoint_name_mapping() -> None:
+     remap = DSparkDeepseekV4ForCausalLM._remap_dspark_name
+ 
+     assert remap("model.layers.0.attn.wq_a.weight") is None
++    # The target's embedding also fills the drafter's own table: under
++    # pipeline parallelism the drafter (last stage) cannot share the target
++    # embedding (first stage).
++    assert remap("embed.weight") == "model.embed_tokens.weight"
+     assert remap("mtp.0.main_proj.weight") == "model.main_proj.weight"
+     assert remap("mtp.0.main_norm.weight") == "model.main_norm.weight"
+     assert remap("mtp.1.ffn.experts.7.w2.weight") == (
+diff --git a/tests/v1/spec_decode/test_prepare_next_token_ids_padded.py b/tests/v1/spec_decode/test_prepare_next_token_ids_padded.py
+new file mode 100644
+index 0000000..deca7ce
+--- /dev/null
++++ b/tests/v1/spec_decode/test_prepare_next_token_ids_padded.py
+@@ -0,0 +1,80 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""The shared next-token derivation for padded speculative sampler output.
++
++`prepare_next_token_ids_padded` wraps eagle_prepare_next_token_padded_kernel
++and is used by the drafter on the last PP rank and by the non-last PP ranks
++on the sampled matrix they receive from it, so both derive identical values.
++"""
++
++import pytest
++import torch
++
++from vllm.platforms import current_platform
++from vllm.v1.spec_decode.utils import prepare_next_token_ids_padded
++
++
++def reference_prepare_next_token_ids_padded(
++    sampled_token_ids: torch.Tensor,
++    discard_request_mask: torch.Tensor,
++    backup_next_token_ids: torch.Tensor,
++    vocab_size: int,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """Torch mirror of eagle_prepare_next_token_padded_kernel.
++
++    Only the contiguous valid prefix of a row counts; the next token is its
++    last token, or the backup token for discarded rows and rows without a
++    valid token.
++    """
++    valid = (sampled_token_ids >= 0) & (sampled_token_ids < vocab_size)
++    counts = valid.to(torch.int32).cumprod(dim=1).sum(dim=1).to(torch.int32)
++    last = sampled_token_ids.gather(
++        1, (counts.to(torch.int64) - 1).clamp_(min=0).unsqueeze(1)
++    ).squeeze(1)
++    num_reqs = sampled_token_ids.shape[0]
++    backup = backup_next_token_ids[:num_reqs]
++    next_token_ids = torch.where(counts > 0, last.to(torch.int32), backup)
++    discarded = discard_request_mask[:num_reqs]
++    next_token_ids = torch.where(discarded, backup, next_token_ids)
++    counts = torch.where(discarded, torch.zeros_like(counts), counts)
++    return next_token_ids, counts
++
++
++@pytest.mark.skipif(not current_platform.is_cuda_alike(), reason="Triton kernel")
++@pytest.mark.parametrize("num_spec_tokens", [1, 3, 7])
++def test_prepare_next_token_ids_padded_matches_reference(num_spec_tokens: int):
++    device = torch.device(current_platform.device_type)
++    vocab_size = 50
++    num_reqs = 64
++    generator = torch.Generator(device="cpu").manual_seed(num_spec_tokens)
++    sampled = torch.randint(
++        0, vocab_size, (num_reqs, num_spec_tokens + 1), generator=generator
++    )
++    # Rejection padding, then stale values after the first -1 that must not
++    # count, and an out-of-vocab value that ends the valid prefix as well.
++    first_invalid = torch.randint(
++        0, num_spec_tokens + 2, (num_reqs,), generator=generator
++    )
++    for row, col in enumerate(first_invalid.tolist()):
++        if col <= num_spec_tokens:
++            sampled[row, col] = -1
++            sampled[row, col + 1 :] = 7
++    sampled[0, 0] = -1  # no valid token at all
++    sampled[1, 0] = vocab_size  # out of vocab in the first slot
++    discard = torch.zeros(num_reqs, dtype=torch.bool)
++    discard[::5] = True
++    backup = torch.arange(1000, 1000 + num_reqs, dtype=torch.int32)
++
++    expected_ids, expected_counts = reference_prepare_next_token_ids_padded(
++        sampled, discard, backup, vocab_size
++    )
++    next_token_ids, counts = prepare_next_token_ids_padded(
++        sampled.to(device, torch.int32),
++        discard.to(device),
++        backup.to(device),
++        vocab_size,
++    )
++    assert next_token_ids.cpu().tolist() == expected_ids.tolist()
++    assert counts.cpu().tolist() == expected_counts.tolist()
++    assert next_token_ids.dtype == torch.int32
++    assert counts.dtype == torch.int32
+diff --git a/tests/v1/worker/test_gpu_model_runner_pp_spec.py b/tests/v1/worker/test_gpu_model_runner_pp_spec.py
+new file mode 100644
+index 0000000..9342085
+--- /dev/null
++++ b/tests/v1/worker/test_gpu_model_runner_pp_spec.py
+@@ -0,0 +1,217 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Speculative decoding under pipeline parallelism: the round state the last
++PP rank broadcasts and the non-last ranks rebuild from it.
++
++Two CPU processes over gloo play the last and a non-last rank of a PP=2
++deployment with async scheduling, so the wire format (shapes, padding,
++ordering) and the receiving rank's bookkeeping are checked end to end without
++a GPU. The next-token derivation itself is a Triton kernel shared with the
++drafter; it is replaced by its torch reference here and checked against the
++kernel on GPU in tests/v1/spec_decode/test_prepare_next_token_ids_padded.py.
++"""
++
++from types import SimpleNamespace
++from typing import Any
++
++import numpy as np
++import pytest
++import torch
++import torch.distributed as dist
++import torch.multiprocessing as mp
++
++from tests.v1.spec_decode.test_prepare_next_token_ids_padded import (
++    reference_prepare_next_token_ids_padded,
++)
++from vllm.utils.network_utils import get_open_port
++
++WORLD_SIZE = 2
++LAST_RANK = 1
++NUM_SPEC_TOKENS = 2
++NUM_REQS = 3
++VOCAB_SIZE = 100
++REQ_IDS = ["r0", "r1", "r2"]
++PROMPT_LEN = 4
++# The sampler emitted one column less than num_spec_tokens + 1 this round.
++SAMPLED = [[5, 7], [9, -1], [11, 12]]
++SAMPLED_PADDED = [[5, 7, -1], [9, -1, -1], [11, 12, -1]]
++DRAFTS = [[1, 2], [3, 4], [5, 6]]
++DISCARDED = [False, True, False]
++
++
++class _FakeRequest:
++    def __init__(self, prompt_token_ids: list[int]) -> None:
++        self.prompt_token_ids = prompt_token_ids
++        self.num_prompt_tokens = len(prompt_token_ids)
++        self.output_token_ids: list[int] = []
++
++    def get_token_id(self, idx: int) -> int:
++        if idx < self.num_prompt_tokens:
++            return self.prompt_token_ids[idx]
++        return self.output_token_ids[idx - self.num_prompt_tokens]
++
++
++def _pp_group(rank: int) -> SimpleNamespace:
++    return SimpleNamespace(
++        rank=rank,
++        last_rank=LAST_RANK,
++        is_last_rank=rank == LAST_RANK,
++        world_size=WORLD_SIZE,
++        device_group=dist.group.WORLD,
++    )
++
++
++def _make_runner(rank: int, num_spec_tokens: int):
++    # Late import: the child process must not pay for it before the group
++    # exists, and the module patches below must hit the child's copy.
++    import vllm.v1.worker.gpu_model_runner as runner_module
++    from vllm.v1.utils import CpuGpuBuffer
++    from vllm.v1.worker.gpu_model_runner import GPUModelRunner
++
++    runner_module.get_pp_group = lambda: _pp_group(rank)
++    runner_module.prepare_next_token_ids_padded = (
++        reference_prepare_next_token_ids_padded
++    )
++
++    runner = GPUModelRunner.__new__(GPUModelRunner)
++    runner.device = torch.device("cpu")
++    runner.num_spec_tokens = num_spec_tokens
++    runner.max_num_reqs = 8
++    runner.requests = {
++        req_id: _FakeRequest([10 * (i + 1) + j for j in range(PROMPT_LEN)])
++        for i, req_id in enumerate(REQ_IDS)
++    }
++    runner.input_batch = SimpleNamespace(
++        num_reqs=NUM_REQS,
++        req_ids=list(REQ_IDS),
++        num_tokens_no_spec=np.full(NUM_REQS, PROMPT_LEN, dtype=np.int32),
++        is_token_ids=np.zeros((NUM_REQS, 16), dtype=bool),
++        vocab_size=VOCAB_SIZE,
++        prev_sampled_token_ids=None,
++        prev_req_id_to_index=None,
++    )
++    runner.discard_request_mask = SimpleNamespace(
++        np=np.array(DISCARDED), gpu=torch.tensor(DISCARDED)
++    )
++    runner.pp_backup_next_token_ids = CpuGpuBuffer(
++        runner.max_num_reqs,
++        dtype=torch.int32,
++        device=runner.device,
++        pin_memory=False,
++    )
++    runner._is_all_reqs_chunked_prefill = lambda: False
++    runner._draft_token_ids = None
++    runner._pp_nonlast_scheduler_output = None
++    return runner
++
++
++def _run_last_rank(runner) -> None:
++    # Round A: speculative round with a narrower sampler output.
++    runner._draft_token_ids = torch.tensor(DRAFTS, dtype=torch.int64)
++    runner._pp_broadcast_prev_sampled_token_ids(
++        torch.tensor(SAMPLED, dtype=torch.int64)
++    )
++    runner._pp_broadcast_draft_token_ids()
++    # Round B: same payload; the receiver has no stashed scheduler_output.
++    runner._pp_broadcast_prev_sampled_token_ids(
++        torch.tensor(SAMPLED, dtype=torch.int64)
++    )
++    runner._pp_broadcast_draft_token_ids()
++    # Round C: list-form drafts (ngram) travel as zeros.
++    runner._draft_token_ids = [[1], [2], [3]]
++    runner._pp_broadcast_prev_sampled_token_ids(
++        torch.tensor(SAMPLED, dtype=torch.int64)
++    )
++    runner._pp_broadcast_draft_token_ids()
++    # Round D: no speculative decoding, the plain [num_reqs, 1] path.
++    runner.num_spec_tokens = 0
++    runner._pp_broadcast_prev_sampled_token_ids(
++        torch.tensor([[5], [9], [11]], dtype=torch.int32)
++    )
++
++
++def _run_non_last_rank(runner) -> None:
++    recorded: dict[str, Any] = {}
++    runner._copy_valid_sampled_token_count = lambda ids, counts: recorded.update(
++        next_token_ids=ids.clone(), counts=counts.clone()
++    )
++    runner._update_states_after_model_execute = (
++        lambda sampled, scheduler_output: recorded.update(
++            sampled=sampled.clone(), scheduler_output=scheduler_output
++        )
++    )
++
++    # Round A
++    stash = object()
++    runner._pp_nonlast_scheduler_output = stash
++    runner._pp_receive_prev_sampled_token_ids_to_input_batch()
++    assert torch.equal(
++        recorded["sampled"], torch.tensor(SAMPLED_PADDED, dtype=torch.int32)
++    )
++    # Row 1 is discarded: its next token is the backup token (the last
++    # prompt token) and it counts no accepted tokens.
++    backup_r1 = runner.requests["r1"].prompt_token_ids[PROMPT_LEN - 1]
++    assert recorded["next_token_ids"].tolist() == [7, backup_r1, 12]
++    assert recorded["counts"].tolist() == [2, 0, 2]
++    assert torch.equal(runner._draft_token_ids, torch.tensor(DRAFTS, dtype=torch.int32))
++    assert recorded["scheduler_output"] is stash
++    assert runner._pp_nonlast_scheduler_output is None
++    # Bookkeeping of the existing PP+async path still runs for the
++    # non-discarded rows.
++    assert runner.input_batch.prev_req_id_to_index == {"r0": 0, "r2": 2}
++    assert runner.requests["r0"].output_token_ids == [-1]
++    assert runner.requests["r1"].output_token_ids == []
++    assert runner.input_batch.num_tokens_no_spec.tolist() == [5, 4, 5]
++    assert runner.input_batch.is_token_ids[0, PROMPT_LEN]
++    assert not runner.input_batch.is_token_ids[1, PROMPT_LEN]
++
++    # Round B: no stash -> loud failure, after both broadcasts were consumed
++    # (otherwise the last rank would hang on the next collective).
++    with pytest.raises(RuntimeError, match="stashed scheduler_output"):
++        runner._pp_receive_prev_sampled_token_ids_to_input_batch()
++
++    # Round C
++    runner._pp_nonlast_scheduler_output = object()
++    runner._pp_receive_prev_sampled_token_ids_to_input_batch()
++    assert torch.equal(
++        runner._draft_token_ids,
++        torch.zeros((NUM_REQS, NUM_SPEC_TOKENS), dtype=torch.int32),
++    )
++
++    # Round D
++    runner.num_spec_tokens = 0
++    runner._pp_receive_prev_sampled_token_ids_to_input_batch()
++    assert runner.input_batch.prev_sampled_token_ids.tolist() == [[5], [9], [11]]
++
++
++def _worker(rank: int, port: int) -> None:
++    dist.init_process_group(
++        backend="gloo",
++        init_method=f"tcp://127.0.0.1:{port}",
++        rank=rank,
++        world_size=WORLD_SIZE,
++    )
++    try:
++        runner = _make_runner(rank, NUM_SPEC_TOKENS)
++        if rank == LAST_RANK:
++            _run_last_rank(runner)
++        else:
++            _run_non_last_rank(runner)
++    finally:
++        dist.destroy_process_group()
++
++
++def test_pp_spec_decode_state_round_trip() -> None:
++    port = get_open_port()
++    ctx = mp.get_context("spawn")
++    procs = [
++        ctx.Process(target=_worker, args=(rank, port)) for rank in range(WORLD_SIZE)
++    ]
++    for proc in procs:
++        proc.start()
++    for proc in procs:
++        proc.join(timeout=300)
++    for proc in procs:
++        if proc.is_alive():
++            proc.kill()
++    assert [proc.exitcode for proc in procs] == [0, 0]
+diff --git a/vllm/models/deepseek_v4/nvidia/dspark.py b/vllm/models/deepseek_v4/nvidia/dspark.py
+index 84f7119..4aed325 100644
+--- a/vllm/models/deepseek_v4/nvidia/dspark.py
++++ b/vllm/models/deepseek_v4/nvidia/dspark.py
+@@ -18,6 +18,7 @@ import torch.nn as nn
+ from vllm import envs
+ from vllm.config import VllmConfig, get_current_vllm_config
+ from vllm.distributed import (
++    get_pp_group,
+     get_tensor_model_parallel_rank,
+     get_tensor_model_parallel_world_size,
+ )
+@@ -485,6 +486,17 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
+ 
+         for layer in self.model.layers:
+             layer.ffn.finalize_mega_moe_weights()
++        if (
++            get_pp_group().world_size > 1
++            and "model.embed_tokens.weight" not in loaded_params
++        ):
++            # Under pipeline parallelism the drafter cannot share the
++            # target's embedding (first stage) and runs on its own table;
++            # an unloaded table means random embeddings, not an error.
++            raise RuntimeError(
++                "DSpark drafter: the checkpoint supplied no 'embed.weight' for "
++                "the drafter's own embedding, which pipeline parallelism needs."
++            )
+         confidence_weight_name = "model.confidence_head.proj.weight"
+         self._confidence_head_loaded = confidence_weight_name in loaded_params
+         if self._confidence_head_required and not self._confidence_head_loaded:
+@@ -497,6 +509,13 @@ class DSparkDeepseekV4ForCausalLM(nn.Module):
+ 
+     @staticmethod
+     def _remap_dspark_name(name: str) -> str | None:
++        if name == "embed.weight":
++            # The target's embedding also fills the drafter's own table. With
++            # PP=1 the proposer replaces it by the shared target embedding
++            # afterwards; under pipeline parallelism the target embedding
++            # lives on the first stage and the drafter on the last, so this
++            # copy is the one the drafter runs on.
++            return "model.embed_tokens.weight"
+         match = re.match(r"mtp\.(\d+)\.(.*)", name)
+         if match is None:
+             return None
+diff --git a/vllm/v1/spec_decode/extract_hidden_states.py b/vllm/v1/spec_decode/extract_hidden_states.py
+index c3cb3c8..63ea118 100644
+--- a/vllm/v1/spec_decode/extract_hidden_states.py
++++ b/vllm/v1/spec_decode/extract_hidden_states.py
+@@ -15,6 +15,7 @@ from vllm.model_executor.model_loader import get_model
+ from vllm.utils.platform_utils import is_pin_memory_available
+ from vllm.v1.attention.backend import AttentionMetadataBuilder, CommonAttentionMetadata
+ from vllm.v1.cudagraph_dispatcher import CudagraphDispatcher
++from vllm.v1.spec_decode.utils import fill_backup_next_token_ids
+ from vllm.v1.utils import CpuGpuBuffer
+ from vllm.v1.worker.dp_utils import coordinate_batch_across_dp
+ from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
+@@ -315,13 +316,9 @@ class ExtractHiddenStatesProposer:
+         num_reqs = gpu_input_batch.num_reqs
+ 
+         # Precompute backup token IDs for discarded requests.
+-        num_reqs = gpu_input_batch.num_reqs
+-        for i in range(num_reqs):
+-            self.backup_next_token_ids.np[i] = requests[
+-                gpu_input_batch.req_ids[i]
+-            ].get_token_id(gpu_input_batch.num_tokens_no_spec[i] - 1)
+-        self.backup_next_token_ids.copy_to_gpu(num_reqs)
+-        backup_tokens_gpu = self.backup_next_token_ids.gpu[:num_reqs]
++        backup_tokens_gpu = fill_backup_next_token_ids(
++            self.backup_next_token_ids, requests, gpu_input_batch
++        )[:num_reqs]
+ 
+         assert discard_request_mask.dtype == torch.bool
+ 
+diff --git a/vllm/v1/spec_decode/llm_base_proposer.py b/vllm/v1/spec_decode/llm_base_proposer.py
+index a8d9e5c..b4777c0 100644
+--- a/vllm/v1/spec_decode/llm_base_proposer.py
++++ b/vllm/v1/spec_decode/llm_base_proposer.py
+@@ -65,7 +65,9 @@ from vllm.v1.spec_decode.utils import (
+     eagle_prepare_next_token_padded_kernel,
+     eagle_step_update_slot_mapping_and_metadata,
+     extend_all_queries_by_N,
++    fill_backup_next_token_ids,
+     next_power_of_2,
++    prepare_next_token_ids_padded,
+ )
+ from vllm.v1.utils import CpuGpuBuffer
+ from vllm.v1.worker.dp_utils import coordinate_batch_across_dp
+@@ -1865,45 +1867,20 @@ class SpecDecodeBaseProposer:
+         for each request, considering the "discarded" requests whose next token
+         is not sampled and comes from `request.get_token_id()` instead. This is denoted
+         the "backup" token id. It also counts rejected tokens via `sampled_token_ids`.
++
++        Non-last pipeline ranks derive the same values from the received
++        sampled matrix with the same helpers (GPUModelRunner).
+         """
+-        # Precompute backup token IDs for discarded requests.
+-        num_reqs = gpu_input_batch.num_reqs
+-        for i in range(num_reqs):
+-            self.backup_next_token_ids.np[i] = requests[
+-                gpu_input_batch.req_ids[i]
+-            ].get_token_id(gpu_input_batch.num_tokens_no_spec[i] - 1)
+-        self.backup_next_token_ids.copy_to_gpu(num_reqs)
+-        backup_tokens_gpu = self.backup_next_token_ids.gpu
+-
+-        batch_size, num_tokens = sampled_token_ids.shape
+-        device = sampled_token_ids.device
+-
+-        assert discard_request_mask.dtype == torch.bool
+-        assert backup_tokens_gpu.dtype == torch.int32
+-
+-        next_token_ids = torch.empty(batch_size, dtype=torch.int32, device=device)
+-        valid_sampled_tokens_count = next_token_ids.new_empty(batch_size)
+-
+-        # Kernel grid: one program per request (row)
+-        grid = (batch_size,)
+-
+-        # Find the next power of 2 for block sizes
+-        BLOCK_SIZE_TOKENS = next_power_of_2(num_tokens)
+-        eagle_prepare_next_token_padded_kernel[grid](
++        backup_tokens_gpu = fill_backup_next_token_ids(
++            self.backup_next_token_ids, requests, gpu_input_batch
++        )
++        return prepare_next_token_ids_padded(
+             sampled_token_ids,
+             discard_request_mask,
+             backup_tokens_gpu,
+-            next_token_ids,
+-            valid_sampled_tokens_count,
+             gpu_input_batch.vocab_size,
+-            num_tokens,
+-            batch_size,
+-            sampled_token_ids.stride(0),
+-            BLOCK_SIZE_TOKENS=BLOCK_SIZE_TOKENS,
+         )
+ 
+-        return next_token_ids, valid_sampled_tokens_count
+-
+     def prepare_inputs_padded(
+         self,
+         common_attn_metadata: CommonAttentionMetadata,
+diff --git a/vllm/v1/spec_decode/utils.py b/vllm/v1/spec_decode/utils.py
+index 2dd0aa5..d48215b 100644
+--- a/vllm/v1/spec_decode/utils.py
++++ b/vllm/v1/spec_decode/utils.py
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ from collections.abc import Sequence
++from typing import TYPE_CHECKING
+ 
+ import torch
+ 
+@@ -9,6 +10,10 @@ from vllm.triton_utils import tl, triton
+ from vllm.v1.attention.backends.utils import (
+     CommonAttentionMetadata,
+ )
++from vllm.v1.utils import CpuGpuBuffer
++
++if TYPE_CHECKING:
++    from vllm.v1.worker.gpu_input_batch import CachedRequestState, InputBatch
+ 
+ PADDING_SLOT_ID = -1
+ 
+@@ -318,6 +323,63 @@ def eagle_prepare_next_token_padded_kernel(
+         tl.store(valid_sampled_tokens_count_ptr + req_idx, valid_count)
+ 
+ 
++def fill_backup_next_token_ids(
++    backup_next_token_ids: CpuGpuBuffer,
++    requests: dict[str, "CachedRequestState"],
++    gpu_input_batch: "InputBatch",
++) -> torch.Tensor:
++    """Fill the per-row backup token ids and return the GPU view.
++
++    The backup token is the last token before the speculative slots. It is
++    the next token for discarded requests, whose sampled row is dummy, and
++    for rows without a valid sampled token.
++    """
++    num_reqs = gpu_input_batch.num_reqs
++    for i in range(num_reqs):
++        backup_next_token_ids.np[i] = requests[gpu_input_batch.req_ids[i]].get_token_id(
++            gpu_input_batch.num_tokens_no_spec[i] - 1
++        )
++    backup_next_token_ids.copy_to_gpu(num_reqs)
++    return backup_next_token_ids.gpu
++
++
++def prepare_next_token_ids_padded(
++    sampled_token_ids: torch.Tensor,
++    discard_request_mask: torch.Tensor,
++    backup_next_token_ids: torch.Tensor,
++    vocab_size: int,
++) -> tuple[torch.Tensor, torch.Tensor]:
++    """Next token id and number of valid sampled tokens per request row.
++
++    ``sampled_token_ids`` is the -1 padded [num_reqs, num_spec_tokens + 1]
++    sampler output. Only the contiguous valid prefix of a row counts; the
++    next token is its last token, or the backup token when the row is
++    discarded or has no valid token (see the kernel).
++    """
++    assert discard_request_mask.dtype == torch.bool
++    assert backup_next_token_ids.dtype == torch.int32
++
++    batch_size, num_tokens = sampled_token_ids.shape
++    device = sampled_token_ids.device
++    next_token_ids = torch.empty(batch_size, dtype=torch.int32, device=device)
++    valid_sampled_tokens_count = next_token_ids.new_empty(batch_size)
++
++    # Kernel grid: one program per request (row)
++    eagle_prepare_next_token_padded_kernel[(batch_size,)](
++        sampled_token_ids,
++        discard_request_mask,
++        backup_next_token_ids,
++        next_token_ids,
++        valid_sampled_tokens_count,
++        vocab_size,
++        num_tokens,
++        batch_size,
++        sampled_token_ids.stride(0),
++        BLOCK_SIZE_TOKENS=next_power_of_2(num_tokens),
++    )
++    return next_token_ids, valid_sampled_tokens_count
++
++
+ def compute_new_slot_mapping(
+     cad: CommonAttentionMetadata,
+     new_positions: torch.Tensor,
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 5fc0404..8bc0f0b 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -227,7 +227,11 @@ from vllm.v1.spec_decode.static_draft_vocab import (
+ )
+ from vllm.v1.spec_decode.step3p5 import Step3p5MTPProposer
+ from vllm.v1.spec_decode.suffix_decoding import SuffixDecodingProposer
+-from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
++from vllm.v1.spec_decode.utils import (
++    fill_backup_next_token_ids,
++    prepare_next_token_ids_padded,
++    update_num_computed_tokens_for_batch_change,
++)
+ from vllm.v1.structured_output.utils import apply_grammar_bitmask
+ from vllm.v1.utils import CpuGpuBuffer, record_function_or_nullcontext
+ from vllm.v1.worker import mamba_utils
+@@ -356,6 +360,21 @@ def _count_contiguous_spec_tokens(output_token_ids: torch.Tensor) -> torch.Tenso
+     return first_invalid.to(torch.int32)
+ 
+ 
++def _pad_spec_sampled_token_ids(
++    sampled_token_ids: torch.Tensor, num_spec_tokens: int
++) -> torch.Tensor:
++    """Pad the sampler's [num_reqs, <= num_spec_tokens + 1] matrix to the
++    static wire shape [num_reqs, num_spec_tokens + 1] with -1."""
++    payload = torch.full(
++        (sampled_token_ids.shape[0], num_spec_tokens + 1),
++        -1,
++        dtype=torch.int32,
++        device=sampled_token_ids.device,
++    )
++    payload[:, : sampled_token_ids.shape[1]] = sampled_token_ids
++    return payload
++
++
+ def _async_spec_decode_participating_prev_positions(
+     prev_positions: np.ndarray,
+     prev_num_draft_tokens: np.ndarray,
+@@ -1944,6 +1963,23 @@ class GPUModelRunner(
+ 
+         # Ephemeral state transferred between execute_model() and sample_tokens().
+         self.execute_model_state: ExecuteModelState | None = None
++        # Non-last PP rank under speculative decoding: this step's
++        # scheduler_output, kept until the sampled matrix arrives from the
++        # last rank in sample_tokens() (hybrid-state update).
++        self._pp_nonlast_scheduler_output: SchedulerOutput | None = None
++        # Non-last PP ranks under async speculative decoding derive the next
++        # token ids from the received sampled matrix with the drafter's
++        # helpers; the drafter (and its backup-token buffer) lives on the
++        # last rank only, so they need their own.
++        self.pp_backup_next_token_ids: CpuGpuBuffer | None = None
++        if (
++            self.num_spec_tokens
++            and self.use_async_scheduling
++            and not get_pp_group().is_last_rank
++        ):
++            self.pp_backup_next_token_ids = self._make_buffer(
++                self.max_num_reqs, dtype=torch.int32
++            )
+         self.kv_connector_output: KVConnectorOutput | None = None
+         self.mamba_state_idx: dict[str, int] = {}
+         self._mamba_bufs: mamba_utils.MambaBuffers | None = None
+@@ -8880,6 +8916,7 @@ class GPUModelRunner(
+                     # Return the intermediate tensors.
+                     assert isinstance(hidden_states, IntermediateTensors)
+                     self.kv_connector_output = kv_connector_output
++                    self._pp_nonlast_scheduler_output = scheduler_output
+                     return hidden_states
+ 
+                 if self.is_pooling_model:
+@@ -9450,6 +9487,15 @@ class GPUModelRunner(
+             # tokens on the CPU, so they are run after bookkeeping.
+             propose_draft_token_ids(valid_sampled_token_ids)
+ 
++        if (
++            spec_config is not None
++            and self.use_async_scheduling
++            and not self.broadcast_pp_output
++            and get_pp_group().world_size > 1
++            and get_pp_group().is_last_rank
++        ):
++            self._pp_broadcast_draft_token_ids()
++
+         # Finalize KV connector (wait_for_save + clear metadata) after
+         # draft model runs. Deferred from target model forward to allow
+         # draft model to also save its KV cache.
+@@ -9603,28 +9649,116 @@ class GPUModelRunner(
+         """Broadcast sampled token ids (GPU) from last PP stage"""
+         pp = get_pp_group()
+         assert pp.is_last_rank
++        # Skip for chunked prefill: sampled tokens are dummy
++        # and will be discarded, no need to broadcast.
++        if self._is_all_reqs_chunked_prefill():
++            return
++        if self.num_spec_tokens:
++            # Speculative decoding: the non-last ranks derive the next token
++            # ids, the accepted counts and the hybrid-state update from the
++            # full sampled matrix. The sampler emits fewer columns in rounds
++            # with fewer or no scheduled drafts, so pad to the static wire
++            # shape [num_reqs, num_spec_tokens + 1] with the rejection
++            # sampler's -1 placeholder.
++            payload = _pad_spec_sampled_token_ids(
++                sampled_token_ids, self.num_spec_tokens
++            )
++            torch.distributed.broadcast(payload, src=pp.rank, group=pp.device_group)
++            return
+         # `prev_sampled_token_ids` is expected to have shape [num_reqs, 1].
+         assert sampled_token_ids.dim() == 2 and sampled_token_ids.shape[-1] == 1, (
+             "PP+async expects sampled_token_ids to have shape [num_reqs, 1]"
+         )
+-        # Skip for chunked prefill: sampled tokens are dummy
+-        # and will be discarded, no need to broadcast.
+-        if not self._is_all_reqs_chunked_prefill():
+-            torch.distributed.broadcast(
+-                sampled_token_ids, src=pp.rank, group=pp.device_group
++        torch.distributed.broadcast(
++            sampled_token_ids, src=pp.rank, group=pp.device_group
++        )
++
++    def _pp_broadcast_draft_token_ids(self) -> None:
++        """Broadcast this step's draft token ids from the last PP stage.
++
++        Under async scheduling the scheduler only carries placeholder draft
++        slots; the non-last ranks need the real draft ids for their
++        input_ids scatter in the next step.
++        """
++        pp = get_pp_group()
++        assert pp.is_last_rank
++        if self._is_all_reqs_chunked_prefill():
++            return
++        num_reqs = self.input_batch.num_reqs
++        drafts = self._draft_token_ids
++        if isinstance(drafts, torch.Tensor) and drafts.shape[0] >= num_reqs:
++            payload = drafts[:num_reqs].to(dtype=torch.int32).contiguous()
++        else:
++            # Drafter skipped, or list-form drafts (ngram): the scheduler
++            # schedules no GPU-resident spec slots from these, so the zeros
++            # are never read on the receiving rank.
++            payload = torch.zeros(
++                (num_reqs, self.num_spec_tokens),
++                dtype=torch.int32,
++                device=self.device,
+             )
++        torch.distributed.broadcast(payload, src=pp.rank, group=pp.device_group)
++
++    def _pp_receive_spec_decode_state(self, num_reqs: int) -> None:
++        """Receive the speculative round state from the last PP stage.
++
++        Wire format, two broadcasts of statically known shape:
++          1. the sampled token matrix [num_reqs, num_spec_tokens + 1], -1 padded
++          2. the draft token ids [num_reqs, num_spec_tokens]
++        The next token ids and accepted counts are derived with the same
++        helpers the drafter uses on the last rank; the hybrid-state update
++        runs on this step's stashed scheduler_output.
++        """
++        pp = get_pp_group()
++        sampled = torch.empty(
++            (num_reqs, self.num_spec_tokens + 1),
++            dtype=torch.int32,
++            device=self.device,
++        )
++        torch.distributed.broadcast(sampled, src=pp.last_rank, group=pp.device_group)
++        drafts = torch.empty(
++            (num_reqs, self.num_spec_tokens), dtype=torch.int32, device=self.device
++        )
++        torch.distributed.broadcast(drafts, src=pp.last_rank, group=pp.device_group)
++
++        assert self.pp_backup_next_token_ids is not None
++        backup_tokens = fill_backup_next_token_ids(
++            self.pp_backup_next_token_ids, self.requests, self.input_batch
++        )
++        next_token_ids, valid_sampled_tokens_count = prepare_next_token_ids_padded(
++            sampled,
++            self.discard_request_mask.gpu,
++            backup_tokens,
++            self.input_batch.vocab_size,
++        )
++        self._copy_valid_sampled_token_count(next_token_ids, valid_sampled_tokens_count)
++        self._draft_token_ids = drafts
++
++        scheduler_output = self._pp_nonlast_scheduler_output
++        self._pp_nonlast_scheduler_output = None
++        if scheduler_output is None:
++            raise RuntimeError(
++                "PP speculative decoding: this non-last rank has no stashed "
++                "scheduler_output for the hybrid-state update."
++            )
++        self._update_states_after_model_execute(sampled, scheduler_output)
+ 
+     def _pp_receive_prev_sampled_token_ids_to_input_batch(self) -> None:
+         """Receive sampled token ids broadcast from last PP stage"""
+         pp = get_pp_group()
+         assert not pp.is_last_rank
+         num_reqs = self.input_batch.num_reqs
+-        # `prev_sampled_token_ids` is expected to have shape [num_reqs, 1].
+-        recv = torch.empty((num_reqs, 1), dtype=torch.int32, device=self.device)
+-        # skip for chunked prefill.
+-        if not self._is_all_reqs_chunked_prefill():
+-            torch.distributed.broadcast(recv, src=pp.last_rank, group=pp.device_group)
+-        self.input_batch.prev_sampled_token_ids = recv
++        if self.num_spec_tokens and not self._is_all_reqs_chunked_prefill():
++            self._pp_receive_spec_decode_state(num_reqs)
++        else:
++            # `prev_sampled_token_ids` is expected to have shape [num_reqs, 1].
++            recv = torch.empty((num_reqs, 1), dtype=torch.int32, device=self.device)
++            # skip for chunked prefill.
++            if not self._is_all_reqs_chunked_prefill():
++                torch.distributed.broadcast(
++                    recv, src=pp.last_rank, group=pp.device_group
++                )
++            self.input_batch.prev_sampled_token_ids = recv
+ 
+         # construct `prev_req_id_to_index` here so `_prepare_input_ids`
+         # can map req_id -> previous batch row

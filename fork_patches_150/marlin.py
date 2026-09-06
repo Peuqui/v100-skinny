@@ -53,19 +53,25 @@ _QPN_ENABLED = os.environ.get("VLLM_SKINNY_QPN", "1") == "1"
 # prepack is a byte-equal permutation, so serving returns to the pre-QPN
 # weight footprint (fp32 GDN state then fits). M1-3 route to
 # gemm_qpn_simt (qpn-layout SIMT), M17+ to marlin (conceded band).
-_QPN_DROP_CT = os.environ.get("VLLM_SKINNY_DROP_CT", "0") == "1"
+# Default ON since 2026-09-06 (was an opt-in): production served both card
+# classes with it since 2026-09-05 (27B calibration, V100 pair and RTX
+# pair). VLLM_SKINNY_DROP_CT=0 restores the stash.
+_QPN_DROP_CT = os.environ.get("VLLM_SKINNY_DROP_CT", "1") == "1"
 # QPN2: geometry-winner kernel for M 4..8 (qpn_matrix/qpn_msweep
 # 2026-08-17: weighted 637 GB/s vs 441; -30.7% QPN time). Same prepack,
 # same bytes — kernel and launch geometry only. VLLM_SKINNY_QPN2=0
 # restores the fixed-4-warp kernel.
 _QPN2_ENABLED = os.environ.get("VLLM_SKINNY_QPN2", "1") == "1"
-# Dense prefill (VLLM_SKINNY_DENSE_PREFILL=1): the QPN prepack is the ONLY
-# resident layout. M<=16 keeps the QPN kernels; larger M dequantizes the
-# layer into a transient fp16 buffer and runs cuBLAS. No marlin repack, no
-# checkpoint-native stash: one weight copy instead of three (~10 GiB each
-# on Qwen3.8-27B). Measured 2026-09-05 on the RTX 8000: marlin FP4 reaches
-# ~27 TFLOPS at M=2048, cuBLAS fp16 about three times that.
-_DENSE_PREFILL = os.environ.get("VLLM_SKINNY_DENSE_PREFILL", "0") == "1"
+# Dense prefill: the QPN prepack is the ONLY resident layout. M<=16 keeps
+# the QPN kernels; larger M dequantizes the layer into a transient fp16
+# buffer and runs cuBLAS. No marlin repack, no checkpoint-native stash: one
+# weight copy instead of three (~10 GiB each on Qwen3.8-27B). Measured
+# 2026-09-05 on the RTX 8000: marlin FP4 reaches ~27 TFLOPS at M=2048,
+# cuBLAS fp16 about three times that. Default ON since 2026-09-06 (was an
+# opt-in): long greedy comparison against marlin 3/4 byte-identical, one
+# late divergence, prefill +19 %; 27B calibration #2 ran every topology
+# with it. VLLM_SKINNY_DENSE_PREFILL=0 restores the marlin prefill.
+_DENSE_PREFILL = os.environ.get("VLLM_SKINNY_DENSE_PREFILL", "1") == "1"
 # (K, N) -> (splitk, nacc), measured winners; heuristic covers the rest.
 # graph-mode winners (qpn_graphmatrix 2026-08-17): captured-replay is
 # the serving regime and reshuffles two cells vs the eager matrix.

@@ -558,13 +558,6 @@ class DeepseekV4ROCMAiterSparseSWAMetadataBuilder(DeepseekSparseSWAMetadataBuild
             and base.decode_swa_lens is not None
         ):
             dense_swa = base.decode_swa_indices.reshape(base.num_decode_tokens, -1)
-            import os as _os
-            if _os.environ.get("VLLM_DSPARK_DIAG") == "1":
-                print(f"DSPARK-DIAG swa rows={base.num_decode_tokens} "
-                      f"width={dense_swa.shape[1]} "
-                      f"lens={base.decode_swa_lens[:8].tolist()} "
-                      f"row0={dense_swa[0, :26].tolist()}",
-                      flush=True)
             ragged_indices, ragged_indptr = build_ragged_indices_from_dense(
                 dense_swa,
                 base.decode_swa_lens,

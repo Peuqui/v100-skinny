@@ -28,7 +28,6 @@ dsv4_fused_compress_quant_cache.py vllm/models/deepseek_v4/common/ops/fused_comp
 dsv4_fused_indexer_q.py vllm/models/deepseek_v4/common/ops/fused_indexer_q.py
 dsv4_dspark.py vllm/models/deepseek_v4/nvidia/dspark.py
 dsv4_amd_rocm.py vllm/models/deepseek_v4/amd/rocm.py
-spec_decode_dspark.py vllm/v1/spec_decode/dspark.py
 flashmla_sparse.py vllm/v1/attention/backends/mla/flashmla_sparse.py
 sm70_turbomind.py vllm/model_executor/layers/quantization/sm70_turbomind.py
 dsv4_sm70_gemv.py vllm/models/deepseek_v4/sm70/gemv.py

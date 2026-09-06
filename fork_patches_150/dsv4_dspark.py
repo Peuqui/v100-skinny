@@ -214,19 +214,6 @@ class DSparkDeepseekV4Model(nn.Module):
         return self.embed_tokens(input_ids)
 
     def combine_hidden_states(self, aux_hidden_states: torch.Tensor) -> torch.Tensor:
-        import os as _os
-        diag = _os.environ.get("VLLM_DSPARK_DIAG") == "1"
-        if diag:
-            _a = aux_hidden_states.float()
-            bad = ~torch.isfinite(_a)
-            per_row = bad.any(dim=-1)
-            thirds = bad.view(_a.shape[0], 3, -1).any(dim=-1)
-            print(f"DSPARK-DIAG aux shape={tuple(aux_hidden_states.shape)} "
-                  f"absmax={_a.abs().max().item():.1f} "
-                  f"badrows={per_row.nonzero().flatten().tolist()[:20]} "
-                  f"third0={thirds[:,0].sum().item()} "
-                  f"third1={thirds[:,1].sum().item()} "
-                  f"third2={thirds[:,2].sum().item()}", flush=True)
         # Fork fix (v100-skinny): saturate non-finite aux values. The BOS
         # row is an attention sink whose aux magnitudes exceed the FP16
         # range under --dtype half (the bf16 DSpark reference has no such
@@ -239,12 +226,6 @@ class DSparkDeepseekV4Model(nn.Module):
         # only afterwards, so the BOS row fits fp16 without saturation.
         scaled = aux_hidden_states.to(torch.float32) * self.main_proj_input_scale
         projected = self.main_proj(scaled.to(self.main_norm.weight.dtype))
-        if diag:
-            _p = projected.float()
-            print(f"DSPARK-DIAG proj absmax={_p.abs().max().item():.1f} "
-                  f"inf={torch.isinf(_p).any().item()} "
-                  f"nan={torch.isnan(_p).any().item()} "
-                  f"scale={self.main_proj_input_scale}", flush=True)
         return self.main_norm(projected)
 
     @torch.inference_mode()
@@ -262,22 +243,8 @@ class DSparkDeepseekV4Model(nn.Module):
                 if context_slot_mappings is None
                 else context_slot_mappings.get(cache_layer.prefix)
             )
-            import os as _os
-            if _os.environ.get("VLLM_DSPARK_DIAG") == "1":
-                _mx = main_x.float()
-                print(f"DSPARK-DIAG mainx shape={tuple(main_x.shape)} "
-                      f"mean={_mx.mean().item():.4f} std={_mx.std().item():.4f} "
-                      f"absmax={_mx.abs().max().item():.2f} "
-                      f"nan={torch.isnan(_mx).any().item()}",
-                      flush=True)
             qr_kv, _ = attn.fused_wqa_wkv(main_x)
             kv = attn.kv_norm(qr_kv[..., attn.q_lora_rank :]).contiguous()
-            import os as _os
-            if _os.environ.get("VLLM_DSPARK_DIAG") == "1":
-                print(f"DSPARK-DIAG insert layer={cache_layer.prefix} "
-                      f"tokens={kv.shape[0]} slots="
-                      f"{'None' if slot_mapping is None else slot_mapping[:24].tolist()}",
-                      flush=True)
             if slot_mapping is not None:
                 _insert_context_kv(attn, kv, context_positions, slot_mapping)
 
@@ -287,11 +254,6 @@ class DSparkDeepseekV4Model(nn.Module):
         positions: torch.Tensor,
         inputs_embeds: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        import os as _os
-        if _os.environ.get("VLLM_DSPARK_DIAG") == "1":
-            print(f"DSPARK-DIAG fwd positions={positions[:12].tolist()} "
-                  f"input_ids={input_ids[:12].tolist()}",
-                  flush=True)
         if inputs_embeds is None:
             inputs_embeds = self.embed_input_ids(input_ids)
 

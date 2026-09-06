@@ -3,7 +3,7 @@
 #
 # Modified by the v100-skinny contributors, 2026, from 1Cat-vLLM 1.3.0
 # (https://github.com/1CatAI/1Cat-vLLM). Licensed under Apache-2.0.
-# Changes: per-rank KV availability logging; VLLM_PP_SEAM_TRACE early-return diagnostics.
+# Changes: per-rank KV availability logging.
 """A GPU worker class."""
 
 import gc
@@ -1098,15 +1098,6 @@ class Worker(WorkerBase):
             if isinstance(
                 output, ModelRunnerOutput | AsyncModelRunnerOutput | NoneType
             ):
-                import os as _os
-                if _os.environ.get("VLLM_PP_SEAM_TRACE") == "1":
-                    print(
-                        f"SEAM-TRACE exec-early-return rank="
-                        f"{get_pp_group().rank_in_group} "
-                        f"output={type(output).__name__} "
-                        f"state={self.model_runner.execute_model_state is not None}",
-                        flush=True,
-                    )
                 return output
 
         assert isinstance(output, IntermediateTensors)

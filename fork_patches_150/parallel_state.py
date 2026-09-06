@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
 #
-# Modified by the v100-skinny contributors, 2026, from 1Cat-vLLM 1.3.0
+# Modified by the v100-skinny contributors, 2026, from 1Cat-vLLM 1.5.0
 # (https://github.com/1CatAI/1Cat-vLLM). Licensed under Apache-2.0.
-# Changes: VLLM_PP_SEAM_TRACE diagnostics on the PP tensor-dict seam.
+# Changes: is_last_pp_first_tp_rank() -- the rank that emits per-step
+# spec-decode reports under pipeline parallelism (PR #512 upstream).
 
 # Copyright 2023 The vLLM team.
 # Adapted from
@@ -1202,14 +1203,7 @@ class GroupCoordinator:
         metadata_group = self.cpu_group
 
         metadata_list, tensor_list = _split_tensor_dict(tensor_dict)
-        import os as _os, time as _time
-        if _os.environ.get("VLLM_PP_SEAM_TRACE") == "1":
-            print(f"SEAM-TRACE isend rank={self.rank_in_group} -> dst={dst} "
-                  f"t={_time.time():.3f} keys={len(metadata_list)}", flush=True)
         self.send_object(metadata_list, dst=dst)
-        if _os.environ.get("VLLM_PP_SEAM_TRACE") == "1":
-            print(f"SEAM-TRACE isend-meta-done rank={self.rank_in_group} dst={dst} "
-                  f"t={_time.time():.3f}", flush=True)
 
         tensor_keys = [k for k, v in tensor_dict.items() if isinstance(v, torch.Tensor)]
         assert len(tensor_keys) == len(tensor_list)
@@ -1368,14 +1362,7 @@ class GroupCoordinator:
         group = self.device_group
         metadata_group = self.cpu_group
 
-        import os as _os, time as _time
-        if _os.environ.get("VLLM_PP_SEAM_TRACE") == "1":
-            print(f"SEAM-TRACE irecv rank={self.rank_in_group} <- src={src} "
-                  f"t={_time.time():.3f} waiting", flush=True)
         recv_metadata_list = self.recv_object(src=src)
-        if _os.environ.get("VLLM_PP_SEAM_TRACE") == "1":
-            print(f"SEAM-TRACE irecv-meta-done rank={self.rank_in_group} src={src} "
-                  f"t={_time.time():.3f}", flush=True)
         tensor_dict: dict[str, Any] = {}
         handles: list[Handle] = []
         postprocess: list[Callable[[], None]] = []

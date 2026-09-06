@@ -131,3 +131,16 @@ Headless-Chrome beendet.
 - #516: Frage von DSYZayn (02:44Z), ob #485 nur Qwen4Exp ist; DSV4-Flash TP4×PP2 gehe weiter
   nicht. Antwort-Entwurf: upstream-contrib/03-1cat-issues/reply-516-dsyzayn-dsv4-pp.md — NICHT
   gepostet, wartet auf Freigabe.
+
+## 10. Langer Greedy-Vergleich Marlin gegen Dense-Prefill (09:12–09:24, RTX PCI 2, TP1, mml 32768)
+
+| Prompt | Marlin | Dense | Ergebnis |
+|---|---|---|---|
+| Quantenphysik 30 Sätze (greedy, max 1500) | 875 tok / 32,2 s | 875 tok / 31,3 s | byte-identisch |
+| Regenbogeneffekt 30 Sätze | 454 tok / 16,2 s | 467 tok / 16,7 s | Divergenz nach 1.164 von ~1.900 Zeichen, beide kohärent |
+| Kuanda-Effekt 30 Sätze | 488 tok / 17,3 s | 488 tok / 17,5 s | byte-identisch |
+| 22.437-Token-Prompt, Zusammenfassung | 96 tok / 71,2 s | 96 tok / 59,9 s | byte-identisch, Prefill +19 % |
+
+Ladevolumen 29,49 → 19,07 GiB, KV 11,09 → 19,28 GiB (157.696 → 274.432 Token). Bewertung: die eine
+späte Divergenz ist die erwartete Rundungsdifferenz cuBLAS-fp16 gegen Marlin; Dense-Prefill bleibt scharf.
+Skript: Scratchpad dense_bisect_long.sh, Ausgaben dense_long_{0,1}.json.

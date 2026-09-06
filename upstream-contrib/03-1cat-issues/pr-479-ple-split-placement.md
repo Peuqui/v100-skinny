@@ -1,7 +1,7 @@
 # PR-Entwurf: 1CatAI/1Cat-vLLM — Qwen4Exp PLE: Aufteilung Device/Host (#479, dritte Scheibe)
 
 Stand 2026-09-06 mittags. Branch `qwen4exp-ple-split-placement`, Basis origin/main 755baae, zwei Commits
-(493a958 Split-Platzierung, cfd8a5f Capability-Entscheid auf dem Worker-Device). Lokal, NICHT gepusht.
+(493a958 Split-Platzierung, cfd8a5f Capability-Entscheid auf dem Worker-Device). Gepusht; PR #528 eroeffnet 2026-09-06: https://github.com/1CatAI/1Cat-vLLM/pull/528
 Diff: `pr-479-ple-split-placement.diff` (daneben).
 
 Geänderte Dateien (4):

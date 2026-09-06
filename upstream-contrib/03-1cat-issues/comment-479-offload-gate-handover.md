@@ -1,6 +1,6 @@
 # Kommentar-Entwurf für Issue #479 (Gate 1 abgeben, dritte Scheibe ankündigen)
 
-Status: ENTWURF, nicht gepostet — Freigabe Peuqui. Posten zusammen mit dem Push von
+Status: GEPOSTET 2026-09-06 (https://github.com/1CatAI/1Cat-vLLM/issues/479#issuecomment-5557838168), Branch gepusht,
 `qwen4exp-ple-split-placement` (Link im Text).
 
 ---

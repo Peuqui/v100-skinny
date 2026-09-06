@@ -2,7 +2,7 @@
 
 Stand 2026-09-06 mittags. Branch `qwen4exp-ple-split-placement`, Basis origin/main 755baae, zwei Commits
 (493a958 Split-Platzierung, cfd8a5f Capability-Entscheid auf dem Worker-Device). Gepusht; PR #528 eroeffnet 2026-09-06: https://github.com/1CatAI/1Cat-vLLM/pull/528
-Diff: `pr-479-ple-split-placement.diff` (daneben).
+Diff: `pr-479-ple-split-placement.diff` (daneben; Stand vor dem Rebase auf main 95205a2 am 06.09. ~10:30 — Konflikt common/ple.py Import-Kopf, Inhalt unveraendert).
 
 Geänderte Dateien (4):
 - vllm/envs.py — `VLLM_QWEN4EXP_PLE_HOST_GIB` (float|None, "auto"), `VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB`

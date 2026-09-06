@@ -68,6 +68,8 @@ from vllm.v1.attention.backends.utils import NULL_BLOCK_ID
 from ..common.ple import (
     auto_ple_host_budget_bytes,
     available_host_bytes,
+    cap_host_budget_bytes,
+    total_host_bytes,
     copy_ple_embedding_shard_,
     copy_ple_embedding_shard_split_,
     kv_cache_bytes_for_max_model_len,
@@ -342,6 +344,26 @@ def _should_use_pinned_host_ple(config: Qwen4ExpTextConfig) -> bool:
     return major < 8
 
 
+def _ple_host_reserve_bytes(host_total_bytes: int) -> int:
+    """Host memory the automatic placement leaves to everything else.
+
+    The engine processes, the checkpoint loading and other tenants need room
+    that no single rank can measure. A fraction of the host rather than a
+    fixed size, so the rule means the same on every machine.
+    """
+
+    raw = os.getenv("VLLM_QWEN4EXP_PLE_HOST_RESERVE_GIB", "").strip()
+    if raw:
+        reserve = float(raw)
+        if reserve < 0:
+            raise ValueError(
+                "VLLM_QWEN4EXP_PLE_HOST_RESERVE_GIB must not be negative, "
+                f"got {reserve}"
+            )
+        return int(reserve * 1024**3)
+    return host_total_bytes // 4
+
+
 def _ple_host_budget_bytes() -> int | None:
     """Host memory per rank for the PLE table, or None to derive it.
 
@@ -489,6 +511,33 @@ class Qwen4ExpPinnedHostEmbedding(VocabParallelEmbedding):
             reserve_bytes / 1024**3,
             budget / 1024**3,
         )
+        # The table lives on the first pipeline stage only, so its
+        # tensor-parallel ranks are the ones sharing this host's memory.
+        host_available = available_host_bytes()
+        host_total = total_host_bytes()
+        if budget and host_available is not None and host_total is not None:
+            ranks = vllm_config.parallel_config.tensor_parallel_size
+            host_reserve = _ple_host_reserve_bytes(host_total)
+            capped = cap_host_budget_bytes(
+                budget_bytes=budget,
+                available_bytes=host_available,
+                reserve_bytes=host_reserve,
+                ranks_sharing_host=ranks,
+            )
+            if capped < budget:
+                logger.warning(
+                    "PLE host budget cut from %.2f to %.2f GiB: %.2f GiB host "
+                    "memory available, %.2f GiB kept in reserve, shared by %d "
+                    "tensor-parallel ranks. The rest of the table stays on the "
+                    "device; if the requested context no longer fits, the KV "
+                    "allocator reports the reachable max_model_len.",
+                    budget / 1024**3,
+                    capped / 1024**3,
+                    host_available / 1024**3,
+                    host_reserve / 1024**3,
+                    ranks,
+                )
+                budget = capped
         return budget
 
     def materialize_tables(self) -> None:

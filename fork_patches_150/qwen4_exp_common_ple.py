@@ -231,14 +231,51 @@ def auto_ple_host_budget_bytes(
     return table_bytes - max(0, room_for_table)
 
 
-def available_host_bytes() -> int | None:
-    """Host memory the kernel currently reports as available, or None."""
-
+def _meminfo_bytes(key: str) -> int | None:
     try:
         with open("/proc/meminfo") as meminfo:
             for line in meminfo:
-                if line.startswith("MemAvailable:"):
+                if line.startswith(key + ":"):
                     return int(line.split()[1]) * 1024
     except OSError:
         return None
     return None
+
+
+def available_host_bytes() -> int | None:
+    """Host memory the kernel currently reports as available, or None."""
+
+    return _meminfo_bytes("MemAvailable")
+
+
+def total_host_bytes() -> int | None:
+    """Physical host memory as the kernel reports it, or None."""
+
+    return _meminfo_bytes("MemTotal")
+
+
+def cap_host_budget_bytes(
+    *,
+    budget_bytes: int,
+    available_bytes: int,
+    reserve_bytes: int,
+    ranks_sharing_host: int,
+) -> int:
+    """Bound a rank's pinned-host budget by its fair share of the host.
+
+    Every tensor-parallel rank of the stage that owns the table pins its own
+    share, and all of them draw on the same host memory. Reading MemAvailable
+    per rank therefore double-books it: on a 30 GB host with 20 GB available,
+    two ranks each saw room for 7 GiB, pinned 14 GiB together and pushed the
+    engine processes, the checkpoint loading and everything else into swap --
+    the machine was unreachable for 40 minutes (2026-09-06). The share is what
+    remains after the reserve, divided by the ranks; a budget above it is cut.
+    What no longer spills stays on the device, and if the context then does not
+    fit, the KV allocator reports the reachable max_model_len -- host memory is
+    the hard limit, context the negotiable one.
+    """
+
+    if ranks_sharing_host <= 0:
+        raise ValueError("ranks_sharing_host must be positive")
+    share = max(0, available_bytes - reserve_bytes) // ranks_sharing_host
+    return min(budget_bytes, share)

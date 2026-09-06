@@ -144,3 +144,19 @@ Headless-Chrome beendet.
 Ladevolumen 29,49 → 19,07 GiB, KV 11,09 → 19,28 GiB (157.696 → 274.432 Token). Bewertung: die eine
 späte Divergenz ist die erwartete Rundungsdifferenz cuBLAS-fp16 gegen Marlin; Dense-Prefill bleibt scharf.
 Skript: Scratchpad dense_bisect_long.sh, Ausgaben dense_long_{0,1}.json.
+
+## 11. Kalibration #3 (09:57–13:38, Dense-Prefill, Cache beim Start geleert)
+
+Vollständig, persistiert 13:38. Sieger nach der Gesamtzeit-Regel: **TP2 auf dem V100-Paar (GPUs 1,3),
+k=2, 51,7 tok/s**, GMU 0,94 (Boot-OOM-Leiter hob die Reserve einmal), Chunk 2048 (4096 verliert: 51,6),
+ctx 262.144. RTX-Paar k=3 52,1 (Prefill 513 vs 556 — daher 1,5 % Turnzeit hinten). Grid k=3 42,1,
+TP1 k=3 34,9. Matrix im Log logs/calibration-2026-09-06-run3.log.
+
+Befunde:
+- Geleerter Compile-Cache kostete ~5 min je RTX-Boot (Sonden 8 statt 3 min), ~2 h Laufzeit — daher
+  jetzt Obergrenze 40 GiB statt Leeren (AIfred 38648bb5).
+- TP1-Sweep sinnlos nach dem Paar derselben Klasse (Faktor 1,49 vs 1,44) — Sweep-Verzicht nach
+  Klasse (AIfred 24857770), hardwareagnostisch (eine Karte: TP1 wird gesweept).
+- Kurzkontext: RTX-Paar 61,2 vs V100-Paar 55,5 (+10 %); KV-Pool RTX 3x. Entscheidung RTX vs V100 offen
+  (Peuqui, Single-User), Nachmessmodus kann den RTX-Punkt in ~30 min persistieren.
+- Sweep-Zeiten: V100-Sonden 3,4–4,1 min, RTX-Sonden 8 min (kalt), k=1 auf RTX 3,0 (Cache-Treffer von k=7/3).

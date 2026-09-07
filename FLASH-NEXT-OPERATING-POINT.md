@@ -1,7 +1,12 @@
 # Qwen3.8-Flash-Next: statischer Betriebspunkt (SSOT)
 
+> **Teilweise ueberholt — gepruefte Startzeile siehe `STAND.md` (07.09.2026).**
+> Die Zahlen unten gelten weiter; der Serverstart darunter bootet auf dem
+> 1.5.0-Stand NICHT mehr (fehlendes `QUANT_BACKEND`), und der genannte
+> Checkpoint existiert nicht mehr auf der Platte. Beides unten markiert.
+
 Stand 2026-08-28, vermessen in der MTP-Kampagne (Details:
-QWEN4EXP-PORT-HANDOVER.md). **Diese Datei ist die Referenz für jede
+docs/journal/QWEN4EXP-PORT-HANDOVER.md). **Diese Datei ist die Referenz für jede
 Integration (AIfred, llama-swap) und jeden künftigen Vergleich.**
 AIfreds Auto-Kalibration kennt PP/PLE-Kaskade/heterogene Splits nicht —
 für dieses Modell den Betriebspunkt STATISCH übernehmen, nicht kalibrieren.
@@ -9,6 +14,9 @@ für dieses Modell den Betriebspunkt STATISCH übernehmen, nicht kalibrieren.
 ## Modell
 
 `/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ`
+**(FEHLT seit spaetestens 07.09.2026 auf der Platte — neu erzeugen; der
+provsalt-MTP-Block ist ebenfalls nicht mehr da, das Werkzeug liegt in
+`~/Projekte/mtp-quant-transplant`. Ohne MTPQ keine belastbaren MTP-Zahlen.)**
 (Symlink-Transplant: RadixArk-Basis + NVFP4-MTP-Block aus provsalt;
 Werkzeug: github.com/Peuqui/mtp-quant-transplant. NICHT den rohen
 RadixArk-Snapshot fahren — dessen BF16-Draftkopf macht MTP zum Verlust.)
@@ -19,6 +27,8 @@ RadixArk-Snapshot fahren — dessen BF16-Draftkopf macht MTP zum Verlust.)
 cd /home/mp/Projekte/v100-skinny
 VLLM_SM70_E5_CACHE=0 \
 CUDA_VISIBLE_DEVICES=0,2,1,4 \
+TURBOMIND=1 QUANT_BACKEND=turbomind \
+ENV_PREFIX=<repo>/.venv-sm70-150 \
 TP=2 PP=2 K=4 GMU=0.95 MML=16384 PORT=<port> \
 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 EXTRA_ARGS="--compilation-config {\"cudagraph_capture_sizes\":[1,2,4,5,8]}" \
@@ -26,6 +36,12 @@ bash scripts/serve-qwen38-flash-next.sh /home/mp/models/Qwen3.8-Flash-Next-180B-
 ```
 
 Nicht verhandelbar und warum:
+- `QUANT_BACKEND=turbomind` (seit 1.5.0, ergaenzt 07.09.2026): Der
+  Skript-Default `marlin` sticht `TURBOMIND=1` bedingungslos aus
+  (`envs.use_sm70_turbomind` gibt bei "marlin" sofort False zurueck). Auf den
+  sm70-Stufen bricht NVFP4-MoE dann mit `NotImplementedError: ModelOpt NVFP4
+  MoE on SM70 requires the TurboMind backend` ab.
+- `ENV_PREFIX` setzen: der Skript-Default ist `.venv-sm70-130`, nicht 150.
 - `VLLM_SM70_E5_CACHE=0` **vor Prozessstart** (Modul-Konstante!) — sonst
   Crash `_e5_apply_ints` am QSA-Ring, maskiert als Engine-Timeout. In
   llama-swap in den `env:`-Block, niemals in EXTRA_ARGS.
@@ -34,8 +50,11 @@ Nicht verhandelbar und warum:
 - Capture `[1,2,4,5,8]`: Größe 5 = Verifier-Batch (+5 %); alles >8 ist
   auf diesem Stack kaputt — das 27B-Schema `[k+1,2(k+1)]` NICHT
   übernehmen (halbiert den Durchsatz).
-- Kartenreihenfolge `0,2,1,4`: RTX-Stufe vorn (Konvention der
-  Capability-Gates), GPU 3 bleibt frei für Vigilantia/TTS.
+- Kartenreihenfolge: RTX-Stufe vorn (Konvention der Capability-Gates).
+  **ÜBERHOLT seit 07.09.2026:** `0,2,1,4` galt, solange GPU 3 für Vigilantia/TTS
+  reserviert war. Vigilantia/TTS liegt inzwischen auf der USB4-Karte GPU 4 —
+  für die Modelle daher **`0,2,1,3`** verwenden (GPU 3 ist PCIe-direkt, GPU 4
+  hängt am USB4-Tunnel mit drei Bridge-Hops). Siehe `STAND.md`.
 
 Boot-Dauer ~7 min (llama-swap: healthCheckTimeout beachten, langer TTL;
 schnelle Swaps sind mit dieser Modellklasse ohnehin nicht sinnvoll).

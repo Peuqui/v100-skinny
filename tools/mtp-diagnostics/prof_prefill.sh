@@ -7,7 +7,7 @@
 # ob ein FlashQLA-Port auf Turing ueberhaupt einen Hebel hat -- ein Kernel, der
 # 5 % der Zeit stellt, kann auch verdoppelt nur 2,5 % bringen.
 #
-# Rezept nach TURING-COEXISTENCE-HANDOVER.md (2026-09-03): nsys launch/start/stop
+# Rezept nach docs/journal/TURING-COEXISTENCE-HANDOVER.md (2026-09-03): nsys launch/start/stop
 # um das Messfenster, damit der Boot nicht mitprofiliert wird.
 set -uo pipefail
 NAME=${1:?name fehlt}

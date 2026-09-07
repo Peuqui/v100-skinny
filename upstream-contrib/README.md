@@ -1,4 +1,36 @@
-# Upstream-Beiträge — Entwürfe (Stand 2026-08-28)
+# Upstream-Beiträge
+
+**Stand 2026-09-07.** Entwürfe und Diffs liegen in den Unterordnern; der
+laufende Status der 1Cat-Einreichungen steht unten. Regeln für neue Beiträge:
+`AGENTS.md` im 1Cat-Repo (Duplikatsprüfung, Testkommandos samt Ergebnis im
+PR-Text, KI-Einsatz deklarieren) — Verstoß kann eine Sperre nach sich ziehen.
+**Nichts senden ohne Freigabe von Peuqui.**
+
+## 1Cat-vLLM: gemergte PRs (Stand 2026-09-07, per `gh pr list` geprüft)
+
+| PR | Titel |
+|---|---|
+| #469 | [Bugfix][Perf][SM70/SM75] Widen QSA sparse launch profile to pre-Ampere |
+| #485 | [Bugfix][SM70] Skip final mixer weights on non-last PP ranks |
+| #511 | [Bugfix][Spec Decode] Bind self.drafter on non-last PP ranks (#439) |
+| #512 | [Bugfix][Spec Decode] Report SM70 MTP profiles from the last PP stage (#414) |
+| #514 | [Bugfix][SM70] Gate SM70 config defaults on any visible device (#412) |
+| #516 | [Core][Qwen4Exp] Gate PLE under PP on the partition, not the PP size (#479) |
+| #518 | [Core] Profile the KV budget on a warm forward, not the cold torch.compile |
+| #528 | [Model][Qwen4Exp] Split the pinned-host PLE table between device and host (#479) |
+| #536 | [Bugfix] Hash unregistered VLLM_ env vars into the compile cache key |
+
+Geschlossen ohne Merge: #455 (Pre-Ampere-Tile-Profile) — auf dem eigenen Fork
+statt gegen Upstream-main verifiziert, mit Eingeständnis zurückgezogen. Daraus
+die Regel, jede Behauptung vor dem Senden gegen frisch gefetchten Upstream zu
+prüfen.
+
+Damit sind neun PRs gemergt; die Repo-Regel „Autor braucht ≥4 gemergte PRs"
+(roter `pre-run-check`) ist erfüllt.
+
+---
+
+## Erste Runde — alle veröffentlicht am 2026-08-28
 
 ALLE VERÖFFENTLICHT am 2026-08-28 (Freigabe Peuqui):
 - PR:  https://github.com/dnv2003/v100-skinny/pull/7
@@ -18,6 +50,6 @@ ALLE VERÖFFENTLICHT am 2026-08-28 (Freigabe Peuqui):
 | 5 | 1CatAI/1Cat-vLLM | Issue 3 | MTP-Profiling-Report bei PP blind (is_global_first_rank-Gate) | — |
 | 6 | HF RadixArk/Qwen3.8-Flash-Next-NVFP4 | Discussion | Unquantisierter MTP-Block = Spekulation wird Verlustgeschäft auf Pre-Hopper | — |
 
-Messgrundlage: QWEN4EXP-PORT-HANDOVER.md (Abschnitte 28.08.) und
-MERGE-PROJECT-HANDOVER.md. Hardware: 2x Quadro RTX 8000 (sm75) + 3x
+Messgrundlage: docs/journal/QWEN4EXP-PORT-HANDOVER.md (Abschnitte 28.08.) und
+docs/journal/MERGE-PROJECT-HANDOVER.md. Hardware: 2x Quadro RTX 8000 (sm75) + 3x
 Tesla V100 (sm70), TP=2/PP=2, 1Cat-vLLM 1.3.0 + v100-skinny-Patches.

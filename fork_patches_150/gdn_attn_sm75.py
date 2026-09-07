@@ -556,3 +556,16 @@ class GDNAttentionMetadataBuilder(AttentionMetadataBuilder[GDNAttentionMetadata]
         num_decode_draft_tokens_cpu = (num_accepted_tokens - 1).cpu()
 
         return self.build(0, m, num_accepted_tokens, num_decode_draft_tokens_cpu)
+
+
+def is_gdn_sm75_metadata_builder(builder: object) -> bool:
+    """True fuer den sm75-GDN-Builder aus diesem Modul.
+
+    Er ist eine eigenstaendige Klasse, keine Unterklasse des Standard-
+    ``GDNAttentionMetadataBuilder``. Wer Spekulations-Metadaten per
+    ``isinstance`` gegen den Standardtyp verteilt, uebergeht ihn deshalb
+    stillschweigend. Er nimmt die Standard-Spekulationsargumente
+    (``num_accepted_tokens``, ``num_decode_draft_tokens_cpu``), aber keines
+    der fork-eigenen (``common_gdn_metadata``, dflash2, Slot-Selektoren).
+    """
+    return isinstance(builder, GDNAttentionMetadataBuilder)

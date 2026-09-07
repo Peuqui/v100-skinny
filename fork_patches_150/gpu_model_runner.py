@@ -151,6 +151,7 @@ from vllm.v1.attention.backend import (
 from vllm.v1.attention.backends.flash_attn_v100 import FlashAttnV100MetadataBuilder
 from vllm.v1.attention.backends.flex_attention import FlexAttentionMetadataBuilder
 from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadataBuilder
+from vllm.v1.attention.backends.gdn_attn_sm75 import is_gdn_sm75_metadata_builder
 from vllm.v1.attention.backends.mamba2_attn import Mamba2AttentionMetadataBuilder
 from vllm.v1.attention.backends.short_conv_attn import (
     PleShortConvAttentionMetadataBuilder,
@@ -6529,7 +6530,7 @@ class GPUModelRunner(
             # SM75 workers build their GDN groups with the upstream builder
             # (gdn_attn_sm75); it takes the standard spec-decode arguments
             # but none of the fork-only ones.
-            is_gdn_sm75_builder = type(builder).__module__.endswith("gdn_attn_sm75")
+            is_gdn_sm75_builder = is_gdn_sm75_metadata_builder(builder)
             kv_cache_spec = kv_cache_groups[kv_cache_gid].kv_cache_spec
             if isinstance(kv_cache_spec, UniformTypeKVCacheSpecs):
                 kv_cache_spec = kv_cache_spec.kv_cache_specs[attn_group.layer_names[0]]

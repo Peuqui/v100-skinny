@@ -77,6 +77,7 @@ block_table.py vllm/v1/worker/gpu/block_table.py
 model_runner.py vllm/v1/worker/gpu/model_runner.py
 gpu_pp_utils.py vllm/v1/worker/gpu/pp_utils.py
 gpu_spec_eagle_utils.py vllm/v1/worker/gpu/spec_decode/eagle/utils.py
+mamba_hybrid_state.py vllm/v1/worker/gpu/model_states/mamba_hybrid.py
 worker_mamba_utils.py vllm/v1/worker/mamba_utils.py
 worker_utils.py vllm/v1/worker/utils.py
 tilelang_target.py tilelang/utils/target.py

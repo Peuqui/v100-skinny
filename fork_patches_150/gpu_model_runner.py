@@ -10827,6 +10827,12 @@ class GPUModelRunner(
         # and will be discarded, no need to broadcast.
         if self._is_all_reqs_chunked_prefill():
             return
+        # Fork fix (v100-skinny): both branches below size the payload from
+        # sampled_token_ids while the receiver sizes it from its own
+        # input_batch.num_reqs. Same-shaped today because both come from one
+        # scheduler output -- pin it, so a divergence raises here instead of
+        # deadlocking every rank in an unmatched collective.
+        assert sampled_token_ids.shape[0] == self.input_batch.num_reqs
         if self.num_spec_tokens:
             # Spec decode: non-last ranks derive next-token ids, accepted
             # counts and the hybrid-state update from the full sampled

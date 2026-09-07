@@ -10,10 +10,12 @@ PY="$ENV_PREFIX/bin/python"
 SP="$("$PY" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 [ -d "$SP/vllm" ] || { echo "vllm not found in $SP" >&2; exit 1; }
 PATCHES="$REPO_ROOT/fork_patches_150"
-deployed=0; skipped=0
+deployed=0; skipped=0; retired=""
 while read -r src dst; do
   [ -n "$src" ] || continue
-  if [ ! -f "$PATCHES/$src" ]; then skipped=$((skipped+1)); continue; fi
+  if [ ! -f "$PATCHES/$src" ]; then
+    skipped=$((skipped+1)); retired="$retired $src"; continue
+  fi
   if [ -f "$SP/$dst" ]; then
     [ -f "$SP/$dst.pre_deploy" ] || cp -p "$SP/$dst" "$SP/$dst.pre_deploy"
   else
@@ -31,3 +33,9 @@ cp -r "$REPO_ROOT/fork_patches/flash_linear_attention/." \
 # NOTE: fork_patches/qwen4_exp_models/ is deliberately NOT deployed --
 # superseded by the wheel's native vllm/models/qwen4_exp package.
 echo "deployed: $deployed (+fla tree), retired/skipped: $skipped (site-packages: $SP)"
+# Name the retired entries: the list keeps them as the record that these
+# files were once overlaid, so a silent count invites the wrong guess
+# about which of them are actually live.
+if [ -n "$retired" ]; then
+  echo "retired (no tracked file, skipped):$retired"
+fi

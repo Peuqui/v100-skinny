@@ -1717,10 +1717,11 @@ def _resolve_gdn_prefill_backend(
         supports_flashinfer = True
     elif head_k_dim == 128 and backend in ("auto", "flashqla_sm70"):
         capability = current_platform.get_device_capability()
-        is_sm70_or_sm75 = (
-            capability is not None
-            and capability.major == 7
-            and capability.minor in (0, 5)
+        is_sm70 = (
+            capability is not None and capability.major == 7 and capability.minor == 0
+        )
+        is_sm75 = (
+            capability is not None and capability.major == 7 and capability.minor == 5
         )
         supports_model_dtype = model_dtype == torch.float16
         try:
@@ -1730,8 +1731,17 @@ def _resolve_gdn_prefill_backend(
         except ImportError:
             supports_flashqla_sm70 = False
         else:
-            supports_flashqla_sm70 = is_sm70_or_sm75 and supports_model_dtype
-        if is_sm70_or_sm75 and not supports_model_dtype:
+            supports_flashqla_sm70 = is_sm70 and supports_model_dtype
+        if is_sm75:
+            logger.warning_once(
+                "FlashQLA-SM70 GDN prefill cannot run on Turing (sm75): the "
+                "kernel asks for 86016 B of dynamic shared memory per block "
+                "and Turing caps the opt-in limit at 65536 B, so the worker "
+                "dies during engine init. Its VLK CUDA variant does fit but "
+                "is slower than Triton/FLA from 2048 tokens per chunk "
+                "upwards. Falling back to Triton/FLA."
+            )
+        if is_sm70 and not supports_model_dtype:
             logger.warning_once(
                 "FlashQLA-SM70 GDN prefill is V100 production-validated only "
                 "for fp16 model activations; model dtype %s falls back to "

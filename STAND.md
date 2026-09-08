@@ -68,15 +68,22 @@ Halluzination, sondern korrekte Rückfrage.
 **Tempo (gemessen 07.09., Streaming, Token aus `usage` — NICHT Chunks zählen,
 bei MTP kommen ~3 Token pro Chunk):**
 
-| Konfiguration | kurzer Prompt | langer Prompt (6806 Tok) |
-|---|---:|---:|
-| **k=0 (MTP aus)** | **38,5 tok/s** | **38,1 tok/s** |
-| k=4, BF16-Draftkopf | 34,7 tok/s | 36,8 tok/s |
+| Konfiguration | kurzer Prompt | langer Prompt, repetitiv | **langer Kontext, echter Text** |
+|---|---:|---:|---:|
+| k=0 (MTP aus) | 38,5 | 38,1 | — |
+| k=4, BF16-Draftkopf | 34,7 (Verlust) | 36,8 | — |
+| **k=4, NVFP4-Draftkopf (MTPQ)** | **56,3** | **75,6** | **20–21** |
 
-Prefill 413–466 tok/s. **Empfehlung bis auf Weiteres: `K=0` fahren.** MTP mit
-dem BF16-Draftkopf kostet ~10 % statt zu bringen — die Akzeptanz ist gut
-(3,0 von 5), aber der unquantisierte Kopf frisst den Gewinn auf. Siehe offener
-Punkt 1.
+Prefill 413–466 tok/s. **`K=4` mit dem MTPQ-Checkpoint fahren** — Faktor 1,46
+(kurz) bzw. 1,98 (lang) gegenüber k=0, Akzeptanz 3,71 von 5 Token je Schritt.
+Mit dem rohen RadixArk-Snapshot (BF16-Draftkopf) ist MTP dagegen ein VERLUST;
+dann besser `K=0`.
+
+**Die mittlere Spalte nicht als Alltagswert lesen:** Sie stammt von einem
+Prompt aus wiederholten Absätzen — leicht vorhersagbar, daher hohe Akzeptanz.
+Mit echtem deutschem Fachtext bei ~9–10k Kontext sind es **20–21 tok/s**
+(gemessen 07.09., drei Fragen im selben Gespräch). Das ist der Wert für den
+AIfred-Alltag.
 
 **Gegenüber `FLASH-NEXT-OPERATING-POINT.md` (Stand 28.08.) geändert:**
 - `QUANT_BACKEND=turbomind` ist **neu und nötig**. Der Skript-Default `marlin`
@@ -164,6 +171,57 @@ Messung 07.09. auf zwei V100, 15.492-Token-Prompt, Prefix-Caching aus
 am Prefill ist nicht gemessen. Ein FlashQLA-Port auf Turing ist auf diese
 Größenordnung gedeckelt, solange der Anteil klein ist. Vor Kernel-Arbeit erst
 `tools/mtp-diagnostics/prof_prefill.sh` laufen lassen (nsys-Kernelsummen).
+
+---
+
+## Qualitätsprüfung: was ein Test abdecken MUSS
+
+**Langer Kontext ist der kritische Fall, nicht langer Output.** Das Zerfasern
+des 180B (Wortverstümmelungen, CJK-Zeichen, erfundene Wissenschaftler) trat bei
+**langem Kontext** auf — Peuqui hat es in AIfred im Alltag gesehen, wo RAG,
+Tool-Schemata und History den Prompt füllen. Ein Test mit kurzem Prompt und
+600 Token Ausgabe sieht das NICHT (07.09. so passiert).
+
+Die etablierte Sonde (seit 30.08., → `docs/journal/FP8-EVALUATION.md`):
+drei Anfragen hintereinander im selben Kontext —
+
+1. „Erkläre die Quantenphysik in 30 Sätzen."
+2. „Erkläre den Regenbogeneffekt in 30 Sätzen."
+3. „Erkläre den **Kuanda-Effekt** in 30 Sätzen."  ← Schreibfehler ABSICHTLICH
+
+Frage 3 ist der Halluzinationstest (gemeint ist der Coandă-Effekt).
+
+**Die Antworten MÜSSEN gelesen und fachlich beurteilt werden.** Zähler über
+CJK-Zeichen oder Satzzeichen sagen nichts über Qualität — ein fachlich
+unsinniger, aber sauber deutscher Text besteht jeden solchen Test
+(Peuqui, 07.09.). Sie taugen allenfalls als Vorfilter für grobes Zerfasern.
+
+| Messung | CJK | verdächtige Wörter | Coandă-Turn |
+|---|---:|---:|---|
+| 30./31.08., **27B** | 7 | 183 | 2 halluzinierte Wissenschaftler |
+| 07.09., **180B**, kurzer Kontext | 0 | 0 | keine Erfindung, korrekte Rückfrage |
+| 07.09., **180B**, langer Kontext (8,5–9,8k) | **0** | keine | **erkennt den Tippfehler, erklärt Coandă korrekt** |
+
+**Inhaltliche Beurteilung des Langkontext-Laufs (gelesen, 07.09.):**
+- *Quantenphysik*: fachlich einwandfrei — Planck/Schwarzkörper, Einstein/
+  Photoeffekt, de Broglie, Schrödinger, Heisenberg korrekt zugeordnet; Bell-
+  Ungleichungen und die Unschärfe als Natureigenschaft (nicht Messproblem)
+  präzise. Ein Genusfehler („das Quantenzustand").
+- *Regenbogen*: dicht und korrekt — 42°, Sekundärbogen mit umgekehrter
+  Farbfolge, **Alexanderband** benannt, Tropfengröße/Schärfe. Eine
+  missverständliche Stelle („flacherer Winkel" für Rot).
+- *Kuanda*: erkennt den Schreibfehler, nennt Henri Coandă korrekt als
+  rumänischen Ingenieur, ordnet historisch differenziert ein, Physik und
+  Navier-Stokes korrekt. Zwei Vereinfachungen: Auftrieb (streift den
+  verbreiteten Irrtum) und Viskosität/Haftung.
+
+Die Augustwerte stammen vom 27B, die Septemberwerte vom 180B — nicht
+gleichnamig. Der Langkontext-Fall ist am 180B **bestanden**: 30 Sätze je
+Antwort, null CJK, kein Zerfasern; im Coandă-Turn erkennt das Modell den
+Schreibfehler und erklärt den richtigen Effekt (bei KURZEM Kontext sagt es
+dagegen „kenne ich nicht" — die Langkontext-Antwort ist die bessere).
+**Offen: dieselbe Sonde am 27B**, für den gleichnamigen Vergleich zu den
+Augustwerten (6,5 min Boot).
 
 ---
 

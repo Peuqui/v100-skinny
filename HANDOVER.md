@@ -74,7 +74,7 @@ dieselbe Messung einen realen 57-%-Unterschied als Rauschen getarnt.
 |---|---:|---:|
 | Fork-sm75 | 74,33 | 74,30–74,34 |
 | Upstream + Fix 1+2 | 68,80 | 68,75–68,89 |
-| Upstream + Fix 1+2+3 | ~~69,71~~ **68,78** | Doppelmessung, s. u. |
+| Upstream + Fix 1+2+3 | **69,71** | 69,69–69,87 (am 08.09. mit 69,64 bestaetigt) |
 
 | Flash-Next 180B, TP2×PP2, k=4 | Median | Spanne |
 |---|---:|---:|
@@ -100,12 +100,15 @@ Entwurfspfad ist damit nicht beteiligt — der `lm_head`-Verdacht ist ausgeschlo
 |---|---:|---:|---:|
 | k=0, kurzer Prompt | 43,5 | 43,5 | **keiner** |
 | k=0, 13k Kontext | 24,99 | 25,02 | **keiner** |
-| k=3, kurzer Prompt | 74,33 | 68,78 | 6,4 % |
-| k=3, 13k Kontext | 29,59 | 28,51 | 3,7 % |
+| k=3, kurzer Prompt | 74,33 | 69,64 | 6,3 % |
+| k=3, 13k Kontext | 29,59 | 28,82 | 2,6 % |
 
 Ohne MTP sind beide Varianten in beiden Kontextlängen **exakt gleich schnell**.
 Damit sind der normale Decode-Pfad, der Prefill und die Attention als Ursache
 ausgeschlossen. Es bleibt der Spekulationszweig.
+
+Fix 3 bringt +1,25 % (68,78 → 69,64 bei kurzem Prompt, beide Werte doppelt
+gemessen und deckungsgleich mit den Nachtwerten 68,80 / 69,71).
 
 Der Rückstand skaliert mit der Modellgröße: 27B 6,2 %, Flash-Next 9,6 %. Das
 stützt „Overhead pro GDN-Schicht und Schritt" und macht weitere Flash-Next-Boots
@@ -125,7 +128,8 @@ Helper kam mit `6ada86e`, einem Massen-Import.
 Ausgabe bei k=0 vollständig — geprüft über zehn Prompt-Längen von 19 bis 13.004
 Token, zehn von zehn kaputt (Tag-Kaskaden `</parameter></function></tool_call>`,
 Zahlenketten, falsches Thema). Ohne den Patch: zehn von zehn sauber. Der Gewinn
-wäre 1,1 % gewesen (68,78 → 69,55, in beiden Reihenfolgen gemessen).
+wäre 1,1 % gewesen (68,78 → 69,55 auf dem Stand Fix 1+2, in beiden
+Reihenfolgen gemessen; mit Fix 3 zusammen nie gemessen, weil widerlegt).
 
 Bei k=3 fiel es nicht auf, weil unter Spekulation `auto_sm70_qwen_gdn_full_forward`
 (Zeile 2485) eine andere Forward-Route wählt. **Nicht wieder vorschlagen.**
@@ -141,6 +145,11 @@ Vorkontexts, volle Satzzahl, fachlich korrekt. Bei k=3 sind q1 und q2
 byteidentisch mit dem Fork, bei k=0 q1. Die Abweichungen sind
 Formulierungsvarianten, beide sachlich richtig.
 
+Nachgezogen mit dem vollen Prüfling (Fix 1+2+3, `f3_qual_k0`/`f3_qual_k3`):
+**alle sechs Ausgaben byteidentisch mit Texten, die schon gelesen und als
+korrekt befunden waren** — drei davon sind Fork-Ausgaben. Upstream+3 verlässt
+den Variantenraum des Forks also nicht.
+
 **k=3 ist bei 13k Kontext nicht bit-reproduzierbar** — derselbe Fork, zwei Boots:
 q3 einmal `7250beea`, einmal `24f8b789`, Annahmequote 0,5299 gegen 0,5265. Bei
 kurzem Prompt war k=3 über fünf Läufe bitgleich. Hash-Gleichheit ist bei langem
@@ -155,9 +164,16 @@ umschalten wollten, liefen **alle am Fork**. Es gibt jetzt einen echten Schalter
 `AIFRED_FORCE_UPSTREAM_GDN=1` in beiden Modellklassen (venv-lokal, Backups
 `*.aifred_backup`).
 
-**Pflicht ab jetzt:** vor jeder genannten Zahl im Boot-Log prüfen, welches Modul
-lief. Nachweis: `grep -c 'cannot run on Turing'` (nur im Upstream-Modul, aus
-Fix 1) gegen `grep -c 'qwen_gdn_linear_attn_sm75'`.
+**venv und Checkout haben verschiedene Basen.** Die venv ist das 1.5.0-Wheel
+plus Overlay (7.647 Zeilen), der Checkout ist `origin/main` plus Fixes (7.642).
+Ein Fix im Checkout ist NICHT in der venv. Fix 3 fehlte dort den halben Tag,
+wodurch Messungen als „Fix 1+2+3" gelten sollten, die Fix 1+2 waren.
+
+**Pflicht ab jetzt:** vor jeder genannten Zahl beides prüfen —
+*welches Modul* (`grep -c 'cannot run on Turing'` im Boot-Log, nur im
+Upstream-Modul vorhanden, gegen `grep -c 'qwen_gdn_linear_attn_sm75'`) **und**
+*welche Fixes* (Marker `FIX3: One fused launch` bzw. `SLICEDIAG` in der
+geladenen venv-Datei). Der Modulnachweis allein genügt nicht.
 
 ### Warum die zwei Varianten überhaupt verschieden rechnen
 

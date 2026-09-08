@@ -199,6 +199,66 @@ CJK-Zeichen oder Satzzeichen sagen nichts über Qualität — ein fachlich
 unsinniger, aber sauber deutscher Text besteht jeden solchen Test
 (Peuqui, 07.09.). Sie taugen allenfalls als Vorfilter für grobes Zerfasern.
 
+### Wo Hash-Vergleiche gelten — und warum sie irgendwann aufhören
+
+Gemessen am 08.09., alle mit `temperature 0` und festem Seed:
+
+| Fall | Ergebnis |
+|---|---|
+| 19-Token-Prompt, 400 Token Ausgabe (27B) | **8 von 8 Boots** byteidentisch |
+| bis 13.004 Token Kontext, 260 Token Ausgabe (27B) | **70 von 70** Vergleichen byteidentisch |
+| 13.004 Token Kontext, 1.200 Token Ausgabe (27B) | **6 von 6 byteidentisch** (3× im Prozess × 2 Boots) |
+| 13.005 Token Kontext, 1.200 Token Ausgabe (180B) | **k=0 gegen k=0, zwei Boots: drei verschiedene Hashes** |
+| 9,4k Prompt, 663–806 Token (DeepSeek-V4) | byteidentisch (07.–09.09., Journal) |
+
+**Der 27B ist reproduzierbar, auch bei langer Ausgabe** (`determinismus.sh`,
+08.09.: dreimal dieselbe Frage im selben Serverprozess, zweimal gebootet, alle
+sechs `860cbb36540edf72`). Nichtdeterministisch ist bisher **nur das 180B**.
+Eine frühere Notiz, der 27B „driftet ab ~400 Token", war ein Fehlschluss aus
+einem k=0-gegen-k=3-Vergleich — das war ein Konfigurationsunterschied, keine
+Streuung.
+
+**Folge daraus, die man kennen muss:** Weil der 27B reproduzierbar ist, sind
+Hash-Unterschiede zwischen *Konfigurationen* dort echte Effekte. Bei 1.200
+Token Ausgabe liefern verschiedene Baseline-Kombinationen verschiedene, jeweils
+gelesene und fachlich korrekte Texte; bei 260 Token stimmen sie alle überein
+(70 von 70). Die Schwelle liegt also nicht beim Determinismus, sondern bei der
+Empfindlichkeit gegenüber winzigen numerischen Unterschieden.
+
+**Die Ursache ist bekannt und keine Eigenheit unseres Stacks: fehlende
+Batch-Invarianz der Kernel.** RMSNorm, Matrixmultiplikation und Attention
+wählen ihre Reduktionsstrategie nach Form und Last — datenparallel gegen
+Split-Reduktion, andere Kachelgrößen, andere Tensor-Core-Instruktionen. Damit
+ändert sich die **Reihenfolge der Fließkomma-Additionen**, und die ist nicht
+assoziativ. Winzige Unterschiede pflanzen sich fort, bis ein Argmax kippt; ab
+da läuft der Text auseinander. Das passiert **auch bei Batchgröße 1 und
+einzeln gestellten Anfragen**. Hauptverdächtiger beim Decodieren mit langem
+KV-Cache ist die **Split-KV-Attention**, deren Split-Zahl zur Laufzeit gewählt
+wird — `flash_fwd_splitkv_kernel` und `flash_fwd_splitkv_combine_kernel` stehen
+in unseren eigenen nsys-Profilen. Das erklärt die Tabelle: Bei kurzem KV wird
+nicht gesplittet, bei 13k mit kurzer Ausgabe bleibt die Split-Zahl konstant,
+bei langer Ausgabe wächst der KV über eine Schwelle.
+
+Quellen: Thinking Machines Lab, *Defeating Nondeterminism in LLM Inference*
+(https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/);
+arXiv 2506.09501, *Understanding and Mitigating Numerical Sources of
+Nondeterminism in LLM Inference*.
+
+**ENTSCHEIDUNG (Peuqui, 08.09.): batch-invariante Kernel werden NICHT
+eingebaut.** Es gäbe sie (in vLLM per Torch.Library integrierbar) und sie
+liefern bitgleiche Ergebnisse — zum Preis von **1,6- bis 2,1-fach langsamerer
+Inferenz**. Der Qualitätsgewinn ist bestenfalls marginal, das Tempo geht vor.
+Nicht erneut vorschlagen.
+
+**Ebenfalls geschlossen:** Warum DeepSeek-V4 bei 600–800 Token stabil bleibt,
+wo der 27B schon driftet (vermutlich andere Attention-Implementierung), wird
+**nicht** weiter untersucht — kein Forschungsprojekt daraus machen
+(Peuqui, 08.09.).
+
+**Praktische Regel:** Hash-Vergleiche sind ein starkes Werkzeug — aber nur bis
+etwa 260 Token Ausgabe. Darüber hinaus beweist ein abweichender Hash **nichts**
+über Qualität, dort zählt ausschließlich das Lesen der Texte.
+
 | Messung | CJK | verdächtige Wörter | Coandă-Turn |
 |---|---:|---:|---|
 | 30./31.08., **27B** | 7 | 183 | 2 halluzinierte Wissenschaftler |
@@ -300,3 +360,43 @@ Augustwerten (6,5 min Boot).
    Auf Flash-Next (TP2×PP2, heterogen) liefern Fork und Upstream+Fixes
    **denselben Text** (`864572d17f5fa8c4`); Fix 5 bringt dort +2,0 %.
    Details: `HANDOVER.md`.
+
+6. **PLE-Überlaufkaskade — vier Stufen statt zwei.** Zielbild (Peuqui, 06.09.,
+   bekräftigt 08.09.): die PLE-Tabelle läuft über wie ein Glas —
+   **VRAM der Rechenkarten → VRAM überschüssiger Karten → gepinnter Host-RAM →
+   SSD**, jede Stufe bis zu ihrem gemessenen Budget, hardware-agnostisch. Ob
+   die freie Karte oder der Host-RAM die zweite Stufe wird, ist offen: der Host
+   ist ein Hop weniger, die freie Karte hat mehr Platz. **Der Vergleich, der
+   zählt, ist freie GPU gegen Platte** — 30 GB Host-RAM reichen für 50,7 GiB
+   PLE nicht.
+
+   **Warum nötig:** Flash-Next-PLE = 50,7 GiB (ein Tensor, 128 Shards). Bei
+   TP2×PP2 liegt GPU 4 (V100, 32 GB) brach. Der MTP-Betriebspunkt hängt bei
+   MML 16384, weil PLE die RTX-Stufe füllt. Die Kaskade erlaubt MTP **und**
+   großen Kontext — und macht künftige, noch größere Modelle unterbringbar.
+
+   **Wo im Code (geprüft 08.09.):**
+   - Die eigentliche Arbeit liegt im Platzierungsplaner
+     `plan_ple_placement`/`PLEPlacement` (`common/ple.py`) und im Gather in
+     `Qwen4ExpPinnedHostEmbedding` (`nvidia/ple_layer.py`), auf dem
+     #528-Code — von zwei auf vier Stufen erweitern, Budgets aus
+     `mem_get_info` je Gerät.
+   - **Block A** in `config/vllm.py` (`if sm70_flash_v100_baseline:`) ist die
+     Stelle, an der die Stufen scharfgeschaltet werden:
+     `_apply_sm70_qwen38_hybrid_ple_defaults` setzt `VLLM_SM70_QWEN38_HYBRID_PLE`,
+     `VLLM_PLE_CPU_OFFLOAD` und `VLLM_PLE_DISK_OFFLOAD`. Dort käme die Vorgabe
+     für eine neue Stufe hin. **Achtung:** der Aufruf hängt an
+     `_is_sm70_qwen38_nomtp_dual_compile_contract` — er greift nur **ohne MTP**
+     und feuert bei unseren k=4-Läufen gar nicht; dort kommt die Platzierung
+     über `PLE_HOST_GIB` von der Kommandozeile.
+   - **Block B** (`if sm70_flash_0dot3_compile_graph:`) ist **nicht** beteiligt,
+     der setzt nur Compile- und Broadcast-Vorgaben.
+   - Stufen jenseits des Rechen-VRAM sind nicht graph-capturable (kein P2P):
+     Zeilen für die bekannten nächsten Token-IDs vor dem Decode-Schritt in
+     einen Puffer auf der Rechenkarte vorabholen, Prefill eager.
+   - Zeilen nach Token-ID aufteilen (niedrige IDs = häufige Token bei BPE),
+     dann hält die schnellste Stufe automatisch die heißen Zeilen.
+
+   **Reihenfolge — ausdrücklich festgelegt (Peuqui, 08.09.):** Die Kaskade wird
+   erst angegangen, wenn die laufende Turing-Arbeit **maximiert, optimiert und
+   als Pull Request veröffentlicht** ist. Vorher nicht anfangen.

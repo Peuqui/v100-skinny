@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-07 17:45.** Dieses Dokument beschreibt, WIE der Stack heute
+**Stand 2026-09-08 15:30.** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -237,6 +237,15 @@ Augustwerten (6,5 min Boot).
 - **Marken erst nach Laufende auswerten**, immer den ganzen Verlauf — ein `tail`
   auf die Prefill-Schritte hat schon einen falschen Teilbefund erzeugt.
 - **`nvidia-smi` vor jedem Lauf** — Fremdbelegung macht Messungen wertlos.
+- **`VLLM_SKINNY_SM75_GDN` existiert nicht** — die Modulwahl Fork/Upstream
+  steht hart an `get_device_capability() == (7, 5)` in `qwen3_5.py` (~534)
+  und `models/qwen4_exp/nvidia/model.py` (~253). Sonden, die über die
+  Variable umschalten wollten, verglichen den Fork mit sich selbst.
+- **venv ≠ Checkout.** Die venv ist 1.5.0-Wheel + Overlay, der Checkout ist
+  `origin/main` + Fixes. Ein Fix im Checkout ist NICHT in der venv.
+- **Vor jeder Zahl zwei Nachweise:** welches Modul lädt (Boot-Log) UND welche
+  Fixes in der geladenen venv-Datei stehen (Marker). Rezept:
+  `tools/mtp-diagnostics/README.md`.
 
 ---
 
@@ -255,8 +264,11 @@ Augustwerten (6,5 min Boot).
    Solange gilt: `K=0` fahren.
 2. **GDN-Anteil am Prefill messen**, bevor über einen FlashQLA-Turing-Port
    entschieden wird.
-5. **Braucht es den fork-eigenen sm75-GDN-Backend?** Er wählt am Ende denselben
-   Triton/FLA-Kernel wie der vLLM-Standardpfad. Möglicherweise genügt es, 1Cats
-   FlashQLA-Aktivierung auf sm70 zu beschränken (`minor in (0,5)` → `== 0`) —
-   das würde 560 Zeilen Kopie erübrigen und die `isinstance`-Falle vom 07.09.
-   strukturell ausschließen.
+5. **Braucht es den fork-eigenen sm75-GDN-Backend?** Am 08.09. weitgehend
+   beantwortet: drei Fixes (Startfähigkeit, Baseline-Tor, Kernfusion) machen
+   den Upstream-Pfad auf Turing lauffähig und **qualitativ gleichwertig** —
+   alle geprüften Ausgaben liegen im Variantenraum des Forks, drei davon
+   byteidentisch. Es fehlen **6,3 % Tempo** (69,64 gegen 74,33 tok/s, 27B k=3),
+   und die treten **ausschließlich mit Spekulation** auf — ohne MTP sind beide
+   Varianten exakt gleich schnell. Solange die 6,3 % nicht geschlossen sind,
+   bleibt der Fork. Details und nächste Schritte: `HANDOVER.md`.

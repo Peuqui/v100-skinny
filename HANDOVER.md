@@ -205,7 +205,7 @@ Hauptverdächtige** — größte Differenz und genau der Kernel aus Fix 3.
 
 ---
 
-## Die offene Frage: woher die restlichen 6,4 % (nur mit Spekulation)
+## Die offene Frage: woher die restlichen 6,3 % (nur mit Spekulation)
 
 Lokalisiert bis auf Kernel-Ebene, Ursache **nicht** bestimmt. nsys, 27B,
 Gerät 0, gleiche Schrittzahl (3.220 gegen 3.225 `_causal_conv1d_update`):
@@ -224,23 +224,42 @@ Gesamt-Kernelzeit 2.533 gegen 2.656 ms — die Familie erklärt die Differenz
 vollständig. Es ist Index- und Verwaltungsarbeit pro Schicht und Schritt, kein
 Rechenkernel.
 
-**Verdacht, ungeprüft:** `prepare_gdn_attention_core_inputs` und
-`rearrange_mixed_qkv` im Fork machen das Slicing anders. Der nächste Schritt
-wäre, diese beiden gegen Upstreams Entsprechungen zu diffen und die
-Index-Operationen zu zählen — nicht raten, zählen.
+**Teilweise geklärt (08.09.):** `_scatter_gather_elementwise` (6.537 = 2 ×
+3.220 Schritte) und `elementwise_kernel_with_index` (6.741 − 205 = 6.536)
+sind die zwei `index_select` plus `arange` aus `_sm70_compile_graph_slice_dim`
+— und die sind **notwendig**, siehe Fix 4 oben. Rund 47.000 überzählige
+Starts bleiben unerklärt (`vectorized` +23.488, `unrolled` +10.212,
+`elementwise` +9.993, `reduce` +3.268), also etwa fünfzehn Elementaroperationen
+pro GDN-Schicht und Schritt. Das sind PyTorch-Elementwise-Kernel, keine
+Triton-Kernel — also Python-Ebene: Reshapes, `.contiguous()`, dtype-Wandlungen,
+Zwischentensoren. Zwei konkrete Ansatzpunkte stehen unter „Wenn du hier
+weitermachst".
 
 ---
 
 ## Die offene Entscheidung (Peuqui, 08.09., Frage abgebrochen)
+
+**Randbedingung inzwischen geklärt:** Peuqui hat am 08.09. nachmittags
+festgelegt, dass Zerfall UND Tempo Blocker sind — „ich gebe Erreichtes nicht
+so einfach auf". 3 % Rückstand sind keine Verhandlungsmasse, und mein
+Vorschlag, sie als verhandelbar zu behandeln, wurde ausdrücklich verworfen.
 
 > *„Was ist, wenn wir unseren Code statt des Upstream einfügen?"*
 
 Also: unsere Implementierung upstream bringen, statt ihre zu patchen. Die
 Frage ist unbeantwortet. Was dafür und dagegen spricht:
 
-**Dafür:** Unsere Fassung ist nachweislich korrekt (byteidentisch mit der
-Volta-Referenz) und 6–11 % schneller. Wir müssten den Restabstand nicht erst
-erklären — wir würden die schnellere Variante liefern.
+**Dafür:** Unsere Fassung ist nachweislich korrekt und 6–10 % schneller. Wir
+müssten den Restabstand nicht erst erklären — wir würden die schnellere
+Variante liefern.
+
+**Neu dagegen (08.09.):** Die 1.781 Zeilen sind gar keine Eigenentwicklung,
+sondern eine **unveränderte vLLM-0.27.1-Kopie** (`docs/journal/MERGE-PROJECT-HANDOVER.md:295`). Sie upstream anzubieten hieße, 1Cat eine
+alte Fassung ihres eigenen Codes zurückzugeben, an der monatelange
+SM70-Weiterentwicklung fehlt. Das ist als Beitrag nicht vertretbar. Der
+Unterschied liegt ohnehin nicht in unserem Code, sondern im FLA-Baum: der
+Fork zieht `third_party/flash_linear_attention` (vLLM-Original), Upstream
+`model_executor/layers/fla/ops` (1Cat-weiterentwickelt).
 
 **Dagegen:** Es wäre ein 571 + 1.781 Zeilen umfassender Parallelbaum neben
 7.633 Zeilen bestehendem Code. Die erste Rückfrage im Review wäre „warum nicht
@@ -294,50 +313,89 @@ Außerdem geklärt und abgelegt:
 ## Zustand der Arbeitskopien
 
 **PR-Branch** `sm75-gdn-prefill-route` in `~/Projekte/vllm-research/1Cat-vLLM`,
-auf `origin/main` (56f534e, unverändert). 25 Zeilen rein / 16 raus in
-`qwen_gdn_linear_attn.py` — enthält Fix 1 **und** Fix 3. Fix 2 (die Zeile in
-`config/vllm.py`) ist **noch nicht gebaut**, nur belegt.
+Basis `origin/main` 56f534e. **Committed als `5a26136`** und auf den eigenen
+Fork gepusht (`fork/sm75-gdn-prefill-route`) — **kein PR eröffnet**, die Sperre
+gilt. Enthält Fix 1 und Fix 3 (25 rein / 16 raus in `qwen_gdn_linear_attn.py`)
+plus `tests/model_executor/layers/test_gdn_prefill_backend_resolve.py`.
+Fix 2 (`config/vllm.py`) ist **noch nicht gebaut**, nur belegt.
 
-Geprüft: `tests/model_executor/layers/test_gdn_prefill_backend_resolve.py`
-4 passed, Gegenprobe bestanden (ohne Fix fallen genau die zwei Turing-Tests);
-89 bestehende Tests der berührten Module grün; `pre-commit` ohne Fehlschlag
-(ruff, format, typos, mypy, SPDX). PR-Text entworfen in
-`scratchpad/PR-A-BODY.md` — die Ergebniszahl darin ist noch die des Forks und
-muss auf die des Fixes korrigiert werden.
+Geprüft vor dem Commit: 4 Tests bestanden, Gegenprobe bestanden (ohne Fix fallen
+genau die zwei Turing-Tests), `pre-commit` vollständig grün (ruff, ruff-format,
+typos, mypy-lokal, SPDX, forbidden-imports, torch.cuda-Check). PR-Text entworfen
+in `scratchpad/PR-A-BODY.md` (session-lokal!) — die Ergebniszahl darin ist noch
+die des Forks und muss auf 69,64 korrigiert werden.
 
-**Overlay** `fork_patches_150/qwen_gdn_linear_attn.py` trägt Fix 1 (nicht
-Fix 3 — der ist für uns wirkungslos, weil unser sm75-Modul den Pfad nicht
-nimmt). Die venv ist damit identisch. Uncommitted außerdem `STAND.md` und
-`scripts/serve-qwen38-flash-next.sh`.
+**Wichtig zu Fix 2 für den PR-Text:** Das Baseline-Tor heißt inzwischen
+`_any_participating_device_is_capability(self, (7, 0))` — es entstand aus
+**unserem eigenen, am 07.09. gemergten PR #514** und wurde von 1Cat mit
+`df85601` auf beteiligte Worker-Devices eingegrenzt. Fix 2 ist also eine
+Folgeänderung an dieser Funktion: das Tor fragt nach *exakt Volta*, weshalb
+reine Turing-Systeme die Abstimmung nie bekommen. Das ist ein **anderes**
+Problem als #412 (heterogen, Turing vor Volta) und damit kein Duplikat.
 
-**Produktivsystem** vollständig auf Fork-Stand: kein Testschalter in
-`models/qwen4_exp/nvidia/model.py` oder `model_executor/models/qwen3_5.py`,
-llama-swap-Config bei 23 Modellen ohne Testschalter, Flash-Next-Einträge auf
-`--max-model-len 262144`. Backups: `config.yaml.bak-2026-09-07-vor-max-ctx`.
+**Overlay** `fork_patches_150/qwen_gdn_linear_attn.py` trägt Fix 1.
 
-**Messwerkzeuge** in `scratchpad/` (session-lokal, bei Bedarf nach
-`tools/mtp-diagnostics/` übernehmen): `qual_probe.sh` (Korrektheit, drei Fragen
-je Boot, SHA-256), `speed27_probe.sh` (deterministisch, fünf Wiederholungen,
-Annahmequote), `prof_decode.sh` (nsys-Kernel-Summen), `mk_variant.sh`
-(Schalter-Bisektion). Der `nsys` im System ist 2022.4.2 — `--output` und
-`--force-overwrite` gehören dort an `nsys start`, nicht an `launch`.
+**venv-Zustand** (`/home/mp/vllm/venv`, Symlink auf `.venv-sm70-150`):
+Fix 1 + Fix 3 deployt, **Fix 4 nicht** (widerlegt). Zusätzlich der Testschalter
+`AIFRED_FORCE_UPSTREAM_GDN` in beiden Modellklassen. Backups liegen:
+`qwen3_5.py.aifred_backup`, `model.py` → `scratchpad/qwen4exp.FORKSTAND`,
+`qwen_gdn_linear_attn.py.OHNEFIX4` (= aktueller Stand) und `.MITFIX4`
+(= mit dem widerlegten Fix 4, nur für Gegenproben).
+
+**Rückbau auf reinen Produktivstand**, falls nötig: `.aifred_backup` und
+`FORKSTAND` zurückspielen — dann ist der Testschalter weg und die harte
+Capability-Weiche wieder allein zuständig. Solange der Schalter drin ist, ändert
+er ohne `AIFRED_FORCE_UPSTREAM_GDN=1` **nichts** am Verhalten.
+
+**Produktivsystem:** llama-swap-Config unverändert, 23 Modelle, Flash-Next-
+Einträge auf `--max-model-len 262144`. Backup
+`config.yaml.bak-2026-09-07-vor-max-ctx`.
+
+**Messwerkzeuge jetzt im Repo:** `tools/mtp-diagnostics/` mit eigener README,
+die die drei Messfehler-Fallen und die Nachweispflichten festhält. Enthalten:
+`speed_27b.sh` (Tempo, kurzer Prompt), `qual_longctx.sh` (drei Fragen hinter
+13k Kontext), `ctx_scan.sh` (zehn Prompt-Längen in einem Boot),
+`venv_fix_toggle.sh`, `mk_vorkontext.py` + `vorkontext.txt` (der Generator
+reproduziert die Datei bitgenau, SHA `0f9f31a8429bbb5b`).
+
+Der `nsys` im System ist 2022.4.2 — `--output` und `--force-overwrite` gehören
+dort an `nsys start`, nicht an `launch`.
 
 ---
 
 ## Wenn du hier weitermachst
 
-1. **Erst die 6–11 % klären.** `prepare_gdn_attention_core_inputs` und
-   `rearrange_mixed_qkv` gegen Upstream diffen, Index-Operationen zählen.
-   Maßstab ist der byteidentische Referenzhash — jede Änderung muss ihn treffen.
-2. **Dann Fix 2 bauen** (`config/vllm.py`, pre-Ampere statt Volta) und die
-   drei Fixes zu einem Branch zusammenführen.
-3. **Dann Peuqui den Diff vorlegen.** AGENTS.md verbietet reine Agenten-PRs;
-   er muss jede geänderte Zeile gelesen haben und verteidigen können.
-4. **Duplikatsprüfung wiederholen**, sie ist von 07.09. und `main` bewegt sich
-   täglich.
+**Der Auftrag ist eng:** Zerfall UND Tempo sind Blocker (Peuqui, 08.09.). Der
+Zerfall ist erledigt — mit Fix 1+2+3 gibt es keinen. Bleiben die **6,3 %**.
 
-Und die Lehre, die diese Sitzung gekostet hat: Neun Vermutungen sind gefallen,
-weil ich von einer Beobachtung auf eine Ursache geschlossen habe, statt sie zu
-isolieren. Was jedes Mal geholfen hat, war eine Messung, die genau **eine**
-Variable ändert — der V100-Gegenversuch (gleicher Code, andere Architektur)
-hat mehr gebracht als alles Lesen davor.
+1. **Die 6,3 % im Spekulationszweig suchen.** Ohne MTP sind beide Varianten
+   exakt gleich schnell, also liegt es dort und nirgends sonst. Zwei konkrete
+   Ansatzpunkte, beide ungeprüft:
+   * `fused_sigmoid_gating.py` differiert zwischen den FLA-Bäumen um 557 Zeilen
+     (279 gegen 780) und ist genau der Kernel, den Fix 3 aufruft.
+   * Der Fork übergibt dem Kernel `a=a, b=b` direkt; Upstream erzeugt vorher
+     `a_spec = a.index_select(0, spec_token_indx)` und dasselbe für `b`
+     (Zeilen 5707/5708) — zwei Materialisierungen pro Schicht und Schritt.
+2. **Jede Änderung sofort gegen k=0 mit 13k Kontext prüfen**, bevor eine
+   Tempozahl genannt wird. `ctx_scan.sh` kostet einen Boot und hätte Fix 4
+   in zehn Minuten erledigt statt in einem halben Tag.
+3. **Dann Fix 2 bauen** (`config/vllm.py`, pre-Ampere statt exakt Volta) und
+   alle Fixes auf einen Branch führen.
+4. **Duplikatsprüfung wiederholen** — die letzte ist vom 08.09., `main` bewegt
+   sich täglich. Damals ohne Treffer; PR #563 (speculative GDN) berührt nur
+   `gdn_attn.py`, ist also kein Duplikat.
+5. **Flash-Next als Abnahme fahren**, nicht zur Diagnose: TP2×PP2 ist heterogen
+   (die V100-Stufe fährt ohnehin Upstream), ein Boot kostet das Dreifache, und
+   die Skalierungsfrage ist beantwortet (27B 6,2 %, Flash-Next 9,6 % — der
+   Abstand wächst mit der Schichtzahl).
+6. **Dann Peuqui den Diff vorlegen.** AGENTS.md verbietet reine Agenten-PRs;
+   er muss jede geänderte Zeile gelesen haben und verteidigen können.
+
+Und die Lehre, die diese Sitzung gekostet hat: Zehn Vermutungen sind gefallen,
+weil aus einer Beobachtung auf eine Ursache geschlossen wurde, statt sie zu
+isolieren. Geholfen hat jedes Mal eine Messung, die genau **eine** Variable
+ändert. Am 08.09. kam eine zweite Lehre dazu, teurer als die erste: **prüfen,
+dass die Messung überhaupt das misst, was sie messen soll.** Drei Läufe verglichen
+den Fork mit sich selbst, weil ein Schalter nicht existierte; einer galt als
+Fix 1+2+3 und war Fix 1+2, weil der Fix nur im Checkout lag. Beide Male stimmten
+die Zahlen in sich und waren trotzdem wertlos.

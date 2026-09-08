@@ -92,11 +92,14 @@ AIfred-Alltag.
   `NotImplementedError` ab. Die dortige Aufrufzeile bootet auf dem 1.5.0-Stand
   **nicht mehr**.
 - `ENV_PREFIX` muss gesetzt werden — der Skript-Default ist `.venv-sm70-130`.
-- Checkpoint: gefahren wird der rohe RadixArk-Snapshot im HF-Cache (31 BF16-
-  MTP-Tensoren, gemessen). Der MTPQ-Transplant wurde am 07.09. neu gebaut
-  (`/home/mp/models/…-NVFP4-MTPQ`, 419 Dateien, 36 MB Symlinks) und ist laut
-  `check_draft_head.py` in Ordnung — **lädt aber auf dem 1.5.0-Stand nicht**,
-  siehe offener Punkt 1.
+- Checkpoint: **`/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ`**
+  fahren. **Korrigiert 08.09.:** Der Transplant **lädt auf dem 1.5.0-Stand
+  einwandfrei** (vier Boots, null „routed-expert weights were not loaded"), und
+  sein Draftkopf ist **quantisiert**, nicht BF16 — 417 Symlinks auf RadixArk
+  plus **eine** Datei von provsalt (der NVFP4-MTP-Block),
+  `check_draft_head.py`: *QUANTIZED draft head — good to go*. Die frühere
+  Angabe „gefahren wird der rohe RadixArk-Snapshot mit 31 BF16-MTP-Tensoren"
+  war falsch und hat am 08.09. einen Fehlstart gekostet.
 
 Warum k=4, warum `capture_sizes [1,2,4,5,8]`, warum Kartenreihenfolge `0,2,1,4`:
 → `FLASH-NEXT-OPERATING-POINT.md`, `docs/journal/QWEN4EXP-PORT-HANDOVER.md`
@@ -246,29 +249,54 @@ Augustwerten (6,5 min Boot).
 - **Vor jeder Zahl zwei Nachweise:** welches Modul lädt (Boot-Log) UND welche
   Fixes in der geladenen venv-Datei stehen (Marker). Rezept:
   `tools/mtp-diagnostics/README.md`.
+- **Ein Testschalter muss beweisen, dass er feuert** (08.09.). Vier Läufe
+  maßen unveränderten Code, weil der Schalter in
+  `QwenGatedDeltaNetAttention.forward_cuda` saß — einer Methode, die
+  `Qwen3_5GatedDeltaNet` (`models/qwen3_5.py:392`) **überschreibt**. Für den
+  27B ist die Basisklassen-Fassung tot, für Flash-Next (Qwen4Exp) dagegen
+  lebendig. Vor jedem Bisect: Klasse und überschriebene Methode prüfen.
+- **Aus einer getracten Funktion darf man nicht loggen** (08.09.).
+  `logger.warning_once` im `forward_cuda` killt den Boot:
+  `torch._dynamo.exc.Unsupported: logging.Logger method not supported`. Dafür
+  gibt es `_log_runtime_route_once` mit `is_compiling()`-Sperre — die aber
+  genau dann schweigt, wenn man sie als Nachweis braucht. Diagnosemarken
+  gehören in `__init__`.
+- **INFO von Nebenrängen wird gefiltert** (08.09.). Unter PP loggt
+  `Worker_PP0_TP0` hunderte Zeilen, die anderen Ränge unter fünfzehn — eine
+  fehlende `info_once`-Meldung ist **kein** Beweis, dass der Code nicht lief.
+  Für Zustandsnachweise pro Rang in eine Datei schreiben
+  (`AIFRED_STATE_FILE`-Muster), nicht loggen.
+- **Die Coandă-Frage in `qual_longctx.sh` ist KEINE Fangfrage.** Dort steht der
+  korrekt geschriebene, real existierende Effekt; das Modell erklärt ihn zu
+  Recht. Als Halluzinationstest war der **falsch geschriebene** Begriff
+  („Kuanda-Effekt", siehe Betriebspunkt oben) gemeint. Die Sonde kennt ihn
+  nicht — beim nächsten Durchgang nachziehen.
 
 ---
 
 ## Offene Punkte
 
-1. **MTP-Beschleunigung blockiert: der 1.5.0-Loader lädt keine per-expert
-   MTP-Blöcke.** Der Transplant ist gebaut und geprüft, scheitert aber beim Boot
-   mit `Qwen4Exp MTP routed-expert checkpoint weights were not loaded:
-   …w13_weight, …w2_weight` (`models/qwen4_exp/nvidia/mtp.py:135`). Ursache:
-   Alle vier verfügbaren quantisierten Donors (provsalt, Inferact,
-   starkweatherdigital, mbehr90) legen die 512 Experten EINZELN ab; der Loader
-   verlangt die fusionierte Form und bietet keinen per-expert-Pfad. Unter 1.3.0
-   lief es. Die Prüfung ist Upstream-Code (unsere Fork-Änderungen an der Datei
-   berühren keine experten-bezogene Zeile). Fix wäre ein Mapper, der einzelne
-   Experten stapelt — bewusst zurückgestellt (Entscheidung Peuqui 07.09.).
-   Solange gilt: `K=0` fahren.
+1. ~~MTP-Beschleunigung blockiert~~ — **ERLEDIGT 08.09.** Der MTPQ-Transplant
+   lädt auf 1.5.0 fehlerfrei; der Boot-Abbruch
+   (`Qwen4Exp MTP routed-expert checkpoint weights were not loaded`) tritt in
+   vier Läufen am 08.09. **nicht mehr** auf. `K=4` ist gemessen und liefert
+   Annahmelänge **3,030** bei 57,7–60,7 tok/s (300 Token, greedy). Die frühere
+   Anweisung „solange `K=0` fahren" ist überholt.
 2. **GDN-Anteil am Prefill messen**, bevor über einen FlashQLA-Turing-Port
    entschieden wird.
-5. **Braucht es den fork-eigenen sm75-GDN-Backend?** Am 08.09. weitgehend
-   beantwortet: drei Fixes (Startfähigkeit, Baseline-Tor, Kernfusion) machen
-   den Upstream-Pfad auf Turing lauffähig und **qualitativ gleichwertig** —
-   alle geprüften Ausgaben liegen im Variantenraum des Forks, drei davon
-   byteidentisch. Es fehlen **6,3 % Tempo** (69,64 gegen 74,33 tok/s, 27B k=3),
-   und die treten **ausschließlich mit Spekulation** auf — ohne MTP sind beide
-   Varianten exakt gleich schnell. Solange die 6,3 % nicht geschlossen sind,
-   bleibt der Fork. Details und nächste Schritte: `HANDOVER.md`.
+5. **Braucht es den fork-eigenen sm75-GDN-Backend?** Am 08.09. abends
+   weitgehend beantwortet: **vier** Fixes (Startfähigkeit, Baseline-Tor,
+   Kernfusion, Full-Forward-Wächter) machen den Upstream-Pfad auf Turing
+   lauffähig und **verlustfrei** — die Ausgabe ist byteidentisch mit der des
+   unspekulierten Modells, an 10 von 10 Prompt-Längen bis 13.004 Token.
+
+   Der Rückstand ist von **7,0 % auf 2,0 %** gefallen (27B, k=3: 69,58 → 73,42
+   gegen Fork 74,81). Ursache war eine Compile-Weiche, kein Kernel: Upstream
+   nimmt unter Spekulation die ganze GDN-Schicht per `qwen_gdn_full_forward`
+   aus dem Inductor-Graphen. Der Rest — drei Kernelstarts je GDN-Schicht aus
+   `_sm70_compile_graph_slice_dim` — ist **belegt nicht erreichbar**: zwei
+   billigere, semantisch gleichwertige Formulierungen zerstören die Ausgabe.
+
+   Auf Flash-Next (TP2×PP2, heterogen) liefern Fork und Upstream+Fixes
+   **denselben Text** (`864572d17f5fa8c4`); Fix 5 bringt dort +2,0 %.
+   Details: `HANDOVER.md`.

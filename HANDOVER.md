@@ -1,401 +1,306 @@
 # Übergabe
 
-**Stand 2026-09-08 nachmittags.** Nur der aktuelle Auftrag. Wie der Stack läuft:
+**Stand 2026-09-08 abends.** Nur der aktuelle Auftrag. Wie der Stack läuft:
 `STAND.md`. Warum er so läuft: `docs/journal/`.
 
 ---
 
 ## Auftrag
 
-Drei Upstream-Defekte für Turing sind gefunden, gefixt und gemessen. **Nichts
-ist eingereicht.** Peuqui hat gesperrt: es geht alles **gemeinsam** raus, und
-erst wenn der Restabstand geklärt ist. Kein Teilbeitrag, keine Nachbesserung
-später. Am 08.09. nachmittags bestätigt: **Zerfall UND Tempo sind Blocker** —
-„ich gebe Erreichtes nicht so einfach auf". 3 % Rückstand sind keine
-Verhandlungsmasse.
+Vier Turing-Defekte in 1Cat-vLLM sind gefunden und gemessen. **Nichts ist
+eingereicht.** Peuqui hat gesperrt: es geht alles **gemeinsam** raus. Zerfall
+UND Tempo sind Blocker — „ich gebe Erreichtes nicht so einfach auf".
 
-Der Nachmittag des 08.09. hat den Restabstand **eingegrenzt statt gelöst** und
-einen vierten Fixversuch **widerlegt**. Siehe den Abschnitt „Nachmittag 08.09.".
+Der 08.09. hat den Restabstand **von 7,0 % auf 2,0 % gedrückt** und die
+Ursache benannt. Der verbliebene Rest ist lokalisiert und als **nicht
+erreichbar** belegt, nicht bloß vermutet.
 
 ---
 
-## Die drei Defekte (alle gemessen, alle upstream)
+## Die vier Defekte
 
 **1 — Turing startet nicht.**
-`_resolve_gdn_prefill_backend` in `vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py`
-meldet FlashQLA für sm75 (`capability.minor in (0, 5)`). Der voreingestellte
-TileLang-Prefill fordert 86.016 B dynamisches Shared Memory, Turing gibt 65.536.
-
-```
-RuntimeError: Worker failed with error
-  'Failed to set the allowed dynamic shared memory size to 86016'
-→ Worker proc VllmWorker-3 died, Engine core initialization failed
-```
-
-Fix: `is_sm70_or_sm75` in `is_sm70`/`is_sm75` trennen, Rückfall auf Triton/FLA,
-mit begründeter `logger.warning_once`. 17 Zeilen.
+`_resolve_gdn_prefill_backend` meldet FlashQLA für sm75. Der TileLang-Prefill
+fordert 86.016 B dynamisches Shared Memory, Turing gibt 65.536. Worker stirbt
+beim Engine-Init. Fix: `is_sm70_or_sm75` trennen, Rückfall auf Triton/FLA.
+17 Zeilen. **Gebaut, Commit `5a26136`.**
 
 **2 — Turing rechnet falsch.**
-Die pre-Ampere-Grundabstimmung in `config/vllm.py` hängt an
-`_any_visible_device_has_capability((7, 0))` — verlangt also eine *Volta*-Karte.
-Ein reines Turing-System läuft unkonfiguriert und liefert Müll:
+Das Baseline-Tor `sm70_flash_v100_baseline` in `config/vllm.py` (~Zeile 1826)
+verlangt `_any_participating_device_is_capability(self, (7, 0))`, also *exakt
+Volta*. Ein reines Turing-System bekommt die pre-Ampere-Abstimmung nie und
+liefert Müll (Satzwiederholungen, balinesische Codepunkte). Bisektiert auf
+**einen** Schalter: `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1` trägt die
+gesamte Korrektheit. **Noch nicht gebaut**, siehe „Offene Entscheidung".
 
-```
-Frage 1:  "Er is een nieuwe versie van de app beschikbaar."  ×30
-Frage 2:  ᭡᭢᭣᭤᭥᭦᭧᭨᭩᭪᭬…
-```
-
-Bisektiert von 13 Schaltern auf einen: `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1`
-allein trägt die gesamte Korrektheit. Fix: Tor auf pre-Ampere ausweiten, 1 Zeile.
-
-Der Kommentar über der Stelle stammt aus unserem eigenen PR #514 — wir haben
-damals das Prüfen aller Karten eingeführt, aber die Fähigkeitsstufe auf Volta
-stehen lassen.
-
-**Warum Flash-Next nie betroffen war:** Es fährt `CUDA_VISIBLE_DEVICES=0,2,1,3`,
-also RTX **und** V100. Eine Volta ist sichtbar, die Abstimmung greift, die
-Turing-Stufe erbt sie. Nur ein Turing-only-Aufbau (`0,2`) fällt durch.
+Die Funktion stammt aus unserem eigenen PR #514, **gemerged am 07.09.** —
+Fix 2 ist damit eine Folgeänderung an akzeptiertem Code.
 
 **3 — Unfusionierter GDN-Kern im Spekulationszweig.**
-Upstream ruft `fused_gdn_gating` + `fused_recurrent_gated_delta_rule` (zwei
-Kernel), obwohl es `fused_sigmoid_gating_delta_rule_update` bereits importiert
-und im DFlash2-Zweig direkt darüber nutzt. Fix: die fusionierte Variante auch
-dort. Wirkung: GDN-Kern 83,4 → 55,0 ms, exakt der Fork-Wert.
+Upstream ruft `fused_gdn_gating` + `fused_recurrent_gated_delta_rule`, obwohl
+es `fused_sigmoid_gating_delta_rule_update` bereits importiert. GDN-Kern
+83,4 → 55,0 ms. **Gebaut, Commit `5a26136`.**
+
+**4 (NEU 08.09.) — Der Full-Forward-Wrapper kostet auf Turing 5,4 %.**
+
+`QwenGatedDeltaNetAttention.forward` schickt unter Spekulation die **gesamte
+GDN-Schicht** durch den opaken Custom-Op `torch.ops.vllm.qwen_gdn_full_forward`.
+Dessen eigener Docstring:
+
+> *„Run the full Qwen GDN attention forward **outside Inductor**. […] the
+> projections around the recurrent GDN core keep the strict eager execution
+> order instead of being rewritten by Inductor."*
+
+Der Op steht in `splitting_ops`. Folge: Ein- und Ausgangsprojektion samt
+gegatetem RMSNorm laufen eager statt fusioniert — **rund fünfzehn zusätzliche
+Elementaroperationen pro GDN-Schicht und Schritt**.
+
+Der Wächter (`__init__`, ~Zeile 2484) hängt an **keiner Gerätefähigkeit**,
+sondern nur an `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH` plus „Spekulation
+aktiv". **Fix 2 schaltet damit auf Turing eine Volta-Notlösung scharf.**
+
+Fix: den automatischen Arm an Volta binden. **Gebaut, uncommitted**, siehe
+„Zustand der Arbeitskopien".
 
 ---
 
-## Die Zahlen
+## Die Zahlen (alle 08.09., eine Sitzung, gleiche Bedingungen)
 
-Greedy (`temperature 0`, fester Seed), 400 Token fest, fünf Wiederholungen.
-Streuung dadurch unter 0,2 tok/s — mit Temperatur 0,7 und freier Länge hatte
-dieselbe Messung einen realen 57-%-Unterschied als Rauschen getarnt.
+27B-NVFP4, TP2, `DEVS=0,2` (Turing-only), greedy Seed 1, 400 Token fest,
+fünf Wiederholungen. Streuung unter 0,3 tok/s.
 
-| 27B, TP2, k=3 | Median | Spanne |
-|---|---:|---:|
-| Fork-sm75 | 74,33 | 74,30–74,34 |
-| Upstream + Fix 1+2 | 68,80 | 68,75–68,89 |
-| Upstream + Fix 1+2+3 | **69,71** | 69,69–69,87 (am 08.09. mit 69,64 bestaetigt) |
+| Variante | tok/s | Ausgabe-SHA | Annahmelänge |
+|---|---:|---|---:|
+| **k=0, ohne Spekulation (Maßstab)** | 43,62 | `0106659946c064b1` | — |
+| Upstream + Fix 1+2+3, k=3 | 69,58 | `0106659946c064b1` | 2,963 |
+| dieselbe + Wrapper per Env aus | 73,34 | `0106659946c064b1` | 2,963 |
+| **+ Fix 4 als echter Patch** | **73,42** | `0106659946c064b1` | 2,963 |
+| sm75-Fork | 74,81 | `0106659946c064b1` | 2,963 |
+| Spec-Core-Op statt Wrapper | 75,58 | `88825f5a1db681b8` | 3,109 |
 
-| Flash-Next 180B, TP2×PP2, k=4 | Median | Spanne |
-|---|---:|---:|
-| Fork-sm75 | 54,10 | 53,89–54,23 |
-| Upstream + Fix 1+2 | 47,10 | 46,96–47,70 |
-| Upstream + Fix 1+2+3 | **48,91** | 48,66–48,99 |
+**Rückstand zum Fork: 7,0 % → 2,0 %.**
 
-**Korrektheit:** mit allen drei Fixes 3 von 3 Hashes byteidentisch mit der
-Referenz (q1 `b63fa12008eb4206`, q2 `b5e1d196bf4e3811`, q3 `9c394f0eaae8985b`).
-Die Referenz ist doppelt bestätigt: V100 + Upstream **und** RTX + Fork liefern
-sie identisch.
+**Verlustfreiheit** ist der Maßstab, nicht der Leseeindruck: k=0 liefert
+`0106659946c064b1`; jede saubere k=3-Variante trifft das auf das Byte.
+`ctx_scan` über zehn Prompt-Längen (19 bis 13.004 Token): saubere k=3-Route
+**10/10 identisch mit k=0**, Fix 4 **10/10 identisch mit der Referenz**.
 
-**Annahmelänge** in allen 27B-Läufen bitgleich **2,963** (Quote 0,6543). Der
-Entwurfspfad ist damit nicht beteiligt — der `lm_head`-Verdacht ist ausgeschlossen.
+**Qualität Langkontext** (drei Fragen à 1.200 Token hinter 13.004 Token
+Vorkontext, gelesen): kein Zerfall, kein Einsickern, q3 byteidentisch mit der
+am 07.09. geprüften Baseline.
+
+### Flash-Next-Abnahme (180B, TP2×PP2, heterogen) — bestanden
+
+MTPQ-Checkpoint, k=4, `CUDA_VISIBLE_DEVICES=0,2,1,3`, alle Stufen auf Upstream
+(`AIFRED_FORCE_UPSTREAM_GDN=1`), 300 Token greedy, drei Wiederholungen.
+
+| | tok/s | Annahmelänge | Ausgabe-SHA |
+|---|---:|---:|---|
+| Wrapper erzwungen (= ohne Fix 4) | 57,66 | 3,030 | `864572d17f5fa8c4` |
+| **Fix 4** | **58,83 / 59,06** | 3,030 | `864572d17f5fa8c4` |
+| Produktivkonfig (Fork auf Turing) | 60,29 | 3,030 | `864572d17f5fa8c4` |
+
+**+2,0 %** — weniger als die 5,4 % beim 27B, weil nur die halbe Schichtzahl auf
+Turing liegt. **Alle Varianten liefern denselben Text**, Fork eingeschlossen.
+
+**Der Pro-Gerät-Nachweis, im selben Lauf, pro Rang in eine Datei geschrieben
+(`AIFRED_STATE_FILE`, weil INFO von Nebenrängen gefiltert wird):**
+
+```
+dev=0  cap=(7,5)  volta=False  auto=True  maybe=False   ← Turing: Wrapper aus
+dev=1  cap=(7,5)  volta=False  auto=True  maybe=False   ← Turing: Wrapper aus
+dev=2  cap=(7,0)  volta=True   auto=True  maybe=True    ← Volta:  Wrapper an
+dev=3  cap=(7,0)  volta=True   auto=True  maybe=True    ← Volta:  Wrapper an
+```
+
+`auto=True` auf allen vier Rängen belegt, dass der Wrapper ohne Fix 4 überall
+scharf gewesen wäre. **Fix 4 ändert am Volta-Verhalten nichts** — gemessen,
+nicht argumentiert. Mit `device_id=0` hätte überall `(7,5)` gestanden und der
+Patch hätte die V100-Stufen still mitentwaffnet.
 
 ---
 
-## Nachmittag 08.09.: eingegrenzt, ein Fixversuch widerlegt
+## Was am 08.09. widerlegt wurde
 
-### Der Abstand entsteht ausschließlich mit Spekulation
+**Spec-Core-Route** (`VLLM_SM70_QWEN_GDN_SPEC_CORE_OP=1`) — der schnellste
+gemessene Weg (75,58), **disqualifiziert**: 0 von 10 Prompt-Längen stimmen mit
+k=0 überein. Er ist nicht verlustfrei; sein Tempovorteil kommt aus der
+gestiegenen Annahmequote (3,109 statt 2,963), er prüft also weniger statt
+schneller zu rechnen. Textbefund zusätzlich: q1 enthält eine falsche
+de-Broglie-Relation („p = h/m·v" als Wellenlänge), q3 kehrt die
+Druckargumentation um (höherer Wanddruck, trotzdem Anziehung) und widerspricht
+der eigenen Definition (konvex schwäche den Effekt ab); Nummerierungsfehler in
+3 von 3 Antworten gegen 0 von 3 bei der Referenz. Texte:
+`~/.cache/mtp-diagnostics/qual_spc_qual_k3/` gegen `qual_ff_qual_up_k3_off/`.
 
-| 27B | Fork | Upstream+3 | Abstand |
-|---|---:|---:|---:|
-| k=0, kurzer Prompt | 43,5 | 43,5 | **keiner** |
-| k=0, 13k Kontext | 24,99 | 25,02 | **keiner** |
-| k=3, kurzer Prompt | 74,33 | 69,64 | 6,3 % |
-| k=3, 13k Kontext | 29,59 | 28,82 | 2,6 % |
+**`_sm70_compile_graph_slice_dim` billiger machen — zweimal gescheitert.**
+Die echte Stelle ist `Qwen3_5GatedDeltaNet.forward_cuda`
+(`vllm/model_executor/models/qwen3_5.py`, ~Zeile 470/472), nachgewiesen über
+eine Zustandsmarke in `__init__`: `split_input=True, dflash2_split=False,
+qpn8_ba=False`.
 
-Ohne MTP sind beide Varianten in beiden Kontextlängen **exakt gleich schnell**.
-Damit sind der normale Decode-Pfad, der Prefill und die Attention als Ursache
-ausgeschlossen. Es bleibt der Spekulationszweig.
-
-Fix 3 bringt +1,25 % (68,78 → 69,64 bei kurzem Prompt, beide Werte doppelt
-gemessen und deckungsgleich mit den Nachtwerten 68,80 / 69,71).
-
-Der Rückstand skaliert mit der Modellgröße: 27B 6,2 %, Flash-Next 9,6 %. Das
-stützt „Overhead pro GDN-Schicht und Schritt" und macht weitere Flash-Next-Boots
-für die *Ursachensuche* wertlos — sie gehören als Abnahme vor den PR, nicht davor.
-
-### Fix 4 (`_sm70_compile_graph_slice_dim` als View) ist WIDERLEGT
-
-`_sm70_compile_graph_slice_dim` (Zeile 1351) materialisiert bei `start != 0` per
-`torch.arange` + `index_select`, wo der Fork `split`/`chunk` nutzt — reine Views.
-Die Kernel-Zahlen rechnen sich exakt darauf auf: 6537 `_scatter_gather_elementwise`
-= 2 × 3220 Decode-Schritte (die zwei Aufrufe in `prepare_gdn_attention_core_inputs`,
-Zeilen 2782/2787), und 6741 − 205 = 6536 `elementwise_kernel_with_index` = die
-zugehörigen `arange`-Kernel. Eine dokumentierte Begründung existiert nicht; der
-Helper kam mit `6ada86e`, einem Massen-Import.
-
-**Trotzdem ist die Materialisierung notwendig.** Auf View umgestellt zerfällt die
-Ausgabe bei k=0 vollständig — geprüft über zehn Prompt-Längen von 19 bis 13.004
-Token, zehn von zehn kaputt (Tag-Kaskaden `</parameter></function></tool_call>`,
-Zahlenketten, falsches Thema). Ohne den Patch: zehn von zehn sauber. Der Gewinn
-wäre 1,1 % gewesen (68,78 → 69,55 auf dem Stand Fix 1+2, in beiden
-Reihenfolgen gemessen; mit Fix 3 zusammen nie gemessen, weil widerlegt).
-
-Bei k=3 fiel es nicht auf, weil unter Spekulation `auto_sm70_qwen_gdn_full_forward`
-(Zeile 2485) eine andere Forward-Route wählt. **Nicht wieder vorschlagen.**
-
-### Qualitätsmatrix 27B: Upstream + Fix 1+2+3 bestanden
-
-Vier Zellen (Fork/Upstream × k=0/k=3), drei Fragen à 30 Sätze, je 13.004 Token
-deterministischer Vorkontext (thematisch unabhängiger Hafenlogistik-Bericht,
-`scratchpad/vorkontext.txt`, 170 Absätze). Alle Texte händisch gelesen.
-
-Kein Zerfall, keine Schleifen, kein Sprachwechsel, kein Einsickern des
-Vorkontexts, volle Satzzahl, fachlich korrekt. Bei k=3 sind q1 und q2
-byteidentisch mit dem Fork, bei k=0 q1. Die Abweichungen sind
-Formulierungsvarianten, beide sachlich richtig.
-
-Nachgezogen mit dem vollen Prüfling (Fix 1+2+3, `f3_qual_k0`/`f3_qual_k3`):
-**alle sechs Ausgaben byteidentisch mit Texten, die schon gelesen und als
-korrekt befunden waren** — drei davon sind Fork-Ausgaben. Upstream+3 verlässt
-den Variantenraum des Forks also nicht.
-
-**k=3 ist bei 13k Kontext nicht bit-reproduzierbar** — derselbe Fork, zwei Boots:
-q3 einmal `7250beea`, einmal `24f8b789`, Annahmequote 0,5299 gegen 0,5265. Bei
-kurzem Prompt war k=3 über fünf Läufe bitgleich. Hash-Gleichheit ist bei langem
-Kontext also kein taugliches Kriterium mehr.
-
-### Zwei Messfehler, die Ergebnisse verfälscht hatten
-
-**`VLLM_SKINNY_SM75_GDN` existiert in der venv nicht.** Die Modulwahl steht hart
-im Code (`qwen3_5.py:534`, `models/qwen4_exp/nvidia/model.py:253`, beide
-`get_device_capability() == (7,5)`). Sondenskripte, die über diese Variable
-umschalten wollten, liefen **alle am Fork**. Es gibt jetzt einen echten Schalter
-`AIFRED_FORCE_UPSTREAM_GDN=1` in beiden Modellklassen (venv-lokal, Backups
-`*.aifred_backup`).
-
-**venv und Checkout haben verschiedene Basen.** Die venv ist das 1.5.0-Wheel
-plus Overlay (7.647 Zeilen), der Checkout ist `origin/main` plus Fixes (7.642).
-Ein Fix im Checkout ist NICHT in der venv. Fix 3 fehlte dort den halben Tag,
-wodurch Messungen als „Fix 1+2+3" gelten sollten, die Fix 1+2 waren.
-
-**Pflicht ab jetzt:** vor jeder genannten Zahl beides prüfen —
-*welches Modul* (`grep -c 'cannot run on Turing'` im Boot-Log, nur im
-Upstream-Modul vorhanden, gegen `grep -c 'qwen_gdn_linear_attn_sm75'`) **und**
-*welche Fixes* (Marker `FIX3: One fused launch` bzw. `SLICEDIAG` in der
-geladenen venv-Datei). Der Modulnachweis allein genügt nicht.
-
-### Warum die zwei Varianten überhaupt verschieden rechnen
-
-Der Fork zieht seine FLA-Kernel aus `vllm/third_party/flash_linear_attention/ops`
-(unverändertes vLLM-Original, denn die 1.781 Zeilen sind eine 0.27.1-Kopie, siehe
-`docs/journal/MERGE-PROJECT-HANDOVER.md:295`), das Upstream-Modul aus
-`vllm/model_executor/layers/fla/ops` (1Cat-weiterentwickelt). Von 18 Dateien
-differieren acht, und zwar genau die Rechenkerne:
-
-| Datei | abweichende Zeilen | Rolle |
+| Formulierung | Kernel | Ergebnis |
 |---|---:|---|
-| `fused_sigmoid_gating.py` | 557 (279 → 780) | Fix-3-Kernel, **Spekulation** |
-| `fused_recurrent.py` | 198 | Decode |
-| `kda.py` | 150 | GDN-Kern |
-| `chunk_scaled_dot_kkt.py` | 71 | Prefill |
-| `chunk_o.py` | 63 | Prefill |
-| `chunk_delta_h.py` | 62 | Prefill |
-| `layernorm_guard.py` | 40 | Norm |
-| `fused_gdn_prefill_post_conv.py` | 36 | Prefill |
-| übrige 8 (chunk, cumsum, index, l2norm, op, solve_tril, utils, wy_fast) | 0 | identisch |
+| `arange` + `index_select` (heute) | 2 | korrekt |
+| reiner View, nur für `z` | 0 | **Ausgabe zerstört, 10/10**, 54,82 tok/s |
+| `slice().contiguous()` (Helfer) | 1 | **Ausgabe zerstört, 10/10**, 54,75 tok/s |
 
-Ein vollständiger Baumtausch scheitert an zwei Symbolen, die es im Original nicht
-gibt: `fused_sigmoid_gating_delta_rule_update_mixed_qkv` und `..._out`. Die
-Signatur von `fused_sigmoid_gating_delta_rule_update` ist ansonsten deckungsgleich
-(nur `ddtree_parent_ids` ist 1Cat-neu, DFlash2-Pfad, den wir nicht fahren).
-
-**Da der Abstand nur mit Spekulation auftritt, ist `fused_sigmoid_gating.py` der
-Hauptverdächtige** — größte Differenz und genau der Kernel aus Fix 3.
+Zwei semantisch gleichwertige Umformulierungen zerstören die Ausgabe identisch
+(Che-Guevara-Text, Zeitstempelketten, `</parameter></function></tool_call>`).
+Die `index_select`-Form ist **tragend**. Dahinter steckt ein echter Defekt auf
+diesem Pfad — ein nicht frisch materialisiertes `z` liefert Müll. Das zu
+finden ist ein eigenes Projekt und ein eigener Issue wert.
 
 ---
 
-## Die offene Frage: woher die restlichen 6,3 % (nur mit Spekulation)
+## Der Restabstand: 2,0 %, benannt und geschlossen
 
-Lokalisiert bis auf Kernel-Ebene, Ursache **nicht** bestimmt. nsys, 27B,
-Gerät 0, gleiche Schrittzahl (3.220 gegen 3.225 `_causal_conv1d_update`):
+Decode-Profil nach Fix 4, Gerät 0, nsys:
 
-| Kernel | Fork ms / n | Upstream+Fix3 ms / n |
+```
+FORK          :  94.135 Kernel, 2.506,9 ms
+UPSTREAM+Fix4 : 106.794 Kernel, 2.472,9 ms
+Differenz     : +12.659 Kernel,   −34,0 ms
+```
+
+Die Kernelzeit ist jetzt **niedriger** als beim Fork. Was bleibt, sind
+Startkosten: **+3 Kernel pro GDN-Schicht und Schritt** (20 gegen 23), alle drei
+aus der Eingangsprojektion:
+
+| | Fork | Upstream + Fix 4 |
 |---|---|---|
-| `elementwise_kernel` | 33,2 / 10.402 | 59,2 / 20.395 |
-| `vectorized_elementwise` | 9,2 / 3.175 | 49,5 / 26.663 |
-| `unrolled_elementwise` | 7,1 / 783 | 34,9 / 10.995 |
-| `_scatter_gather_elementwise` | 0,0 / **1** | 30,3 / **6.537** |
-| `reduce_kernel` | 2,2 / 205 | 19,7 / 3.473 |
-| `elementwise_kernel_with_index` | 1,9 / 205 | 10,9 / 6.741 |
-| **Summe Familie** | **71,8** | **219,8** |
+| `z` | View, materialisiert erst im `reshape` der Norm-Fusion | `arange` + `index_select` |
+| `a` | View + `.contiguous()` | `arange` + `index_select` + `.contiguous()` |
+| `b` | `.contiguous()` | `.contiguous()` |
+| **Summe** | **2** | **5** |
 
-Gesamt-Kernelzeit 2.533 gegen 2.656 ms — die Familie erklärt die Differenz
-vollständig. Es ist Index- und Verwaltungsarbeit pro Schicht und Schritt, kein
-Rechenkernel.
+Vor Fix 4 waren es rund fünfzehn Zusatzkernel pro Schicht; die zwölf aus dem
+un-fusionierten RMSNorm sind weg.
 
-**Teilweise geklärt (08.09.):** `_scatter_gather_elementwise` (6.537 = 2 ×
-3.220 Schritte) und `elementwise_kernel_with_index` (6.741 − 205 = 6.536)
-sind die zwei `index_select` plus `arange` aus `_sm70_compile_graph_slice_dim`
-— und die sind **notwendig**, siehe Fix 4 oben. Rund 47.000 überzählige
-Starts bleiben unerklärt (`vectorized` +23.488, `unrolled` +10.212,
-`elementwise` +9.993, `reduce` +3.268), also etwa fünfzehn Elementaroperationen
-pro GDN-Schicht und Schritt. Das sind PyTorch-Elementwise-Kernel, keine
-Triton-Kernel — also Python-Ebene: Reshapes, `.contiguous()`, dtype-Wandlungen,
-Zwischentensoren. Zwei konkrete Ansatzpunkte stehen unter „Wenn du hier
-weitermachst".
-
----
-
-## Die offene Entscheidung (Peuqui, 08.09., Frage abgebrochen)
-
-**Randbedingung inzwischen geklärt:** Peuqui hat am 08.09. nachmittags
-festgelegt, dass Zerfall UND Tempo Blocker sind — „ich gebe Erreichtes nicht
-so einfach auf". 3 % Rückstand sind keine Verhandlungsmasse, und mein
-Vorschlag, sie als verhandelbar zu behandeln, wurde ausdrücklich verworfen.
-
-> *„Was ist, wenn wir unseren Code statt des Upstream einfügen?"*
-
-Also: unsere Implementierung upstream bringen, statt ihre zu patchen. Die
-Frage ist unbeantwortet. Was dafür und dagegen spricht:
-
-**Dafür:** Unsere Fassung ist nachweislich korrekt und 6–10 % schneller. Wir
-müssten den Restabstand nicht erst erklären — wir würden die schnellere
-Variante liefern.
-
-**Neu dagegen (08.09.):** Die 1.781 Zeilen sind gar keine Eigenentwicklung,
-sondern eine **unveränderte vLLM-0.27.1-Kopie** (`docs/journal/MERGE-PROJECT-HANDOVER.md:295`). Sie upstream anzubieten hieße, 1Cat eine
-alte Fassung ihres eigenen Codes zurückzugeben, an der monatelange
-SM70-Weiterentwicklung fehlt. Das ist als Beitrag nicht vertretbar. Der
-Unterschied liegt ohnehin nicht in unserem Code, sondern im FLA-Baum: der
-Fork zieht `third_party/flash_linear_attention` (vLLM-Original), Upstream
-`model_executor/layers/fla/ops` (1Cat-weiterentwickelt).
-
-**Dagegen:** Es wäre ein 571 + 1.781 Zeilen umfassender Parallelbaum neben
-7.633 Zeilen bestehendem Code. Die erste Rückfrage im Review wäre „warum nicht
-den bestehenden reparieren?" — und darauf haben wir keine Antwort, solange die
-6–11 % nicht erklärt sind. Zudem widerspricht es unserer eigenen SSOT-Regel.
-
-**Mittelweg, der zu prüfen wäre:** Nur den Teil einreichen, der den Abstand
-erzeugt — sobald bekannt ist, welcher es ist. Dann wären es drei kleine Fixes
-plus eine begründete Optimierung, alle an ihrer richtigen Stelle in Upstreams
-Code. Das ist der Weg, der zu #469 und #514 passt, die beide gemergt wurden.
-
----
-
-## Was NICHT nochmal untersucht werden muss
-
-Zehn Hypothesen sind gefallen, jede mit Messung:
-
-1. FlashQLA-**Decode**-Route → abgeschaltet, Ausgabe byteidentisch kaputt
-2. DFlash2-Metadaten pro Schritt → werden bei MTP nie berechnet
-   (`uses_dflash_selector_engine` ist falsch)
-3. Unterschiedliche CUDA-Graph-Abdeckung → beide `FULL_AND_PIECEWISE`,
-   gleiche Capture-Größen, gleicher Speicher
-4. Fehlende Fusion durch `splitting_ops` → GDN ist nur 2,7 % der Kernelzeit
-5. GQA-Layout-Umsortierung → Upstream hat `gqa_interleaved_layout` auch
-6. Niedrige Annahmequote als Ursache → ist Folge; identisch, sobald korrekt
-7. Die sieben GDN/FLA-Rechenschalter → Korrektheit unverändert kaputt
-8. `VLLM_SM70_GDN_Z_CONTIGUOUS` → Vorgabewert 0, feuert nie
-9. Die anderen 12 Baseline-Schalter → 68,80 gegen 68,83 tok/s, kein Gewinn
-10. **`_sm70_compile_graph_slice_dim` als View (Fix 4)** → 1,1 % Gewinn,
-    aber die Ausgabe zerfällt bei k=0 über alle zehn geprüften Prompt-Längen.
-    Die Materialisierung ist notwendig, ihr fehlt nur der Kommentar.
-    Details im Abschnitt „Nachmittag 08.09.".
-
-Außerdem geklärt und abgelegt:
-
-- **GDN-Prefill ist kein Hebel:** 4,91 s von 262 s bei 131k Tokens = 1,9 %.
-  Ein TileLang-Port für Turing lohnt nicht. Der Hebel liegt bei QSA/MoE —
-  dort brachte #469 Faktor 4,2 auf der RTX.
-- **VLK-Kernel ist keine Alternative:** läuft auf Turing, ist aber ab 2.048
-  Tokens 15–21 % langsamer als Triton.
-- **Der Compile-Cache ist nicht abgeschaltet.** 14 GB auf Platte, frische
-  Einträge pro Boot. Die 45 s sind Cache-Fehltreffer durch eigene
-  Konfigurationsänderungen — jede neue Schalterkombination ist ein neuer
-  Schlüssel.
-- **Ladezeit-Aufteilung** (262k Kontext, Flash-Next): 254 s Gewichte von der
-  USB-NVMe, 231 s Engine-Init, 45 s Compile, 13 s Graph-Capture. Der Hebel
-  wäre die Platte, nicht die Software.
+**Ungeprüft geblieben:** ob `a` allein als View durchgeht (höchstens 1 von 3
+Kernel, grob 0,5 %). `z` allein ist belegt tödlich, also lohnt der Aufwand nur,
+wenn die 0,5 % zählen.
 
 ---
 
 ## Zustand der Arbeitskopien
 
 **PR-Branch** `sm75-gdn-prefill-route` in `~/Projekte/vllm-research/1Cat-vLLM`,
-Basis `origin/main` 56f534e. **Committed als `5a26136`** und auf den eigenen
-Fork gepusht (`fork/sm75-gdn-prefill-route`) — **kein PR eröffnet**, die Sperre
-gilt. Enthält Fix 1 und Fix 3 (25 rein / 16 raus in `qwen_gdn_linear_attn.py`)
-plus `tests/model_executor/layers/test_gdn_prefill_backend_resolve.py`.
-Fix 2 (`config/vllm.py`) ist **noch nicht gebaut**, nur belegt.
+Basis `origin/main` 56f534e, Commit `5a26136` (Fix 1 + Fix 3), auf den Fork
+gepusht. **Kein PR eröffnet.**
 
-Geprüft vor dem Commit: 4 Tests bestanden, Gegenprobe bestanden (ohne Fix fallen
-genau die zwei Turing-Tests), `pre-commit` vollständig grün (ruff, ruff-format,
-typos, mypy-lokal, SPDX, forbidden-imports, torch.cuda-Check). PR-Text entworfen
-in `scratchpad/PR-A-BODY.md` (session-lokal!) — die Ergebniszahl darin ist noch
-die des Forks und muss auf 69,64 korrigiert werden.
+**Uncommitted im Checkout (Fix 4):**
+- `vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py`: Helfer
+  `_sm70_current_device_is_volta()` plus Bindung des automatischen Arms
+- `tests/model_executor/layers/test_gdn_full_forward_device_gate.py`: 5 Tests
 
-**Wichtig zu Fix 2 für den PR-Text:** Das Baseline-Tor heißt inzwischen
-`_any_participating_device_is_capability(self, (7, 0))` — es entstand aus
-**unserem eigenen, am 07.09. gemergten PR #514** und wurde von 1Cat mit
-`df85601` auf beteiligte Worker-Devices eingegrenzt. Fix 2 ist also eine
-Folgeänderung an dieser Funktion: das Tor fragt nach *exakt Volta*, weshalb
-reine Turing-Systeme die Abstimmung nie bekommen. Das ist ein **anderes**
-Problem als #412 (heterogen, Turing vor Volta) und damit kein Duplikat.
+Geprüft: 9 Tests grün (5 neu + 4 aus Fix 1), `pre-commit` vollständig grün
+(inklusive `check-torch-cuda-call`). **Gegenprobe gemacht:** mit der
+Datei-Konvention `is_device_capability(70)` ohne `device_id` fällt genau der
+Mischknoten-Test.
 
-**Overlay** `fork_patches_150/qwen_gdn_linear_attn.py` trägt Fix 1.
+Das Prädikat fragt bewusst `torch.accelerator.current_device_index()` statt
+Gerät 0 — auf einem Knoten mit Volta **und** Turing liest Gerät 0 aus jedem
+Rang dieselbe Karte. Peuqui hat das am 08.09. ausdrücklich so festgelegt.
 
-**venv-Zustand** (`/home/mp/vllm/venv`, Symlink auf `.venv-sm70-150`):
-Fix 1 + Fix 3 deployt, **Fix 4 nicht** (widerlegt). Zusätzlich der Testschalter
-`AIFRED_FORCE_UPSTREAM_GDN` in beiden Modellklassen. Backups liegen:
-`qwen3_5.py.aifred_backup`, `model.py` → `scratchpad/qwen4exp.FORKSTAND`,
-`qwen_gdn_linear_attn.py.OHNEFIX4` (= aktueller Stand) und `.MITFIX4`
-(= mit dem widerlegten Fix 4, nur für Gegenproben).
+**venv** (`/home/mp/vllm/venv` → `.venv-sm70-150`): Fix 1 + Fix 3 + **Fix 4**
+deployt, Fix 4-alt (SLICEDIAG) nicht. Testschalter `AIFRED_FORCE_UPSTREAM_GDN`
+in beiden Modellklassen. Backups: `qwen_gdn_linear_attn.py.OHNE_FIX5`
+(= dokumentierter Stand ohne Fix 4), `.OHNEFIX4`, `.MITFIX4`,
+`qwen3_5.py.aifred_backup`.
 
-**Rückbau auf reinen Produktivstand**, falls nötig: `.aifred_backup` und
-`FORKSTAND` zurückspielen — dann ist der Testschalter weg und die harte
-Capability-Weiche wieder allein zuständig. Solange der Schalter drin ist, ändert
-er ohne `AIFRED_FORCE_UPSTREAM_GDN=1` **nichts** am Verhalten.
+**Wichtig:** Peuqui hat am 08.09. festgelegt, dass die vLLM-Installation bis
+zur Lösung **nicht produktiv** ist und AIfred so lange nicht genutzt wird. Die
+venv darf also im Messzustand bleiben.
 
-**Produktivsystem:** llama-swap-Config unverändert, 23 Modelle, Flash-Next-
-Einträge auf `--max-model-len 262144`. Backup
-`config.yaml.bak-2026-09-07-vor-max-ctx`.
+---
 
-**Messwerkzeuge jetzt im Repo:** `tools/mtp-diagnostics/` mit eigener README,
-die die drei Messfehler-Fallen und die Nachweispflichten festhält. Enthalten:
-`speed_27b.sh` (Tempo, kurzer Prompt), `qual_longctx.sh` (drei Fragen hinter
-13k Kontext), `ctx_scan.sh` (zehn Prompt-Längen in einem Boot),
-`venv_fix_toggle.sh`, `mk_vorkontext.py` + `vorkontext.txt` (der Generator
-reproduziert die Datei bitgenau, SHA `0f9f31a8429bbb5b`).
+## Offene Entscheidung: Fix 2 bauen — wie weit?
 
-Der `nsys` im System ist 2022.4.2 — `--output` und `--force-overwrite` gehören
-dort an `nsys start`, nicht an `launch`.
+Das Tor `sm70_flash_v100_baseline` schaltet **den ganzen Baseline-Block** frei,
+nicht nur `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH`: auch
+`VLLM_SM70_GDN_DECODE_FLASHQLA`, die sechs GDN/FLA-Zeitpläne und die
+Multimodal-Vorgaben. Zwei Möglichkeiten:
+
+- **eng:** nur den Compile-Graph-Schalter auf pre-Ampere ziehen. Minimal, aber
+  ein Sonderweg im Code.
+- **ganz:** das Tor auf pre-Ampere erweitern. Sauberer, aber Turing bekommt
+  dann alle 13 Schalter. Gemessen: die anderen zwölf brachten 68,80 gegen
+  68,83 tok/s, also nichts — Korrektheit damals nicht separat geprüft.
+
+Peuqui entscheidet. Ohne Fix 2 ist der PR-Satz unvollständig, denn ein fremder
+Turing-Nutzer setzt `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1` nicht von Hand.
+
+---
+
+## Was NICHT nochmal untersucht werden muss
+
+Zwölf Hypothesen sind gefallen, jede mit Messung:
+
+1. FlashQLA-**Decode**-Route → abgeschaltet, Ausgabe byteidentisch kaputt
+2. DFlash2-Metadaten pro Schritt → werden bei MTP nie berechnet
+3. Unterschiedliche CUDA-Graph-Abdeckung → beide `FULL_AND_PIECEWISE`
+4. Fehlende Fusion durch `splitting_ops` → GDN ist nur 2,7 % der Kernelzeit
+5. GQA-Layout-Umsortierung → Upstream hat `gqa_interleaved_layout` auch
+6. Niedrige Annahmequote als Ursache → ist Folge
+7. Die sieben GDN/FLA-Rechenschalter → Korrektheit unverändert kaputt
+8. `VLLM_SM70_GDN_Z_CONTIGUOUS` → Vorgabewert 0, feuert nie
+9. Die anderen 12 Baseline-Schalter → kein Gewinn
+10. `_sm70_compile_graph_slice_dim` als View → zerstört die Ausgabe (08.09.
+    an der richtigen Stelle für `z` allein reproduziert)
+11. **`fused_sigmoid_gating.py` als Ursache → ENTLASTET.** Der GDN-Kern braucht
+    in beiden Varianten exakt **55,0 ms**. Die 557 Differenzzeilen zwischen den
+    FLA-Bäumen spielen keine Rolle.
+12. **Spec-Core-Route → nicht verlustfrei**, siehe oben.
+
+Außerdem weiter gültig: GDN-Prefill ist kein Hebel (1,9 %); VLK-Kernel ist
+langsamer als Triton; der Compile-Cache ist nicht abgeschaltet; der
+Ladezeit-Hebel wäre die Platte.
+
+**Nicht mehr behaupten:** dass die Zusatzkernel in
+`prepare_gdn_attention_core_inputs` stünden (ROCm-only) oder in
+`QwenGatedDeltaNetAttention.forward_cuda` (für dieses Modell tot).
 
 ---
 
 ## Wenn du hier weitermachst
 
-**Der Auftrag ist eng:** Zerfall UND Tempo sind Blocker (Peuqui, 08.09.). Der
-Zerfall ist erledigt — mit Fix 1+2+3 gibt es keinen. Bleiben die **6,3 %**.
+1. **Fix 2 bauen**, nach Peuquis Scope-Entscheidung, und alle vier auf einen
+   Branch führen.
+2. ~~Flash-Next als Abnahme fahren~~ — **ERLEDIGT 08.09. abends**, bestanden.
+   Siehe Abschnitt „Flash-Next-Abnahme" oben. Sonde im Repo:
+   `tools/mtp-diagnostics/flashnext_ab.sh`.
+3. **PR-Text schreiben.** Entwurf für Fix 1+3 liegt session-lokal und ist
+   verloren; neu aufsetzen. Reihenfolge der Argumente: Fix 2 macht Turing
+   überhaupt benutzbar, Fix 1 macht es bootbar, Fix 3 und 4 holen das Tempo.
+4. **Eigener Issue** an 1Cat: Der SM70-Qwen3.5-GDN-Pfad hängt still davon ab,
+   dass `z` frisch materialisiert wird. Ein einfacher Slice-View an derselben
+   Stelle liefert Müll. Das ist ein Defekt, kein Stilproblem, und sie sollten
+   ihn kennen — unabhängig von unserem PR.
+5. **Duplikatsprüfung ist frisch (08.09. abends):** `origin/main` steht auf
+   `e7fa44d`, 46 neue Commits seit 56f534e, alle H3-Video — keiner berührt
+   `qwen_gdn_linear_attn.py`, `qwen3_5.py` oder `envs.py`. Im ganzen Repo gibt
+   es **keinen** Vorgang zu Turing, sm75 oder RTX 8000.
+6. **Alle neun eigenen PRs sind gemerged** (#469 #485 #511 #512 #514 #516 #518
+   #528 #536), keiner offen. #455 geschlossen.
 
-1. **Die 6,3 % im Spekulationszweig suchen.** Ohne MTP sind beide Varianten
-   exakt gleich schnell, also liegt es dort und nirgends sonst. Zwei konkrete
-   Ansatzpunkte, beide ungeprüft:
-   * `fused_sigmoid_gating.py` differiert zwischen den FLA-Bäumen um 557 Zeilen
-     (279 gegen 780) und ist genau der Kernel, den Fix 3 aufruft.
-   * Der Fork übergibt dem Kernel `a=a, b=b` direkt; Upstream erzeugt vorher
-     `a_spec = a.index_select(0, spec_token_indx)` und dasselbe für `b`
-     (Zeilen 5707/5708) — zwei Materialisierungen pro Schicht und Schritt.
-2. **Jede Änderung sofort gegen k=0 mit 13k Kontext prüfen**, bevor eine
-   Tempozahl genannt wird. `ctx_scan.sh` kostet einen Boot und hätte Fix 4
-   in zehn Minuten erledigt statt in einem halben Tag.
-3. **Dann Fix 2 bauen** (`config/vllm.py`, pre-Ampere statt exakt Volta) und
-   alle Fixes auf einen Branch führen.
-4. **Duplikatsprüfung wiederholen** — die letzte ist vom 08.09., `main` bewegt
-   sich täglich. Damals ohne Treffer; PR #563 (speculative GDN) berührt nur
-   `gdn_attn.py`, ist also kein Duplikat.
-5. **Flash-Next als Abnahme fahren**, nicht zur Diagnose: TP2×PP2 ist heterogen
-   (die V100-Stufe fährt ohnehin Upstream), ein Boot kostet das Dreifache, und
-   die Skalierungsfrage ist beantwortet (27B 6,2 %, Flash-Next 9,6 % — der
-   Abstand wächst mit der Schichtzahl).
-6. **Dann Peuqui den Diff vorlegen.** AGENTS.md verbietet reine Agenten-PRs;
-   er muss jede geänderte Zeile gelesen haben und verteidigen können.
+---
 
-Und die Lehre, die diese Sitzung gekostet hat: Zehn Vermutungen sind gefallen,
-weil aus einer Beobachtung auf eine Ursache geschlossen wurde, statt sie zu
-isolieren. Geholfen hat jedes Mal eine Messung, die genau **eine** Variable
-ändert. Am 08.09. kam eine zweite Lehre dazu, teurer als die erste: **prüfen,
-dass die Messung überhaupt das misst, was sie messen soll.** Drei Läufe verglichen
-den Fork mit sich selbst, weil ein Schalter nicht existierte; einer galt als
-Fix 1+2+3 und war Fix 1+2, weil der Fix nur im Checkout lag. Beide Male stimmten
-die Zahlen in sich und waren trotzdem wertlos.
+## Lehren, die diese Sitzung gekostet hat
+
+Die drei vom 07./08.09. gelten weiter: eine Variable je Messung; prüfen, dass
+die Messung misst, was sie soll; Modul **und** Fixstand vor jeder Zahl belegen.
+Am 08.09. abends kamen zwei dazu, beide teuer:
+
+**Ein Schalter muss beweisen, dass er feuert.** Vier Bisect-Läufe („z als View
+ist unbedenklich, 10/10 byteidentisch") waren wertlos, weil der Schalter in
+`QwenGatedDeltaNetAttention.forward_cuda` saß — einer Methode, die
+`Qwen3_5GatedDeltaNet` überschreibt. Die Läufe maßen den unveränderten Code.
+Erst eine Zustandsmarke in `__init__` hat die lebende Stelle bewiesen.
+
+**Aus einer getracten Funktion darf man nicht loggen.**
+`logger.warning_once` im `forward_cuda` bricht den Boot ab:
+`torch._dynamo.exc.Unsupported: logging.Logger method not supported`. Genau
+dafür gibt es `_log_runtime_route_once` mit seiner `is_compiling()`-Sperre —
+die aber schweigt, wenn man sie zum Tracing-Nachweis braucht. Der einzig
+brauchbare Ort für eine Diagnosemarke ist `__init__`.

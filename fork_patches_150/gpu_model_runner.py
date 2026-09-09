@@ -11,7 +11,6 @@
 import functools
 import gc
 import itertools
-import math
 import json
 import os
 import threading
@@ -151,7 +150,6 @@ from vllm.v1.attention.backend import (
 from vllm.v1.attention.backends.flash_attn_v100 import FlashAttnV100MetadataBuilder
 from vllm.v1.attention.backends.flex_attention import FlexAttentionMetadataBuilder
 from vllm.v1.attention.backends.gdn_attn import GDNAttentionMetadataBuilder
-from vllm.v1.attention.backends.gdn_attn_sm75 import is_gdn_sm75_metadata_builder
 from vllm.v1.attention.backends.mamba2_attn import Mamba2AttentionMetadataBuilder
 from vllm.v1.attention.backends.short_conv_attn import (
     PleShortConvAttentionMetadataBuilder,
@@ -240,7 +238,6 @@ from vllm.v1.spec_decode.static_draft_vocab import (
     resolve_mtp_draft_vocab_config,
     validate_dynamic_draft_vocab_prefill_topk,
 )
-from vllm.v1.spec_decode.qwen4_exp import Qwen4ExpMTPProposer
 from vllm.v1.spec_decode.step3p5 import Step3p5MTPProposer
 from vllm.v1.spec_decode.suffix_decoding import SuffixDecodingProposer
 from vllm.v1.spec_decode.utils import update_num_computed_tokens_for_batch_change
@@ -1156,7 +1153,7 @@ def _e5p_sub_report(self) -> None:
         med.append(_st.median(vs) if vs else 0.0)
     totals = [t for t, _ in subs if t is not None]
     total = _st.median(totals) if totals else sum(med)
-    head, tail = med[0], 0.0
+    head = med[0]
     body = med[1:]
     order = sorted(range(len(body)), key=lambda i: -body[i])[:10]
     top = " ".join(f"{i}:{body[i]:.3f}" for i in order)
@@ -6527,10 +6524,6 @@ class GPUModelRunner(
         ) -> None:
             attn_group = self.attn_groups[kv_cache_gid][attn_gid]
             builder = attn_group.get_metadata_builder(ubid or 0)
-            # SM75 workers build their GDN groups with the upstream builder
-            # (gdn_attn_sm75); it takes the standard spec-decode arguments
-            # but none of the fork-only ones.
-            is_gdn_sm75_builder = is_gdn_sm75_metadata_builder(builder)
             kv_cache_spec = kv_cache_groups[kv_cache_gid].kv_cache_spec
             if isinstance(kv_cache_spec, UniformTypeKVCacheSpecs):
                 kv_cache_spec = kv_cache_spec.kv_cache_specs[attn_group.layer_names[0]]
@@ -6552,7 +6545,6 @@ class GPUModelRunner(
                         PleShortConvAttentionMetadataBuilder,
                     ),
                 )
-                or is_gdn_sm75_builder
             ):
                 assert ubid is None, (
                     "UBatching not supported with GDN or short-conv yet"
@@ -12649,7 +12641,8 @@ class GPUModelRunner(
         logits = self.model.compute_logits(hidden_states)
         num_reqs = logits.size(0)
 
-        dummy_tensors = lambda v: torch.full((num_reqs,), v, device=self.device)
+        def dummy_tensors(v):
+            return torch.full((num_reqs,), v, device=self.device)
 
         dummy_metadata = SamplingMetadata(
             temperature=dummy_tensors(0.5),
@@ -13619,7 +13612,12 @@ class GPUModelRunner(
         just may have a performance penalty due to that backend treating decodes
         as prefills.
         """
-        min_none_high = lambda a, b: a if b is None else b if a is None else min(a, b)
+        def min_none_high(a, b):
+            if b is None:
+                return a
+            if a is None:
+                return b
+            return min(a, b)
 
         reorder_batch_thresholds: list[int | None] = [
             group.get_metadata_builder().reorder_batch_threshold

@@ -177,9 +177,46 @@ aus der Eingangsprojektion:
 Vor Fix 4 waren es rund fünfzehn Zusatzkernel pro Schicht; die zwölf aus dem
 un-fusionierten RMSNorm sind weg.
 
-**Ungeprüft geblieben:** ob `a` allein als View durchgeht (höchstens 1 von 3
-Kernel, grob 0,5 %). `z` allein ist belegt tödlich, also lohnt der Aufwand nur,
-wenn die 0,5 % zählen.
+> **WIDERLEGT am 09.09.2026 — diese Kernel-Rechnung ist falsch.** Wenige Zeilen
+> unter dem Split stehen `z = z.contiguous().reshape(...)`, `b = b.contiguous()`
+> und `a = a.contiguous()`. Nach `index_select` ist das Ergebnis bereits
+> zusammenhängend, das spätere `.contiguous()` also ein **No-op**; mit einem View
+> kopiert es dort erst recht. Die Kopie verschwindet nie, sie **wandert nur** —
+> und wird später sogar minimal teurer. Die Tabelle zählt die Split-Stelle und
+> übersieht das nachfolgende `.contiguous()`.
+>
+> Gemessen (27B, TP2 auf 2× RTX 8000, k=3, greedy Seed 1, 5 Läufe je Variante,
+> Referenz-SHA `0106659946c064b1`):
+>
+> | Variante | Median | SHA |
+> |---|---:|---|
+> | Fork-sm75-Pfad | 74,77 | Referenz |
+> | gemeinsamer Pfad, unverändert | 73,49 | Referenz |
+> | gemeinsamer Pfad, `a` als View | 73,22 | Referenz |
+> | Indexvektor gecacht (kein `arange` je Schritt) | 74,20 | Referenz |
+>
+> Jede Sparmaßnahme war **langsamer**. `a` als View ist korrekt — damit ist die
+> unten gestellte offene Frage beantwortet —, bringt aber kein Tempo.
+>
+> **Der Restabstand von 1,74 % sitzt NICHT in der Eingangsprojektion und ist
+> wieder unlokalisiert.** Wer ihn sucht, prüft die übrigen Unterschiede des
+> sm75-Pfads: eigene Kern-Op, Faltungsbehandlung, Norm-Fusion.
+>
+> **Korrektheitsschuld im eigenen Fork:** `qwen_gdn_attention_core_sm75`
+> registriert `mutates_args=["a_or_z_out", "core_attn_out"]`, ruft aber
+> `causal_conv1d_update` auf seinem qkv-Eingang — und die schreibt nachweislich
+> in ihr Eingangsargument (`out = x`, so kommentiert im Quelltext). Wir
+> unterdeklarieren also eine Mutation. Byteweise geht es gut, weil die Faltung
+> nach `[0:qkv_size]` schreibt und `z` bei `[qkv_size:...]` liegt. Der
+> gemeinsame Pfad deklariert korrekt — und **deshalb** zerstört dort ein
+> `z`-View die Ausgabe: die Kopie fällt in das spätere `.contiguous()`, und das
+> darf Inductor hinter die mutierende Kern-Op schieben.
+>
+> Details und alle Zahlen: Gedächtnisnotiz `project_z_slice_materialization_closed`.
+
+**Erledigt am 09.09.2026:** `a` allein als View geht durch (Ausgabe korrekt,
+Referenz-SHA), bringt aber kein Tempo, sondern kostet 0,4 %. Siehe den Kasten
+oben — es gibt in der Eingangsprojektion nichts zu sparen.
 
 ---
 

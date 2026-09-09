@@ -16,7 +16,12 @@ W=$BASE/qual_$NAME; rm -rf "$W"; mkdir -p "$W"; cd "$BASE" || exit 1
 export PATH=/home/mp/vllm/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0
 export NCCL_P2P_DISABLE=1 VLLM_SM70_E5_CACHE=0 VLLM_SM70_NVFP4_TURBOMIND=1
-export VLLM_SM70_QUANT_BACKEND=auto VLLM_SKINNY_NVFP4=1 VLLM_SKINNY_QPN=1 VLLM_SKINNY_QPN2=1
+# QUANT_BACKEND ueberschreibbar: auf Turing waehlt "auto" den Skinny-Pfad
+# (skinny_nvfp4_qpn2, 1614 ms im Decode-Profil 09.09.), waehrend die V100
+# ueber TurboMind laeuft (gemm_kernel, 1396 ms). "marlin" ist der dritte,
+# auf Turing nachweislich vorhandene Pfad -- Vorgabe bleibt auto.
+export VLLM_SM70_QUANT_BACKEND=${VLLM_SM70_QUANT_BACKEND:-auto}
+export VLLM_SKINNY_NVFP4=1 VLLM_SKINNY_QPN=1 VLLM_SKINNY_QPN2=1
 export VLLM_SKINNY_NVFP4_SRC=/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu
 export TORCHINDUCTOR_CACHE_DIR=/home/mp/.cache/torchinductor VLLM_NO_USAGE_STATS=1
 export VLLM_CACHE_ROOT=/home/mp/.cache/vllm-calibration HOME=/home/mp
@@ -26,7 +31,10 @@ unset VLLM_SKINNY_PPDIAG
 [ "$MODULE" = "upstream" ] && export AIFRED_FORCE_UPSTREAM_GDN=1
 export VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1
 
-CKPT=/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/319f741cce68d7914884900c138a1fbb70a42f30
+# Ziel ueber CKPT umschaltbar: RadixArk quantisiert den lm_head mit, 1Cats
+# DFlash2-Referenz QUASAR-QAT nimmt ihn per ignore-Liste aus. Vorgabe bleibt
+# RadixArk, damit alle bisherigen Zahlen vergleichbar bleiben.
+CKPT=${CKPT:-/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/319f741cce68d7914884900c138a1fbb70a42f30}
 DRAFT=/home/mp/.cache/huggingface/hub/models--incoai--Qwen3.8-27B-DFlash2/snapshots/dedf8df68adfb1afeaf7b7480c0a0243108177b4
 SPEC=()
 case "$MODE" in
@@ -40,13 +48,25 @@ if pgrep -af 'api_server' | grep -v $$ | grep -q .; then echo "ABBRUCH: api_serv
 used=$(nvidia-smi --id=$DEVS --query-gpu=memory.used --format=csv,noheader,nounits | paste -sd+ | bc)
 [ "${used:-0}" -gt 500 ] && { echo "ABBRUCH: $used MiB belegt"; exit 1; }
 
+# SM70TUNE=1 holt die Vorgaben nach, die Turing entgehen, weil
+# VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH dort verworfen wird ("not SM70
+# CUDA"). Gemessen 09.09. per nsys: die V100 faehrt rms_norm=['vllm_c'] und
+# fuse_norm_quant=True, Turing ['native'] und False. Vorgabe bleibt AUS, damit
+# alle bisherigen Zahlen vergleichbar bleiben.
+COMPCFG='{"cudagraph_capture_sizes":[1,2,4,8]}'
+TUNE=()
+if [ "${SM70TUNE:-0}" = "1" ]; then
+  COMPCFG='{"cudagraph_capture_sizes":[1,2,4,8],"pass_config":{"fuse_norm_quant":true}}'
+  TUNE=(--kernel-config '{"ir_op_priority":{"rms_norm":["vllm_c","native"],"fused_add_rms_norm":["vllm_c","native"]}}')
+fi
+
 /home/mp/vllm/venv/bin/python -m vllm.entrypoints.openai.api_server \
   --model "$CKPT" --served-model-name m --trust-remote-code --dtype float16 \
   --disable-custom-all-reduce --no-enable-prefix-caching \
   --tensor-parallel-size 2 --pipeline-parallel-size 1 --gpu-memory-utilization 0.90 \
   --block-size 16 --max-model-len 32768 --max-num-seqs 4 --max-num-batched-tokens 2048 \
-  --language-model-only --host 127.0.0.1 --port 8066 "${SPEC[@]}" \
-  --compilation-config '{"cudagraph_capture_sizes":[1,2,4,8]}' > "$W/boot.log" 2>&1 &
+  --language-model-only --host 127.0.0.1 --port 8066 "${SPEC[@]}" "${TUNE[@]}" \
+  --compilation-config "$COMPCFG" > "$W/boot.log" 2>&1 &
 S=$!
 STATUS=timeout
 for i in $(seq 1 150); do

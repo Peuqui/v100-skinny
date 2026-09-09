@@ -140,6 +140,46 @@ dieser Ausgabelänge. Endstand-Lauf: 24,65 / 27,08 / 25,74 tok/s.
 **Keine Ratenaussage:** drei Läufe neu gegen einen alt. Wer sie braucht,
 fährt je fünf.
 
+### DFlash2 gegen MTP (09.09., 27B RadixArk-NVFP4, TP2, greedy, je 5 Läufe)
+
+Messvorrichtung `tools/mtp-diagnostics/speed_dflash.sh`, gegen die MTP-Referenz
+geeicht (73,36 gegen 73,35 tok/s, Text-SHA `0106659946c064b1` identisch).
+**Alle Läufe liefern denselben Text** — die Verifikation ist über beide
+Architekturen und beide Verfahren hinweg verlustfrei.
+
+| Karten | Verfahren | tok/s | Annahmelänge |
+|---|---|---:|---:|
+| 2× V100 | MTP k=3 | 66,13 | 2,963 |
+| 2× V100 | **DFlash2 k=7** | **74,09** | **3,381** |
+| 2× RTX 8000 | MTP k=3 | 73,36 | 2,963 |
+| 2× RTX 8000 | DFlash2 k=7, **vor** Gate-Patch | 21,35 | 1,015 |
+| 2× RTX 8000 | **DFlash2 k=7, nach Gate-Patch** | **69,13** | **3,353** |
+
+**DFlash2 schlägt MTP** — auf gleicher Hardware +12,0 % bei +14 %
+Annahmelänge. Zwei Patches waren dafür nötig, beide in `fork_patches_150/`:
+
+1. **Guard in `compute_candidates`** (`qwen3_dflash2.py`) lehnte einen
+   quantisierten Ziel-LM-Head ab. RadixArk quantisiert ihn mit (die
+   `ignore`-Liste nennt nur `mtp*`), damit war DFlash2 mit diesem Checkpoint
+   auf **keiner** Karte fahrbar. Der Kandidaten-TopK wählt nur die Entwürfe;
+   verifiziert wird gegen das Ziel, also kostet Quantisierung Annahmerate und
+   nie Korrektheit — belegt durch den unveränderten Text-SHA.
+2. **`_use_sm70_bf16_emulation`** prüfte auf exakt sm70. Turing hat genauso
+   wenig natives BF16 wie Volta, bekam die Range-Erhaltung aber nicht — daher
+   die 0,2 % Annahmerate. Jetzt: Capability < sm80, gefragt wird das Gerät des
+   Workers (`torch.cuda.current_device()`) statt Gerät 0.
+
+**Preis der Quantisierung des Kandidatenkopfs:** QUASAR-QAT nimmt den lm_head
+per `ignore` aus und erreicht auf V100 Annahmelänge 5,569 statt 3,381 — rund
+40 % mehr. Diese Zahl ist aber **wertlos**, siehe offener Punkt 7.
+
+**Offen bleibt die Tempolücke auf Turing.** Bei MTP ist die RTX der V100 um
+Faktor 1,11 überlegen; übertragen wären ~82 tok/s zu erwarten, gemessen sind
+69,13. Verdacht ist der QPN8-Rerank für den Kandidaten-TopK
+(`_maybe_sm70_dflash2_qpn8_rerank`, hart auf `(7, 0)` geprüft) — auf Turing
+läuft stattdessen `torch.topk` über alle 248.320 Logits, bei jedem
+Entwurfsschritt. **Verdacht aus dem Code, nicht profiliert.**
+
 ---
 
 ## Läuft / läuft nicht (Messmatrix 07.09.)
@@ -385,6 +425,38 @@ Augustwerten (6,5 min Boot).
   importierte deshalb das `vllm` aus der venv statt aus dem Checkout und maß
   unseren eigenen Patch statt Upstream. Sonden müssen `vllm.__file__` und den
   Quelltext der geprüften Funktion mitprotokollieren.
+- **Ein fremdes Profil wörtlich zu übernehmen stellt NICHT seine Bedingungen
+  her** (09.09.). 1Cats Aufrufzeile enthält kein
+  `--disable-custom-all-reduce`, weil ihre vier V100 in einem Server mit
+  funktionierendem P2P stecken. Auf diesem Rechner ist P2P aus (Karten an
+  OCuLink/USB4), und der Custom-Allreduce-Kernel setzt direkte
+  GPU-zu-GPU-Zugriffe voraus: beide TP-Ränge warten dann im Allreduce, ohne je
+  fertig zu werden. Zwei Läufe verloren. Beim Nachbauen fremder Profile die
+  eigenen Hardware-Flags NICHT streichen — sie sind keine Geschmacksfrage.
+- **`utilization.gpu` ist keine Fortschrittsanzeige** (09.09., Peuqui).
+  Ein wartender NCCL- oder Autotune-Kernel meldet 100 % bei ~46 W auf der
+  V100 — die Karte dreht sich im Leerlauf. **Leistungsaufnahme ist der
+  brauchbare Indikator**, und für „arbeitet oder steht" hilft nur
+  `py-spy dump` in mehreren Proben: steht dieselbe Zeile über Minuten und
+  fehlt `benchmark_all_configs` im Stack, ist es ein Hänger und kein
+  Autotuning.
+- **vLLM liefert den Denkblock im Feld `reasoning`, NICHT
+  `reasoning_content`** (09.09.). Eine Sonde, die nur `reasoning_content` und
+  `content` liest, wirft 1.600 erzeugte Token weg und meldet leere Antworten.
+  Steht so auch in AIfred (`aifred/backends/base.py`, SEND_TURN_REASONING mit
+  Issue #38488). **Rohantwort immer als JSON mitschreiben**, bevor Felder
+  ausgelesen werden.
+- **Ein Qualitätsurteil braucht die volle Ausgabelänge** (09.09.). Bei 1.600
+  Token wirkte ein QUASAR-Denkblock sauber; mit 6.000 Token zeigte derselbe
+  Prompt eine Wiederholungsdegeneration (an jeden Satz derselbe Nachsatz).
+  Ein abgeschnittener Text misst nur, wie weit ein Modell kommt, bevor es
+  kippt.
+- **Eine auffällig HOHE Annahmelänge ist ein Warnsignal, kein Erfolg**
+  (09.09.). Eine Wiederholungsschleife ist trivial vorhersagbar, also nimmt
+  der Verifizierer fast jeden Entwurf an: gemessen 5,569 von 8 möglichen — bei
+  völlig degeneriertem Text. Gesund sieht anders aus: die
+  Per-Position-Annahmeraten fallen ab (0,822 / 0,644 / 0,550 / … / 0,246).
+  Sind alle Positionen gleichmäßig hoch, zuerst den Text lesen.
 
 ---
 
@@ -464,3 +536,80 @@ Augustwerten (6,5 min Boot).
    **Reihenfolge — ausdrücklich festgelegt (Peuqui, 08.09.):** Die Kaskade wird
    erst angegangen, wenn die laufende Turing-Arbeit **maximiert, optimiert und
    als Pull Request veröffentlicht** ist. Vorher nicht anfangen.
+
+7. **QUASAR-QAT ist in diesem Stack unbrauchbar — Ursache offen** (09.09.).
+   1Cats DFlash2-Referenzcheckpoint `QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4`
+   (ModelScope-Empfehlung in ihrer `RELEASE.md`) degeneriert bei uns:
+   an jeden Satz wird derselbe Nachsatz angehängt, danach bricht das Modell
+   ohne Antwort ab. **Ausgeschlossen sind** DFlash2 (tritt ohne jede
+   Spekulation auf), das Chat-Template (tritt über `/v1/chat/completions` mit
+   `enable_thinking` genauso auf), die Kontextlänge (32k wie 256k) und das
+   Sampling (greedy in beiden Fällen). Der verbleibende Verdacht ist der
+   Quantisierungspfad: QUASAR kommt über `compressed-tensors`, RadixArk über
+   `modelopt`. Dazu passt, dass QUASAR auf Turing gar nicht erst lädt —
+   `gptq_marlin_repack` verlangt Ausgabebreiten als Vielfache von 64, eine
+   Schicht hat 8.240. 1Cat baut vLLM selbst und weist für den Checkpoint
+   Qualitätsgates nach (MBPP 32/32); wir fahren Wheel + Overlay.
+   Nachfahrskript: `tools/mtp-diagnostics/quasar_1cat.sh`.
+   **Folge: gemessen wird auf RadixArk.**
+
+8. **Turing-Tempolücke bei DFlash2 — LOKALISIERT, Weg offen** (09.09.).
+   69,13 gegen 74,09 tok/s auf V100, siehe „DFlash2 gegen MTP".
+   Decode-Profile mit `tools/mtp-diagnostics/prof_dflash.sh` (nsys), 400 Token
+   im Fenster, je Karte:
+
+   | Kernel | Turing | V100 |
+   |---|---:|---:|
+   | AllReduce | 1.697 ms / 16.806× | 1.530 ms / 16.675× |
+   | NVFP4-Linear | `skinny_nvfp4_qpn2` 1.614 ms | `gemm_kernel` **1.396 ms** |
+   | `skinny_fp8_qpn8` | 888 ms | **671 ms** |
+   | `_sm70_dflash2_gemma_fused_add_rms` | **fehlt** | 84 ms / 15.126× |
+   | GPU-Zeit gesamt | 5.665 ms | 5.191 ms |
+
+   **Widerlegt:** der QPN8-Rerank. Kein `topk`/`sort`-Kernel taucht in den
+   Top-14 auf. **Ebenfalls widerlegt:** das AllReduce als Erklärung — beide
+   Kartenpaare hängen identisch an (OCuLink, Gen3 ×4, kein P2P), die Zeiten
+   sind nahezu gleich, es ist Grundlast und kein Differenzierer (Peuqui).
+
+   **Ursache:** Turing bekommt die SM70-Abstimmung nicht, weil
+   `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH` dort verworfen wird („not SM70
+   CUDA"). Es fehlen vier Dinge: TurboMind-Dense-Pfad, `fuse_norm_quant`,
+   `rms_norm=['vllm_c']` statt `['native']`, und die DFlash2-Gemma-Fusion.
+   Warum es erst bei DFlash2 auffällt: MTP hat wenige große Operationen, der
+   Draftkopf dagegen fünf kleine Schichten je Entwurfsschritt und lebt von
+   genau diesen Fusionen.
+
+   **Gemessen, was die Compile-Vorgaben bringen** (`SM70TUNE=1` in
+   `speed_dflash.sh` setzt `fuse_norm_quant` und die RMSNorm-Priorität per
+   Kommandozeile): **69,13 → 69,45 tok/s, also +0,5 % — praktisch nichts.**
+   Bemerkenswert ist nur die Annahmelänge: 3,353 → **3,381**, exakt der
+   V100-Wert, bei unverändertem Text-SHA. Der Entwurfspfad ist damit numerisch
+   deckungsgleich mit Volta.
+
+   **Es bleiben die beiden Quantisierungskernel: 435 ms, der ganze Rückstand.**
+   Zwei Wege:
+   - **TurboMind auf Turing.** Das Gate ist `is_exact_sm70_cuda` (== (7,0)) in
+     `sm70_turbomind.py`. Der Kernel-Quelltext ist NICHT Volta-exklusiv: er
+     enthält 13× `m16n8k8`, 5× `m16n8k16` und Zweige für
+     `__CUDA_ARCH__ >= 750`. **Aber:** `vllm/_C.abi3.so` trägt 39 ELF-Einträge,
+     **alle `sm_70`, kein PTX** — das Gate zu öffnen brächte nichts, es gäbe
+     keinen ausführbaren Kernel. Nötig wäre ein Rebuild mit
+     `TORCH_CUDA_ARCH_LIST="7.0;7.5"` (Build-Parallelität auf dem Mini cappen).
+   - **Marlin als dritter Pfad — so nicht messbar** (09.09.). `speed_dflash.sh`
+     nimmt jetzt `VLLM_SM70_QUANT_BACKEND` aus der Umgebung, aber ein Lauf mit
+     `marlin` meldet im Boot weiterhin
+     `SM70 skinny NVFP4 path enabled for M<=64 (QPN on)`: der Skinny-Pfad hängt
+     an `VLLM_SKINNY_NVFP4`/`VLLM_SKINNY_QPN*` und greift bei kleinem M
+     unabhängig vom Quant-Backend — also genau im Decode. Für einen echten
+     Marlin-Vergleich müssen die Skinny-Schalter mit aus. Der Lauf vom 09.09.
+     wurde vor der Messung abgebrochen, es gibt **keine Zahl**.
+   - **Skinny-Kernel für sm75 optimieren.** Die werden über
+     `VLLM_SKINNY_NVFP4_SRC` zur Laufzeit gebaut, sind also nicht an die
+     Wheel-Architektur gebunden. Hier wird Turings 65.536-B-Deckel beim Shared
+     Memory zur Entwurfsvorgabe (daran ist FlashQLA gescheitert).
+
+9. **`prof_prefill.sh` ist auf dieser nsys-Version nicht lauffähig** (09.09.).
+   Es übergibt `--output` an `nsys launch`; nsys 2022.4.2 nimmt die Option nur
+   bei `nsys start` („unrecognised option"). In `prof_dflash.sh` ist es
+   korrigiert, in `prof_prefill.sh` noch nicht — STAND.md empfiehlt das Skript
+   an mehreren Stellen.

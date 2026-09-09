@@ -92,3 +92,4 @@ qwen4_exp_common_ple.py vllm/models/qwen4_exp/common/ple.py
 qwen4_exp_ple_layer_nvidia.py vllm/models/qwen4_exp/nvidia/ple_layer.py
 qwen4_exp_ops_qsa.py vllm/models/qwen4_exp/nvidia/ops/qsa.py
 qwen4_exp_nvidia_mtp.py vllm/models/qwen4_exp/nvidia/mtp.py
+qwen3_dflash2.py vllm/model_executor/models/qwen3_dflash2.py

@@ -39,8 +39,6 @@ dsv4_compressor.py vllm/models/deepseek_v4/compressor.py
 rocm_aiter_mla_sparse.py vllm/v1/attention/ops/rocm_aiter_mla_sparse.py
 import_utils.py vllm/utils/import_utils.py
 sparse_swa.py vllm/v1/attention/backends/mla/sparse_swa.py
-qwen_gdn_linear_attn_sm75.py vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn_sm75.py
-gdn_attn_sm75.py vllm/v1/attention/backends/gdn_attn_sm75.py
 qpn8_blk.py vllm/model_executor/kernels/linear/scaled_mm/qpn8_blk.py
 _custom_ops.py vllm/_custom_ops.py
 compilation.py vllm/config/compilation.py

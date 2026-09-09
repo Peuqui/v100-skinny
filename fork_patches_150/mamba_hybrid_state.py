@@ -30,7 +30,6 @@ from vllm.v1.attention.backends.gdn_attn import (
     GDNAttentionMetadataBuilder,
     prepare_dflash2_gdn_group_metadata,
 )
-from vllm.v1.attention.backends.gdn_attn_sm75 import is_gdn_sm75_metadata_builder
 from vllm.v1.attention.backends.mamba2_attn import Mamba2AttentionMetadataBuilder
 from vllm.v1.attention.backends.short_conv_attn import (
     PleShortConvAttentionMetadataBuilder,
@@ -109,7 +108,7 @@ class MambaHybridAttnMetadata(ModelSpecificAttnMetadata):
                 GDNAttentionMetadataBuilder,
                 PleShortConvAttentionMetadataBuilder,
             ),
-        ) and not is_gdn_sm75_metadata_builder(attn_metadata_builder):
+        ):
             return {}
         kwargs = {
             "num_accepted_tokens": None

@@ -48,7 +48,7 @@ Turing nicht startet und dort der Triton/FLA-Pfad läuft.
 
 ## Betriebspunkte
 
-### Qwen3.8-Flash-Next (180B, Qwen4Exp) — geprüft 07.09.
+### Qwen3.8-Flash-Next (180B, Qwen4Exp) — geprüft 07.09., nachverifiziert 09.09.
 
 ```bash
 cd /home/mp/Projekte/vllm-research/v100-skinny
@@ -104,7 +104,7 @@ AIfred-Alltag.
 Warum k=4, warum `capture_sizes [1,2,4,5,8]`, warum Kartenreihenfolge `0,2,1,4`:
 → `FLASH-NEXT-OPERATING-POINT.md`, `docs/journal/QWEN4EXP-PORT-HANDOVER.md`
 
-### Qwen3.8-27B-NVFP4 — Debug-Fahrzeug, geprüft 07.09.
+### Qwen3.8-27B-NVFP4 — Debug-Fahrzeug, geprüft 07.09., nachverifiziert 09.09.
 
 TP2 auf zwei RTX 8000 (GPU 0,2), `VLLM_SM70_QUANT_BACKEND=auto`,
 `VLLM_SM70_NVFP4_TURBOMIND=1`, k=3, FULL-Graphen. Boot **6,5 min** auf Turing,
@@ -115,6 +115,30 @@ Speicherlage TP2: 10,2 GiB Modell je Karte, 29,4 GiB KV-Cache je Karte,
 nötig.**
 
 Die im Journal genannten „60–90 s Boot" treffen nicht zu.
+
+### Messstand 09.09. nach dem Umstieg auf den gemeinsamen GDN-Pfad
+
+27B, TP2 auf 2× RTX 8000, k=3, greedy Seed 1, je 5 Läufe
+(`tools/mtp-diagnostics/speed_27b.sh <name> fork 3`). Referenz-SHA des
+Antworttextes: `0106659946c064b1`, Annahmelänge 2,963 in allen Zeilen.
+
+| Stand | tok/s |
+|---|---:|
+| fork-eigener sm75-Pfad (bis 09.09.) | 74,77 |
+| gemeinsamer Pfad | 73,39 |
+| nach Entfernung des toten Codes | 73,40 |
+| nach Linter-Bereinigung (Endstand) | **73,35** |
+
+Flash-Next 180B, TP2×PP2 heterogen, k=4, 13.004 Token Vorkontext, drei
+30-Sätze-Fragen (`tools/mtp-diagnostics/flashnext_qual.sh <name> 4`), drei
+Läufe auf dem gemeinsamen Pfad, jeder mit Rangnachweis `sm75=0 upstream=1`:
+**8 von 9 Antworten einwandfrei**, keine Fremdkörper. Der eine Ausfall (q3 im
+ersten Lauf: Coandă nicht erkannt, Wiederholungsschleife) war in zwei weiteren
+Läufen nicht reproduzierbar — passt zur Nichtreproduzierbarkeit des 180B bei
+dieser Ausgabelänge. Endstand-Lauf: 24,65 / 27,08 / 25,74 tok/s.
+
+**Keine Ratenaussage:** drei Läufe neu gegen einen alt. Wer sie braucht,
+fährt je fünf.
 
 ---
 
@@ -156,8 +180,22 @@ Zu den beiden Defekten:
 
 ## GDN-Kernel: Volta gegen Turing
 
+**Seit 09.09.: Turing faehrt den gemeinsamen Pfad.** Bis dahin baute ein
+Turing-Worker eine fork-eigene Klasse aus `qwen_gdn_linear_attn_sm75.py`, weil
+die FlashQLA-SM70-Kernel dort 86016 B Shared Memory verlangen und Turing bei
+65536 B deckelt. Fix 1 (PR #572) macht FlashQLA Volta-only, damit ist der
+Sonderzweig ueberfluessig. Entfernt in c86fc8d/ac0b0ae; die beiden sm75-Dateien
+sind aus dem Overlay raus (sie stammten ohnehin aus dem 1.5.0-Wheel und sind
+upstream schon geloescht).
+
+Kosten: 27B von 74,77 auf 73,35 tok/s (-1,9 %). Gegenwert: kein Sonderpfad,
+2.352 Zeilen weniger, und weg ist eine **Unterdeklaration** —
+`qwen_gdn_attention_core_sm75` rief `causal_conv1d_update` auf seinem
+qkv-Eingang, ohne die Mutation in `mutates_args` zu nennen.
+
 | | Volta (sm70) | Turing (sm75) |
 |---|---|---|
+| GDN-Schicht | `QwenGatedDeltaNetAttention` (gemeinsam) | dieselbe, seit 09.09. |
 | GDN-Prefill | FlashQLA-SM70 | Triton/FLA |
 | GDN-Decode | FlashQLA-Route | FLA (fused recurrent) |
 | Lineare Projektionen | NVFP4-Skinny | NVFP4-Skinny |
@@ -326,11 +364,27 @@ Augustwerten (6,5 min Boot).
   fehlende `info_once`-Meldung ist **kein** Beweis, dass der Code nicht lief.
   Für Zustandsnachweise pro Rang in eine Datei schreiben
   (`AIFRED_STATE_FILE`-Muster), nicht loggen.
-- **Die Coandă-Frage in `qual_longctx.sh` ist KEINE Fangfrage.** Dort steht der
-  korrekt geschriebene, real existierende Effekt; das Modell erklärt ihn zu
-  Recht. Als Halluzinationstest war der **falsch geschriebene** Begriff
-  („Kuanda-Effekt", siehe Betriebspunkt oben) gemeint. Die Sonde kennt ihn
-  nicht — beim nächsten Durchgang nachziehen.
+- **Die Fangfrage heißt „Kuanda-Effekt", nicht „Coandă".** Erledigt 08.09.:
+  `qual_longctx.sh` und `flashnext_qual.sh` fragen den absichtlich falsch
+  geschriebenen Begriff, mit Kommentar im Skript, der das Zurückändern
+  verbietet. Bestanden ist die Frage, wenn das Modell den Verschreiber erkennt
+  und den Coandă-Effekt erklärt — **nicht**, wenn es ein neues Phänomen
+  erfindet oder den Begriff bloß für nicht existent erklärt.
+- **Ein einzelner Durchfall beim 180B beweist nichts** (09.09.). Im ersten von
+  drei Läufen verfehlte q3 die Coandă-Erkennung und drehte sich im Kreis; in
+  zwei weiteren Läufen korrekt. Bei dieser Ausgabelänge reproduziert sich das
+  180B nicht einmal mit sich selbst — vor einer Schlussfolgerung wiederholen.
+- **`git stash push <datei>` legt bei sauberem Baum KEINEN Stash an** (09.09.),
+  und das folgende `git stash pop` nimmt dann den obersten **fremden** Stash.
+  Zweimal an einem Tag zugeschnappt: einmal wurde ein fremder Stash verbraucht
+  (über `git fsck` zurückgeholt), einmal wäre ein Commit unvollständig
+  geworden. Für Vorher/Nachher-Vergleiche `git checkout origin/main -- <datei>`
+  und zurück mit `git checkout HEAD -- <datei>`.
+- **`python /pfad/skript.py` setzt `sys.path[0]` auf das SKRIPTverzeichnis**,
+  nicht auf das Arbeitsverzeichnis (09.09.). Eine Sonde im Scratchpad
+  importierte deshalb das `vllm` aus der venv statt aus dem Checkout und maß
+  unseren eigenen Patch statt Upstream. Sonden müssen `vllm.__file__` und den
+  Quelltext der geprüften Funktion mitprotokollieren.
 
 ---
 
@@ -344,22 +398,32 @@ Augustwerten (6,5 min Boot).
    Anweisung „solange `K=0` fahren" ist überholt.
 2. **GDN-Anteil am Prefill messen**, bevor über einen FlashQLA-Turing-Port
    entschieden wird.
-5. **Braucht es den fork-eigenen sm75-GDN-Backend?** Am 08.09. abends
-   weitgehend beantwortet: **vier** Fixes (Startfähigkeit, Baseline-Tor,
-   Kernfusion, Full-Forward-Wächter) machen den Upstream-Pfad auf Turing
-   lauffähig und **verlustfrei** — die Ausgabe ist byteidentisch mit der des
-   unspekulierten Modells, an 10 von 10 Prompt-Längen bis 13.004 Token.
+3. **DeepSeek-V4 nach dem GDN-Umstieg nicht nachgemessen** (09.09.).
+   Strukturell nicht betroffen: DSV4 baut keine Qwen-GDN-Schicht, und keine
+   `deepseek_v4_*`/`dsv4_*`-Datei referenziert den entfernten Apparat. Die
+   beiden generischen Dateien (`gpu_model_runner.py`, `mamba_hybrid_state.py`)
+   verlieren nur einen Aufruf, der seit dem Umstieg immer `False` lieferte.
+   **Argument, keine Messung.** Ein Gegentest wäre billig und aussagekräftig,
+   weil DSV4 byteidentisch reproduzierbar ist: `scripts/serve-deepseek-het-graphs.sh`
+   (PP5 über alle fünf Karten), Referenz Essay 21,3 / Code 26,7 tok/s, 8/8
+   Kohärenz.
+5. ~~Braucht es den fork-eigenen sm75-GDN-Backend?~~ — **ERLEDIGT 09.09.,
+   Antwort: nein.** Der Sonderzweig ist entfernt, Turing baut den gemeinsamen
+   `QwenGatedDeltaNetAttention` (c86fc8d), der tote Apparat samt beider
+   sm75-Dateien ist raus (ac0b0ae). Belegt für 27B **und** Flash-Next, siehe
+   „Messstand 09.09." oben. Kosten 1,9 % beim 27B, dafür kein Sonderpfad und
+   keine Unterdeklaration mehr.
 
-   Der Rückstand ist von **7,0 % auf 2,0 %** gefallen (27B, k=3: 69,58 → 73,42
-   gegen Fork 74,81). Ursache war eine Compile-Weiche, kein Kernel: Upstream
-   nimmt unter Spekulation die ganze GDN-Schicht per `qwen_gdn_full_forward`
-   aus dem Inductor-Graphen. Der Rest — drei Kernelstarts je GDN-Schicht aus
-   `_sm70_compile_graph_slice_dim` — ist **belegt nicht erreichbar**: zwei
-   billigere, semantisch gleichwertige Formulierungen zerstören die Ausgabe.
-
-   Auf Flash-Next (TP2×PP2, heterogen) liefern Fork und Upstream+Fixes
-   **denselben Text** (`864572d17f5fa8c4`); Fix 5 bringt dort +2,0 %.
-   Details: `HANDOVER.md`.
+   **Der Restabstand von 1,74 % ist wieder UNLOKALISIERT.** Die frühere
+   Zuordnung zu `_sm70_compile_graph_slice_dim` war ein Denkfehler: wenige
+   Zeilen unter dem Split stehen `z.contiguous()`, `b.contiguous()`,
+   `a.contiguous()` — nach `index_select` No-ops, mit einem View kopieren sie
+   dort erst recht. Die Kopie verschwindet nie, sie wandert nur. Vier
+   Messungen, jede Sparmaßnahme langsamer; `a` als View ist korrekt, kostet
+   aber 0,4 %. **Nicht dort weitersuchen** — die übrigen Unterschiede des
+   entfernten sm75-Pfads (eigene Kern-Op, Faltungsbehandlung, Norm-Fusion)
+   wären die Kandidaten. Herleitung: Gedächtnisnotiz
+   `project_z_slice_materialization_closed`, Kasten in `HANDOVER.md`.
 
 6. **PLE-Überlaufkaskade — vier Stufen statt zwei.** Zielbild (Peuqui, 06.09.,
    bekräftigt 08.09.): die PLE-Tabelle läuft über wie ein Glas —

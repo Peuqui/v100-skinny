@@ -1535,9 +1535,15 @@ class VllmConfig:
         # SM70, the SM70 stage needs its baseline. The defaults are SM70-gated
         # at their point of use, so a mixed deployment's other stages ignore
         # them.
+        # FIX2: die SM70-Grundabstimmung ist eine pre-Ampere-Abstimmung, keine
+        # Volta-Abstimmung. Ein reines Turing-System bekam sie nie und lieferte
+        # Muell.
         sm70_flash_v100_baseline = (
             current_platform.is_cuda()
-            and _any_visible_device_has_capability((7, 0))
+            and (
+                _any_visible_device_has_capability((7, 0))
+                or _any_visible_device_has_capability((7, 5))
+            )
             and envs.VLLM_SM70_FLASH_ATTN_V100
             and sm70_flash_v100_backend
         )

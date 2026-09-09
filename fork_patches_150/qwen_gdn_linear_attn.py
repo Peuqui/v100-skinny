@@ -701,6 +701,15 @@ def _is_dflash2_spec_config(vllm_config: object) -> bool:
     return uses_dflash_selector_engine(vllm_config)
 
 
+def _sm70_current_device_is_volta() -> bool:
+    """Whether this worker builds its layers on a Volta device."""
+    if not current_platform.is_cuda():
+        return False
+    return current_platform.is_device_capability(
+        (7, 0), device_id=torch.accelerator.current_device_index()
+    )
+
+
 def _sm70_qwen_gdn_full_forward_enabled(
     layer_name: LayerNameType,
     *,
@@ -2491,11 +2500,15 @@ class QwenGatedDeltaNetAttention(GatedDeltaNetAttention):
             and envs.VLLM_SM70_QWEN_GDN_003_SPEC_CORE_OP
             and not block_003_deep_mtp
         )
+        # FIX5
         self.maybe_sm70_qwen_gdn_full_forward = (
             not self.disable_sm70_qwen_gdn_full_forward
             and (
                 self.force_sm70_qwen_gdn_full_forward
-                or self.auto_sm70_qwen_gdn_full_forward
+                or (
+                    self.auto_sm70_qwen_gdn_full_forward
+                    and _sm70_current_device_is_volta()
+                )
             )
         )
         if self.maybe_sm70_qwen_gdn_full_forward:
@@ -5762,20 +5775,20 @@ class QwenGatedDeltaNetAttention(GatedDeltaNetAttention):
                 assert query_spec is not None
                 assert key_spec is not None
                 assert value_spec is not None
-                g_spec, beta_spec = fused_gdn_gating(
-                    self.A_log,
-                    a_spec,
-                    b_spec,
-                    self.dt_bias,
-                    beta_dtype=torch.float32,
-                )
+                # FIX3: One fused launch instead of gating + recurrent
+                # update: the kernel computes the sigmoid gating itself, so
+                # g/beta never materialize and the surrounding elementwise
+                # work disappears. Same routine the DFlash2 branch above
+                # already uses.
                 core_attn_out_spec, last_recurrent_state = (
-                    fused_recurrent_gated_delta_rule(
+                    fused_sigmoid_gating_delta_rule_update(
+                        A_log=self.A_log,
+                        a=a_spec,
+                        b=b_spec,
+                        dt_bias=self.dt_bias,
                         q=query_spec,
                         k=key_spec,
                         v=value_spec,
-                        g=g_spec,
-                        beta=beta_spec,
                         initial_state=ssm_state,
                         inplace_final_state=True,
                         cu_seqlens=spec_query_start_loc[  # type: ignore[index]

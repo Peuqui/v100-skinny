@@ -5,10 +5,10 @@ nvfp4_qpn_dequant.py NEU 2026-09-05 (Triton: QPN-Prepack -> dichtes fp16 [N,K]; 
 modelopt.py AUFGELOEST (QPN8- und TurboMind-Route koexistieren, env-Gate fuehrend)
 torch_utils.py UNVERAENDERT (kopiert)
 attention.py AUTO_MERGED
-custom_all_reduce.py AUTO_MERGED
+custom_all_reduce.py AUTO_MERGED; REBASE-HINWEIS: 1Cat-main 1918716 (2026-09-09) ergaenzt hier 5 Zeilen fuer UUID-gewaehlte GPUs (CUDA_VISIBLE_DEVICES=GPU-...). Fuer uns ohne Wirkung (wir nutzen Indizes), beim naechsten Wheel aber mitziehen, sonst machen wir es rueckgaengig
 qwen3_5_mtp.py AUTO_MERGED
 qwen3_5.py AUTO_MERGED; 2026-09-09: sm75-Sonderzweig entfernt, Turing baut den gemeinsamen Qwen3_5GatedDeltaNet (Fix 1 macht FlashQLA Volta-only)
-cuda.py AUTO_MERGED
+cuda.py AUTO_MERGED; REBASE-HINWEIS: 1Cat-main 1eb9a36 (2026-09-09) ergaenzt device_id_to_physical_device_id um UUID-Aufloesung via NVML (11 Zeilen). Greift nur bei GPU-...-Eintraegen, fuer uns ohne Wirkung; beim naechsten Wheel mitziehen
 vllm_config.py AUFGELOEST (beide Funktionen: any-visible-Capability + deren MTP-Capture)
 kernel_config.py UNVERAENDERT (kopiert)
 linear_init.py AUTO_MERGED

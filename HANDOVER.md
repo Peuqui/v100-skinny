@@ -1,4 +1,4 @@
-# Übergabe — Stand 09.09.2026 mittags
+# Übergabe — Stand 09.09.2026 abends
 
 **Betriebsstand steht in `STAND.md`. Damit anfangen, nicht mit diesem Dokument.**
 Hier steht nur, was als Nächstes ansteht und was du über den letzten Tag wissen
@@ -6,75 +6,94 @@ musst, um nicht dieselben Wege noch einmal zu gehen.
 
 ---
 
-## Auftrag: DFlash2 auf Turing messen
+## Auftrag: sm75-Variante der Skinny-Kernel
 
-Die Frage: Bringt DFlash2 gegenüber MTP nochmals Tempo? MTP liefert beim 27B
-eine Annahmelänge von 2,963 bei k=3. DFlash2 arbeitet mit einem eigenen
-Entwurfskopf über mehrere Zielschichten und Blockgröße 8 statt eines einzelnen
-MTP-Blocks, hat also strukturell mehr Spielraum.
+**DFlash2 läuft und schlägt MTP** (V100: 74,09 gegen 66,13 tok/s). Offen ist
+nur noch, dass Turing dabei hinter die V100 zurückfällt: 69,13 gegen 74,09.
 
-**Was bereitliegt:**
-- Entwurfskopf heruntergeladen: `incoai/Qwen3.8-27B-DFlash2`, 3,6 GiB,
-  `DFlash2DraftModel`, `block_size 8`, `target_layer_ids [5,19,33,47,61]`,
-  dtype bfloat16.
-- Messvorrichtung `tools/mtp-diagnostics/speed_dflash.sh` — **noch nie
-  gelaufen**, also erst gegen eine bekannte Konfiguration verifizieren, bevor
-  du ihren Zahlen glaubst.
-- Vergleichsmaßstab: `speed_27b.sh <name> fork 3` liefert heute 73,35 tok/s bei
-  Annahmelänge 2,963, Text-SHA `0106659946c064b1`.
+Der Rückstand ist **vollständig lokalisiert** — 435 ms in zwei Kerneln, siehe
+`STAND.md` Punkt 8 mit den nsys-Zahlen. Ursache: `kernels/skinny_kernels.cu`
+hat **keine einzige `__CUDA_ARCH__`-Fallunterscheidung** und nutzt durchgängig
+Voltas `mma.sync.aligned.m8n8k4`. Turing führt die Instruktion aus, ist aber
+auf `m16n8k8` ausgelegt.
 
-**Vorbehalt:** 1Cat hat auf SM70 mehrere offene DFlash2-Baustellen (#561, #405,
-#547). Das Terrain bewegt sich; vor dem Start `git fetch` und die offenen PRs
-ansehen.
+**Reihenfolge:**
+1. Fragment-Layouts für `m16n8k8` auf Turing bestimmen. Das Werkzeug existiert:
+   `mma8_probe.cu` hat dasselbe seinerzeit auf der V100 gemacht (Kommentar bei
+   Zeile 609 in `skinny_kernels.cu` nennt die abgeleiteten Maps).
+2. Architekturabhängige Variante des MMA8-Pfads, gegen den bestehenden
+   Volta-Pfad abgesichert.
+3. Dasselbe für `skinny_fp8_qpn8` — er stellt mit 217 ms etwa die Hälfte des
+   Rückstands.
 
----
-
-## Was gestern/heute passiert ist — die Kurzfassung
-
-**Turing fährt seit heute den gemeinsamen GDN-Pfad.** Der fork-eigene
-sm75-Zweig ist raus, samt beider sm75-Dateien und des toten Apparats
-(`c86fc8d`, `ac0b0ae`, `e529348`, `afc22a6`). Kosten 1,9 % beim 27B, bei
-Flash-Next unter der Rauschgrenze. Verifiziert für beide Modelle auf dem
-Endstand — Zahlen und Belege in `STAND.md`, Abschnitt „Messstand 09.09.".
-
-**Overlay und Deployment sind wieder deckungsgleich** (0 von 94). Sie waren
-auseinandergelaufen: die venv trug Fix 2, 3 und 5, das Overlay nicht. Wer
-direkt in die venv patcht, muss zurückschreiben — sonst löscht der nächste
-Deploy die Arbeit.
-
-**Vier PRs bei 1Cat offen und CI-grün:** #572 (Turing bootfähig), #573
-(Qwen4Exp-MTP stufenlokal unter PP), #574 (Output-Trim auf allen PP-Rängen),
-#576 (SM70-Quant-Gate liest das eigene Gerät). `pre-run-check` ist jetzt grün,
-weil die Autorenschwelle von vier gemergten PRs erfüllt ist. Keine Reaktionen
-bisher.
+**Erwartung ehrlich halten:** Die 435 ms zu schließen bringt Gleichstand mit
+der V100, nicht mehr. Für ein echtes Übertrumpfen müsste der Turing-Kernel
+besser sein als Voltas; möglich, weil `m16n8k8` mächtiger ist und die RTX bei
+MTP schon 11 % vorn liegt. Oberes Ende wären die ~82 tok/s aus dem
+MTP-Verhältnis.
 
 ---
 
 ## Wo du NICHT weitersuchen solltest
 
-**Der Restabstand von 1,74 % sitzt nicht im GDN-Eingangssplit.** Die frühere
-Zuordnung zu `_sm70_compile_graph_slice_dim` war ein Denkfehler: wenige Zeilen
-darunter stehen `z.contiguous()`, `b.contiguous()`, `a.contiguous()` — nach
-`index_select` No-ops, mit einem View kopieren sie dort erst recht. Die Kopie
-verschwindet nie, sie wandert nur. Vier Messungen, **jede Sparmaßnahme
-langsamer**; `a` als View ist korrekt, kostet aber 0,4 %. Herleitung mit allen
-Zahlen: `STAND.md` Punkt 5 und die Gedächtnisnotiz
-`project_z_slice_materialization_closed`. Die widerlegte Kernel-Rechnung samt
-Beweisführung steht im vorigen Übergabestand (`git show ac9d517:HANDOVER.md`).
+Vier Erklärungen für die Turing-Lücke sind **gemessen widerlegt**:
 
-Wenn der Abstand jemanden interessiert: Kandidaten wären die übrigen
-Unterschiede des entfernten sm75-Pfads — eigene Kern-Op, Faltungsbehandlung,
-Norm-Fusion. Nicht die Eingangsprojektion.
+- **QPN8-Rerank für den Kandidaten-TopK.** War mein Verdacht aus dem Code. Im
+  Decode-Profil taucht kein `topk`/`sort`-Kernel in den Top-14 auf.
+- **Das AllReduce.** 1.697 ms auf Turing gegen 1.530 auf V100 bei nahezu
+  gleicher Aufrufzahl — beide Kartenpaare hängen identisch an (OCuLink,
+  Gen3 ×4, kein P2P). Grundlast, kein Differenzierer (Peuqui).
+- **Die Compile-Vorgaben** (`fuse_norm_quant`, `rms_norm=['vllm_c']`, per
+  `SM70TUNE=1` in `speed_dflash.sh`): 69,13 → 69,45 tok/s, also +0,5 %.
+  Bemerkenswert nur, dass die Annahmelänge dabei exakt den V100-Wert trifft.
+- **Marlin als Ersatz für Skinny:** 43,87 gegen 69,13 tok/s, also 37 %
+  langsamer. Unser Skinny-Kernel ist auf Turing bereits die beste Route.
+
+**TurboMind ist kein Rebuild, sondern eine Portierung.** Der Quelltext hat zwar
+Turing-Instruktionen und eine `config_sm75_s16816.h`, aber es existieren **nur
+Volta-Kernel-Instanzen** (`sm70_884_4/8/16.cu`). `vllm/_C.abi3.so` trägt 39
+ELF-Einträge, alle `sm_70`, kein PTX — das Gate in `sm70_turbomind.py` zu
+öffnen brächte nichts.
 
 ---
 
 ## Offene Fäden
 
-1. **DeepSeek-V4 nach dem GDN-Umstieg nicht nachgemessen.** Strukturell nicht
-   betroffen, aber das ist ein Argument und keine Messung. Siehe `STAND.md`,
-   offener Punkt 3.
-2. **PLE-Überlaufkaskade** (vier Stufen) — unverändert offen, `STAND.md`
-   Punkt 6.
-3. **Zwei Upstream-Änderungen beim nächsten Wheel mitziehen:**
+1. **QUASAR-QAT ist in diesem Stack unbrauchbar** — `STAND.md` Punkt 7.
+   1Cats Referenzcheckpoint degeneriert bei uns (derselbe Nachsatz an jedem
+   Satz, dann Abbruch ohne Antwort). Ausgeschlossen sind DFlash2, Chat-Template,
+   Kontextlänge und Sampling. Verbleibender Verdacht: der
+   `compressed-tensors`-Pfad. Auf Turing lädt er ohnehin nicht
+   (`gptq_marlin_repack` verlangt Vielfache von 64, eine Schicht hat 8.240).
+   **Gemessen wird auf RadixArk.**
+2. **DeepSeek-V4 nach dem GDN-Umstieg nicht nachgemessen** — `STAND.md`
+   Punkt 3, unverändert offen.
+3. **PLE-Überlaufkaskade** (vier Stufen) — `STAND.md` Punkt 6, unverändert.
+4. **`prof_prefill.sh` ist nicht lauffähig** — `STAND.md` Punkt 9. Es übergibt
+   `--output` an `nsys launch`; die Option gehört an `nsys start`. In
+   `prof_dflash.sh` korrigiert, dort nicht.
+5. **Zwei Upstream-Änderungen beim nächsten Wheel mitziehen:**
    `custom_all_reduce.py` und `platforms/cuda.py`, beide UUID-GPU-Auswahl.
-   Heute ohne Wirkung für uns. Hinweise stehen in `fork_patches_150/STATUS.txt`.
+   Hinweise in `fork_patches_150/STATUS.txt`.
+6. **Die beiden DFlash2-Patches sind PR-Kandidaten für 1Cat.** Der Guard macht
+   DFlash2 mit jedem Checkpoint fahrbar, dessen LM-Head mitquantisiert ist
+   (bei ModelOpt-Exporten der Normalfall); das BF16-Gate bringt Turing die
+   Range-Erhaltung. Beide sind mit byteidentischem Text auf zwei Architekturen
+   belegt. Vor einer Meldung: `AGENTS.md`-Pflichtregeln beachten.
+
+---
+
+## Vier Fallen, die an einem Tag je einen Lauf gekostet haben
+
+Alle vier stehen ausführlich in `STAND.md`, Abschnitt „Fallstricke":
+
+- Ein fremdes Profil wörtlich zu übernehmen stellt **nicht** seine Bedingungen
+  her — 1Cats Zeile hat kein `--disable-custom-all-reduce`, weil ihre V100 P2P
+  können. Bei uns warten dann beide TP-Ränge ewig im Allreduce.
+- `utilization.gpu` ist keine Fortschrittsanzeige: 100 % bei 46 W heißt
+  Leerlauf. Leistungsaufnahme messen, und `py-spy dump` in mehreren Proben.
+- vLLM liefert den Denkblock im Feld `reasoning`, nicht `reasoning_content`.
+  Rohantwort immer als JSON mitschreiben.
+- Ein Qualitätsurteil braucht die volle Ausgabelänge, und eine auffällig
+  **hohe** Annahmelänge ist ein Warnsignal: eine Wiederholungsschleife ist
+  trivial vorhersagbar (gemessen 5,569 von 8 bei völlig degeneriertem Text).

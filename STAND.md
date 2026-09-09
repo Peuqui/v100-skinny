@@ -595,14 +595,24 @@ Augustwerten (6,5 min Boot).
      **alle `sm_70`, kein PTX** — das Gate zu öffnen brächte nichts, es gäbe
      keinen ausführbaren Kernel. Nötig wäre ein Rebuild mit
      `TORCH_CUDA_ARCH_LIST="7.0;7.5"` (Build-Parallelität auf dem Mini cappen).
-   - **Marlin als dritter Pfad — so nicht messbar** (09.09.). `speed_dflash.sh`
-     nimmt jetzt `VLLM_SM70_QUANT_BACKEND` aus der Umgebung, aber ein Lauf mit
-     `marlin` meldet im Boot weiterhin
-     `SM70 skinny NVFP4 path enabled for M<=64 (QPN on)`: der Skinny-Pfad hängt
-     an `VLLM_SKINNY_NVFP4`/`VLLM_SKINNY_QPN*` und greift bei kleinem M
-     unabhängig vom Quant-Backend — also genau im Decode. Für einen echten
-     Marlin-Vergleich müssen die Skinny-Schalter mit aus. Der Lauf vom 09.09.
-     wurde vor der Messung abgebrochen, es gibt **keine Zahl**.
+   - ~~Marlin als dritter Pfad~~ — **ERLEDIGT, Antwort: nein** (09.09.).
+     Mit `VLLM_SM70_QUANT_BACKEND=marlin` UND `VLLM_SKINNY_NVFP4=0
+     VLLM_SKINNY_QPN=0 VLLM_SKINNY_QPN2=0`: **43,87 tok/s gegen 69,13** mit
+     Skinny, Annahmelänge unverändert 3,381. Marlin ist auf Turing 37 %
+     langsamer; die `auto`-Wahl ist richtig. **Unser Skinny-Kernel ist auf
+     Turing bereits die beste verfügbare Route**, obwohl er Voltas MMA nutzt.
+     (Falle: die Skinny-Schalter hängen NICHT am Quant-Backend und greifen bei
+     kleinem M — ein Marlin-Lauf ohne SKINNY=0 misst weiter Skinny.)
+
+   **Damit bleibt nur der Kernel-Weg.** `kernels/skinny_kernels.cu` (2.700
+   Zeilen, unsere Quelle, zur Laufzeit uebersetzt) hat **keine einzige
+   `__CUDA_ARCH__`-Fallunterscheidung** und nutzt durchgaengig Voltas
+   `mma.sync.aligned.m8n8k4`. Der Kommentar zum MMA8-Pfad nennt genau unseren
+   Decode-Fall: „Volta mma.sync.m8n8k4 register-fragment path for 2<=M<=8".
+   Turing fuehrt diese Instruktion aus, ist aber auf `m16n8k8` ausgelegt.
+   Eine sm75-Variante muesste die Fragment-Layouts neu bestimmen — die wurden
+   laut Kommentar empirisch auf der V100 abgeleitet (`mma8_probe.cu`), das
+   Werkzeug dafuer existiert also.
    - **Skinny-Kernel für sm75 optimieren.** Die werden über
      `VLLM_SKINNY_NVFP4_SRC` zur Laufzeit gebaut, sind also nicht an die
      Wheel-Architektur gebunden. Hier wird Turings 65.536-B-Deckel beim Shared

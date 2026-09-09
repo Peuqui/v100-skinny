@@ -21,7 +21,13 @@ export NCCL_P2P_DISABLE=1 VLLM_SM70_E5_CACHE=0 VLLM_SM70_NVFP4_TURBOMIND=1
 # ueber TurboMind laeuft (gemm_kernel, 1396 ms). "marlin" ist der dritte,
 # auf Turing nachweislich vorhandene Pfad -- Vorgabe bleibt auto.
 export VLLM_SM70_QUANT_BACKEND=${VLLM_SM70_QUANT_BACKEND:-auto}
-export VLLM_SKINNY_NVFP4=1 VLLM_SKINNY_QPN=1 VLLM_SKINNY_QPN2=1
+# Die Skinny-Schalter ebenfalls ueberschreibbar: sie haengen NICHT am
+# Quant-Backend und greifen bei kleinem M -- also genau im Decode. Ein
+# Marlin-Vergleich ohne SKINNY=0 misst weiter den Skinny-Pfad (Fehllauf
+# 09.09.: Boot meldete trotz QUANT_BACKEND=marlin "SM70 skinny NVFP4 path
+# enabled for M<=64"). Vorgaben bleiben 1.
+export VLLM_SKINNY_NVFP4=${VLLM_SKINNY_NVFP4:-1}
+export VLLM_SKINNY_QPN=${VLLM_SKINNY_QPN:-1} VLLM_SKINNY_QPN2=${VLLM_SKINNY_QPN2:-1}
 export VLLM_SKINNY_NVFP4_SRC=/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu
 export TORCHINDUCTOR_CACHE_DIR=/home/mp/.cache/torchinductor VLLM_NO_USAGE_STATS=1
 export VLLM_CACHE_ROOT=/home/mp/.cache/vllm-calibration HOME=/home/mp

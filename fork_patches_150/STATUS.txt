@@ -7,7 +7,7 @@ torch_utils.py UNVERAENDERT (kopiert)
 attention.py AUTO_MERGED
 custom_all_reduce.py AUTO_MERGED
 qwen3_5_mtp.py AUTO_MERGED
-qwen3_5.py AUTO_MERGED
+qwen3_5.py AUTO_MERGED; 2026-09-09: sm75-Sonderzweig entfernt, Turing baut den gemeinsamen Qwen3_5GatedDeltaNet (Fix 1 macht FlashQLA Volta-only)
 cuda.py AUTO_MERGED
 vllm_config.py AUFGELOEST (beide Funktionen: any-visible-Capability + deren MTP-Capture)
 kernel_config.py UNVERAENDERT (kopiert)
@@ -40,8 +40,8 @@ dsv4_compressor.py AUTO_MERGED
 rocm_aiter_mla_sparse.py UNVERAENDERT (kopiert)
 import_utils.py UNVERAENDERT (kopiert)
 sparse_swa.py UNVERAENDERT (kopiert)
-qwen_gdn_linear_attn_sm75.py FORK_EIGEN (kopiert)
-gdn_attn_sm75.py FORK_EIGEN (kopiert)
+qwen_gdn_linear_attn_sm75.py ENTFERNT 2026-09-09 — war NICHT fork-eigen, das 1.5.0-Wheel bringt die Datei mit; unser Overlay ergaenzte 13 Zeilen (Signaturanpassung fuer die Qwen4Exp-Aufrufkonvention). Mit dem sm75-Zweig obsolet, Wheel-Original wiederhergestellt; upstream bereits geloescht
+gdn_attn_sm75.py ENTFERNT 2026-09-09 — ebenfalls aus dem Wheel; unsere 13 Zeilen waren nur der Helfer is_gdn_sm75_metadata_builder. Mit dem sm75-Zweig obsolet, Wheel-Original wiederhergestellt
 qpn8_blk.py FORK_EIGEN (kopiert)
 _custom_ops.py AUTO_MERGED
 compilation.py OBSOLET (Upstream-Superset)

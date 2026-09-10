@@ -21,6 +21,7 @@ from vllm.logger import init_logger
 from vllm.model_executor.layers.linear import (
     ColumnParallelLinear,
     ReplicatedLinear,
+    UnquantizedLinearMethod,
 )
 from vllm.model_executor.layers.quantization.base_config import QuantizationConfig
 from vllm.platforms import current_platform
@@ -328,6 +329,78 @@ class CandidateSelector(nn.Module):
 
 class DFlash2Qwen3Model(DFlashQwen3Model):
     decoder_layer_cls = DFlash2Qwen3DecoderLayer
+
+    # ---- Quantisierter Entwurfskopf: fusionierte Kontext-K/V ---------------
+    # Die Basisklasse legt die K/V-Projektionen aller Schichten in EINE Matrix
+    # zusammen, um die Kontextvorberechnung mit einem GEMM zu erledigen:
+    #
+    #     kv_weights = [a.qkv_proj.weight[a.q_size:] for a in layers_attn]
+    #
+    # Das greift am `quant_method` vorbei. Bei einem quantisierten Checkpoint
+    # traegt `.weight` nicht die Gewichtsmatrix, sondern die gepackten Codes
+    # ([N, K/2] bei NVFP4), und die Fusion kommt halb so breit heraus:
+    # "mat1 and mat2 shapes cannot be multiplied (2048x5120 and 2560x5120)".
+    # Damit ist DFlash2 mit JEDEM quantisierten Entwurfskopf unfahrbar --
+    # gemessen 2026-09-10 mit maurienne-ai/Qwen3.8-27B-DFlash2-NVFP4-RTNcal.
+    #
+    # Der Ausweg ist derselbe wie beim quantisierten Ziel-LM-Head weiter unten:
+    # `QuantizeMethodBase.apply`, das jede Quantisierungsmethode implementiert.
+    # Eine Einheitsmatrix hindurchgeschickt liefert W^T, unabhaengig vom
+    # Packformat -- also ohne Annahme ueber NVFP4, FP8 oder marlin.
+    #
+    # Der Bau muss FAUL sein: `_build_fused_kv_buffers` laeuft am Ende von
+    # `load_weights`, also BEVOR `process_weights_after_loading` die
+    # quantisierten Gewichte fertigstellt; `apply` waere dort noch nicht
+    # benutzbar. Erster Gebrauch ist der Profile-Run, da ist alles fertig.
+    #
+    # Kosten: einmalig eine dichte fp16-Kopie der K/V-Zeilen (rund 52 MB je
+    # Rang beim 27B) und fuenf GEMMs beim ersten Aufruf. Der DECODE-Pfad des
+    # Entwurfskopfs bleibt quantisiert -- dort sitzt der Gewinn, hier nicht:
+    # die Kontextvorberechnung laeuft beim Prefill, nicht je Schritt.
+    def _build_context_kv_buffers(
+        self,
+        layers_attn: list[nn.Module],
+        has_bias: bool,
+    ) -> None:
+        super()._build_context_kv_buffers(layers_attn, has_bias)
+        self._dflash2_kv_layers = layers_attn
+        self._dflash2_kv_is_dense = all(
+            isinstance(getattr(a.qkv_proj, "quant_method", None),
+                       UnquantizedLinearMethod)
+            for a in layers_attn
+        )
+
+    def _materialize_fused_kv_weight(self, dtype: torch.dtype,
+                                     device: torch.device) -> None:
+        rows = []
+        for attn in self._dflash2_kv_layers:
+            qkv = attn.qkv_proj
+            k = qkv.input_size_per_partition
+            eye = torch.eye(k, dtype=dtype, device=device)
+            w_t = qkv.quant_method.apply(qkv, eye, None)  # [k, n] == W^T
+            rows.append(w_t.t()[attn.q_size:].contiguous())
+            del eye, w_t
+        self._fused_kv_weight = torch.cat(rows, dim=0)
+        logger.info_once(
+            "DFlash2: fused context-K/V rebuilt from quant_method for a "
+            "quantized draft head (%s rows, %s).",
+            self._fused_kv_weight.shape[0], self._fused_kv_weight.dtype,
+        )
+
+    def _project_context_kv(
+        self,
+        context_states: torch.Tensor,
+        num_ctx: int,
+        num_layers: int,
+        num_kv_heads: int,
+        head_dim: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if not self._dflash2_kv_is_dense:
+            self._materialize_fused_kv_weight(
+                context_states.dtype, context_states.device)
+            self._dflash2_kv_is_dense = True
+        return super()._project_context_kv(
+            context_states, num_ctx, num_layers, num_kv_heads, head_dim)
 
     def _make_context_projection(
         self,

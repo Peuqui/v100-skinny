@@ -41,7 +41,11 @@ export VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1
 # DFlash2-Referenz QUASAR-QAT nimmt ihn per ignore-Liste aus. Vorgabe bleibt
 # RadixArk, damit alle bisherigen Zahlen vergleichbar bleiben.
 CKPT=${CKPT:-/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/319f741cce68d7914884900c138a1fbb70a42f30}
-DRAFT=/home/mp/.cache/huggingface/hub/models--incoai--Qwen3.8-27B-DFlash2/snapshots/dedf8df68adfb1afeaf7b7480c0a0243108177b4
+# Entwurfskopf ueber DRAFT umschaltbar, wie in prof_dflash.sh. Vorgabe bleibt
+# der unquantisierte incoai-Kopf, damit alle bisherigen Zahlen vergleichbar
+# bleiben. Ein quantisierter Kopf aendert die Annahmerate, aber NIE den Text:
+# angenommen wird nur, was das Zielmodell ohnehin erzeugt haette.
+DRAFT=${DRAFT:-/home/mp/.cache/huggingface/hub/models--incoai--Qwen3.8-27B-DFlash2/snapshots/dedf8df68adfb1afeaf7b7480c0a0243108177b4}
 SPEC=()
 case "$MODE" in
   mtp)    SPEC=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"draft_sample_method\":\"greedy\"}") ;;

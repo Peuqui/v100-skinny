@@ -6,12 +6,20 @@ musst, um nicht dieselben Wege noch einmal zu gehen.
 
 ---
 
-## Was sich geändert hat: die Turing-Lücke ist zu
+## Was sich geändert hat: die RTX 8000 hat die V100 überholt
 
-**69,22 → 72,72 tok/s** auf 2× RTX 8000 bei DFlash2 k=7, Text-SHA unverändert
-`0106659946c064b1`, Annahmelänge unverändert 3,353. Abstand zur V100 von 6,7 %
-auf **1,8 %**. Die V100 bleibt unverändert (74,09 → 74,02). Herleitung,
-Messungen und Zahlen: `STAND.md` Punkt 8.
+**69,13 → 77,13 tok/s** auf 2× RTX 8000 bei DFlash2 k=7, in zwei Schritten,
+Text-SHA in jedem Lauf unverändert `0106659946c064b1`:
+
+| Schritt | RTX 8000 | V100 |
+|---|---:|---:|
+| Ausgangslage 09.09. | 69,13 | 74,09 |
+| Block-Pack der Aktivierungen (`STAND.md` Punkt 8) | 72,72 | 74,02 |
+| quantisierter Entwurfskopf (`STAND.md` Punkt 10) | **77,13** | **76,33** |
+
+Die RTX liegt damit **vor** der V100, obwohl sie 34 % weniger Bandbreite hat.
+Beide Änderungen sind bitgleich belegt — der Text hat sich in keinem Lauf
+bewegt.
 
 **Der Auftrag der vorigen Übergabe war falsch.** Er lautete: sm75-Variante der
 Skinny-Kernel bauen, weil Turing auf `m16n8k8` ausgelegt ist und Voltas
@@ -73,16 +81,37 @@ nur über den Extensionsnamen verschlüsselt).
 
 ### 3. Danach: die verbleibenden Posten im Decode-Profil
 
-Nach dem Block-Pack steht `qpn2` auf der RTX bei 87–98 % der Leseobergrenze
-über das ganze Band M=1..8. Die nächstgrößeren Posten:
+Decode-Profil vom 10.09. mit gepacktem Kernel (`prof_dflash.sh packed 0,2`),
+ein Rang, 5.395 ms GPU-Zeit im Fenster, aufgeschlüsselt bis 96 %:
 
-- **AllReduce, 1.697 ms.** Grundlast, auf beiden Karten gleich, kein
-  Differenzierer — aber der größte Einzelposten überhaupt. Ob da etwas geht,
-  ist nie untersucht worden (P2P ist aus, die Karten hängen an OCuLink).
-- **`skinny_fp8_qpn8`, 888 ms.** Geprüft und für erledigt befunden: FP8 liest
+| Posten | ms | Anteil | Stand |
+|---|---:|---:|---|
+| `ncclDevKernel_AllReduce` | 1.714 | 31,8 % | **größter Posten, nie untersucht** |
+| `skinny_nvfp4_qpn2` | 1.303 | 24,2 % | fertig, 87–98 % der Dachlinie |
+| `skinny_fp8_qpn8` | 889 | 16,5 % | geprüft, DRAM-gebunden, nicht anfassen |
+| `cutlass_75_wmma…s161616gemm_f16_16x16` | 291 | 5,4 % | **unidentifiziert** |
+| `turing_fp16_s1688gemm` | 273 | 5,1 % | war der fp16-Entwurfskopf, erledigt |
+| `fused_sigmoid_gating_delta_rule` | 180 | 3,3 % | |
+| `ncclDevKernel_AllGather` | 178 | 3,3 % | |
+| `skinny_pack_x8` | **29** | 0,5 % | der Pack selbst — spart 310, kostet 29 |
+
+Zwei Fäden sind offen:
+
+- **Das AllReduce.** 102 µs für 80 KB Nutzlast ist latenz-, nicht
+  bandbreitendominiert; ohne P2P läuft alles über Host-Staging. Billigster
+  erster Versuch sind die NCCL-Schalter (`NCCL_ALGO`, `NCCL_PROTO`,
+  Puffergrößen) — reine Env-Experimente, keine Codezeile. Zum Vergleich:
+  unter MTP kostet dasselbe AllReduce nur 58,7 µs je Aufruf, weil k=3 die
+  halbe Nutzlast bedeutet.
+- **Der Cutlass-fp16-GEMM je Schicht.** In BEIDEN Profilen vorhanden (291 ms
+  bei DFlash2, 351 ms bei MTP), also im Zielmodell und nicht im Entwurf; die
+  Aufrufzahl entspricht **einem je Schicht und Vorwärtsschritt**. Ein kleiner
+  fp16-GEMM, der an den Skinny-Kerneln vorbeiläuft — was genau, ist offen.
+
+- **`skinny_fp8_qpn8`, 889 ms.** Geprüft und für erledigt befunden: FP8 liest
   doppelt so viele Bytes je Gewicht, der Kernel steht mit 86 % näher an
   Turings Obergrenze als der V100-Kernel an seiner (81 %). Der Block-Pack
-  brachte dort 1,05 % auf der RTX und kostete 4 % auf der V100 — **nicht
+  brachte dort 1,05× auf der RTX und kostete 4 % auf der V100 — **nicht
   noch einmal versuchen.**
 
 ---
@@ -135,11 +164,11 @@ Kontrollwert bei exakt 1,00× — daran hing der ganze Beweis.
    Punkt 3. Argument, keine Messung; ein Gegentest wäre billig.
 3. **PLE-Überlaufkaskade** (vier Stufen) — `STAND.md` Punkt 6. Ausdrücklich
    erst anzugehen, wenn die Turing-Arbeit veröffentlicht ist.
-4. **`prof_prefill.sh` ist nicht lauffähig** — `STAND.md` Punkt 10.
+4. **`prof_prefill.sh` ist nicht lauffähig** — `STAND.md` Punkt 11.
 5. **Zwei Upstream-Änderungen beim nächsten Wheel mitziehen:**
    `custom_all_reduce.py` und `platforms/cuda.py`, Hinweise in
    `fork_patches_150/STATUS.txt`.
-6. **Drei PR-Kandidaten für 1Cat**, nicht mehr zwei:
+6. **Vier PR-Kandidaten für 1Cat:**
    - Guard in `compute_candidates` (macht DFlash2 mit jedem Checkpoint
      fahrbar, dessen LM-Head mitquantisiert ist),
    - `_use_sm70_bf16_emulation` auf „< sm80" am Gerät des Workers,
@@ -147,5 +176,10 @@ Kontrollwert bei exakt 1,00× — daran hing der ganze Beweis.
      bitgleich belegt, hilft Turing 1,39–1,45× auf dem Kernel und schadet
      Volta nicht — und er behebt etwas, das jeden Nutzer dieser Kernel auf
      einer Turing-Karte trifft.
+   - **neu (10.09.):** die fusionierte Kontext-K/V in
+     `DFlashQwen3Model._build_context_kv_buffers` greift am `quant_method`
+     vorbei und macht DFlash2 mit JEDEM quantisierten Entwurfskopf unfahrbar.
+     Kartenunabhängig, und der Gewinn ist auf beiden Klassen gemessen
+     (+6,1 % RTX, +3,1 % V100, Text unverändert).
 
    Vor einer Meldung: `AGENTS.md`-Pflichtregeln beachten.

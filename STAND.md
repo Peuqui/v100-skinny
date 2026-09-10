@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-08 15:30.** Dieses Dokument beschreibt, WIE der Stack heute
+**Stand 2026-09-10.** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -120,6 +120,27 @@ AIfred-Alltag.
 
 Warum k=4, warum `capture_sizes [1,2,4,5,8]`, warum Kartenreihenfolge `0,2,1,4`:
 → `FLASH-NEXT-OPERATING-POINT.md`, `docs/journal/QWEN4EXP-PORT-HANDOVER.md`
+
+### Qwen3.8-27B-NVFP4 mit DFlash2 — schnellster Stand, geprüft 10.09.
+
+```bash
+cd /home/mp/Projekte/vllm-research/v100-skinny
+DEVS=0,2 \
+DRAFT=/home/mp/.cache/huggingface/hub/models--maurienne-ai--Qwen3.8-27B-DFlash2-NVFP4-RTNcal/snapshots/bd7a934213c47a9e7ef69eef36bb3325f47fd1f1 \
+bash tools/mtp-diagnostics/speed_dflash.sh <name> fork dflash
+```
+
+**77,13 tok/s auf 2× RTX 8000, 76,33 auf 2× V100** (`DEVS=1,3`), Text-SHA
+`0106659946c064b1`, Annahmelänge 3,325. Braucht beide Commits vom 09./10.09.:
+den Block-Pack in `kernels/skinny_kernels.cu` und den Kontext-K/V-Override in
+`fork_patches_150/qwen3_dflash2.py` (in `/home/mp/vllm/venv` ausgerollt,
+md5 gegen das Overlay prüfen). Herleitung: offene Punkte 8 und 10.
+
+**Gemessen nur unter Bench-Bedingungen:** 32k Kontext, Prefix-Caching AUS,
+400 Token Ausgabe, kurzer Prompt. **Nicht** gemessen unter den Bedingungen
+der Produktion (256K Kontext, Prefix-Caching an, Werkzeugaufrufe) — siehe
+offener Punkt 12. `speed_dflash.sh` fährt ohne `DRAFT=` weiter den
+unquantisierten incoai-Kopf, damit alte Zahlen vergleichbar bleiben.
 
 ### Qwen3.8-27B-NVFP4 — Debug-Fahrzeug, geprüft 07.09., nachverifiziert 09.09.
 
@@ -509,6 +530,20 @@ Augustwerten (6,5 min Boot).
   `pgrep -af 'api_server' | grep -v $$`, und `$$` schließt nur die Subshell
   aus, nicht die aufrufende Kommandozeile. Ein `echo`, das den Namen erwähnt,
   reicht für „ABBRUCH: api_server laeuft" bei völlig freien Karten.
+- **`import vllm` mit cwd im 1Cat-Checkout findet das LOKALE Verzeichnis**
+  (10.09.). Eine Prüfung „welche venv hat vLLM wo" meldete für alle drei
+  venvs den Checkout — das war nur cwd. Aus neutralem Verzeichnis zeigt jede
+  venv auf ihr eigenes site-packages. Der Checkout trägt einen Symlink
+  `vllm/_C.abi3.so` → `.venv-sm70-150/.../vllm/_C.abi3.so`; mit cwd im
+  Checkout prüft pytest deshalb wirklich den **Checkout-Code** mit den
+  fertigen Extensions. Genau das ist für 1Cat-PRs gewollt — man muss es nur
+  wissen, statt es zufällig richtig zu machen.
+- **Einen Helfer nie zwischen `@support_torch_compile` und die Klasse
+  schieben** (10.09.). Ein per Skript „vor `class DFlashQwen3Model`"
+  eingefügter Helfer landete unter dem Dekorator; der lag dann auf der
+  Funktion, und die Tests brachen schon beim Sammeln ab
+  (`assert isinstance(cls, type)`). Vor dem Einfügen die Zeile ÜBER dem Anker
+  ansehen.
 - **Eine auffällig HOHE Annahmelänge ist ein Warnsignal, kein Erfolg**
   (09.09.). Eine Wiederholungsschleife ist trivial vorhersagbar, also nimmt
   der Verifizierer fast jeden Entwurf an: gemessen 5,569 von 8 möglichen — bei
@@ -785,11 +820,72 @@ Augustwerten (6,5 min Boot).
    fünf GEMMs einmalig. Der Decode-Pfad bleibt quantisiert, dort sitzt der
    Gewinn; die Kontextvorberechnung ist Prefill-Arbeit.
 
-   **Vierter PR-Kandidat für 1Cat** — das trifft jeden, der DFlash2 mit einem
-   quantisierten Entwurfskopf fahren will, unabhängig von der Kartenklasse.
+   **Als 1Cat-PR #592 eröffnet** (10.09.) — gegen `origin/main` `0a0d4d67`,
+   dort unverändert vorhanden. Der Upstream-Fix sitzt in der Basisklasse
+   (`vllm/model_executor/models/qwen3_dflash.py`), nicht als Override, mit
+   neuer Testdatei `test_dflash2_context_kv_quantized.py` und Gegentest.
+   https://github.com/1CatAI/1Cat-vLLM/pull/592 — Entwurf mit allen Belegen:
+   `upstream-contrib/03-1cat-issues/pr-dflash-quantized-draft-context-kv.md`.
+   Solange #592 nicht gemergt ist, bleibt der Override in unserem Overlay
+   nötig; nach dem Merge kann er raus.
 
 11. **`prof_prefill.sh` ist auf dieser nsys-Version nicht lauffähig** (09.09.).
    Es übergibt `--output` an `nsys launch`; nsys 2022.4.2 nimmt die Option nur
    bei `nsys start` („unrecognised option"). In `prof_dflash.sh` ist es
    korrigiert, in `prof_prefill.sh` noch nicht — STAND.md empfiehlt das Skript
    an mehreren Stellen.
+
+
+12. **Der neue 27B-Stand ist nicht in der Produktion** (10.09.). Der
+    vLLM-Eintrag `Qwen3.8-27B-NVFP4-vllm` in
+    `~/.config/llama-swap/config.yaml` fährt **MTP k=3** mit 256K Kontext
+    und Prefix-Caching; der Hauptpfad für den 27B ist ohnehin **llama.cpp**
+    (`Qwen3.8-27B-MTP-UD-Q8_K_XL.gguf`, `--spec-type draft-mtp`). Bevor
+    DFlash2 dort eingetragen wird, zwei Messungen unter
+    Produktionsbedingungen: (a) langer Kontext mit Prefix-Caching — 1Cat hat
+    zu DFlash2 bei 256K das offene Issue #467 (Allocator-Reset,
+    KV-Überschätzung); (b) der Vergleich gegen den produktiven llama.cpp-Pfad
+    auf denselben Karten. Der Maßstab steht in der Gedächtnisnotiz
+    `project_vllm_vs_llamacpp_criterion`: vLLM muss llama.cpp **schlagen**.
+    Die llama-swap-Konfiguration ist Peuquis Datei — händisch oder mit
+    Sicherung und Freigabe, nie per Skript.
+
+13. **Decode-Profil nach Block-Pack und Entwurfskopf** (10.09., RTX-Paar,
+    `prof_dflash.sh packed 0,2`, ein Rang, 5.395 ms GPU-Zeit im Fenster):
+
+    | Posten | ms | Anteil | Stand |
+    |---|---:|---:|---|
+    | `ncclDevKernel_AllReduce` | 1.714 | 31,8 % | **größter Posten, nie untersucht** |
+    | `skinny_nvfp4_qpn2` | 1.303 | 24,2 % | fertig, 87–98 % der Dachlinie |
+    | `skinny_fp8_qpn8` | 889 | 16,5 % | DRAM-gebunden, nicht anfassen |
+    | `cutlass_75_wmma…f16_16x16` | 291 | 5,4 % | **unidentifiziert** |
+    | `turing_fp16_s1688gemm` | 273 | 5,1 % | war der fp16-Entwurfskopf, erledigt |
+    | `fused_sigmoid_gating_delta_rule` | 180 | 3,3 % | |
+    | `ncclDevKernel_AllGather` | 178 | 3,3 % | |
+    | `skinny_pack_x8` | 29 | 0,5 % | der Pack: spart 310, kostet 29 |
+
+    Das Profil ist vor dem Wechsel des Entwurfskopfs aufgenommen; mit dem
+    NVFP4-Kopf fällt die `turing_fp16_s1688gemm`-Zeile, der Rest steht.
+
+    **AllReduce:** 102 µs je Aufruf für 80 KB Nutzlast ist latenz-, nicht
+    bandbreitendominiert; ohne P2P läuft es über Host-Staging. Unter MTP
+    kostet dasselbe AllReduce 58,7 µs, weil k=3 die halbe Nutzlast bedeutet.
+    Billigster erster Versuch: NCCL-Umgebungsschalter (`NCCL_ALGO`,
+    `NCCL_PROTO`, Puffergrößen) — reine Env-Experimente.
+
+    **Cutlass-fp16-GEMM:** in beiden Profilen (291 ms bei DFlash2, 351 ms bei
+    MTP), also im **Zielmodell**, einer je Schicht und Vorwärtsschritt. Ein
+    kleiner fp16-GEMM, der an den Skinny-Kerneln vorbeiläuft. Was genau, ist
+    offen — der erste Schritt ist, ihn einer Schicht zuzuordnen (nsys mit
+    NVTX oder ein Blick, welche Linears im Modell unquantisiert sind).
+
+14. **Block-Pack auf 1Cats eigene QPN2-Kernel übertragen** (10.09. geprüft).
+    1Cat hat **eigene** QPN2-Kernel in
+    `csrc/sm70_turbomind/ops/nvfp4_qpn2_sm70.cu`, nicht unsere
+    `kernels/skinny_kernels.cu`. Deren Aktivierungszugriff hat **exakt
+    dieselbe Zeilenstreuung**: Zeilen 184–186 und 295–297 laden
+    `input + row * k + group * 16` — dasselbe Muster, das wir behoben haben.
+    Ein PR wäre also eine Portierung auf deren Kernel samt eigener Messung
+    auf Turing; unser Diff gilt nicht wörtlich. Vorher klären, ob 1Cat den
+    Kernel überhaupt auf Turing fährt (ihr Schwerpunkt ist V100, und dort
+    brachte der Pack nur 1,04×).

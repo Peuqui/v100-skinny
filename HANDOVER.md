@@ -176,10 +176,10 @@ Kontrollwert bei exakt 1,00× — daran hing der ganze Beweis.
      bitgleich belegt, hilft Turing 1,39–1,45× auf dem Kernel und schadet
      Volta nicht — und er behebt etwas, das jeden Nutzer dieser Kernel auf
      einer Turing-Karte trifft.
-   - **neu (10.09.):** die fusionierte Kontext-K/V in
+   - **ERÖFFNET als #592 (10.09.):** die fusionierte Kontext-K/V in
      `DFlashQwen3Model._build_context_kv_buffers` greift am `quant_method`
      vorbei und macht DFlash2 mit JEDEM quantisierten Entwurfskopf unfahrbar.
-     Kartenunabhängig, und der Gewinn ist auf beiden Klassen gemessen
-     (+6,1 % RTX, +3,1 % V100, Text unverändert).
+     Kartenunabhängig, gemessen +6,1 % RTX, +3,1 % V100, Text unverändert.
+     https://github.com/1CatAI/1Cat-vLLM/pull/592
 
    Vor einer Meldung: `AGENTS.md`-Pflichtregeln beachten.

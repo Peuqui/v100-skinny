@@ -1,6 +1,12 @@
 # PR-Entwurf: DFlash + quantisierter Entwurfskopf
 
-**Status:** UNGEPOSTET, wartet auf Freigabe von Peuqui.
+**Status:** ERÖFFNET 2026-09-10 als **#592**, nach Freigabe von Peuqui —
+https://github.com/1CatAI/1Cat-vLLM/pull/592
+Vor dem Absenden frisch geprüft: `origin/main` unverändert `0a0d4d67`,
+betroffene Datei unverändert, keine neuen Duplikate. Gegenüber dem
+freigegebenen Text nur die Gliederung an `.github/PULL_REQUEST_TEMPLATE.md`
+angepasst (Test Plan / Test Result getrennt, Checkliste angehängt); alle
+81 Textzeilen wörtlich übernommen, mechanisch geprüft.
 **Branch:** `dflash-quantized-draft-context-kv` auf `Peuqui/1Cat-vLLM`, Commit
 `be2ba891`, Basis `origin/main` = `0a0d4d67`.
 **Ziel-Repo:** `1CatAI/1Cat-vLLM`

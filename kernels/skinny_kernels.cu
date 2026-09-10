@@ -1382,6 +1382,100 @@ torch::Tensor skinny_gemm_qpn(torch::Tensor x, torch::Tensor qcodes,
 
 
 // ---------------------------------------------------------------------------
+// Activation block-pack for the QP-N kernels (2026-09-09).
+//
+// The m8n8k4 A-fragment map gives lane L the row (L&3)+((L&16)?4:0), so a
+// warp needs EIGHT activation rows per 16-k group. Read straight out of
+// x[M][K] those rows sit K*2 bytes apart: eight separate 128B lines for 256
+// distinct bytes, against ONE contiguous run for the weights beside them.
+// The L1 pays per line touched, not per byte wanted, so the activation side
+// costs more than the weights it multiplies -- and the cost grows with M,
+// which is the whole M=1 -> M=8 slope.
+//
+// Established 2026-09-09 by building this file twice and collapsing the
+// eight row pointers onto row 0 in one copy, so the warp hits one line
+// instead of eight (result deliberately wrong; only the time is read). At
+// M=8 that alone was worth 1.30x-2.00x on the RTX 8000 and 1.08x-1.19x on
+// the V100; at M=1, where the eight rows are one row anyway, it changed
+// nothing (1.00x) -- the control that says the effect is the row scatter and
+// not the probe. Before that, two other explanations were measured and
+// dropped: the MMA shape (benchmarks/mma_probe.py -- m8n8k4 and m16n8k8 are
+// equally fast on Turing) and L1 capacity (the SMALLEST activation block
+// collapses hardest, which is backwards for a capacity effect).
+// The standing A/B is benchmarks/qpn2_pack_ab.py.
+//
+// So: pack x into xb[K/16][8][16], one contiguous 256B block per k-group
+// holding all eight rows. The warp then touches TWO lines per group instead
+// of eight. Rows >= M are zero-filled so the block is always eight rows
+// wide, which keeps the buffer size and every address in the main loop
+// independent of M.
+//
+// Arithmetic is untouched -- same values, same order, same registers, same
+// fp32 accumulation, same reduction. Results are bit-identical to the
+// unpacked path; that is the acceptance test, not a tolerance, and it holds
+// end to end: the 27B DFlash2 answer hashes to 0106659946c064b1 packed and
+// unpacked, on both card types.
+//
+// Cost is K*16 bytes written and read once per GEMM (80 KB at K=5120)
+// against 4-25 MB of weights per call, plus one kernel launch -- which is
+// what qpn2_pack_min_m() below has to earn back.
+// ---------------------------------------------------------------------------
+__global__ void skinny_pack_x8(const half *__restrict__ x,
+                               half *__restrict__ xb, int K, int M) {
+  const int total = (K >> 4) * 8 * 8;  // groups x 8 rows x 8 half2
+  half2 *dst = reinterpret_cast<half2 *>(xb);
+  const half2 *src = reinterpret_cast<const half2 *>(x);
+  const int stride = gridDim.x * blockDim.x;
+  for (int t = blockIdx.x * blockDim.x + threadIdx.x; t < total; t += stride) {
+    const int j = t & 7;         // half2 inside this row's 16-k slice
+    const int r = (t >> 3) & 7;  // activation row
+    const int g = t >> 6;        // k group
+    half2 v = __float2half2_rn(0.f);
+    if (r < M) v = src[(size_t)r * (K >> 1) + (size_t)g * 8 + j];
+    dst[t] = v;  // linear in t: the write side is fully coalesced
+  }
+}
+
+// Single call site for the pack, shared by the QP-N wrappers below and by
+// the diagnostic binding, so the buffer shape and launch geometry are
+// stated once.
+static torch::Tensor pack_x8(const torch::Tensor &x, int64_t k, int64_t m,
+                             cudaStream_t stream) {
+  auto xb = torch::empty({k * 8}, x.options());
+  const int total = (int)(k >> 4) * 64;  // groups x 8 rows x 8 half2
+  const int threads = 256;
+  const int blocks = (total + threads - 1) / threads;
+  skinny_pack_x8<<<dim3(blocks), dim3(threads), 0, stream>>>(
+      reinterpret_cast<const half *>(x.data_ptr<at::Half>()),
+      reinterpret_cast<half *>(xb.data_ptr<at::Half>()), (int)k, (int)m);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return xb;
+}
+
+torch::Tensor skinny_pack_x8_op(torch::Tensor x) {
+  TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
+  TORCH_CHECK(x.size(1) % 16 == 0, "K % 16");
+  return pack_x8(x, x.size(1), x.size(0), at::cuda::getCurrentCUDAStream());
+}
+
+// Smallest M at which the pack earns its own launch. Measured 2026-09-09
+// under CUDA-graph replay -- the serving regime -- on the seven shapes the
+// shim dispatches, packed against unpacked:
+//
+//   sm75 (RTX 8000, 96 KB unified L1): packed wins from M=5 (1.02x-1.26x)
+//     up to M=8 (1.29x-1.62x). Below M=5 the launch costs 4-10%.
+//   sm70 (V100, 128 KB L1): the larger L1 absorbs the row scatter, so the
+//     pack only pays at M=8 (trunk aggregate 1.04x) and loses below it.
+//
+// The two numbers differ because the two L1s do, not because the code
+// forks: one kernel, one layout, one dispatch point, one threshold. Asked
+// of the WORKER's device, never device 0.
+static int qpn2_pack_min_m() {
+  const auto *prop = at::cuda::getCurrentDeviceProperties();
+  return (prop->major == 7 && prop->minor == 5) ? 5 : 8;
+}
+
+// ---------------------------------------------------------------------------
 // QPN2 (2026-08-17): the qpn_matrix/qpn_msweep geometry winner. Same QP-N
 // architecture and prepacked fragment layout as skinny_nvfp4_qpn, with
 // SPLITK (warps per CTA splitting K on one N=32 tile) and NACC
@@ -1391,10 +1485,15 @@ torch::Tensor skinny_gemm_qpn(torch::Tensor x, torch::Tensor qcodes,
 // gate_up, split32 for N=2048 — weighted 637 GB/s at M=8 vs 441 for the
 // fixed-4-warp kernel; near-flat in M (704 GB/s weighted at M=1).
 // M <= 8 only; M 9..16 stays on skinny_nvfp4_qpn<2>.
-template <int SPLITK, int NACC>
+// PACKED selects the activation layout the SAME kernel reads: the
+// block-packed xb[k/16][8][16] from skinny_pack_x8, or plain row-major x.
+// It is a template parameter, not a pair of stride arguments: passing the
+// strides at runtime turned the group stride from a shift into an IMAD in
+// the innermost loop and cost 1-5% on the V100 (measured 2026-09-09).
+template <int SPLITK, int NACC, bool PACKED>
 __global__ void skinny_nvfp4_qpn2(const uint8_t *__restrict__ bcodes,
                                   const uint8_t *__restrict__ bscales,
-                                  const half *__restrict__ x,
+                                  const half *__restrict__ xsrc,
                                   half *__restrict__ y, int N, int K, int M,
                                   float gscale) {
   __shared__ float cs[SPLITK > 1 ? SPLITK : 1][SPLITK > 1 ? 256 : 1];
@@ -1425,11 +1524,17 @@ __global__ void skinny_nvfp4_qpn2(const uint8_t *__restrict__ bcodes,
     dequant8_tm(q2.x, sc2, b + 0);
     dequant8_tm(q2.y, sc2, b + 4);
     const unsigned *B = reinterpret_cast<const unsigned *>(b);
+    // The `r < M` guard STAYS. Rows >= M are zeroed in the packed block, so
+    // dropping it would be correct -- but at low M it is what keeps the warp
+    // on one line instead of reading the whole 256B block, and at M=8 every
+    // lane loads anyway, so it costs nothing where the block-pack pays.
+    // (Measured 2026-09-09: unconditional cost 0.56x-0.67x at M<=4.)
     uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
     if (r < M) {
-      const half *xrow = x + (size_t)r * K;
-      a01 = *reinterpret_cast<const uint4 *>(xrow + g * 16);
-      a23 = *reinterpret_cast<const uint4 *>(xrow + g * 16 + 8);
+      const half *xrow = PACKED ? xsrc + (size_t)g * 128 + r * 16
+                                : xsrc + (size_t)r * K + g * 16;
+      a01 = *reinterpret_cast<const uint4 *>(xrow);
+      a23 = *reinterpret_cast<const uint4 *>(xrow + 8);
     }
     const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
     const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
@@ -1490,7 +1595,16 @@ torch::Tensor skinny_gemm_qpn2(torch::Tensor x, torch::Tensor qcodes,
   auto y = torch::empty({m, n}, x.options());
   auto stream = at::cuda::getCurrentCUDAStream();
 
-#define LAUNCH_QPN2(SPv, NAv)                                                 skinny_nvfp4_qpn2<SPv, NAv>                                                     <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                           qcodes.data_ptr<uint8_t>(), qscales.data_ptr<uint8_t>(),                    reinterpret_cast<const half *>(x.data_ptr<at::Half>()),                     reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n,                   (int)k, (int)m, (float)gscale)
+  // Block-pack the activations where it pays (see qpn2_pack_min_m): the
+  // packed buffer is xb[k/16][8][16], one contiguous 256B block per k-group.
+  // Below the threshold the kernel reads x itself with row-major strides --
+  // same kernel, same result, one launch less.
+  const bool packed = (m >= qpn2_pack_min_m());
+  auto xsrc = packed ? pack_x8(x, k, m, stream) : x;
+
+#define LAUNCH_QPN2_T(SPv, NAv, PKv)                                          skinny_nvfp4_qpn2<SPv, NAv, PKv>                                                <<<dim3((int)(n / 32)), dim3(32 * SPv), 0, stream>>>(                           qcodes.data_ptr<uint8_t>(), qscales.data_ptr<uint8_t>(),                    reinterpret_cast<const half *>(xsrc.data_ptr<at::Half>()),                  reinterpret_cast<half *>(y.data_ptr<at::Half>()), (int)n,                   (int)k, (int)m, (float)gscale)
+
+#define LAUNCH_QPN2(SPv, NAv)                                                 do {                                                                            if (packed) LAUNCH_QPN2_T(SPv, NAv, true);                                    else LAUNCH_QPN2_T(SPv, NAv, false);                                      } while (0)
 
   const int key = (int)(splitk * 10 + nacc);
   switch (key) {
@@ -1503,6 +1617,7 @@ torch::Tensor skinny_gemm_qpn2(torch::Tensor x, torch::Tensor qcodes,
     default: TORCH_CHECK(false, "qpn2 splitk in {8,16,32}, nacc in {1,2}");
   }
 #undef LAUNCH_QPN2
+#undef LAUNCH_QPN2_T
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return y;
 }
@@ -1585,6 +1700,12 @@ DEV_INLINE void fp8x8_to_half2x4_fast(const uint2 q, half2 out[4]) {
 // tscale is then the raster [ceil(N/BN)][kblocks] fp32, and the decoded
 // weights sit at their TRUE magnitude in the mma (the 2^8 decoder factor is
 // folded into sc2), so the epilogue writes the fp32 sum unscaled.
+// NOT block-packed, unlike skinny_nvfp4_qpn2. Measured 2026-09-09: FP8
+// reads twice the bytes per weight, so this kernel is far more DRAM-bound
+// and already sat at 81-90% of the read ceiling on both cards. Packing the
+// activations bought 1.05x on the RTX 8000 and COST 4% on the V100 -- the
+// launch is not paid for. The row scatter is real here too, it is just not
+// what limits this kernel.
 template <int SPLITK, int NACC, bool FASTDEC = false, bool BLOCKED = false>
 __global__ void skinny_fp8_qpn8(const uint8_t *__restrict__ bcodes,
                                 const float *__restrict__ tscale,
@@ -2681,6 +2802,9 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "M<=16)");
   m.def("gemm_qpn2", &skinny_gemm_qpn2,
         "skinny NVFP4 GEMM (QP-N geometry winner, M<=8)");
+  m.def("pack_x8", &skinny_pack_x8_op,
+        "block-pack activations to xb[k/16][8][16] (diagnostic entry: the "
+        "QP-N wrappers call the kernel themselves)");
   m.def("gemm_qpn", &skinny_gemm_qpn,
         "skinny NVFP4 GEMM (QP-N mma.m8n8k4, prepacked weights, M<=16)");
   m.def("gemm_qpn_simt", &skinny_gemm_qpn_simt,

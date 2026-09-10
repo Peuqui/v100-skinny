@@ -591,6 +591,8 @@ rather than redefines.
 | claim | file | harness |
 |---|---|---|
 | kernel bandwidth, both arms | [`results/kernel_matched_20260819.csv`](results/kernel_matched_20260819.csv) | [`benchmarks/kernel_matched_bench.py`](benchmarks/kernel_matched_bench.py) |
+| activation block-pack, qpn2 | [`results/qpn2_pack_20260909.csv`](results/qpn2_pack_20260909.csv) | [`benchmarks/qpn2_pack_ab.py`](benchmarks/qpn2_pack_ab.py) |
+| MMA shape + fragment layouts | — (in the docstring) | [`benchmarks/mma_probe.py`](benchmarks/mma_probe.py) |
 | launch table, three depths | [`results/v11_shipped_table_20260819.md`](results/v11_shipped_table_20260819.md) | [`benchmarks/v11_suite.py`](benchmarks/v11_suite.py) |
 | AIME + seconds to answer | [`results/aime_partfix_20260819.md`](results/aime_partfix_20260819.md) | [`benchmarks/ninfer_repro.py`](benchmarks/ninfer_repro.py) |
 | head-to-head vs NInfer | [`results/headtohead_5090_20260819.md`](results/headtohead_5090_20260819.md) | [`benchmarks/v11_suite.py`](benchmarks/v11_suite.py) |

@@ -17,7 +17,9 @@ Produktion und alle Messskripte laufen über den Symlink **`/home/mp/vllm/venv`*
 → `venv-main` → **`.venv-sm70-main`** (Python 3.12, torch 2.10.0+cu128, siehe
 `~/vllm/README.md`). Darin ist 1Cat **editable** aus dem Worktree
 `/home/mp/Projekte/vllm-research/1Cat-vLLM-work` installiert, Branch
-`work-main` (lokal, bewusst nicht gepusht): 1Cat `origin/main` `0a0d4d67` +
+`work-main` (lokaler Arbeitszweig; abgenommene Stände gehen als
+`verified/volta-turing` in den Fork Peuqui/1Cat-vLLM, jeder mit Tag —
+`verified-2026-09-10` → `f03a7102`): 1Cat `origin/main` `0a0d4d67` +
 unsere offenen PRs #572 #573 #574 #576 #592 + v100-skinny-Overlay (`5099866f`)
 + FA2-Koexistenz und Bau-Fix (`f03a7102`).
 
@@ -35,9 +37,11 @@ unsere offenen PRs #572 #573 #574 #576 #592 + v100-skinny-Overlay (`5099866f`)
 - **Skinny** kommt weiter aus `kernels/skinny_kernels.cu` (JIT über
   `VLLM_SKINNY_NVFP4_SRC`); `fork_patches_150/` wird für diese venv NICHT
   mehr ausgerollt — die Patches stecken im Overlay-Commit.
-- **Rückweg:** `ln -sfn ~/vllm/venv-150 ~/vllm/venv`. Die alte venv
-  (1Cat-1.5.0-Wheel + `fork_patches_150` + FA2-sm75-Drop-in) bleibt liegen,
-  bis Peuqui das Löschen freigibt.
+- **Kein Symlink-Rückweg mehr:** `.venv-sm70-130` und `.venv-sm70-150` sind
+  gelöscht (10.09. abends, Freigabe Peuqui). Zurück geht es nur als Neubau
+  vom Tag `verified-2026-09-10` nach dem Rezept unten. Der 1Cat-Haupt-Checkout
+  holt seine kompilierten Module per Symlink aus dem Worktree
+  (`1Cat-vLLM/vllm/*.abi3.so` → `1Cat-vLLM-work/vllm/`).
 
 **Bau** (~45 min mit `MAX_JOBS=4`), aus dem Worktree:
 `env -u VLLM_FLASH_ATTN_SRC_DIR CPATH=<venv>/lib/python3.12/site-packages/nvidia/cuda_cccl/include CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0 MAX_JOBS=4 <venv>/bin/python -m pip install -e . --no-build-isolation`;
@@ -59,6 +63,16 @@ danebenlegen und `fork_patches_150/tilelang_target.py` nach
 Flash-Next: je ein Lauf — keine Ratenaussage, das 180B ist nicht
 deterministisch (q3 ist der bekannte Aussetzer vom 09.09.). Flash-Next
 berührt FA2 gar nicht: Seine Attention läuft über QSA-Triton und GDN.
+
+**Produktive llama-swap-Einträge**, je mit exakt ihrem Befehl kalt (eigener
+Port, lange Geduld) und danach warm über llama-swap selbst:
+
+| Eintrag | kalt | warm über llama-swap | Befund |
+|---|---|---|---|
+| `Qwen3.8-27B-NVFP4-vllm` (MTP k=3, 256K, Prefix-Caching) | 511 s | 121 s | kohärent, beide Ränge laden die sm75-FA2 |
+| `Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ-vllm` | 612 s | 316 s | kohärent |
+| `Qwen3.8-27B-NVFP4-DFlash2-vllm` (NEU 10.09., 256K, Prefix-Caching) | 430 s | 140 s | kohärent, wortgleich mit dem MTP-Eintrag |
+| `DeepSeek-V4-Flash-nvfp4-DSpark-vllm` | — | — | bootet nie, offener Punkt 17 |
 
 ---
 
@@ -921,8 +935,10 @@ Augustwerten (6,5 min Boot).
    an mehreren Stellen.
 
 
-12. **DFlash2 ist nicht in llama-swap eingetragen** (10.09.; die venv ist
-    seit abends umgestellt, der Eintrag fährt weiter MTP). Der
+12. **DFlash2 steht seit 10.09. abends in llama-swap** als
+    `Qwen3.8-27B-NVFP4-DFlash2-vllm` und bootet unter 256K mit Prefix-Caching
+    (Tabelle „Produktive llama-swap-Einträge"). Offen bleiben die Messungen
+    unten. Der bisherige Eintrag `Qwen3.8-27B-NVFP4-vllm` fährt weiter MTP. Der
     vLLM-Eintrag `Qwen3.8-27B-NVFP4-vllm` in
     `~/.config/llama-swap/config.yaml` fährt **MTP k=3** mit 256K Kontext
     und Prefix-Caching; der Hauptpfad für den 27B ist ohnehin **llama.cpp**
@@ -1002,7 +1018,24 @@ Augustwerten (6,5 min Boot).
       „nur eigene Prozessbäume". Auf die eigene Prozessgruppe umstellen.
     - `VLLM_SKINNY_*` stehen nicht in `envs.py` → vLLM warnt beim Start
       „Unknown vLLM environment variable". Harmlos, aber Rauschen.
-    - Werkzeuge mit fest eingetragener `.venv-sm70-130` (`tools/spec_hunt.py`,
-      `gguf_vllm_test.py`, `flashnext_stage_test.py`, `grid_stage_test.py`,
-      Docstrings weiterer) — vor dem Löschen der 130 umstellen.
-    - Alte venvs 130 und 150 erst nach Freigabe löschen.
+    - ~~Werkzeuge mit fester `.venv-sm70-130`~~ — ERLEDIGT, zeigen auf
+      `~/vllm/venv`; beide alten venvs sind gelöscht.
+
+17. **Der vLLM-Eintrag `DeepSeek-V4-Flash-nvfp4-DSpark-vllm` bootet nie** —
+    auch nicht mit der alten 150, also kein Rückschritt. Erst fehlte
+    `--kv-cache-dtype fp8` (DeepseekV4 verlangt es; am 10.09. ergänzt), dann
+    OOM beim Laden: 165 GB Modell auf den vier Karten des Eintrags
+    (`0,2,1,4`, zusammen 160 GB) — passt mit keiner Aufteilung. Lauffähig ist
+    DeepSeek unter vLLM nur mit allen fünf Karten
+    (`scripts/serve-deepseek-het-graphs.sh`, PP5): dann ist aber die
+    Side-Channel-Karte belegt, der Kontext liegt bei 4.096, und llama.cpp ist
+    ohnehin schneller (Bench 40,4 gegen 21–27 tok/s). **Entscheidung bei
+    Peuqui:** Eintrag entfernen oder nach PP5 neu aufsetzen.
+
+18. **Drei DFlash2-PRs von 1Cat fehlen in work-main** (10.09.): #586 (native
+    Prefill-Routen), #587 (Leistungsabfall bei langem Kontext), #589
+    (Attention-Kosten, exakte QK-Wiederverwendung) — alle nach unserer Basis
+    `0a0d4d67` gemerged, alle reiner Python-Code. Merge ohne Neubau möglich
+    (editable), danach Pflicht: SHA auf beiden Kartenpaaren und der
+    DFlash2-Produktionseintrag. #582/#583/#585/#588 (Video/Bild/H3) sind
+    schon drin.

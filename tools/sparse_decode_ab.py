@@ -12,7 +12,7 @@ Indexer-TopK 512 (extra), Block 256, packed-uint8-Cache. Beide Kernel
 lesen DIESELBEN Cache-Bytes/Indizes -> Ausgaben muessen uebereinstimmen.
 
 Aufruf: CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=<gpu> \
-  CUDA_HOME=<cuda-12.8> .venv-sm70-130/bin/python tools/sparse_decode_ab.py
+  CUDA_HOME=<cuda-12.8> ~/vllm/venv/bin/python tools/sparse_decode_ab.py
 """
 import statistics
 

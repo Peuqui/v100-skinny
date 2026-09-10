@@ -33,7 +33,7 @@ export AIFRED_STATE_FILE=$W/state.txt   # ALLE Stufen auf Upstream, sonst faehrt
 cd $REPO
 VLLM_SM70_E5_CACHE=0 CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
-ENV_PREFIX=$REPO/.venv-sm70-150 \
+ENV_PREFIX=/home/mp/vllm/venv \
 TP=2 PP=2 K=4 GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 PORT=$PORT LOG=$W/boot.log \
 EXTRA_ARGS='--compilation-config {"cudagraph_capture_sizes":[1,2,4,5,8]}' \
@@ -42,7 +42,7 @@ RC=$?
 PID=$(cat $REPO/.flash-next.pid 2>/dev/null)
 
 if curl -sf -o /dev/null --max-time 5 "http://127.0.0.1:$PORT/v1/models"; then
-  $REPO/.venv-sm70-150/bin/python - "$W" "$PORT" <<'PY'
+  /home/mp/vllm/venv/bin/python - "$W" "$PORT" <<'PY'
 import hashlib, json, sys, time, urllib.request
 W, PORT = sys.argv[1], sys.argv[2]
 URL = f"http://127.0.0.1:{PORT}/v1/completions"

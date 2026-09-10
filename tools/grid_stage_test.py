@@ -23,7 +23,7 @@ BLK = sys.argv[7] if len(sys.argv) > 7 else "16"
 # Stufen (so lief der PP5-Vergleichslauf vom 25.08.).
 TP = sys.argv[8] if len(sys.argv) > 8 else "2"
 PORT = 8129
-VENV = "/home/mp/Projekte/v100-skinny/.venv-sm70-130"
+VENV = "/home/mp/vllm/venv"  # Produktions-Symlink, siehe ~/vllm/README.md
 # Modell ueber GRID_MODEL uebersteuerbar (Formatvergleiche NVFP4 vs FP8),
 # damit Sonde, Kohaerenztor und Messpunkte identisch bleiben.
 MODEL = os.environ.get("GRID_MODEL") or (

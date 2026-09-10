@@ -3,7 +3,8 @@
 v100-skinny moe_qpn, auf echten Qwen3.6-35B-A3B-NVFP4-Expert-Bytes (Layer 1,
 E=256, topk=8, w13 1024x2048, w2 2048x512 — 1Cats kleinster Contract).
 
-Laeuft in .venv-sm70-150 (1.5.0-Wheel). Nur V100: 1Cats apply() ist
+Geschrieben gegen das 1.5.0-Wheel (.venv-sm70-150, geloescht am 10.09.);
+laeuft mit ~/vllm/venv, solange 1Cats Op-Signaturen gleich bleiben. Nur V100: 1Cats apply() ist
 exakt-sm70-gegated; die Ops selbst werden hier direkt gerufen. Gemessen
 werden die reinen Gewichts-GEMM-Stufen (w13 + w2) beider Routen bei
 IDENTISCHEM, vorab praeparierten Routing (perm/offsets ausserhalb der
@@ -11,7 +12,7 @@ Messschleife — beide Seiten gleich behandelt). Korrektheit: beide Routen
 gegen eine unabhaengige fp16-Dequant-Referenz (torch-Einsum).
 
 Aufruf: CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1 \
-  .venv-sm70-150/bin/python tools/moe_ab_1cat.py
+  ~/vllm/venv/bin/python tools/moe_ab_1cat.py
 """
 import sys
 import time

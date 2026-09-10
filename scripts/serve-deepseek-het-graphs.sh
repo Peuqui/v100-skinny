@@ -15,12 +15,14 @@ export PYTORCH_ALLOC_CONF=expandable_segments:True
 export NCCL_P2P_DISABLE=1
 export CUDA_VISIBLE_DEVICES=0,1,4,3,2
 export VLLM_PP_LAYER_PARTITION=11,8,8,8,8
-exec /home/mp/vllm/venv/bin/python \
+# venv ueber VENV umschaltbar; Vorgabe bleibt der Produktions-Symlink.
+VENV=${VENV:-/home/mp/vllm/venv}
+exec "$VENV/bin/python" \
   -m vllm.entrypoints.openai.api_server \
   --model /home/mp/models/DeepSeek-V4-Flash-nvfp4-DSpark \
   --served-model-name dsv4-manual --trust-remote-code --dtype half \
   --disable-custom-all-reduce --enable-prompt-tokens-details \
-  --tensor-parallel-size 1 --pipeline-parallel-size 5 \
+  --tensor-parallel-size 1 --pipeline-parallel-size 5 --distributed-timeout-seconds 3600 \
   --gpu-memory-utilization 0.95 --max-model-len 4096 \
   --max-num-seqs 1 --max-num-batched-tokens 64 --kv-cache-dtype fp8 --num-gpu-blocks-override 512 \
   --speculative-config '{"method": "dspark", "num_speculative_tokens": 5}' --compilation-config '{"cudagraph_capture_sizes":[6],"max_cudagraph_capture_size":6}' --host 127.0.0.1 --port 19998

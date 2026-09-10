@@ -23,6 +23,7 @@
 #   0              = alles im VRAM (Stand vor dieser Kaskade)
 #
 # Überschreibbar: ENV_PREFIX TP PP K GMU MML MNS MBT PORT PP_PARTITION LOG
+#                 BOOT_WAIT_S (Sekunden bis zum Aufgeben, Vorgabe 900)
 #                 PLE_HOST_GIB
 #                 EXTRA_ARGS (zusätzliche Argumente für den Server)
 #                 SPEC_CONFIG (kompletter --speculative-config-JSON; ersetzt den
@@ -36,7 +37,8 @@ CKPT="${1:-}"
 [ -f "$CKPT/config.json" ] || { echo "ERROR: no config.json in $CKPT" >&2; exit 2; }
 CKPT="$(cd "$CKPT" && pwd)"
 
-ENV_PREFIX="${ENV_PREFIX:-$REPO_ROOT/.venv-sm70-130}"
+# Vorgabe ist der Produktions-Symlink (~/vllm/README.md), keine feste venv.
+ENV_PREFIX="${ENV_PREFIX:-/home/mp/vllm/venv}"
 PY="$ENV_PREFIX/bin/python"
 [ -x "$PY" ] || { echo "ERROR: no environment at $ENV_PREFIX" >&2; exit 2; }
 
@@ -119,11 +121,12 @@ SERVER_PID=$!
 echo "$SERVER_PID" > "$REPO_ROOT/.flash-next.pid"
 echo "==> pid $SERVER_PID, log $LOG"
 
-for i in $(seq 1 900); do
+BOOT_WAIT_S="${BOOT_WAIT_S:-900}"
+for i in $(seq 1 "$BOOT_WAIT_S"); do
   if curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/v1/models"; then
     echo "==> UP on port $PORT (pid $SERVER_PID)"; exit 0
   fi
   kill -0 "$SERVER_PID" 2>/dev/null || { echo "==> SERVER DIED after ${i}s"; exit 1; }
   sleep 1
 done
-echo "==> TIMEOUT after 900s (pid $SERVER_PID still alive)"; exit 2
+echo "==> TIMEOUT after ${BOOT_WAIT_S}s (pid $SERVER_PID still alive)"; exit 2

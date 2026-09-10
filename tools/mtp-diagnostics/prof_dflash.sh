@@ -23,7 +23,10 @@ rm -rf "$W"; mkdir -p "$W"
 cd "$BASE" || exit 1
 SESSION="dflashprof_$$"
 
-export PATH=/home/mp/vllm/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
+# venv ueber VENV umschaltbar: eine neu gebaute venv laesst sich so abnehmen,
+# bevor /home/mp/vllm/venv auf sie zeigt. Vorgabe bleibt der Symlink.
+VENV=${VENV:-/home/mp/vllm/venv}
+export PATH="$VENV/bin":/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0
 export NCCL_P2P_DISABLE=1 VLLM_SM70_E5_CACHE=0 VLLM_SM70_NVFP4_TURBOMIND=1
 export VLLM_SM70_QUANT_BACKEND=auto VLLM_SKINNY_NVFP4=1 VLLM_SKINNY_QPN=1 VLLM_SKINNY_QPN2=1
@@ -33,6 +36,11 @@ export VLLM_CACHE_ROOT=/home/mp/.cache/vllm-calibration HOME=/home/mp
 export CUDA_VISIBLE_DEVICES=$DEVS
 export VLLM_USE_V2_MODEL_RUNNER=1 VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS=1
 export VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1
+# Seit dem Upstream-Stand vom 10.09. bricht DFlash2 mit quantisiertem
+# Ziel-LM-Head ab (RadixArk quantisiert ihn mit). Der Schalter ist 1Cats
+# Opt-in fuer die Kandidaten-TopK ueber dichte Logits -- derselbe Rechenweg,
+# den aeltere venvs ohne Abfrage nehmen; die kennen den Schalter nicht.
+export VLLM_SM70_DFLASH2_QUANT_LM_HEAD=${VLLM_SM70_DFLASH2_QUANT_LM_HEAD:-1}
 # Diagnose-Marken AUS: sie synchronisieren und wuerden das Profil verzerren.
 unset VLLM_SKINNY_PPDIAG
 
@@ -55,7 +63,7 @@ used=$(nvidia-smi --id=$DEVS --query-gpu=memory.used --format=csv,noheader,nouni
 # Fehler und ist auf dieser nsys-Version ebenfalls nicht lauffaehig.
 nsys launch --session-new="$SESSION" --trace=cuda --cuda-graph-trace=node \
   --trace-fork-before-exec=true \
-  /home/mp/vllm/venv/bin/python -m vllm.entrypoints.openai.api_server \
+  "$VENV/bin/python" -m vllm.entrypoints.openai.api_server \
   --model "$CKPT" --served-model-name m --trust-remote-code --dtype float16 \
   --disable-custom-all-reduce --no-enable-prefix-caching \
   --tensor-parallel-size 2 --pipeline-parallel-size 1 --gpu-memory-utilization 0.90 \
@@ -75,7 +83,7 @@ done
 echo "STATUS $STATUS  ($NAME: $MODE, DEVS=$DEVS)"
 
 if [ "${STATUS#up_}" != "$STATUS" ]; then
-  /home/mp/vllm/venv/bin/python - "$W" "$SESSION" <<'PY'
+  "$VENV/bin/python" - "$W" "$SESSION" <<'PY'
 import json, subprocess, sys, time, urllib.request
 W, SESSION = sys.argv[1], sys.argv[2]
 URL = "http://127.0.0.1:8066/v1/completions"

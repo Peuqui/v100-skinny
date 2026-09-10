@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-10.** Dieses Dokument beschreibt, WIE der Stack heute
+**Stand 2026-09-10 abends.** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -8,6 +8,57 @@ Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 Reihenfolge für eine neue Instanz: dieses Dokument, dann `HANDOVER.md`. Die
 Logbücher im Journal sind chronologisch und groß — sie beantworten „warum ist es
 so", nicht „wie ist es".
+
+---
+
+## Laufzeitumgebung (seit 10.09. abends)
+
+Produktion und alle Messskripte laufen über den Symlink **`/home/mp/vllm/venv`**
+→ `venv-main` → **`.venv-sm70-main`** (Python 3.12, torch 2.10.0+cu128, siehe
+`~/vllm/README.md`). Darin ist 1Cat **editable** aus dem Worktree
+`/home/mp/Projekte/vllm-research/1Cat-vLLM-work` installiert, Branch
+`work-main` (lokal, bewusst nicht gepusht): 1Cat `origin/main` `0a0d4d67` +
+unsere offenen PRs #572 #573 #574 #576 #592 + v100-skinny-Overlay (`5099866f`)
++ FA2-Koexistenz und Bau-Fix (`f03a7102`).
+
+- **Der Worktree IST die Produktion.** Dort keine anderen Branches
+  auschecken; PR-Arbeit im Haupt-Checkout `1Cat-vLLM`. Jede Python-Änderung
+  im Worktree wirkt beim nächsten Serverstart. Der Versionsstring
+  (`…g5099866fa…`) nennt nur den Bau-Commit.
+- **FA2 auf gemischter Hardware:** zwei Bibliotheken nebeneinander in
+  `vllm/vllm_flash_attn/` — `_vllm_fa2_C.abi3.so` (V100: zhinianqins FA plus
+  1Cats d256-Ops, sieben `sm70_*`-Ops) und `_vllm_fa2_C_sm75.abi3.so` (unsere
+  sm75-FA, Kopie aus `.venv-sm70-150`, md5 `1285b8f0e013`, gitignored).
+  `flash_attn_interface.load_fa2_library(device)` lädt beim ersten Op-Aufruf
+  die zur Karte passende. Beleg im Boot-Log je Rang: „Loaded FA2 library …
+  for compute capability …". Vorher fehlten der V100 die d256-Ops ganz.
+- **Skinny** kommt weiter aus `kernels/skinny_kernels.cu` (JIT über
+  `VLLM_SKINNY_NVFP4_SRC`); `fork_patches_150/` wird für diese venv NICHT
+  mehr ausgerollt — die Patches stecken im Overlay-Commit.
+- **Rückweg:** `ln -sfn ~/vllm/venv-150 ~/vllm/venv`. Die alte venv
+  (1Cat-1.5.0-Wheel + `fork_patches_150` + FA2-sm75-Drop-in) bleibt liegen,
+  bis Peuqui das Löschen freigibt.
+
+**Bau** (~45 min mit `MAX_JOBS=4`), aus dem Worktree:
+`env -u VLLM_FLASH_ATTN_SRC_DIR CPATH=<venv>/lib/python3.12/site-packages/nvidia/cuda_cccl/include CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0 MAX_JOBS=4 <venv>/bin/python -m pip install -e . --no-build-isolation`;
+danach `pip install -e ./flash-attention-v100 --no-build-isolation --no-deps`,
+die GDN-Erweiterung wie `setup.py::bundle_flash_qla_sm70` nach
+`flash_qla/ops/gated_delta_rule/chunk/sm70/` legen, die sm75-FA-Datei
+danebenlegen und `fork_patches_150/tilelang_target.py` nach
+`tilelang/utils/target.py`. Warum jeder Schritt: Fallstricke unten.
+
+**Abnahme 10.09., alt gegen neu am selben Tag, gleiche Karten und Skripte:**
+
+| Test | neu (`.venv-sm70-main`) | alt (`.venv-sm70-150`) |
+|---|---|---|
+| 27B DFlash2, V100-Paar (`speed_dflash.sh`) | SHA `0106659946c064b1`, 76,30 tok/s | SHA gleich, 76,33 |
+| 27B DFlash2, RTX-Paar | SHA gleich, 77,12 / 76,75 | SHA gleich, 77,13 |
+| DeepSeek-V4 PP5, alle 5 Karten (`scripts/deepseek_coherence.py`, zwei Läufe) | 8/8, beide Läufe byteidentisch | 8/8, **byteidentisch zu neu**, gleiches Tempo |
+| Flash-Next TP2×PP2 heterogen (`flashnext_qual.sh … 4`) | 3/3, 25,4 / 31,8 / 29,4 tok/s | 2/3 (q3 Coandă verfehlt), 22,3 / 27,9 / 26,4 |
+
+Flash-Next: je ein Lauf — keine Ratenaussage, das 180B ist nicht
+deterministisch (q3 ist der bekannte Aussetzer vom 09.09.). Flash-Next
+berührt FA2 gar nicht: Seine Attention läuft über QSA-Triton und GDN.
 
 ---
 
@@ -71,7 +122,7 @@ DFlash2-Tempolücke, siehe offener Punkt 8.
 cd /home/mp/Projekte/vllm-research/v100-skinny
 VLLM_SM70_E5_CACHE=0 CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
-ENV_PREFIX=$PWD/.venv-sm70-150 \
+ENV_PREFIX=/home/mp/vllm/venv \
 TP=2 PP=2 K=4 GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 PORT=8026 \
 bash scripts/serve-qwen38-flash-next.sh <checkpoint>
@@ -108,7 +159,11 @@ AIfred-Alltag.
   „marlin" sofort False zurück); auf den sm70-Stufen bricht NVFP4-MoE dann mit
   `NotImplementedError` ab. Die dortige Aufrufzeile bootet auf dem 1.5.0-Stand
   **nicht mehr**.
-- `ENV_PREFIX` muss gesetzt werden — der Skript-Default ist `.venv-sm70-130`.
+- `ENV_PREFIX`: Skript-Default ist seit 10.09. der Produktions-Symlink
+  `/home/mp/vllm/venv` (vorher `.venv-sm70-130`). Nach gelöschten
+  Compile-Caches bootet der Stand kalt: dann `BOOT_WAIT_S=2400` und
+  `EXTRA_ARGS='--distributed-timeout-seconds 3600 …'` wie in
+  `flashnext_qual.sh`.
 - Checkpoint: **`/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ`**
   fahren. **Korrigiert 08.09.:** Der Transplant **lädt auf dem 1.5.0-Stand
   einwandfrei** (vier Boots, null „routed-expert weights were not loaded"), und
@@ -131,10 +186,14 @@ bash tools/mtp-diagnostics/speed_dflash.sh <name> fork dflash
 ```
 
 **77,13 tok/s auf 2× RTX 8000, 76,33 auf 2× V100** (`DEVS=1,3`), Text-SHA
-`0106659946c064b1`, Annahmelänge 3,325. Braucht beide Commits vom 09./10.09.:
-den Block-Pack in `kernels/skinny_kernels.cu` und den Kontext-K/V-Override in
-`fork_patches_150/qwen3_dflash2.py` (in `/home/mp/vllm/venv` ausgerollt,
-md5 gegen das Overlay prüfen). Herleitung: offene Punkte 8 und 10.
+`0106659946c064b1`, Annahmelänge 3,325 — auf `.venv-sm70-main` bestätigt
+(76,30 V100, 77,12 / 76,75 RTX, siehe Laufzeitumgebung). Braucht den
+Block-Pack in `kernels/skinny_kernels.cu` und den Kontext-K/V-Fix: in der
+neuen venv als Basisklasse aus PR #592, in `.venv-sm70-150` als Override aus
+`fork_patches_150/qwen3_dflash2.py`. Das Skript setzt
+`VLLM_SM70_DFLASH2_QUANT_LM_HEAD=1` — seit dem Upstream-Stand vom 10.09.
+bricht DFlash2 ohne diesen Opt-in am quantisierten RadixArk-LM-Head ab.
+Herleitung: offene Punkte 8 und 10.
 
 **Gemessen nur unter Bench-Bedingungen:** 32k Kontext, Prefix-Caching AUS,
 400 Token Ausgabe, kurzer Prompt. **Nicht** gemessen unter den Bedingungen
@@ -550,6 +609,32 @@ Augustwerten (6,5 min Boot).
   völlig degeneriertem Text. Gesund sieht anders aus: die
   Per-Position-Annahmeraten fallen ab (0,822 / 0,644 / 0,550 / … / 0,246).
   Sind alle Positionen gleichmäßig hoch, zuerst den Text lesen.
+- **1Cat-Quellbau nur mit `TORCH_CUDA_ARCH_LIST=7.0`** (10.09.). Die
+  Produktion war immer reines sm_70 (cuobjdump; die RTX fährt es per
+  Binärkompatibilität). Bei `7.0;7.5` lässt 1Cats CMake SM70-Marlin samt MoE
+  ganz weg (`MARLIN_SM70_ARCHS AND NOT MARLIN_OTHER_ARCHS`) — die V100 hätte
+  kein Marlin, die RTX andere Kernel.
+- **Das nvcc-Deb hat keine CCCL-Header** (10.09.). Ohne `CPATH` auf
+  `nvidia/cuda_cccl/include` der venv greift Ubuntus libcu++ 1.9 aus
+  `/usr/include`, und `grouped_topk_kernels.cu` bricht an
+  `cuda::std::isfinite`.
+- **1Cats editable Bau ist dreifach kaputt** (10.09.; 1Cat selbst baut nur
+  Wheels): fünf `WITH_SOABI`-Module ohne `USE_SABI` scheitern erst NACH dem
+  Vollbau am abi3-Namen (Fix `f03a7102`); `flash_attn_v100` fällt aus dem
+  editable Mapping (absoluter `package_dir`); die GDN-Erweiterung landet nur
+  im temporären `build-lib`. pip löscht bei jedem Fehlschlag das Build-Temp —
+  Nachlaufschritte vorher einzeln prüfen.
+- **FA2-Bibliotheken nie beim Import laden** (10.09.). Der Worker hat sein
+  Gerät dann noch nicht gewählt — ein verstecktes Gerät-0-Gate. zhinianqins
+  V100-FA und unsere sm75-FA gehen nicht in eine Bibliothek: die V100-FA ist
+  eine Neufassung mit festen `SM70_8x8x4`-Atomen, die sm75-FA nutzt die
+  stabile ABI (1Cats v37-`register.cpp` bricht dort mit `#error`), und beide
+  beanspruchen `TORCH_LIBRARY(_vllm_fa2_C)`.
+- **Keine Kommentarzeile in eine Backslash-Kette** (10.09.). In
+  `flashnext_qual.sh` beendete ein `#` die Env-Präfix-Kette; `K`,
+  `ENV_PREFIX` und Co. kamen nie an, der Server lief mit alter venv und ohne
+  MTP. `bash -n` war grün, aufgefallen nur über `speculative_config=None`.
+  Übergabe per Trockenlauf und `/proc/<pid>/cmdline` belegen.
 
 ---
 
@@ -836,7 +921,8 @@ Augustwerten (6,5 min Boot).
    an mehreren Stellen.
 
 
-12. **Der neue 27B-Stand ist nicht in der Produktion** (10.09.). Der
+12. **DFlash2 ist nicht in llama-swap eingetragen** (10.09.; die venv ist
+    seit abends umgestellt, der Eintrag fährt weiter MTP). Der
     vLLM-Eintrag `Qwen3.8-27B-NVFP4-vllm` in
     `~/.config/llama-swap/config.yaml` fährt **MTP k=3** mit 256K Kontext
     und Prefix-Caching; der Hauptpfad für den 27B ist ohnehin **llama.cpp**
@@ -880,12 +966,43 @@ Augustwerten (6,5 min Boot).
     NVTX oder ein Blick, welche Linears im Modell unquantisiert sind).
 
 14. **Block-Pack auf 1Cats eigene QPN2-Kernel übertragen** (10.09. geprüft).
-    1Cat hat **eigene** QPN2-Kernel in
-    `csrc/sm70_turbomind/ops/nvfp4_qpn2_sm70.cu`, nicht unsere
-    `kernels/skinny_kernels.cu`. Deren Aktivierungszugriff hat **exakt
+    1Cats QPN-Kernel (`csrc/sm70_turbomind/ops/nvfp4_qpn2_sm70.cu` u. a.)
+    sind eine **Übernahme aus v100-skinny** (1Cat-PR #403, 29.08., Lizenz
+    `LICENSE.v100-skinny`), Stand Ende August. Deren Aktivierungszugriff hat **exakt
     dieselbe Zeilenstreuung**: Zeilen 184–186 und 295–297 laden
     `input + row * k + group * 16` — dasselbe Muster, das wir behoben haben.
     Ein PR wäre also eine Portierung auf deren Kernel samt eigener Messung
-    auf Turing; unser Diff gilt nicht wörtlich. Vorher klären, ob 1Cat den
-    Kernel überhaupt auf Turing fährt (ihr Schwerpunkt ist V100, und dort
-    brachte der Pack nur 1,04×).
+    auf Turing; unser Diff gilt nicht wörtlich. **Geklärt 10.09.: auf Turing
+    fährt 1Cat ihn nicht** — die TurboMind-Weiche (`sm70_turbomind.py`) prüft
+    exakt SM70. Ein Angebot müsste den Turing-Pfad mitbringen; auf der V100
+    brachte der Pack nur 1,04×.
+
+15. **PR-Pakete — Besprechung mit Peuqui ausstehend** (10.09.). Aus 1Cat plus
+    unseren offenen PRs entsteht NICHT unser System: der Overlay (60 Dateien,
+    +5.067 Zeilen) steckt in keinem PR; Skinny-Quelltext, sm75-FA und
+    TileLang-Fix liegen ganz außerhalb von 1Cat. 1Cat selbst ist ein
+    eigenständiger vLLM-Schnappschuss (Historie ab 29.08., Upstream wird von
+    Hand portiert) — niemand muss vLLM dazupicken. Kandidaten:
+    (a) editable-Bau-Fix (`f03a7102`, klein, plus sechs mypy-Befunde in
+    `setup.py`); (b) Routenzähler (`VLLM_SKINNY_ROUTE_COUNT_FILE`) in den
+    Produktionskonfigurationen → Skinny-Angebot an 1Cat: Turing-Pfad,
+    Block-Pack und MoE-Backend in deren kompilierte QPN-Kopie; (c) TileLang-Pin
+    0.1.10 → ≥ 0.1.12 — der Geräte-Fix ist dort seit v0.1.12 upstream, vorher
+    auf V100 und RTX testen (GDN und mHC); (d) Paket gemischte Hardware:
+    Gates pro Gerät, Turing-Zweig, FA2-Lader, sm75-FA als eingebundener Fork
+    (so wie 1Cat zhinianqins FA einbindet — Upstream-FA2 ist nur Ampere+,
+    flash-attention #190 seit 01.09. unbeantwortet); (e) Overlay-Inventur.
+    Skinny-Nutzen gemessen: Marlin als Ersatz auf der RTX 37 % langsamer
+    (Punkt 8); auf der V100 rechnet beim 27B TurboMind, bei DeepSeek laufen
+    die MoE-Experten auf allen Karten über Skinny.
+
+16. **Befunde vom 10.09., noch offen:**
+    - `flashnext_qual.sh` und `flashnext_ab.sh` beenden am Ende per
+      `pgrep -f 'VLLM[:]:'` JEDEN vLLM-Worker der Maschine — gegen die Regel
+      „nur eigene Prozessbäume". Auf die eigene Prozessgruppe umstellen.
+    - `VLLM_SKINNY_*` stehen nicht in `envs.py` → vLLM warnt beim Start
+      „Unknown vLLM environment variable". Harmlos, aber Rauschen.
+    - Werkzeuge mit fest eingetragener `.venv-sm70-130` (`tools/spec_hunt.py`,
+      `gguf_vllm_test.py`, `flashnext_stage_test.py`, `grid_stage_test.py`,
+      Docstrings weiterer) — vor dem Löschen der 130 umstellen.
+    - Alte venvs 130 und 150 erst nach Freigabe löschen.

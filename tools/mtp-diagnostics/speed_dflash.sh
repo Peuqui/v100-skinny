@@ -13,7 +13,10 @@ DEVS=${DEVS:-0,2}
 BASE=${WORKDIR:-$HOME/.cache/mtp-diagnostics}
 W=$BASE/qual_$NAME; rm -rf "$W"; mkdir -p "$W"; cd "$BASE" || exit 1
 
-export PATH=/home/mp/vllm/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
+# venv ueber VENV umschaltbar: eine neu gebaute venv laesst sich so abnehmen,
+# bevor /home/mp/vllm/venv auf sie zeigt. Vorgabe bleibt der Symlink.
+VENV=${VENV:-/home/mp/vllm/venv}
+export PATH="$VENV/bin":/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0
 export NCCL_P2P_DISABLE=1 VLLM_SM70_E5_CACHE=0 VLLM_SM70_NVFP4_TURBOMIND=1
 # QUANT_BACKEND ueberschreibbar: auf Turing waehlt "auto" den Skinny-Pfad
@@ -36,6 +39,11 @@ export VLLM_USE_V2_MODEL_RUNNER=1 VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS=1
 unset VLLM_SKINNY_PPDIAG
 [ "$MODULE" = "upstream" ] && export AIFRED_FORCE_UPSTREAM_GDN=1
 export VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1
+# Seit dem Upstream-Stand vom 10.09. bricht DFlash2 mit quantisiertem
+# Ziel-LM-Head ab (RadixArk quantisiert ihn mit). Der Schalter ist 1Cats
+# Opt-in fuer die Kandidaten-TopK ueber dichte Logits -- derselbe Rechenweg,
+# den aeltere venvs ohne Abfrage nehmen; die kennen den Schalter nicht.
+export VLLM_SM70_DFLASH2_QUANT_LM_HEAD=${VLLM_SM70_DFLASH2_QUANT_LM_HEAD:-1}
 
 # Ziel ueber CKPT umschaltbar: RadixArk quantisiert den lm_head mit, 1Cats
 # DFlash2-Referenz QUASAR-QAT nimmt ihn per ignore-Liste aus. Vorgabe bleibt
@@ -70,7 +78,7 @@ if [ "${SM70TUNE:-0}" = "1" ]; then
   TUNE=(--kernel-config '{"ir_op_priority":{"rms_norm":["vllm_c","native"],"fused_add_rms_norm":["vllm_c","native"]}}')
 fi
 
-/home/mp/vllm/venv/bin/python -m vllm.entrypoints.openai.api_server \
+"$VENV/bin/python" -m vllm.entrypoints.openai.api_server \
   --model "$CKPT" --served-model-name m --trust-remote-code --dtype float16 \
   --disable-custom-all-reduce --no-enable-prefix-caching \
   --tensor-parallel-size 2 --pipeline-parallel-size 1 --gpu-memory-utilization 0.90 \
@@ -88,7 +96,7 @@ done
 echo "STATUS $STATUS  ($NAME: $MODULE, $MODE, DEVS=$DEVS)"
 
 if [ "${STATUS#up_}" != "$STATUS" ]; then
-  /home/mp/vllm/venv/bin/python - "$W" <<'PY'
+  "$VENV/bin/python" - "$W" <<'PY'
 import hashlib, json, sys, time, urllib.request
 W = sys.argv[1]
 URL = "http://127.0.0.1:8066/v1/completions"

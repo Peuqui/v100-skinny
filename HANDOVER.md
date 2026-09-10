@@ -1,4 +1,4 @@
-# Übergabe — Stand 10.09.2026
+# Übergabe — Stand 10.09.2026 abends
 
 **Betriebsstand steht in `STAND.md`. Damit anfangen, nicht mit diesem Dokument.**
 Hier steht nur, was als Nächstes ansteht und was du wissen musst, um nicht
@@ -7,6 +7,16 @@ dieselben Wege noch einmal zu gehen.
 ---
 
 ## Wo wir stehen
+
+**Seit 10.09. abends läuft die Produktion auf `work-main`**: 1Cat
+`origin/main` plus unsere offenen PRs plus v100-skinny-Overlay, editable aus
+dem Worktree `1Cat-vLLM-work`, venv `.venv-sm70-main` hinter
+`~/vllm/venv`. Alt gegen neu am selben Tag abgenommen — 27B bitgleich auf
+beiden Kartenpaaren, DeepSeek byteidentisch, Flash-Next kohärent; Details und
+Baurezept in `STAND.md`, Abschnitt „Laufzeitumgebung". Neu dabei: beide
+FA2-Bibliotheken nebeneinander, pro Gerät geladen — die V100 hat damit
+erstmals 1Cats d256-Prefill-Ops. **Den Worktree nicht für PR-Branches
+benutzen, er ist die Produktion.**
 
 DFlash2 auf dem 27B, 2× RTX 8000: **69,13 → 77,13 tok/s** in zwei Schritten,
 Text-SHA in jedem Lauf `0106659946c064b1`. Die RTX liegt jetzt **vor** der
@@ -25,7 +35,16 @@ mit DFlash2".
 
 ## Auftrag, in dieser Reihenfolge
 
-### 1. Den neuen Stand unter Produktionsbedingungen messen — `STAND.md` Punkt 12
+### 1. PR-Pakete mit Peuqui besprechen — `STAND.md` Punkt 15
+
+Peuqui will die Reihenfolge **genauer besprechen** — nicht eigenmächtig
+anfangen. Die Faktenlage vom 10.09. steht in Punkt 15: was ein neuer User aus
+1Cat plus unseren offenen PRs bekäme (nicht unser System), was Skinny bringt
+(RTX: Marlin als Ersatz 37 % langsamer), dass TileLang den Geräte-Fix seit
+v0.1.12 selbst hat (also Pin-Bump bei 1Cat statt TileLang-PR), und dass
+1Cat unsere QPN-Kernel schon übernommen hat, aber nur für exakt SM70.
+
+### 2. Den neuen Stand unter Produktionsbedingungen messen — `STAND.md` Punkt 12
 
 Die 77 tok/s sind Bench-Bedingungen: 32k Kontext, Prefix-Caching aus, 400
 Token. Die Produktion fährt den vLLM-27B mit **256K und Prefix-Caching**, und
@@ -40,7 +59,7 @@ irgendwer DFlash2 in llama-swap einträgt:
 Die llama-swap-Konfiguration ist Peuquis Datei: händisch oder mit Sicherung
 und Freigabe, nie per Skript.
 
-### 2. Das AllReduce — `STAND.md` Punkt 13
+### 3. Das AllReduce — `STAND.md` Punkt 13
 
 **31,8 % der Decode-GPU-Zeit, größter Posten, nie untersucht.** 102 µs je
 Aufruf für 80 KB Nutzlast ist Latenz, nicht Bandbreite; ohne P2P läuft alles
@@ -49,22 +68,25 @@ Aufruf für 80 KB Nutzlast ist Latenz, nicht Bandbreite; ohne P2P läuft alles
 zurückdrehbar. Messen mit `speed_dflash.sh` (exportierte NCCL-Variablen
 werden durchgereicht) und dem Text-SHA als Anker.
 
-### 3. Den unidentifizierten fp16-GEMM zuordnen — `STAND.md` Punkt 13
+### 4. Den unidentifizierten fp16-GEMM zuordnen — `STAND.md` Punkt 13
 
 `cutlass_75_wmma…f16_16x16`, 5,4 %, einer je Schicht, **im Zielmodell**
 (steht auch unter MTP im Profil). Ein Linear, der an den Skinny-Kerneln
 vorbeiläuft. Erst zuordnen, dann entscheiden.
 
-### 4. Kleineres
+### 5. Kleineres
 
 - **Gencode aus der Gerätefähigkeit** statt fest `sm_70` in
   `_get_skinny_ext()` (`fork_patches_150/marlin.py`). Hygiene: bringt
   gemessen bei M=8 nichts, bei M≤4 ein paar Prozent.
-- **Block-Pack als 1Cat-PR** — nur als Portierung auf deren eigene
-  `nvfp4_qpn2_sm70.cu`, die dieselbe Zeilenstreuung hat (`STAND.md`
-  Punkt 14). Vorher klären, ob 1Cat den Kernel auf Turing überhaupt fährt.
-- **#592 beobachten.** Nach dem Merge den Override aus
-  `fork_patches_150/qwen3_dflash2.py` entfernen.
+- **Block-Pack als 1Cat-PR** — gehört jetzt zu PR-Paket (b) in `STAND.md`
+  Punkt 15: 1Cat fährt seine QPN-Kopie auf Turing gar nicht (Weiche exakt
+  SM70), ein Angebot muss den Turing-Pfad mitbringen.
+- **#592 beobachten.** work-main trägt die Basisklasse bereits; der Override
+  in `fork_patches_150/qwen3_dflash2.py` betrifft nur noch die alte venv.
+- **Befunde vom 10.09.** (`STAND.md` Punkt 16): breites `pgrep`-Killen in
+  `flashnext_qual.sh`/`flashnext_ab.sh`, „Unknown vLLM environment
+  variable" für `VLLM_SKINNY_*`, Werkzeuge mit fester `.venv-sm70-130`.
 - **18 vorbestehende Ruff-Meldungen** in alten Benchmark-Skripten
   (`kernel_matched_bench.py`, `qpn8_*.py`, `v11_suite.py`). Technische
   Schulden, kein Laufzeitproblem.
@@ -99,8 +121,13 @@ stehen in `STAND.md` Punkt 8.
 
 ## Fallen, die heute zugeschnappt sind
 
-Alle stehen in `STAND.md`, Abschnitt „Fallstricke". Die zwei, die am meisten
-gekostet hätten:
+Am Abend dazugekommen, alle in `STAND.md` unter „Fallstricke": der 1Cat-Bau
+nur mit `TORCH_CUDA_ARCH_LIST=7.0`, CCCL per `CPATH`, 1Cats editable Bau,
+FA2-Bibliotheken nie beim Import laden, und keine Kommentarzeile in eine
+Backslash-Kette (hat einen Flash-Next-Lauf mit alter venv und ohne MTP
+gestartet, bemerkt nur über `speculative_config=None`).
+
+Vom Vormittag, ebenfalls dort — die zwei, die am meisten gekostet hätten:
 
 - **`import vllm` mit cwd im 1Cat-Checkout** findet das lokale Verzeichnis,
   nicht die venv. Der Checkout trägt einen Symlink `vllm/_C.abi3.so` auf

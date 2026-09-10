@@ -16,6 +16,9 @@ set -uo pipefail
 NAME=${1:?name fehlt}; K=${2:?k fehlt}
 REPO=/home/mp/Projekte/vllm-research/v100-skinny
 CKPT=/home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ
+# venv ueber VENV umschaltbar, wie in speed_dflash.sh: eine neu gebaute venv
+# laesst sich so abnehmen, bevor der Produktions-Symlink umgestellt wird.
+VENV=${VENV:-/home/mp/vllm/venv}
 W=$HOME/.cache/mtp-diagnostics/fnq_$NAME; rm -rf "$W"; mkdir -p "$W"
 PORT=8027
 
@@ -31,18 +34,21 @@ export AIFRED_STATE_FILE=$W/state.txt   # ALLE Stufen auf Upstream, sonst faehrt
 
 
 cd $REPO
+# Kalter Compile unter PP: Stufe 1 wartet in einer Kollektive, bis Stufe 0
+# fertig kompiliert hat -- laenger als PyTorchs 600-s-NCCL-Wachhund und die
+# 900 s des Serve-Skripts. Beide Werte begrenzen nur die Geduld.
 VLLM_SM70_E5_CACHE=0 CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
-ENV_PREFIX=$REPO/.venv-sm70-150 \
+ENV_PREFIX="$VENV" \
 TP=2 PP=2 K=$K GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
-PORT=$PORT LOG=$W/boot.log \
-EXTRA_ARGS='--compilation-config {"cudagraph_capture_sizes":[1,2,4,5,8]}' \
+PORT=$PORT LOG=$W/boot.log BOOT_WAIT_S=2400 \
+EXTRA_ARGS='--distributed-timeout-seconds 3600 --compilation-config {"cudagraph_capture_sizes":[1,2,4,5,8]}' \
 bash scripts/serve-qwen38-flash-next.sh "$CKPT" 2>&1 | tail -3
 RC=$?
 PID=$(cat $REPO/.flash-next.pid 2>/dev/null)
 
 if curl -sf -o /dev/null --max-time 5 "http://127.0.0.1:$PORT/v1/models"; then
-  $REPO/.venv-sm70-150/bin/python - "$W" "$PORT" "$REPO/tools/mtp-diagnostics" <<'PY2'
+  "$VENV/bin/python" - "$W" "$PORT" "$REPO/tools/mtp-diagnostics" <<'PY2'
 import hashlib, json, sys, time, urllib.request
 W, PORT, SCR = sys.argv[1], sys.argv[2], sys.argv[3]
 URL = f"http://127.0.0.1:{PORT}/v1/completions"
@@ -105,4 +111,5 @@ sleep 20
 [ -n "${PID:-}" ] && kill -KILL -$PID 2>/dev/null
 for p in $(pgrep -f 'VLLM[:]:'); do kill -KILL $p 2>/dev/null; done
 echo "   NACHWEIS: armed=$(grep -c 'full-forward guard armed' $W/boot.log) sm75=$(grep -c 'qwen_gdn_linear_attn_sm75' $W/boot.log) upstream=$(grep -c 'cannot run on Turing' $W/boot.log)"
+echo "   FA2: sm75=$(grep -c 'Loaded FA2 library _vllm_fa2_C_sm75' $W/boot.log) sm70=$(grep -c 'Loaded FA2 library _vllm_fa2_C.abi3' $W/boot.log) v100_backend=$(grep -c 'Using FLASH_ATTN_V100 attention backend' $W/boot.log) fa2_backend=$(grep -c 'Using FLASH_ATTN attention backend' $W/boot.log)"
 echo "FERTIG fnq_$NAME"

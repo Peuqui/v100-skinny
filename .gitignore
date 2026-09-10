@@ -30,6 +30,7 @@ ac_suite/
 .cuda128/
 hunt-results/
 .venv-sm70-150/
+.venv-sm70-main/
 .wheels/
 nsys-dsv4-het-moeqpn.sqlite
 nsys-dsv4-het-moeqpn.nsys-rep

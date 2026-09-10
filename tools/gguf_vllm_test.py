@@ -21,7 +21,7 @@ TP = sys.argv[10] if len(sys.argv) > 10 else "1"
 BLK = sys.argv[7] if len(sys.argv) > 7 else "16"
 GMU = sys.argv[8] if len(sys.argv) > 8 else "0.95"
 PORT = 8129
-VENV = "/home/mp/Projekte/v100-skinny/.venv-sm70-130"
+VENV = "/home/mp/vllm/venv"  # Produktions-Symlink, siehe ~/vllm/README.md
 MODEL = ("/home/mp/models/Qwen3.8-Flash-Next-180B-A4B/UD-Q6_K_XL/"
          "Qwen3.8-Flash-Next-180B-A4B-UD-Q6_K_XL-00001-of-00006.gguf")
 NAME = "flashnext-gguf-test"

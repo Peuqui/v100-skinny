@@ -11,7 +11,7 @@ PAGE=16, bf16. base_programs = rows (1 KV-Kopf).
 
 Aufruf:
   CUDA_VISIBLE_DEVICES=<gpu> CUDA_HOME=<cuda-12.8> \
-    .venv-sm70-130/bin/python tools/qsa_nvidia_ab.py <pfad/zu/upstream_qsa.py>
+    ~/vllm/venv/bin/python tools/qsa_nvidia_ab.py <pfad/zu/upstream_qsa.py>
 """
 import importlib.util
 import statistics

@@ -8,7 +8,7 @@ Die Dispatch-Tabelle in qwen4_exp/nvidia/ops/qsa.py ist "Tuned on GB300"
 Geometrie = Flash-Next-Produktion bei TP2: 12 Q-Koepfe, 1 KV-Kopf,
 D=256, TOPK=2048 (indexer_budget), PAGE_SIZE=16, bf16-Caches.
 
-Aufruf:  CUDA_VISIBLE_DEVICES=<gpu> .venv-sm70-130/bin/python tools/qsa_bench.py
+Aufruf:  CUDA_VISIBLE_DEVICES=<gpu> ~/vllm/venv/bin/python tools/qsa_bench.py
 """
 
 import torch

@@ -25,7 +25,6 @@ ac_suite/
 
 # Lokale venvs und entpackte CUDA-Toolchains (maschinenspezifisch)
 .venv-sm70/
-.venv-sm70-130/
 .cuda-nvcc-deb/
 .cuda128/
 hunt-results/

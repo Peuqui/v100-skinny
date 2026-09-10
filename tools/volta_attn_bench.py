@@ -11,7 +11,7 @@ Verify laeuft auf Volta als "smallq tokens-as-batch": k+1 Zeilen mit
 gestaffelten seq_lens gegen dieselbe block_table (so baut es der Backend).
 
 Aufruf (auf einer freien V100, CUDA_VISIBLE_DEVICES setzen!):
-  .venv-sm70-130/bin/python tools/volta_attn_bench.py
+  ~/vllm/venv/bin/python tools/volta_attn_bench.py
 """
 
 import torch

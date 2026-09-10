@@ -21,7 +21,7 @@ DRAFTER = sys.argv[4] if len(sys.argv) > 4 else "FLASH_ATTN"
 TAG = sys.argv[5] if len(sys.argv) > 5 else f"k{K}"
 PORT = 8127
 
-VENV = "/home/mp/Projekte/v100-skinny/.venv-sm70-130"
+VENV = "/home/mp/vllm/venv"  # Produktions-Symlink, siehe ~/vllm/README.md
 PYSPY = f"{VENV}/bin/py-spy"
 MODEL = ("/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/"
          "snapshots/554ebba9b5f1b79dc11246341960360e6ef05ef4")

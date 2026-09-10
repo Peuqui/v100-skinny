@@ -18,6 +18,13 @@ FA2-Bibliotheken nebeneinander, pro Gerät geladen — die V100 hat damit
 erstmals 1Cats d256-Prefill-Ops. **Den Worktree nicht für PR-Branches
 benutzen, er ist die Produktion.**
 
+Später am Abend: alle produktiven llama-swap-Einträge kalt und warm geprüft
+(27B-MTP, Flash-Next, NEU 27B-DFlash2 — alle grün; DeepSeek-vLLM bootete nie,
+`STAND.md` Punkt 17), die alten venvs 130/150 gelöscht, der abgenommene
+Stand als `verified/volta-turing` + Tag `verified-2026-09-10` im Fork.
+**Nächster Schritt:** die drei fehlenden DFlash2-PRs von 1Cat mergen und neu
+abnehmen (`STAND.md` Punkt 18).
+
 DFlash2 auf dem 27B, 2× RTX 8000: **69,13 → 77,13 tok/s** in zwei Schritten,
 Text-SHA in jedem Lauf `0106659946c064b1`. Die RTX liegt jetzt **vor** der
 V100 (76,33), trotz 34 % weniger Bandbreite.

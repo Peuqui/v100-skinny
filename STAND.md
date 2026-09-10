@@ -55,7 +55,7 @@ reine Lesereduktion über 512 MiB, `benchmarks/kernel_matched_bench.py`):
 Die V100 hat **34 % mehr Bandbreite**. Wer zwei Karten über absolute GB/s
 vergleicht, misst diesen Faktor und sonst nichts — Prozent der jeweils
 eigenen Obergrenze ist die einzige faire Zahl. Bei DFlash2 liegt die RTX
-trotz der 34 % weniger Bandbreite nur 1,8 % zurück.
+trotz der 34 % weniger Bandbreite inzwischen **vorn** (77,13 gegen 76,33).
 
 Der Unterschied im L1 ist der zweite, weniger bekannte: Volta hat **128 KB**,
 Turing ein unified L1/Smem von **96 KB**. Das ist die Ursache der
@@ -172,12 +172,18 @@ Architekturen und beide Verfahren hinweg verlustfrei.
 | 2× RTX 8000 | MTP k=3 | 73,36 | 2,963 |
 | 2× RTX 8000 | DFlash2 k=7, **vor** Gate-Patch | 21,35 | 1,015 |
 | 2× RTX 8000 | DFlash2 k=7, nach Gate-Patch | 69,13 | 3,353 |
-| 2× RTX 8000 | **DFlash2 k=7, mit Block-Pack** | **72,72** | **3,353** |
+| 2× RTX 8000 | DFlash2 k=7, mit Block-Pack | 72,72 | 3,353 |
+| 2× V100 | **DFlash2 k=7, + quantisierter Entwurfskopf** | **76,33** | **3,325** |
+| 2× RTX 8000 | **DFlash2 k=7, + quantisierter Entwurfskopf** | **77,13** | **3,325** |
 
-Die beiden Block-Pack-Zeilen sind vom **09.09. abends**, gegen eine in
-derselben Sitzung neu gefahrene Grundlinie (69,22 tok/s auf der RTX, deckt
-sich mit den 69,13 vom Nachmittag). Text-SHA in allen vier Zeilen
-`0106659946c064b1`. Siehe Punkt 8.
+Die Block-Pack-Zeilen sind vom **09.09. abends**, gegen eine in derselben
+Sitzung neu gefahrene Grundlinie (69,22 tok/s auf der RTX, deckt sich mit den
+69,13 vom Nachmittag). Die beiden letzten Zeilen sind vom **10.09.**
+Text-SHA in **allen** Zeilen `0106659946c064b1`. Siehe Punkt 8 (Block-Pack)
+und Punkt 10 (Entwurfskopf).
+
+**Seit dem 09.09. mittags: RTX 8000 69,13 → 77,13 tok/s (+11,6 %).** Die RTX
+liegt damit erstmals VOR der V100, obwohl sie 34 % weniger Bandbreite hat.
 
 **DFlash2 schlägt MTP** — auf gleicher Hardware +12,0 % bei +14 %
 Annahmelänge. Zwei Patches waren dafür nötig, beide in `fork_patches_150/`:
@@ -742,7 +748,47 @@ Augustwerten (6,5 min Boot).
    nicht: mehr Arbeit je CTA halbiert das Gitter und verschlimmert die
    Wellen-Quantisierung.
 
-10. **`prof_prefill.sh` ist auf dieser nsys-Version nicht lauffähig** (09.09.).
+10. **Quantisierter DFlash2-Entwurfskopf — ERLEDIGT, +6,1 % auf der RTX**
+   (10.09.). Der ausgelieferte Entwurfskopf `incoai/Qwen3.8-27B-DFlash2` ist
+   **unquantisiert** (keine `quantization_config`, 3,6 GB fp16). Im
+   Decode-Profil kostete er `turing_fp16_s1688gemm` mit **272,6 ms / 600
+   Aufrufen** — fünf je Vorwärtsschritt, passend zu den fünf
+   `target_layer_ids`. Der Gegentest mit MTP statt DFlash2 zeigt den Kernel
+   **überhaupt nicht**, damit ist die Zuordnung bewiesen.
+
+   Gefahren wird jetzt **`maurienne-ai/Qwen3.8-27B-DFlash2-NVFP4-RTNcal`**
+   (1,44 GiB, modelopt, aus genau diesem Kopf abgeleitet, identische
+   `dflash_config`). Umschaltbar über `DRAFT=` in `speed_dflash.sh` und
+   `prof_dflash.sh`.
+
+   | Karten | fp16-Kopf | NVFP4-Kopf | |
+   |---|---:|---:|---|
+   | 2× RTX 8000 | 72,72 | **77,13** | +6,1 % |
+   | 2× V100 | 74,02 | **76,33** | +3,1 % |
+
+   Text-SHA in allen Läufen unverändert `0106659946c064b1`, Annahmelänge
+   3,353 → 3,325 (−0,8 %). **Ein quantisierter Entwurfskopf kann die Ausgabe
+   nicht verändern:** angenommen wird ausschließlich, was das Zielmodell bei
+   greedy ohnehin erzeugt hätte. Er kostet Annahmerate, nie Korrektheit.
+
+   **Nötig war ein Patch**, sonst bootet es nicht:
+   `DFlashQwen3Model._build_context_kv_buffers` legt die K/V-Projektionen
+   aller Schichten in eine Matrix zusammen und schneidet dafür Zeilen aus dem
+   **rohen** `qkv_proj.weight` — am `quant_method` vorbei. Bei NVFP4 sind das
+   die gepackten Codes (`[N, K/2]`), die Fusion kommt halb so breit heraus:
+   `mat1 and mat2 shapes cannot be multiplied (2048x5120 and 2560x5120)`.
+   Der Override in `fork_patches_150/qwen3_dflash2.py` baut die Fusion beim
+   **ersten Gebrauch** über `quant_method.apply` mit einer Einheitsmatrix neu
+   (packformat-unabhängig, wie beim Ziel-LM-Head). Faul, weil
+   `_build_fused_kv_buffers` am Ende von `load_weights` läuft — also bevor
+   `process_weights_after_loading` fertig ist. Kosten: rund 52 MB je Rang und
+   fünf GEMMs einmalig. Der Decode-Pfad bleibt quantisiert, dort sitzt der
+   Gewinn; die Kontextvorberechnung ist Prefill-Arbeit.
+
+   **Vierter PR-Kandidat für 1Cat** — das trifft jeden, der DFlash2 mit einem
+   quantisierten Entwurfskopf fahren will, unabhängig von der Kartenklasse.
+
+11. **`prof_prefill.sh` ist auf dieser nsys-Version nicht lauffähig** (09.09.).
    Es übergibt `--output` an `nsys launch`; nsys 2022.4.2 nimmt die Option nur
    bei `nsys start` („unrecognised option"). In `prof_dflash.sh` ist es
    korrigiert, in `prof_prefill.sh` noch nicht — STAND.md empfiehlt das Skript

@@ -1,0 +1,88 @@
+# qpn2 MIT gegen OHNE Aktivierungs-Block-Pack, auf den Formen, die wir bedienen.
+#
+# Harness benchmarks/qpn2_pack_ab.py, --ref HEAD (der Stand vor dem Umbau),
+# eine Sitzung, CUDA-Graph-Replay -- das ist der Serving-Modus. Eager gemessen
+# ueberschaetzt die Pack-Kosten um das Dreifache und taugt hier nicht.
+#
+# BUILD: sm_70, auf der RTX 8000. Das ist KEIN Versehen, sondern die
+# Produktionskonfiguration: der Shim uebergibt -gencode=arch=compute_70 in
+# extra_cuda_cflags, und damit ignoriert torch TORCH_CUDA_ARCH_LIST komplett.
+# Turing faehrt Volta-SASS ueber die Cubin-Kompatibilitaet derselben
+# Major-Version. Ein echter sm_75-Build kommt auf 1,45x statt 1,40x.
+#
+# bitequal ist die ABNAHME, keine Nebennotiz: der Umbau bewegt Bytes, nicht
+# Arithmetik. Jede Abweichung waere ein Fehler. Null in 56 Zellen.
+#
+# Die Zeilen mit M unter der Pack-Schwelle (sm75: 5, sm70: 8) fahren auf
+# BEIDEN Seiten denselben Code und muessen exakt 1.00x lesen. Tun sie es
+# nicht, ist die Aenderung nicht so neutral wie sie aussieht -- so ist die
+# Laufzeit-Stride-Variante aufgefallen, die der V100 1-5 % gekostet hat.
+#
+# Prozente beziehen sich auf die gemessene Leseobergrenze der Karte
+# (RTX 8000: 601 GB/s). Absolute GB/s zwischen den Kartentypen zu
+# vergleichen misst nur deren Bandbreitenverhaeltnis von 1,34.
+#
+# End-zu-End-Wirkung: 27B DFlash2 k=7, 2x RTX 8000, 69,22 -> 72,72 tok/s,
+# Text-SHA unveraendert 0106659946c064b1. Siehe STAND.md Punkt 8.
+# device: Quadro RTX 8000  built sm_70  CUDA-graph replay
+# ref = HEAD   new = working tree
+# read ceiling: 601 GB/s
+K,N,M,bitequal,ref_GBs,new_GBs,speedup,new_pct
+1536,5120,1,YES,345.5,347.9,1.01x,58%
+1536,5120,2,YES,342.7,342.5,1.00x,57%
+1536,5120,3,YES,333.0,333.0,1.00x,55%
+1536,5120,4,YES,309.6,309.6,1.00x,51%
+1536,5120,5,YES,304.9,308.3,1.01x,51%
+1536,5120,6,YES,317.4,309.3,0.97x,51%
+1536,5120,7,YES,291.1,313.2,1.08x,52%
+1536,5120,8,YES,266.0,321.5,1.21x,53%
+4352,5120,1,YES,435.6,441.6,1.01x,73%
+4352,5120,2,YES,433.3,434.1,1.00x,72%
+4352,5120,3,YES,430.9,431.8,1.00x,72%
+4352,5120,4,YES,448.3,447.7,1.00x,74%
+4352,5120,5,YES,436.9,397.3,0.91x,66%
+4352,5120,6,YES,393.9,397.0,1.01x,66%
+4352,5120,7,YES,349.0,397.2,1.14x,66%
+4352,5120,8,YES,315.3,398.9,1.27x,66%
+5120,2048,1,YES,492.4,491.7,1.00x,82%
+5120,2048,2,YES,488.6,488.4,1.00x,81%
+5120,2048,3,YES,482.6,482.1,1.00x,80%
+5120,2048,4,YES,467.8,467.8,1.00x,78%
+5120,2048,5,YES,451.8,449.2,0.99x,75%
+5120,2048,6,YES,404.7,448.6,1.11x,75%
+5120,2048,7,YES,363.9,447.3,1.23x,74%
+5120,2048,8,YES,330.1,444.1,1.35x,74%
+5120,3584,1,YES,547.9,558.9,1.02x,93%
+5120,3584,2,YES,559.0,558.6,1.00x,93%
+5120,3584,3,YES,551.6,551.3,1.00x,92%
+5120,3584,4,YES,521.8,522.1,1.00x,87%
+5120,3584,5,YES,465.6,527.7,1.13x,88%
+5120,3584,6,YES,408.3,526.8,1.29x,88%
+5120,3584,7,YES,362.2,525.0,1.45x,87%
+5120,3584,8,YES,325.1,523.8,1.61x,87%
+5120,4096,1,YES,567.1,577.8,1.02x,96%
+5120,4096,2,YES,576.4,576.4,1.00x,96%
+5120,4096,3,YES,572.3,572.6,1.00x,95%
+5120,4096,4,YES,560.3,560.3,1.00x,93%
+5120,4096,5,YES,527.5,546.9,1.04x,91%
+5120,4096,6,YES,464.1,545.4,1.18x,91%
+5120,4096,7,YES,410.5,544.8,1.33x,91%
+5120,4096,8,YES,370.6,542.5,1.46x,90%
+5120,8704,1,YES,609.1,615.6,1.01x,102%
+5120,8704,2,YES,613.8,614.1,1.00x,102%
+5120,8704,3,YES,610.7,610.4,1.00x,102%
+5120,8704,4,YES,603.5,603.5,1.00x,100%
+5120,8704,5,YES,583.9,592.5,1.01x,99%
+5120,8704,6,YES,510.6,591.7,1.16x,98%
+5120,8704,7,YES,450.3,590.4,1.31x,98%
+5120,8704,8,YES,406.3,590.4,1.45x,98%
+5120,62080,1,YES,597.2,597.0,1.00x,99%
+5120,62080,2,YES,593.4,593.1,1.00x,99%
+5120,62080,3,YES,589.1,589.1,1.00x,98%
+5120,62080,4,YES,581.9,582.1,1.00x,97%
+5120,62080,5,YES,570.7,582.8,1.02x,97%
+5120,62080,6,YES,536.2,580.3,1.08x,96%
+5120,62080,7,YES,485.8,578.2,1.19x,96%
+5120,62080,8,YES,444.0,575.9,1.30x,96%
+# trunk aggregate at M=8: 199.5us -> 142.4us = 1.40x
+# mismatches: 0

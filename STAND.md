@@ -44,6 +44,23 @@ jede Kartenangabe in Skripten wird dann falsch.
 Die 64 KB gegen 96 KB Shared Memory sind der Grund, warum FlashQLA-SM70 auf
 Turing nicht startet und dort der Triton/FLA-Pfad läuft.
 
+**Speicherdurchsatz — der Nenner jeder Kernel-Aussage** (gemessen 09.09.,
+reine Lesereduktion über 512 MiB, `benchmarks/kernel_matched_bench.py`):
+
+| Karte | theoretisch | gemessen (nur lesen) |
+|---|---:|---:|
+| Quadro RTX 8000 (GDDR6, 6501 MHz, 384 bit) | 672 GB/s | **601 GB/s** |
+| Tesla V100-PCIE (HBM2, 877 MHz, 4096 bit) | 898 GB/s | **849–853 GB/s** |
+
+Die V100 hat **34 % mehr Bandbreite**. Wer zwei Karten über absolute GB/s
+vergleicht, misst diesen Faktor und sonst nichts — Prozent der jeweils
+eigenen Obergrenze ist die einzige faire Zahl. Bei DFlash2 liegt die RTX
+trotz der 34 % weniger Bandbreite nur 1,8 % zurück.
+
+Der Unterschied im L1 ist der zweite, weniger bekannte: Volta hat **128 KB**,
+Turing ein unified L1/Smem von **96 KB**. Das ist die Ursache der
+DFlash2-Tempolücke, siehe offener Punkt 8.
+
 ---
 
 ## Betriebspunkte
@@ -150,10 +167,17 @@ Architekturen und beide Verfahren hinweg verlustfrei.
 | Karten | Verfahren | tok/s | Annahmelänge |
 |---|---|---:|---:|
 | 2× V100 | MTP k=3 | 66,13 | 2,963 |
-| 2× V100 | **DFlash2 k=7** | **74,09** | **3,381** |
+| 2× V100 | DFlash2 k=7 | 74,09 | 3,381 |
+| 2× V100 | **DFlash2 k=7, mit Block-Pack** | **74,02** | **3,381** |
 | 2× RTX 8000 | MTP k=3 | 73,36 | 2,963 |
 | 2× RTX 8000 | DFlash2 k=7, **vor** Gate-Patch | 21,35 | 1,015 |
-| 2× RTX 8000 | **DFlash2 k=7, nach Gate-Patch** | **69,13** | **3,353** |
+| 2× RTX 8000 | DFlash2 k=7, nach Gate-Patch | 69,13 | 3,353 |
+| 2× RTX 8000 | **DFlash2 k=7, mit Block-Pack** | **72,72** | **3,353** |
+
+Die beiden Block-Pack-Zeilen sind vom **09.09. abends**, gegen eine in
+derselben Sitzung neu gefahrene Grundlinie (69,22 tok/s auf der RTX, deckt
+sich mit den 69,13 vom Nachmittag). Text-SHA in allen vier Zeilen
+`0106659946c064b1`. Siehe Punkt 8.
 
 **DFlash2 schlägt MTP** — auf gleicher Hardware +12,0 % bei +14 %
 Annahmelänge. Zwei Patches waren dafür nötig, beide in `fork_patches_150/`:
@@ -173,12 +197,11 @@ Annahmelänge. Zwei Patches waren dafür nötig, beide in `fork_patches_150/`:
 per `ignore` aus und erreicht auf V100 Annahmelänge 5,569 statt 3,381 — rund
 40 % mehr. Diese Zahl ist aber **wertlos**, siehe offener Punkt 7.
 
-**Offen bleibt die Tempolücke auf Turing.** Bei MTP ist die RTX der V100 um
-Faktor 1,11 überlegen; übertragen wären ~82 tok/s zu erwarten, gemessen sind
-69,13. Verdacht ist der QPN8-Rerank für den Kandidaten-TopK
-(`_maybe_sm70_dflash2_qpn8_rerank`, hart auf `(7, 0)` geprüft) — auf Turing
-läuft stattdessen `torch.topk` über alle 248.320 Logits, bei jedem
-Entwurfsschritt. **Verdacht aus dem Code, nicht profiliert.**
+**Die Tempolücke auf Turing ist zum größten Teil geschlossen** (09.09. abends):
+69,22 → 72,72 tok/s, Abstand zur V100 von 6,7 % auf 1,8 %. Ursache und Fix
+stehen in Punkt 8. Der frühere Verdacht — QPN8-Rerank für den Kandidaten-TopK
+— ist widerlegt und dort mit den vier anderen widerlegten Erklärungen
+aufgeführt.
 
 ---
 
@@ -451,6 +474,35 @@ Augustwerten (6,5 min Boot).
   Prompt eine Wiederholungsdegeneration (an jeden Satz derselbe Nachsatz).
   Ein abgeschnittener Text misst nur, wie weit ein Modell kommt, bevor es
   kippt.
+- **`torch.utils.cpp_extension` ignoriert `TORCH_CUDA_ARCH_LIST` KOMPLETT,
+  sobald in `extra_cuda_cflags` schon ein `-gencode` steht** (09.09.).
+  `_get_cuda_arch_flags()` gibt dann `[]` zurück. Der Skinny-Shim übergibt
+  genau das (`-gencode=arch=compute_70,code=sm_70`), also ist jeder Build
+  sm_70 — auch auf der RTX 8000, die ihn über die Cubin-Kompatibilität
+  derselben Major-Version ausführt. `cuobjdump -lelf` auf der gebauten `.so`
+  zeigt eine einzige ELF, `sm_70`, kein PTX. Wer die Architektur einer
+  Extension prüfen will, fragt die `.so`, nicht die Umgebungsvariable.
+  Praktisch kostet es wenig: ein echter sm_75-Build bringt bei M≤4 ein bis
+  sechs Prozent und bei M=8 **nichts** (gemessen).
+- **Synthetische Zufallsgewichte sprengen den Bitvergleich** (09.09.). Codes
+  aus `randint(0,256)` mit zufälligen e4m3-Skalen und `gscale=1.0` laufen
+  durch `gscale*16384` in den fp16-Überlauf; der Vergleich liest dann `NaN`
+  zurück und sagt über keinen der beiden Kernel etwas. Für Äquivalenztests
+  Skalen auf exakt 1,0 (e4m3 `0x38`) und `gscale=1/16384` setzen, und die
+  Endlichkeit der Referenz mitprüfen.
+- **Ein „flexibler" Kernel-Parameter kann teurer sein als zwei
+  Instanziierungen** (09.09.). Das Aktivierungs-Layout von `qpn2` als
+  Laufzeit-Strides zu übergeben machte aus dem Gruppen-Offset (`g*16`, ein
+  Shift) ein IMAD im Innenloop und kostete die V100 1–5 % — messbar daran,
+  dass Zellen, die denselben Pfad fahren wie vorher, plötzlich 0,95× statt
+  1,00× standen. Als Template-Parameter ist es wieder exakt 1,00×. **Wenn ein
+  unveränderter Pfad nicht exakt 1,00× misst, ist die Änderung nicht so
+  neutral, wie sie aussieht.**
+- **`speed_dflash.sh` bricht ab, wenn das eigene Aufrufkommando das Wort
+  `api_server` enthält** (09.09.). Die Sicherung ist
+  `pgrep -af 'api_server' | grep -v $$`, und `$$` schließt nur die Subshell
+  aus, nicht die aufrufende Kommandozeile. Ein `echo`, das den Namen erwähnt,
+  reicht für „ABBRUCH: api_server laeuft" bei völlig freien Karten.
 - **Eine auffällig HOHE Annahmelänge ist ein Warnsignal, kein Erfolg**
   (09.09.). Eine Wiederholungsschleife ist trivial vorhersagbar, also nimmt
   der Verifizierer fast jeden Entwurf an: gemessen 5,569 von 8 möglichen — bei
@@ -553,72 +605,144 @@ Augustwerten (6,5 min Boot).
    Nachfahrskript: `tools/mtp-diagnostics/quasar_1cat.sh`.
    **Folge: gemessen wird auf RadixArk.**
 
-8. **Turing-Tempolücke bei DFlash2 — LOKALISIERT, Weg offen** (09.09.).
-   69,13 gegen 74,09 tok/s auf V100, siehe „DFlash2 gegen MTP".
-   Decode-Profile mit `tools/mtp-diagnostics/prof_dflash.sh` (nsys), 400 Token
-   im Fenster, je Karte:
+8. **Turing-Tempolücke bei DFlash2 — GESCHLOSSEN** (09.09. abends).
+   69,22 → **72,72 tok/s** auf 2× RTX 8000, Text-SHA unverändert
+   `0106659946c064b1`, Annahmelänge unverändert 3,353. Der Abstand zur V100
+   (74,02) ist von 6,7 % auf **1,8 %** gefallen. Die V100 selbst bleibt
+   unverändert (74,09 → 74,02).
 
-   | Kernel | Turing | V100 |
+   **Die Ursache war NICHT die MMA-Form.** Der Auftrag aus der vorigen
+   Übergabe — sm75-Variante der Skinny-Kernel, weil Turing auf `m16n8k8`
+   ausgelegt ist und `m8n8k4` nur ausführt — ist gemessen widerlegt. Bei
+   gleicher FLOP-Zahl auf der RTX 8000, Registeroperanden, kein Speicher im
+   Innenloop:
+
+   | Form | 72×4 Warps | 144×4 | 288×8 |
+   |---|---:|---:|---:|
+   | `m8n8k4` | 37,6 | 44,2 | **45,2** TFLOPS |
+   | `m16n8k8` | 39,9 | 43,6 | **45,0** TFLOPS |
+
+   Ununterscheidbar — und der `m8n8k4`-Arm ist dabei sogar benachteiligt (eine
+   abhängige Akkumulatorkette gegen zwei unabhängige). Turing führt Voltas MMA
+   mit voller Tensorkern-Rate aus. Die absoluten 45 TFLOPS sind latenzbegrenzt
+   und keine Dachlinie; für den Formvergleich unter identischen Bedingungen
+   taugen sie. Werkzeug: `mma_probe.cu` (verifiziert beide Fragment-Layouts
+   gegen eine CPU-Referenz, max|err| = 0) — der Ersatz für das verschollene
+   `mma8_probe.cu`.
+
+   **Die Ursache war die Zeilenstreuung der Aktivierungen.** Die
+   A-Fragment-Abbildung von `m8n8k4` gibt Lane L die Zeile
+   `(L&3)+((L&16)?4:0)`, ein Warp braucht also acht Aktivierungszeilen je
+   16-k-Gruppe. Aus `x[M][K]` gelesen liegen die `K*2` Byte auseinander:
+   **acht 128-B-Zeilen für 256 verschiedene Bytes**, während die Gewichte
+   daneben in einem zusammenhängenden Zug kommen. Der L1 zahlt je berührter
+   Zeile, nicht je gewünschtem Byte — und die Kosten wachsen mit M. Das ist
+   die gesamte M=1→M=8-Steigung.
+
+   Belegt mit einer Sonde, die dieselbe Quelle zweimal baut und nur die acht
+   Zeilenzeiger auf Zeile 0 zusammenlegt (Ergebnis absichtlich falsch, nur die
+   Zeit zählt):
+
+   | M=8 | V100 | RTX 8000 |
    |---|---:|---:|
-   | AllReduce | 1.697 ms / 16.806× | 1.530 ms / 16.675× |
-   | NVFP4-Linear | `skinny_nvfp4_qpn2` 1.614 ms | `gemm_kernel` **1.396 ms** |
-   | `skinny_fp8_qpn8` | 888 ms | **671 ms** |
-   | `_sm70_dflash2_gemma_fused_add_rms` | **fehlt** | 84 ms / 15.126× |
-   | GPU-Zeit gesamt | 5.665 ms | 5.191 ms |
+   | `1536,5120` | 1,08× | 1,66× |
+   | `5120,3584` | 1,19× | **2,00×** |
+   | `5120,62080` | 1,00× | 1,30× |
 
-   **Widerlegt:** der QPN8-Rerank. Kein `topk`/`sort`-Kernel taucht in den
-   Top-14 auf. **Ebenfalls widerlegt:** das AllReduce als Erklärung — beide
-   Kartenpaare hängen identisch an (OCuLink, Gen3 ×4, kein P2P), die Zeiten
-   sind nahezu gleich, es ist Grundlast und kein Differenzierer (Peuqui).
+   Bei M=1 ändert die Sonde nichts (1,00×) — die Kontrolle, die sagt, dass sie
+   die Streuung misst und nicht sich selbst. Turing leidet drei- bis fünfmal
+   stärker als Volta, weil sein unified L1 96 KB hat und Voltas 128 KB.
 
-   **Ursache:** Turing bekommt die SM70-Abstimmung nicht, weil
-   `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH` dort verworfen wird („not SM70
-   CUDA"). Es fehlen vier Dinge: TurboMind-Dense-Pfad, `fuse_norm_quant`,
-   `rms_norm=['vllm_c']` statt `['native']`, und die DFlash2-Gemma-Fusion.
-   Warum es erst bei DFlash2 auffällt: MTP hat wenige große Operationen, der
-   Draftkopf dagegen fünf kleine Schichten je Entwurfsschritt und lebt von
-   genau diesen Fusionen.
+   **Mit Zählern bestätigt (10.09., nach `ncu`-Freischaltung).** Die
+   indirekte Herleitung ist damit nicht mehr nötig — `skinny_nvfp4_qpn2` auf
+   der RTX 8000, `5120,4096`, alles gleich außer der Datenlage:
 
-   **Gemessen, was die Compile-Vorgaben bringen** (`SM70TUNE=1` in
-   `speed_dflash.sh` setzt `fuse_norm_quant` und die RMSNorm-Priorität per
-   Kommandozeile): **69,13 → 69,45 tok/s, also +0,5 % — praktisch nichts.**
-   Bemerkenswert ist nur die Annahmelänge: 3,353 → **3,381**, exakt der
-   V100-Wert, bei unverändertem Text-SHA. Der Entwurfspfad ist damit numerisch
-   deckungsgleich mit Volta.
+   | | ungepackt M=4 | ungepackt M=8 | gepackt M=8 |
+   |---|---:|---:|---:|
+   | Lade-Anfragen | 163.840 | 163.840 | 163.840 |
+   | DRAM gelesen | 11,85 MB | 11,89 MB | 11,89 MB |
+   | L1-Sektoren | 696.310 | 1.022.952 | 1.024.000 |
+   | **L1-Wavefronts** | 779.710 | **1.447.064** | **451.847** |
+   | Laufzeit | 28,3 µs | 46,1 µs | **26,4 µs** |
 
-   **Es bleiben die beiden Quantisierungskernel: 435 ms, der ganze Rückstand.**
-   Zwei Wege:
-   - **TurboMind auf Turing.** Das Gate ist `is_exact_sm70_cuda` (== (7,0)) in
-     `sm70_turbomind.py`. Der Kernel-Quelltext ist NICHT Volta-exklusiv: er
-     enthält 13× `m16n8k8`, 5× `m16n8k16` und Zweige für
-     `__CUDA_ARCH__ >= 750`. **Aber:** `vllm/_C.abi3.so` trägt 39 ELF-Einträge,
-     **alle `sm_70`, kein PTX** — das Gate zu öffnen brächte nichts, es gäbe
-     keinen ausführbaren Kernel. Nötig wäre ein Rebuild mit
-     `TORCH_CUDA_ARCH_LIST="7.0;7.5"` (Build-Parallelität auf dem Mini cappen).
-   - ~~Marlin als dritter Pfad~~ — **ERLEDIGT, Antwort: nein** (09.09.).
-     Mit `VLLM_SM70_QUANT_BACKEND=marlin` UND `VLLM_SKINNY_NVFP4=0
-     VLLM_SKINNY_QPN=0 VLLM_SKINNY_QPN2=0`: **43,87 tok/s gegen 69,13** mit
-     Skinny, Annahmelänge unverändert 3,381. Marlin ist auf Turing 37 %
-     langsamer; die `auto`-Wahl ist richtig. **Unser Skinny-Kernel ist auf
-     Turing bereits die beste verfügbare Route**, obwohl er Voltas MMA nutzt.
-     (Falle: die Skinny-Schalter hängen NICHT am Quant-Backend und greifen bei
-     kleinem M — ein Marlin-Lauf ohne SKINNY=0 misst weiter Skinny.)
+   Gleiche Befehlszahl, gleiche DRAM-Bytes, **gleiche Sektorzahl** — die
+   einzige Größe, die sich bewegt, sind die Wavefronts, und die Zeit folgt
+   ihnen. Der Pack drückt sie um Faktor 3,2. **Sektoren sind die falsche
+   Währung**, Wavefronts sind die richtige: der L1 zahlt je zusätzlich
+   berührter 128-B-Zeile und Ladebefehl, nicht je 32-B-Sektor. Mit 451.847
+   Wavefronts auf 163.840 Anfragen liegt der Kernel bei 2,76 je Befehl, der
+   bauartbedingte Boden sind 2.
 
-   **Damit bleibt nur der Kernel-Weg.** `kernels/skinny_kernels.cu` (2.700
-   Zeilen, unsere Quelle, zur Laufzeit uebersetzt) hat **keine einzige
-   `__CUDA_ARCH__`-Fallunterscheidung** und nutzt durchgaengig Voltas
-   `mma.sync.aligned.m8n8k4`. Der Kommentar zum MMA8-Pfad nennt genau unseren
-   Decode-Fall: „Volta mma.sync.m8n8k4 register-fragment path for 2<=M<=8".
-   Turing fuehrt diese Instruktion aus, ist aber auf `m16n8k8` ausgelegt.
-   Eine sm75-Variante muesste die Fragment-Layouts neu bestimmen — die wurden
-   laut Kommentar empirisch auf der V100 abgeleitet (`mma8_probe.cu`), das
-   Werkzeug dafuer existiert also.
-   - **Skinny-Kernel für sm75 optimieren.** Die werden über
-     `VLLM_SKINNY_NVFP4_SRC` zur Laufzeit gebaut, sind also nicht an die
-     Wheel-Architektur gebunden. Hier wird Turings 65.536-B-Deckel beim Shared
-     Memory zur Entwurfsvorgabe (daran ist FlashQLA gescheitert).
+   Auf der V100 dieselbe Bewegung, dieselbe Ursache, viel kleinere Wirkung:
+   780.409 → 1.437.501 Wavefronts, aber nur +9,3 % Zeit (128 KB L1).
 
-9. **`prof_prefill.sh` ist auf dieser nsys-Version nicht lauffähig** (09.09.).
+   **Fix: Block-Pack der Aktivierungen** (`skinny_pack_x8` in
+   `kernels/skinny_kernels.cu`). x wird in `xb[K/16][8][16]` umgelegt — je
+   k-Gruppe ein zusammenhängender 256-B-Block mit allen acht Zeilen. Der Warp
+   berührt dann zwei Zeilen statt acht. Reine Datenlage: dieselben Werte,
+   dieselbe Reihenfolge, dieselben Register, dieselbe fp32-Akkumulation.
+   **Bitgleich** — im Kernel-A/B über sieben Formen × M 1..8 null Abweichungen,
+   und end-zu-end derselbe Text-SHA auf beiden Kartentypen.
+
+   Kernel-Gewinn unter Graph-Replay (Serving-Regime), Trunk-Summe bei M=8:
+   **1,45× auf der RTX** (sm75-Build) bzw. **1,39×** mit dem sm_70-Build, den
+   die Produktion tatsächlich fährt; **1,04×** auf der V100. Einzelne Formen
+   bis 1,62×. Die M-Steigung ist weg: `5120,4096` steht jetzt über M=1..8
+   durchgehend bei 90–91 % der Leseobergrenze statt 99 % → 61 %.
+
+   **Schwelle `qpn2_pack_min_m()`:** sm75 ab M=5, sm70 ab M=8. Darunter kostet
+   der eigene Start des Packs mehr, als die Streuung dort wert ist (gemessen:
+   4–13 % Verlust). Die beiden Zahlen unterscheiden sich, weil die beiden L1
+   sich unterscheiden — es ist eine Schwelle, keine Kernel-Gabelung: ein
+   Kernel, ein Layout, eine Verzweigungsstelle. Das Layout ist
+   Template-Parameter (`PACKED`), nicht Laufzeit-Stride: Strides als Argumente
+   machten aus dem Gruppen-Offset ein IMAD im Innenloop und kosteten die V100
+   1–5 %.
+
+   **`qpn8` wurde geprüft und bewusst NICHT umgestellt.** FP8 liest doppelt so
+   viele Bytes je Gewicht, ist also viel stärker DRAM-gebunden und lag mit
+   81–90 % der Dachlinie schon fast oben. Der Pack brachte 1,05× auf der RTX
+   und **kostete 4 % auf der V100** — der Start ist dort nicht bezahlt.
+
+   **Fünf Erklärungen sind damit gemessen widerlegt** — nicht erneut
+   verfolgen: QPN8-Rerank (kein topk-Kernel im Profil), AllReduce (auf beiden
+   Karten Grundlast), die Compile-Vorgaben (+0,5 %), Marlin als Skinny-Ersatz
+   (37 % langsamer), und jetzt die MMA-Form.
+
+   **Was von den 435 ms übrig ist:** `skinny_fp8_qpn8` (217 ms) ist
+   Bandbreite, kein Rechenwerk — die RTX schöpft dort 86 % ihrer
+   Leseobergrenze aus, die V100 nur 81 % ihrer eigenen (Abschnitt Hardware).
+   Der Rest ist geholt.
+
+9. **Kurze K-Formen: strukturell begrenzt, Hebel durch Bitgleichheit
+   gesperrt** (10.09.). `1536,5120` steht bei 54 % der Leseobergrenze,
+   `5120,2048` bei 74 % — schon bei M=1, also unabhängig von der
+   Zeilenstreuung. Zähler bei M=8, gepackt:
+
+   | | `1536,5120` | `5120,2048` | `5120,4096` |
+   |---|---:|---:|---:|
+   | Grid / Block | 160 / 512 | 64 / 1024 | 128 / 512 |
+   | Wellen je SM | 1,11 | 0,89 | 0,89 |
+   | belegte Warps | 92,7 % | 96,7 % | 88,1 % |
+   | DRAM-Durchsatz | 47,5 % | 59,5 % | 74,8 % |
+
+   **Nicht die Occupancy** (88–97 %). Kein Gitter füllt die Maschine auch nur
+   einmal: bei `5120,2048` bekommen acht der 72 SMs überhaupt nichts, bei
+   `1536,5120` kostet ein Rest von 16 CTAs die volle Zeit einer zweiten Welle.
+   Dazu das schlechte Verhältnis von Arbeit zu Barriere — bei K=1536 und
+   SPLITK=16 dreht ein Warp sechs Durchläufe und zahlt dann eine
+   `__syncthreads()` plus 16-fache Smem-Reduktion.
+
+   Der Hebel wäre SPLITK=8 (gemessen 1,18× bzw. 1,16× auf den beiden Formen),
+   **aber SPLITK ändert, welche Teilsummen wo gebildet werden — die
+   Bitgleichheit fällt.** Wert: die beiden Formen sind ~26 % der
+   Gewichtsbytes, bei ~16 % Gewinn also ~3,6 % der `qpn2`-Zeit und
+   **rund 0,5 % end-zu-end**. **Entscheidung Peuqui, 10.09.: nicht machen** —
+   der Verifikationsanker ist mehr wert. Ein bitgleicher Ersatzweg existiert
+   nicht: mehr Arbeit je CTA halbiert das Gitter und verschlimmert die
+   Wellen-Quantisierung.
+
+10. **`prof_prefill.sh` ist auf dieser nsys-Version nicht lauffähig** (09.09.).
    Es übergibt `--output` an `nsys launch`; nsys 2022.4.2 nimmt die Option nur
    bei `nsys start` („unrecognised option"). In `prof_dflash.sh` ist es
    korrigiert, in `prof_prefill.sh` noch nicht — STAND.md empfiehlt das Skript

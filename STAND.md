@@ -649,6 +649,22 @@ Augustwerten (6,5 min Boot).
   `ENV_PREFIX` und Co. kamen nie an, der Server lief mit alter venv und ohne
   MTP. `bash -n` war grün, aufgefallen nur über `speculative_config=None`.
   Übergabe per Trockenlauf und `/proc/<pid>/cmdline` belegen.
+- **Der Tool-Call-Parser folgt dem Chat-Template, nicht der Modellfamilie**
+  (11.09.). Qwen3.8 (27B wie Flash-Next) schreibt Aufrufe als XML
+  (`<tool_call><function=NAME><parameter=P>…`) und braucht
+  `--tool-call-parser qwen3_coder --reasoning-parser qwen3`. Alle
+  vLLM-Einträge und die Startskripte hier fuhren `hermes` (JSON): vLLM
+  verschluckte damit jeden Aufruf im Streaming STILL (`finish_reason=
+  tool_calls` ohne Aufruf, keine Logzeile). Kein vLLM-Eintrag hat je ein
+  Werkzeug aufgerufen; aufgefallen erst am Gebetsauftrag, weil alle
+  vLLM-Tests reine Textfragen waren. Behoben 11.09.: llama-swap-Einträge,
+  `serve-qwen38-mini.sh`/`-native.sh`; AIfreds Kalibration leitet beide
+  Parser jetzt aus dem Template ab (`data/vllm_runtime.yaml`,
+  `*_by_template_marker`). Belegt mit Streaming-Proben (Denken an/aus ×
+  Werkzeug an/aus) auf 27B-MTP, 27B-DFlash2 und Flash-Next. Zweiter Fund
+  dabei: AIfred las bei vLLM das Denkfeld `reasoning` nicht — Flash-Next
+  lief seit 07.09. ohne sichtbaren Denkblock. **Ein neues Profil ist erst
+  abgenommen, wenn es einmal ein Werkzeug aufgerufen hat.**
 
 ---
 
@@ -960,7 +976,7 @@ Augustwerten (6,5 min Boot).
     | `ncclDevKernel_AllReduce` | 1.714 | 31,8 % | **größter Posten, nie untersucht** |
     | `skinny_nvfp4_qpn2` | 1.303 | 24,2 % | fertig, 87–98 % der Dachlinie |
     | `skinny_fp8_qpn8` | 889 | 16,5 % | DRAM-gebunden, nicht anfassen |
-    | `cutlass_75_wmma…f16_16x16` | 291 | 5,4 % | **unidentifiziert** |
+    | `cutlass_75_wmma…f16_16x16` | 291 | 5,4 % | zugeordnet 11.09., siehe unten |
     | `turing_fp16_s1688gemm` | 273 | 5,1 % | war der fp16-Entwurfskopf, erledigt |
     | `fused_sigmoid_gating_delta_rule` | 180 | 3,3 % | |
     | `ncclDevKernel_AllGather` | 178 | 3,3 % | |
@@ -975,11 +991,23 @@ Augustwerten (6,5 min Boot).
     Billigster erster Versuch: NCCL-Umgebungsschalter (`NCCL_ALGO`,
     `NCCL_PROTO`, Puffergrößen) — reine Env-Experimente.
 
-    **Cutlass-fp16-GEMM:** in beiden Profilen (291 ms bei DFlash2, 351 ms bei
-    MTP), also im **Zielmodell**, einer je Schicht und Vorwärtsschritt. Ein
-    kleiner fp16-GEMM, der an den Skinny-Kerneln vorbeiläuft. Was genau, ist
-    offen — der erste Schritt ist, ihn einer Schicht zuzuordnen (nsys mit
-    NVTX oder ein Blick, welche Linears im Modell unquantisiert sind).
+    **Cutlass-fp16-GEMM — zugeordnet (11.09., aus den vorhandenen
+    nsys-Berichten, Aufrufzahlen je Grid):** Es ist kein einzelner GEMM,
+    sondern eine Kernelfamilie für alles, was fp16 bleibt. Der Großteil ist
+    der **unquantisierte Entwurfskopf** — bei DFlash2 der damalige fp16-Kopf
+    (Gruppen mit 5, 7 und 10 Aufrufen je Verify-Schritt), unter MTP der
+    MTP-Block, den der RadixArk-Checkpoint von der Quantisierung ausnimmt
+    (`exclude_modules: mtp*`; fünf Gruppen mit je ~408 = 136 Schritte × 3
+    Entwürfe). Im **Zielmodell** liegt nur `in_proj_ba` (die GDN-Gating-
+    Projektionen a/b, im Checkpoint unquantisiert): 48 Aufrufe je Schritt
+    (5.715 = 48 × 119), 5,5 µs je Aufruf, rund 0,6 %. Die fusionierte
+    1Cat-Route (`fp8_qpn8_gemm_ba_split_sm70_out`) greift nur bei genau einem
+    Token, im Spekulations-Verify also nie. Die frühere Annahme „im
+    Zielmodell, weil auch unter MTP" war falsch — auch der MTP-Block ist fp16.
+    Folge: Mit dem NVFP4-Entwurfskopf sollte der große Teil bei DFlash2 schon
+    weg sein (Nachmessung mit `prof_dflash.sh` und `DRAFT=maurienne` steht
+    aus). Für 27B-MTP wäre ein quantisierter MTP-Block der Hebel, wie bei
+    Flash-Next (MTPQ).
 
 14. **Block-Pack auf 1Cats eigene QPN2-Kernel übertragen** (10.09. geprüft).
     1Cats QPN-Kernel (`csrc/sm70_turbomind/ops/nvfp4_qpn2_sm70.cu` u. a.)
@@ -993,7 +1021,15 @@ Augustwerten (6,5 min Boot).
     exakt SM70. Ein Angebot müsste den Turing-Pfad mitbringen; auf der V100
     brachte der Pack nur 1,04×.
 
-15. **PR-Pakete — Besprechung mit Peuqui ausstehend** (10.09.). Aus 1Cat plus
+15. **PR-Pakete** (10.09. abends, Freigaben Peuqui: 8, 9, 10, 11, 12, 13).
+    Entwürfe in `upstream-contrib/03-1cat-issues/`: editable-Bau
+    (`pr-editable-soabi-modules.md`, Worktree `1Cat-vLLM-editable-pr`,
+    Belegbau auf frischem main grün) und DFlash2 unter SM80
+    (`pr-dflash2-pre-sm80-worker-device.md`, Worktree `1Cat-vLLM-pr-dflash2`,
+    CPU-Test samt Gegentest grün, GPU-Messung auf main + #572 steht aus).
+    Beide nicht gesendet. Frisches main ist per `PYTHONPATH` auf den
+    Belegbau-Worktree lauffähig — damit lassen sich PRs vorher/nachher auf der
+    echten Hardware messen. Ursprüngliche Einordnung: Aus 1Cat plus
     unseren offenen PRs entsteht NICHT unser System: der Overlay (60 Dateien,
     +5.067 Zeilen) steckt in keinem PR; Skinny-Quelltext, sm75-FA und
     TileLang-Fix liegen ganz außerhalb von 1Cat. 1Cat selbst ist ein
@@ -1012,30 +1048,44 @@ Augustwerten (6,5 min Boot).
     (Punkt 8); auf der V100 rechnet beim 27B TurboMind, bei DeepSeek laufen
     die MoE-Experten auf allen Karten über Skinny.
 
-16. **Befunde vom 10.09., noch offen:**
-    - `flashnext_qual.sh` und `flashnext_ab.sh` beenden am Ende per
-      `pgrep -f 'VLLM[:]:'` JEDEN vLLM-Worker der Maschine — gegen die Regel
-      „nur eigene Prozessbäume". Auf die eigene Prozessgruppe umstellen.
-    - `VLLM_SKINNY_*` stehen nicht in `envs.py` → vLLM warnt beim Start
-      „Unknown vLLM environment variable". Harmlos, aber Rauschen.
-    - ~~Werkzeuge mit fester `.venv-sm70-130`~~ — ERLEDIGT, zeigen auf
-      `~/vllm/venv`; beide alten venvs sind gelöscht.
+16. **Befunde vom 10.09.:**
+    - ~~`flashnext_qual.sh`/`flashnext_ab.sh` beenden jeden vLLM-Worker der
+      Maschine per `pgrep`~~ — ERLEDIGT, nur noch die eigene Prozessgruppe.
+    - `VLLM_SKINNY_*` stehen nicht in `envs.py` → Startwarnung. Wird im
+      Skinny-PR mit angemeldet (Peuqui 10.09.).
+    - ~~Werkzeuge mit fester `.venv-sm70-130`~~ — ERLEDIGT.
+    - Overlay-Inventur: `upstream-contrib/OVERLAY-INVENTUR.md`. Neun
+      Merge-Reste, darunter ein echter Bug (`_custom_ops.py`: MLA-Modelle
+      stürzen beim Chunked-Context-Prefill ab), eine abgeschaltete
+      Upstream-Optimierung (`speculative.py`, Qwen4Exp-MTP index_share) und der
+      E5-Cache mit Vorgabe an. Freigabe Peuqui 10./11.09.: Reste
+      bereinigen, index_share per A/B auf Flash-Next.
+    - **Aufräumen 11.09. angewendet, NICHT committet, Abnahme unvollständig**
+      (Befunde 1, 3–8; Patches in `handover/2026-09-11/patches/`). 27B
+      DFlash2 SHA gleich auf beiden Paaren; 27B-MTP Antwortanfang gleich;
+      Flash-Next 2/3 (q3 „Kuanda-Effekt" statt Coandă — bekannter
+      sporadischer Aussetzer, mit Einzellauf nicht entscheidbar); DeepSeek
+      nicht gelaufen. Details `HANDOVER.md`.
 
-17. **Der vLLM-Eintrag `DeepSeek-V4-Flash-nvfp4-DSpark-vllm` bootet nie** —
-    auch nicht mit der alten 150, also kein Rückschritt. Erst fehlte
-    `--kv-cache-dtype fp8` (DeepseekV4 verlangt es; am 10.09. ergänzt), dann
-    OOM beim Laden: 165 GB Modell auf den vier Karten des Eintrags
-    (`0,2,1,4`, zusammen 160 GB) — passt mit keiner Aufteilung. Lauffähig ist
-    DeepSeek unter vLLM nur mit allen fünf Karten
-    (`scripts/serve-deepseek-het-graphs.sh`, PP5): dann ist aber die
-    Side-Channel-Karte belegt, der Kontext liegt bei 4.096, und llama.cpp ist
-    ohnehin schneller (Bench 40,4 gegen 21–27 tok/s). **Entscheidung bei
-    Peuqui:** Eintrag entfernen oder nach PP5 neu aufsetzen.
+17. **DeepSeek-Eintrag läuft als PP5** (10.09.): TP1 PP5 über alle fünf
+    Karten, `CUDA_VISIBLE_DEVICES=0,1,4,3,2`, Partition 11,8,8,8,8,
+    `--kv-cache-dtype fp8`, DSpark k=5. Abnahme über llama-swap bestanden;
+    13k-Vorkontext: 15,1 / 19,1 / 15,4 tok/s, Prefill ~120 tok/s.
+    **Kontextgrenze: 65.536** (11.09., in llama-swap eingetragen, Sicherung
+    `backups/config.yaml.20260911-031418-vor-dsv4-ctx64k`): 600 Blöcke
+    (KV 93.622 Token), `VLLM_SM70_INDEXER_PREFILL_TILE_MB=64`. Belegt mit
+    einem 64.349-Token-Prompt: TTFT 541 s, Decode 12,3 tok/s, Antwort
+    kohärent, V100-Spitze 32.200 von 32.492 MiB nutzbar (292 MiB Luft).
+    Die V100-Stufen sind die Grenze, nutzbar sind dort 31,73 GiB. Der Weg „zu hohe max-model-len, Wert aus dem Fehler"
+    trägt hier nicht — FlashMLA-Sparse reserviert beim Start
+    5 × max-model-len × 576 × 2 Byte (`flashmla_sparse.py:235`), bei 1M
+    ~6 GB, der Profillauf stirbt vor der KV-Rechnung. 131.072 bootet
+    (KV 232k Token), stirbt aber bei ~100k Kontext im Indexer-Prefill (OOM,
+    156 MiB Kachel). Leerlauf wächst ~22 MiB je 1.000 Token max-model-len.
+    Hebel: `VLLM_SM70_INDEXER_PREFILL_TILE_MB` (Vorgabe 192; unter ~32k
+    Kontext wirkungslos, Referenz-Hashes unberührt).
 
-18. **Drei DFlash2-PRs von 1Cat fehlen in work-main** (10.09.): #586 (native
-    Prefill-Routen), #587 (Leistungsabfall bei langem Kontext), #589
-    (Attention-Kosten, exakte QK-Wiederverwendung) — alle nach unserer Basis
-    `0a0d4d67` gemerged, alle reiner Python-Code. Merge ohne Neubau möglich
-    (editable), danach Pflicht: SHA auf beiden Kartenpaaren und der
-    DFlash2-Produktionseintrag. #582/#583/#585/#588 (Video/Bild/H3) sind
-    schon drin.
+18. ~~**Drei DFlash2-PRs von 1Cat fehlen in work-main**~~ — ERLEDIGT 10.09.:
+    Merge 82301e6b (#586 #587 #589), SHA auf beiden Kartenpaaren gleich,
+    76,28 (V100) / 76,65 (RTX) tok/s; auf dem RTX-Pfad neutral, weil die PRs
+    SM70-Attention ändern. Getaggt `verified-2026-09-10b`.

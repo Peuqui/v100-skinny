@@ -1,0 +1,32 @@
+{
+  "q1": {
+    "prompt_tokens": 38994,
+    "completion_tokens": 3073,
+    "s": 115.98,
+    "tok_per_s": 26.5,
+    "finish": "stop",
+    "reasoning_chars": 8447,
+    "content_chars": 3471,
+    "sha256": "be2efd78eaf942e9"
+  },
+  "q2": {
+    "prompt_tokens": 38995,
+    "completion_tokens": 1597,
+    "s": 27.32,
+    "tok_per_s": 58.45,
+    "finish": "stop",
+    "reasoning_chars": 4680,
+    "content_chars": 1596,
+    "sha256": "b7a0118bb5e112b2"
+  },
+  "q3": {
+    "prompt_tokens": 38995,
+    "completion_tokens": 4172,
+    "s": 74.87,
+    "tok_per_s": 55.72,
+    "finish": "stop",
+    "reasoning_chars": 15265,
+    "content_chars": 1460,
+    "sha256": "10bf0bb91877c142"
+  }
+}

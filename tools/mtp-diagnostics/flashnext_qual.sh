@@ -40,7 +40,7 @@ cd $REPO
  CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
 ENV_PREFIX="$VENV" \
-TP=2 PP=2 K=$K GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
+TP=2 PP=2 K=$K GMU=0.95 MML=262144 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 PORT=$PORT LOG=$W/boot.log BOOT_WAIT_S=2400 \
 EXTRA_ARGS='--distributed-timeout-seconds 3600 --compilation-config {"cudagraph_capture_sizes":[1,2,4,5,8]}' \
 bash scripts/serve-qwen38-flash-next.sh "$CKPT" 2>&1 | tail -3

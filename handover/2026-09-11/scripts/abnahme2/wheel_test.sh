@@ -14,6 +14,9 @@ VENV=/home/mp/Projekte/vllm-research/v100-skinny/.venv-sm70-main
 VT=/home/mp/vllm/venv-wheeltest
 REPO=/home/mp/Projekte/vllm-research/v100-skinny
 D=/home/mp/.cache/huggingface/hub/models--maurienne-ai--Qwen3.8-27B-DFlash2-NVFP4-RTNcal/snapshots/bd7a934213c47a9e7ef69eef36bb3325f47fd1f1
+# Unter systemd-run --user ist der PATH minimal: ninja liegt im venv-bin, nvcc
+# im CUDA-Symlink. Beides explizit voranstellen (Fehlschlag 11.09. 19:11).
+export PATH=$VENV/bin:/home/mp/vllm/cuda/bin:$PATH
 stamp() { echo "===== $(date '+%F %T') $*"; }
 
 if [ "$STEP" = build ] || [ "$STEP" = all ]; then
@@ -50,9 +53,12 @@ if [ "$STEP" = accept ] || [ "$STEP" = all ]; then
   for m in _sm70_exact_reduce_C _h3_w8a16_C _h3_flashinfer_C _h3_flashattn_C _sm70_sparse_attention_C _sm70_sampler_C; do
     ( cd "$OUT" && CUDA_VISIBLE_DEVICES="" "$VT/bin/python" -c "import importlib; m=importlib.import_module('vllm.$m'); print('  $m:', m.__file__.split('/')[-1])" 2>&1 | grep -v "^W0" )
   done
-  stamp "4) 27B DFlash2 V100-Paar aus dem Wheel (VENV=$VT)"
+  stamp "4) 27B DFlash2 V100-Paar aus dem Wheel (VENV=$VT), incoai-Kopf"
   cd "$REPO"
-  VENV=$VT DEVS=1,3 DRAFT=$D bash tools/mtp-diagnostics/speed_dflash.sh wheel_v100 fork dflash 2>&1 | tail -3
+  # KEIN DRAFT=maurienne: das Wheel ist reines main ohne #592, der NVFP4-Kopf
+  # bricht dort mit "mat1 and mat2 shapes cannot be multiplied" (Lauf 19:43).
+  # Der unquantisierte incoai-Kopf ist der Stand, den main tragen muss.
+  VENV=$VT DEVS=1,3 bash tools/mtp-diagnostics/speed_dflash.sh wheel_v100 fork dflash 2>&1 | tail -3
   grep -o '"sha256": "[0-9a-f]*"' "$HOME/.cache/mtp-diagnostics/qual_wheel_v100/result.json" | sed 's/^/wheel_v100 /'
   echo "Tracebacks im Boot-Log: $(grep -c Traceback "$HOME/.cache/mtp-diagnostics/qual_wheel_v100/boot.log")"
   stamp "WHEEL-TEST-ENDE"

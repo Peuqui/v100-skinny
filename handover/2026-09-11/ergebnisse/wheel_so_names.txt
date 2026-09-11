@@ -1,0 +1,12 @@
+vllm/_C.abi3.so
+vllm/_C_stable_libtorch.abi3.so
+vllm/cumem_allocator.abi3.so
+vllm/_h3_flashattn_C.cpython-312-x86_64-linux-gnu.so
+vllm/_h3_flashinfer_C.cpython-312-x86_64-linux-gnu.so
+vllm/_h3_w8a16_C.cpython-312-x86_64-linux-gnu.so
+vllm/_moe_C.abi3.so
+vllm/_sm70_exact_reduce_C.cpython-312-x86_64-linux-gnu.so
+vllm/_sm70_sampler_C.abi3.so
+vllm/_sm70_sparse_attention_C.cpython-312-x86_64-linux-gnu.so
+vllm/spinloop.abi3.so
+vllm/vllm_flash_attn/_vllm_fa2_C.abi3.so

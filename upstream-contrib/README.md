@@ -28,6 +28,24 @@ prüfen.
 Damit sind neun PRs gemergt; die Repo-Regel „Autor braucht ≥4 gemergte PRs"
 (roter `pre-run-check`) ist erfüllt.
 
+## 1Cat-vLLM: offene PRs (Stand 2026-09-11 abends)
+
+| PR | Titel | Entwurf |
+|---|---|---|
+| #572 | [Bugfix][Perf][SM70] Make Turing (sm75) boot, compute correctly and keep its Inductor fusions | `03-1cat-issues/pr-turing-four-fixes.md` |
+| #573 | [Bugfix][Qwen4Exp] Keep the MTP drafter stage-local under pipeline parallelism | `pr-qwen4exp-mtp-pp.md` |
+| #574 | [Bugfix][Spec Decode] Trim the optimistic spec-decode tokens on every pipeline rank | — |
+| #576 | [Bugfix][SM70] Read the quantization SM70 gate from the worker's own device | — |
+| #592 | [Bugfix] DFlash: fuse context K/V through quant_method so a quantized draft head loads | `pr-dflash-quantized-draft-context-kv.md` |
+| #599 | [Bugfix][Spec Decode][SM70] Gate DFlash2's BF16 emulation and FlashInfer top-k on the worker's own device | `pr-dflash2-pre-sm80-worker-device.md` |
+| #600 | [Bugfix][Platform] Resolve an unspecified device_id to the worker's own device | `pr-platform-default-device-id.md` |
+| #601 | [Bugfix][Build][SM70] Declare the pybind11 SM70 extensions non-limited-API | `pr-editable-soabi-modules.md` |
+
+#599–#601 eröffnet 2026-09-11 abends (Freigabe Peuqui). #600 ist der
+Wurzelfix für die Gerät-0-Fehlerklasse aus #412 und macht die Einzelfixes
+#514/#576/#599 überflüssig, nicht falsch. Nach dem Merge eines eigenen PRs
+den zugehörigen Overlay-Teil im Produktions-Worktree ENTFERNEN (STAND.md).
+
 ---
 
 ## Erste Runde — alle veröffentlicht am 2026-08-28

@@ -1,0 +1,49 @@
+1.
+
+<think>
+The user is asking me to explain the rainbow effect in 30 sentences. They explicitly state "Aufgabe, unabhängig vom Hintergrundmaterial oben" (Task, independent of the background material above). So I should ignore all the terminal/port background material and simply explain the rainbow effect in 30 sentences in German.
+
+Let me write a comprehensive explanation of the rainbow effect in exactly 30 sentences in German.
+
+Let me count carefully as I write:
+
+1. Ein Regenbogen ist ein optisches und meteorologisches Phänomen, das durch die Brechung, Reflexion und Dispersion von Sonnenlicht in Wassertropfen entsteht.
+2. Er erscheint am Himmel, wenn die Sonne hinter dem Beobachter steht und vor ihm Regen oder Nebel fällt.
+3. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum elektromagnetischer Strahlung, das alle sichtbaren Wellenlängen umfasst.
+4. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen.
+5. Dabei wird das Licht je nach Wellenlänge unterschiedlich stark abgelenkt, da der Brechungsindex von Wasser wellenlängenabhängig ist.
+6. Kurzwelliges blaues Licht wird stärker gebrochen als langwelliges rotes Licht, was zur Aufspaltung des weißen Lichts in seine Spektralfarben führt.
+7. Im Inneren des Tropfens trifft das Licht auf die Rückseite und wird dort teilweise reflektiert.
+8. Beim Austritt aus dem Tropfen wird das Licht erneut gebrochen und weiter aufgespalten.
+9. Der Gesamtablenkungswinkel für den primären Regenbogen beträgt etwa 42 Grad für rotes Licht und etwa 40 Grad für violettes Licht.
+10. Jeder einzelne Wassertropfen sendet Licht in einem engen Winkelbereich aus, und nur Tropfen in der richtigen Position liefern Licht zum Auge des Beobachters.
+11. Da alle Tropfen, die den gleichen Ablenkwinkel zum Auge bilden, auf einem Kreisbogen liegen, erscheint der Regenbogen als Bogen.
+12. Die vollständige Form ist ein Kreis, doch vom Boden aus sieht man meist nur den oberen Teil.
+13. Von einem Flugzeug aus kann man den vollständigen Regenbogenkreis beobachten.
+14. Die Farbfolge im primären Regenbogen lautet von außen nach innen: Rot, Orange, Gelb, Grün, Blau, Indigo, Violett.
+15. Zwischen den Farben gibt es keine scharfen Grenzen, sondern fließende Übergänge.
+16. Der sekundäre Regenbogen entsteht durch eine doppelte Reflexion im Inneren des Tropfens.
+17. Er erscheint außerhalb des primären Bogens mit einem Ablenkwinkel von etwa 50 bis 53 Grad.
+18. Beim sekundären Regenbogen ist die Farbfolge umgekehrt, das heißt Violett liegt außen und Rot innen.
+19. Der sekundäre Bogen ist deutlich schwächer, weil bei der zusätzlichen Reflexion mehr Licht verloren geht.
+20. Zwischen dem primären und dem sekundären Bogen liegt ein dunklerer Bereich, der Alexanderband genannt wird.
+21. Die Helligkeit und Farbintensität eines Regenbogens hängen von der Größe der Wassertropfen ab.
+22. Große Tropfen erzeugen kräftige, gesättigte Farben, während kleine Tropfen zu blassen oder überlappenden Farben führen.
+23. Bei sehr kleinen Tröpfchen, wie sie in Nebel vorkommen, kann ein weißer Nebelbogen entstehen.
+24. Überlagerte Interferenzeffekte können zusätzliche schwache Farbbänder innerhalb des Regenbogens erzeugen, sogenannte Supernumerary-Bögen.
+25. Die Beobachtung eines Regenbogens erfordert, dass die Sonne nicht höher als etwa 42 Grad über dem Horizont steht.
+26. Morgens und abends, wenn die Sonne tief steht, sind Regenbögen am häufigsten und am schönsten zu sehen.
+27. Physikalisch lässt sich das Phänomen mit der geometrischen Optik und der Wellenoptik beschreiben.
+28. Die Wellenoptik erklärt zusätzlich die Intensitätsverteilung und die Supernumerary-Bögen durch Interferenz.
+29. Regenbögen sind keine materiellen Objekte, sondern richtungsabhängige Lichterscheinungen, die für jeden Beobachter individuell sind.
+30. Zwei Beobachter an verschiedenen Standorten sehen somit jeweils ihren eigenen, persönlichen Regenbogen.
+
+Let me count: 1-30. Yes, exactly 30 sentences. Good.
+</think>
+
+1. Ein Regenbogen ist ein optisches und meteorologisches Phänomen, das durch die Brechung, Reflexion und Dispersion von Sonnenlicht in Wassertropfen entsteht.
+2. Er erscheint am Himmel, wenn die Sonne hinter dem Beobachter steht und vor ihm Regen oder Nebel fällt.
+3. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum elektromagnetischer Strahlung, das alle sichtbaren Wellenlängen umfasst.
+4. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen.
+5. Dabei wird das Licht je nach Wellenlänge unterschiedlich stark abgelenkt, da der Brechungsindex von Wasser wellenlängenabhängig ist.
+6. Kurzwelliges blaues Licht wird stärker gebrochen als langwelliges rotes Licht, was zur Aufspaltung des weißen Lichts in seine Spek

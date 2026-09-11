@@ -1,0 +1,31 @@
+Die Quantenphysik ist die fundamentale Theorie der Materie und Energie auf atomarer und subatomarer Ebene.
+Sie beschreibt das Verhalten von Teilchen, die so klein sind, dass klassische Gesetze nicht mehr gelten.
+In dieser Welt gelten keine festen Bahnen, sondern Wahrscheinlichkeitsverteilungen.
+Ein Teilchen kann sich gleichzeitig an mehreren Orten befinden, ein Phänomen namens Superposition.
+Beobachtet man ein Teilchen, kollabiert seine Wellenfunktion zu einem bestimmten Zustand.
+Dieser Vorgang wird als Messproblem der Quantenmechanik bezeichnet.
+Die Energie wird nicht kontinuierlich, sondern in diskreten Paketen, den Quanten, übertragen.
+Max Planck legte 1900 den Grundstein für diese Theorie mit seiner Strahlungsformel.
+Albert Einstein erklärte 1905 den photoelektrischen Effekt mit dem Konzept der Lichtquanten.
+Niels Bohr entwickelte 1913 das Atommodell mit diskreten Energieniveaus.
+Ernest Rutherford hatte zuvor den Atomkern entdeckt, was die Struktur des Atoms veränderte.
+Louis de Broglie postulierte, dass Materie auch Welleneigenschaften besitzt.
+Werner Heisenberg formulierte die Unschärferelation, die fundamentale Grenzen der Messung setzt.
+Man kann Position und Impuls eines Teilchens nie gleichzeitig exakt bestimmen.
+Erwin Schrödinger entwickelte die Wellengleichung, die das Verhalten von Teilchen beschreibt.
+Sein berühmtes Gedankenexperiment mit der Katze illustriert die Absurdität der Superposition.
+Die Katze ist gleichzeitig tot und lebendig, bis sie beobachtet wird.
+Quantenverschränkung verbindet Teilchen so, dass ihr Zustand korreliert bleibt.
+Albert Einstein nannte dies „spukhafte Fernwirkung“, da es schneller wirkt als Licht.
+Experimente haben jedoch gezeigt, dass diese Verschränkung real und messbar ist.
+Sie bildet die Grundlage für moderne Technologien wie Quantencomputer.
+Quantencomputer nutzen Superposition und Verschränkung für parallele Berechnungen.
+Sie könnten komplexe Probleme lösen, die klassischen Computern unmöglich sind.
+Auch in der Halbleiterindustrie ist Quantenphysik unverzichtbar.
+Transistoren und Laser basieren auf quantenmechanischen Effekten.
+Die Quantenfeldtheorie vereint Quantenmechanik und spezielle Relativitätstheorie.
+Sie beschreibt die fundamentalen Kräfte und Teilchen im Universum.
+Das Standardmodell der Teilchenphysik ist ein großer Erfolg dieser Theorie.
+Es erklärt fast alle bekannten Wechselwirkungen, außer der Gravitation.
+Die Suche nach einer Theorie der Quantengravitation bleibt eine offene Frage.
+Die Quantenphysik hat unser Verständnis der Realität grundlegend verändert.

@@ -99,7 +99,18 @@ anfangen.** 258 E5-Zeilen, Einstiege um `execute_model` (~Z. 9599–10493) und
 der Block ab Z. 433; `only_gids` in `_build_attention_metadata` gehört auch
 dazu.
 
-### 4. Editable-PR (Punkt 8) — fertig, wartet auf Peuquis Go
+### ERLEDIGT 11.09. abends: drei PRs eröffnet
+
+#599 (Paket 11a, beide Gerät-0-Gates in `qwen3_dflash2.py`), #600 (Wurzelfix:
+`device_id=None` → aktuelles Gerät des Workers, torch statt NVML nach
+CUDA-Init; erledigt die Klasse aus #412 für alle 263 Aufrufstellen), #601
+(Editable-Bau, Wheel gebaut und abgenommen). Belege und Ergebnisse in
+`upstream-contrib/03-1cat-issues/pr-*.md` und `handover/2026-09-11/`.
+Damit sind die Abschnitte 4 und 5a unten Geschichte; 5c–5e bleiben, wobei
+die Gerät-0-Anteile von 5e (D2) durch #600 entfallen. Offen: E5-Entscheidung
+(Messung liegt vor, STAND.md Punkt 16), Befund 2 index_share, Punkte 6–10.
+
+### 4. ~~Editable-PR (Punkt 8) — fertig, wartet auf Peuquis Go~~ → #601
 
 Branch `editable-soabi-modules` im Worktree `1Cat-vLLM-editable-pr` auf
 origin/main fe67339d, `setup.py` +14/−6. Entwurf:

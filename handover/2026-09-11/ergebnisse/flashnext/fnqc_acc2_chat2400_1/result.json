@@ -1,0 +1,38 @@
+{
+  "q1": {
+    "prompt_tokens": 13052,
+    "completion_tokens": 2153,
+    "s": 50.74,
+    "tok_per_s": 42.43,
+    "finish": "stop",
+    "reasoning_chars": 6369,
+    "content_chars": 2271,
+    "sha256": "5cee03b31eebebcc",
+    "acc_rate": 0.6061,
+    "acc_len": 3.424
+  },
+  "q2": {
+    "prompt_tokens": 13053,
+    "completion_tokens": 2400,
+    "s": 56.92,
+    "tok_per_s": 42.17,
+    "finish": "length",
+    "reasoning_chars": 9358,
+    "content_chars": 0,
+    "sha256": "e3b0c44298fc1c14",
+    "acc_rate": 0.5458,
+    "acc_len": 3.183
+  },
+  "q3": {
+    "prompt_tokens": 13053,
+    "completion_tokens": 2400,
+    "s": 60.65,
+    "tok_per_s": 39.57,
+    "finish": "length",
+    "reasoning_chars": 9624,
+    "content_chars": 0,
+    "sha256": "e3b0c44298fc1c14",
+    "acc_rate": 0.4721,
+    "acc_len": 2.888
+  }
+}

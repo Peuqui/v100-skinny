@@ -1,0 +1,55 @@
+1.
+
+<think>
+The user is asking me to explain the rainbow effect in 30 sentences. They explicitly state "Aufgabe, unabhängig vom Hintergrundmaterial oben" (Task, independent of the background material above). So I should ignore all the terminal/port background material and simply explain the rainbow effect in 30 sentences in German.
+
+Let me write a comprehensive explanation of the rainbow effect in exactly 30 sentences in German.
+
+Let me count carefully as I write:
+
+1. Der Regenbogen ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft.
+2. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum aller sichtbaren Wellenlängen.
+3. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen.
+4. Dabei wird das Licht in seine spektralen Bestandteile aufgespalten, da jede Wellenlänge einen leicht anderen Brechungsindex erfährt.
+5. Kurzwelliges blaues Licht wird stärker gebrochen als langwelliges rotes Licht.
+6. Im Inneren des Tropfens wird das Licht an der Rückseite des Tropfens reflektiert.
+7. Beim Austritt aus dem Tropfen wird das Licht erneut gebrochen und weiter aufgespalten.
+8. Der Gesamtablenkungswinkel für den primären Regenbogen beträgt etwa 42 Grad für rotes Licht.
+9. Für violettes Licht beträgt der Ablenkungswinkel etwa 40 Grad.
+10. Diese winkelmäßige Trennung der Farben erzeugt den charakteristischen Farbbogen.
+11. Der Beobachter sieht den Regenbogen immer in Richtung der Sonne abgewandten Himmelsseite.
+12. Die Sonne muss sich hinter dem Beobachter befinden, damit der Regenbogen sichtbar wird.
+13. Jeder einzelne Wassertropfen sendet Licht in einem Kegel von etwa 42 Grad aus.
+14. Da nur Tropfen in einem bestimmten Winkelbereich zum Auge des Beobachters strahlen, erscheint der Bogen als Kreisabschnitt.
+15. Von einem Flugzeug aus kann man den Regenbogen als vollständigen Kreis sehen.
+16. Am Boden wird der untere Teil des Kreisbogens durch den Horizont verdeckt.
+17. Die Farbfolge im primären Regenbogen lautet von außen nach innen: Rot, Orange, Gelb, Grün, Blau, Indigo, Violett.
+18. Isaac Newton teilte das Spektrum ursprünglich in sieben Farben ein, um eine Analogie zu den sieben Tönen der Tonleiter herzustellen.
+19. Ein sekundärer Regenbogen entsteht durch eine doppelte Reflexion im Inneren des Tropfens.
+20. Beim sekundären Regenbogen ist die Farbfolge umgekehrt, mit Violett außen und Rot innen.
+21. Der sekundäre Regenbogen erscheint in einem Winkel von etwa 51 Grad und ist deutlich schwächer.
+22. Zwischen dem primären und sekundären Regenbogen liegt ein dunklerer Bereich, der Alexanderband genannt wird.
+23. Die Intensität des Regenbogens hängt von der Größe der Wassertropfen ab.
+24. Große Tropfen erzeugen einen kräftigeren, farbintensiveren Regenbogen.
+25. Sehr kleine Tröpfchen, wie sie in Nebel vorkommen, erzeugen einen blassen, fast weißen Nebelbogen.
+26. Überlagerte Regenbögen können durch Interferenzerscheinungen zusätzliche Farbsäume erzeugen.
+27. Der Regenbogen ist kein physikalisches Objekt an einem festen Ort, sondern ein richtungsabhängiges Beobachtungsphänomen.
+28. Bewegt sich der Beobachter, bewegt sich der Regenbogen scheinbar mit ihm.
+29. Das Phänomen wurde bereits von Aristoteles beschrieben, aber erst von Descartes und Newton physikalisch vollständig erklärt.
+30. Der Regenbogen bleibt eines der eindrucksvollsten Beispiele für die Wechselwirkung von Licht und Materie in der Natur.
+
+That's 30 sentences. Let me verify the count... yes, 30 sentences. Good.
+</think>
+
+1. Der Regenbogen ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft.
+2. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum aller sichtbaren Wellenlängen.
+3. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen.
+4. Dabei wird das Licht in seine spektralen Bestandteile aufgespalten, da jede Wellenlänge einen leicht anderen Brechungsindex erfährt.
+5. Kurzwelliges blaues Licht wird stärker gebrochen als langwelliges rotes Licht.
+6. Im Inneren des Tropfens wird das Licht an der Rückseite des Tropfens reflektiert.
+7. Beim Austritt aus dem Tropfen wird das Licht erneut gebrochen und weiter aufgespalten.
+8. Der Gesamtablenkungswinkel für den primären Regenbogen beträgt etwa 42 Grad für rotes Licht.
+9. Für violettes Licht beträgt der Ablenkungswinkel etwa 40 Grad.
+10. Diese winkelmäßige Trennung der Farben erzeugt den charakteristischen Farbbogen.
+11. Der Beobachter sieht den Regenbogen immer auf der der Sonne abgewandten Himmelsseite.
+12. Die Sonne muss sich hinter dem Beobachter befinden, damit der Regenbogen sichtbar wird

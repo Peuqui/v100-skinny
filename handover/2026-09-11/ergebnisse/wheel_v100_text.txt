@@ -1,0 +1,34 @@
+
+
+<think>
+The user is asking me to explain quantum physics in 20 sentences, in German. Let me craft a clear, accurate, and accessible explanation of quantum physics in exactly 20 sentences in German.
+
+Let me plan the 20 sentences to cover the key concepts:
+1. Introduction - what quantum physics is
+2. The quantum concept - energy comes in discrete packets
+3. Wave-particle duality
+4. The uncertainty principle (Heisenberg)
+5. Superposition
+6. The wave function
+7. Measurement problem / collapse
+8. Entanglement
+9. Quantum tunneling
+10. The role of probability
+11. Schrödinger's equation
+12. Quantum numbers / quantization
+13. The double-slit experiment
+14. Spin
+15. Pauli exclusion principle
+16. Quantum field theory
+17. Applications (transistors, lasers, etc.)
+18. Interpretations (Copenhagen, many-worlds)
+19. Quantum computing
+20. Summary / significance
+
+Let me write this in German, making sure each sentence is complete and the total is exactly 20.
+</think>
+
+1. Die Quantenphysik ist die fundamentale Theorie, die das Verhalten von Materie und Energie auf atomarer und subatomarer Ebene beschreibt.
+2. Im Gegensatz zur klassischen Physik sind Energie, Impuls und andere physikalische Größen nicht kontinuierlich, sondern in diskrete Portionen, sogenannte Quanten, unterteilt.
+3. Ein zentrales Merkmal ist die Wellen-Teilchen-Dualität: Elektronen, Photonen und andere Teilchen zeigen je nach Experiment sowohl Teilchen- als auch Welleneigenschaften.
+4. Der berühmte Doppelspaltversuch demonstriert dies eindrucksvoll, denn ein einzelnes Teilchen erzeugt ein Interferenzmuster, als würde es sich selbst

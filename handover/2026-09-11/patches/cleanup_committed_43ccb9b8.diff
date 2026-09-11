@@ -1,0 +1,253 @@
+diff --git a/vllm/_custom_ops.py b/vllm/_custom_ops.py
+index 2e8e3ef9..a666cc9d 100644
+--- a/vllm/_custom_ops.py
++++ b/vllm/_custom_ops.py
+@@ -2793,7 +2793,6 @@ def swap_blocks_batch(
+     overhead; on older CUDA it falls back to a loop of cudaMemcpyAsync.
+ 
+     is_src_access_order_any: if True, pass CU_MEMCPY_SRC_ACCESS_ORDER_ANY to
+-    output_gate_activation: str = "silu",
+         cuMemcpyBatchAsync, letting the DMA engine prefetch source bytes
+         out of stream order. Only safe when no GPU stream is concurrently
+         writing to the source. Defaults to False (STREAM ordering), which
+@@ -2812,7 +2811,6 @@ def convert_fp8(
+ 
+ def gather_and_maybe_dequant_cache(
+     src_cache: torch.Tensor,
+-        output_gate_activation,
+     dst: torch.Tensor,
+     block_table: torch.Tensor,
+     cu_seq_lens: torch.Tensor,
+diff --git a/vllm/config/vllm.py b/vllm/config/vllm.py
+index cd675411..609c0e74 100644
+--- a/vllm/config/vllm.py
++++ b/vllm/config/vllm.py
+@@ -308,28 +308,6 @@ def _sm70_nomtp_cudagraph_capture_sizes(max_num_seqs: int) -> list[int]:
+     return sorted(capture_sizes)
+ 
+ 
+-
+-def _any_visible_device_has_capability(capability: tuple[int, int]) -> bool:
+-    """True if ANY visible CUDA device has exactly this compute capability.
+-
+-    ``current_platform.is_device_capability`` only ever looks at device 0,
+-    which is the wrong question for a heterogeneous pipeline-parallel
+-    deployment where each stage sits on a different architecture.
+-    """
+-    from vllm.platforms import current_platform
+-
+-    if not current_platform.is_cuda():
+-        return False
+-    try:
+-        device_count = torch.cuda.device_count()
+-    except Exception:
+-        return current_platform.is_device_capability(capability)
+-    for device_id in range(device_count):
+-        if current_platform.is_device_capability(capability, device_id=device_id):
+-            return True
+-    return False
+-
+-
+ def _sm70_mtp_cudagraph_capture_sizes(
+     max_num_seqs: int,
+     decode_query_len: int,
+diff --git a/vllm/model_executor/models/config.py b/vllm/model_executor/models/config.py
+index e6014bfd..61409014 100644
+--- a/vllm/model_executor/models/config.py
++++ b/vllm/model_executor/models/config.py
+@@ -667,60 +667,7 @@ class VoyageQwen3BidirectionalEmbedModelConfig(VerifyAndUpdateConfig):
+         model_config.hf_config.embedding_size = model_config.hf_config.num_labels
+ 
+ 
+-def _strip_qwen4_exp_mrope(model_config: "ModelConfig") -> None:
+-    configs = {
+-        id(config): config
+-        for config in (
+-            getattr(model_config, "hf_config", None),
+-            model_config.hf_text_config,
+-        )
+-        if config is not None
+-    }
+-    for config in configs.values():
+-        rope_parameters = getattr(config, "rope_parameters", None)
+-        if rope_parameters is not None:
+-            rope_parameters.pop("mrope_section", None)
+-            rope_parameters.pop("mrope_interleaved", None)
+-
+-
+-class Qwen4ExpForConditionalGenerationConfig(Qwen3_5ForConditionalGenerationConfig):
+-    """Apply the Qwen3.5 hybrid-cache contract to Qwen4Exp."""
+-
+-    @staticmethod
+-    def verify_and_update_config(vllm_config: "VllmConfig") -> None:
+-        Qwen3_5ForConditionalGenerationConfig.verify_and_update_config(vllm_config)
+-        text_config = vllm_config.model_config.hf_text_config
+-        if text_config.hc_count <= 1:
+-            raise ValueError("Qwen4Exp requires hc_count > 1")
+-        parallel_config = vllm_config.parallel_config
+-        uses_ple_or_qsa = bool(text_config.ple_layer_ids) or (
+-            getattr(text_config, "indexer_n_heads", None) is not None
+-        )
+-        if uses_ple_or_qsa and (
+-            parallel_config.enable_dbo or parallel_config.ubatch_size > 1
+-        ):
+-            raise NotImplementedError(
+-                "Qwen4Exp PLE/QSA does not support dual-batch overlap or microbatching"
+-            )
+-        multimodal_config = vllm_config.model_config.multimodal_config
+-        if multimodal_config is not None and multimodal_config.language_model_only:
+-            _strip_qwen4_exp_mrope(vllm_config.model_config)
+-        spec_config = vllm_config.speculative_config
+-        if spec_config is not None and spec_config.method not in {
+-            "mtp",
+-            "ngram",
+-            "ngram_gpu",
+-        }:
+-            raise NotImplementedError(
+-                "Qwen4Exp speculative decoding supports only its native MTP "
+-                "checkpoint and linear n-gram proposers"
+-            )
+-
+-
+ MODELS_CONFIG_MAP: dict[str, type[VerifyAndUpdateConfig]] = {
+-    "Qwen4ExpForCausalLM": Qwen4ExpForCausalLMConfig,
+-    "Qwen4ExpForConditionalGeneration": (Qwen4ExpForConditionalGenerationConfig),
+-    "Qwen4ExpMTP": Qwen4ExpMTPConfig,
+     "ColBERTJinaRobertaModel": JinaRobertaModelConfig,
+     "ColQwen3_5": Qwen3_5ForConditionalGenerationConfig,
+     "DeepseekV4ForCausalLM": DeepseekV4ForCausalLMConfig,
+diff --git a/vllm/v1/core/kv_cache_utils.py b/vllm/v1/core/kv_cache_utils.py
+index 78acefdc..b3647031 100644
+--- a/vllm/v1/core/kv_cache_utils.py
++++ b/vllm/v1/core/kv_cache_utils.py
+@@ -1704,14 +1704,7 @@ def get_kv_cache_config_from_groups(
+         )
+ 
+     # Determine how model runners should initialize the KV cache tensors.
+-    csa_config = _get_kv_cache_config_csa_linear(
+-        vllm_config, kv_cache_groups, available_memory
+-    )
+-    if csa_config is not None:
+-        # CSA+linear: two page sizes per block with aliased owners, so neither
+-        # the uniform-page nor the DeepseekV4 bucketing applies.
+-        num_blocks, kv_cache_tensors = csa_config
+-    elif len(kv_cache_groups) == 1 and isinstance(
++    if len(kv_cache_groups) == 1 and isinstance(
+         kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
+     ):
+         # Special case: all layers have the same type of KV cache but with
+@@ -2554,20 +2547,6 @@ def _max_memory_usage_bytes_from_groups(
+     if not kv_cache_groups:
+         return 0
+ 
+-    csa_layout = _get_csa_linear_tensor_layout(kv_cache_groups)
+-    if csa_layout is not None:
+-        # CSA+linear: every cache owner aliases into one of the two page slots
+-        # a QSA layer occupies in a block, so the hybrid cache costs exactly
+-        # one bytes_per_block per block of context -- the mamba states and the
+-        # compressor ring ride along in slots that are paid for already. Must
+-        # agree with _get_kv_cache_config_csa_linear.
+-        num_blocks = max(
+-            group.kv_cache_spec.max_memory_usage_pages(vllm_config)
+-            for group in kv_cache_groups
+-            if isinstance(group.kv_cache_spec, UniformTypeKVCacheSpecs)
+-        )
+-        return csa_layout.bytes_per_block * num_blocks
+-
+     if len(kv_cache_groups) == 1 and isinstance(
+         kv_cache_groups[0].kv_cache_spec, UniformTypeKVCacheSpecs
+     ):
+diff --git a/vllm/v1/core/single_type_kv_cache_manager.py b/vllm/v1/core/single_type_kv_cache_manager.py
+index 5d8f1847..da01b40c 100644
+--- a/vllm/v1/core/single_type_kv_cache_manager.py
++++ b/vllm/v1/core/single_type_kv_cache_manager.py
+@@ -69,14 +69,6 @@ class SingleTypeKVCacheManager(ABC):
+         self.block_pool = block_pool
+         self.enable_caching = enable_caching
+         self._max_admission_blocks_per_request = max_admission_blocks_per_request
+-        # Only full-attention-style specs feed the worker-side zeroing path.
+-        # The ring buffer of CircularBufferSpec is overwritten in place and
+-        # must never be reported here.
+-        self._record_new_block_ids = type(kv_cache_spec) in (
+-            FullAttentionSpec,
+-            TQFullAttentionSpec,
+-            MLAAttentionSpec,
+-        )
+         self.new_block_ids: list[int] = []
+ 
+         # Mamba ``align`` block tables are sparse and mutable: committed
+@@ -268,7 +260,11 @@ class SingleTypeKVCacheManager(ABC):
+                 cdiv(num_total_computed_tokens, self.block_size) - len(req_blocks)
+             )
+             req_blocks.extend(allocated_blocks)
+-            if self._record_new_block_ids:
++            if type(self.kv_cache_spec) in (
++                FullAttentionSpec,
++                TQFullAttentionSpec,
++                MLAAttentionSpec,
++            ):
+                 self.new_block_ids.extend(b.block_id for b in allocated_blocks)
+ 
+     def allocate_new_blocks(
+@@ -296,7 +292,11 @@ class SingleTypeKVCacheManager(ABC):
+         else:
+             new_blocks = self.block_pool.get_new_blocks(num_new_blocks)
+             req_blocks.extend(new_blocks)
+-            if self._record_new_block_ids:
++            if type(self.kv_cache_spec) in (
++                FullAttentionSpec,
++                TQFullAttentionSpec,
++                MLAAttentionSpec,
++            ):
+                 self.new_block_ids.extend(b.block_id for b in new_blocks)
+             return new_blocks
+ 
+@@ -1524,7 +1524,6 @@ spec_manager_map: dict[type[KVCacheSpec], type[SingleTypeKVCacheManager]] = {
+     KpoolTailSpec: KpoolTailManager,
+     ChunkedLocalAttentionSpec: ChunkedLocalAttentionManager,
+     MambaSpec: MambaManager,
+-    CircularBufferSpec: CircularBufferManager,
+     CrossAttentionSpec: CrossAttentionManager,
+     SinkFullAttentionSpec: SinkFullAttentionManager,
+     CircularBufferSpec: CircularBufferManager,
+diff --git a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
+index aeef5192..b66b166d 100644
+--- a/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
++++ b/vllm/v1/worker/gpu/model_states/mamba_hybrid.py
+@@ -95,12 +95,6 @@ class MambaHybridAttnMetadata(ModelSpecificAttnMetadata):
+                     )
+                 )
+             }
+-        # Der sm75-GDN-Builder ist eine eigenstaendige Klasse, keine Unterklasse
+-        # des Standardtyps — ohne die zweite Bedingung faellt er hier heraus und
+-        # bekommt die Spekulations-Metadaten nie. Der Ziel-Forward wird dann als
+-        # Prefill klassifiziert, waehrend der CUDA-Graph als Spekulations-Decode
+-        # aufgezeichnet wurde (build_for_cudagraph_capture umgeht diesen Weg).
+-        # Der V1-Runner behandelt denselben Fall bereits.
+         if not isinstance(
+             attn_metadata_builder,
+             (
+diff --git a/vllm/v1/worker/gpu_model_runner.py b/vllm/v1/worker/gpu_model_runner.py
+index 3e02d008..009719ef 100644
+--- a/vllm/v1/worker/gpu_model_runner.py
++++ b/vllm/v1/worker/gpu_model_runner.py
+@@ -2452,10 +2452,6 @@ class GPUModelRunner(
+         # NOTE(Jiayi): currently we put the entire draft model on
+         # the last PP rank. This is not ideal if there are many
+         # layers in the draft model.
+-        # PP-Fix (Mini 2026-08-24): Nicht-letzte Ranks bekommen drafter=None,
+-        # damit isinstance()-Pruefungen ohne AttributeError ins Leere laufen.
+-        if self.speculative_config and not get_pp_group().is_last_rank:
+-            self.drafter = None  # type: ignore[assignment]
+         if self.speculative_config and get_pp_group().is_last_rank:
+             self.drafter: (
+                 NgramProposer  # noqa: F823
+@@ -2883,7 +2879,7 @@ class GPUModelRunner(
+         # Non-last PP rank + spec decode: this step's scheduler_output,
+         # needed for the hybrid-state update after receiving the accepted
+         # tokens from the last rank in sample_tokens().
+-        self._pp_nonlast_scheduler_output: "SchedulerOutput | None" = None
++        self._pp_nonlast_scheduler_output: SchedulerOutput | None = None
+         self.kv_connector_output: KVConnectorOutput | None = None
+         self.mamba_state_idx: dict[str, int] = {}
+         self._mamba_bufs: mamba_utils.MambaBuffers | None = None

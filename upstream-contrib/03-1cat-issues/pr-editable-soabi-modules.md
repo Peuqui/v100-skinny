@@ -4,15 +4,36 @@ Status: ENTWURF, nicht gesendet. Branch `editable-soabi-modules` im Worktree
 `1Cat-vLLM-editable-pr`, Basis origin/main fe67339d. Freigabe Peuqui für den PR
 (Punkt 8, 2026-09-10); Commit, Push und Eröffnen erst auf Ansage.
 
-Review 2026-09-11: Mechanismus und Gegenbeleg halten (fünf Module
-`PYBIND11_MODULE`, CMake `WITH_SOABI` ohne `USE_SABI`; Baum `5099866f` hatte
-setup.py, CMakeLists.txt, cmake/, csrc/, flashinfer-sm70/, flash-attention-v100/
-identisch mit fe67339d; Produktion wurde mit `pip install -e .` und genau dieser
-Änderung gebaut, `f03a7102`). Vor dem Eröffnen noch: (1) im Text ergänzen, dass
-`pip install -e .` und `build_ext --inplace` durch dieselbe setuptools-Funktion
-laufen (`editable_mode` → `inplace` → `copy_extensions_to_source`); (2) den
-Gegenbeleg mit Commit und Verzeichnissen präzisieren; (3) Wheel-Bau als „nicht
-gebaut, am Code begründet“ kennzeichnen oder nachholen; (4) Checklistenblock der
+Review 2026-09-11 vormittags: Mechanismus und Gegenbeleg halten (Baum
+`5099866f` hatte setup.py, CMakeLists.txt, cmake/, csrc/, flashinfer-sm70/,
+flash-attention-v100/ identisch mit fe67339d; Produktion wurde mit
+`pip install -e .` und genau dieser Änderung gebaut, `f03a7102`).
+
+Nachgezogen 2026-09-11 nachmittags (Belege im Text unten eingearbeitet):
+- (1) setuptools-Kette, aus setuptools 80.10.2 der Produktions-venv gelesen:
+  `editable_wheel._set_editable_mode` setzt `build_ext.editable_mode = True`
+  (editable_wheel.py 240–247) → `build_ext.finalize_options`: `if
+  self.editable_mode: self.inplace = True` (build_ext.py 221–222) →
+  `build_ext.run`: `if old_inplace: self.copy_extensions_to_source()` (94–100)
+  → `get_ext_filename`: `if ext.py_limited_api and abi3_suffix:` Name auf
+  `.abi3.so` (159–177). `pip install -e .` und `build_ext --inplace` enden
+  also in derselben Kopierfunktion mit demselben erwarteten Dateinamen.
+- Alle fünf Module sind wirklich pybind11, je Quelldatei geprüft
+  (`PYBIND11_MODULE(TORCH_EXTENSION_NAME`): `csrc/sm70_turbomind/ops/
+  exact_row_reduce.cu`, `csrc/sm70_turbomind/ops/h3_w8a16.cu`,
+  `flashinfer-sm70/csrc/h3_noncausal_sm70.cu`, `flash-attention-v100/kernel/
+  h3/forward.cu`, `flash-attention-v100/kernel/h3/forward_sparse.cu`
+  (Quellen aus CMakeLists.txt 758–802). Der Sampler dagegen `TORCH_LIBRARY`
+  (`csrc/sm70_turbomind/ops/*.cu`), darum ging dort `USE_SABI 3`.
+- Wheel-Tag: das offizielle Release-Wheel heißt
+  `1cat_vllm-1.5.0-cp312-cp312-linux_x86_64.whl` (gh release view v1.5.0).
+  Der Tag kommt aus `bdist_wheel.py_limited_api` (bdist_wheel.py 227/346–348),
+  nicht aus den Extension-Deklarationen — die Änderung kann ihn nicht
+  verschieben.
+
+Noch offen vor dem Eröffnen: (3) Wheel-Bau (`python setup.py bdist_wheel`,
+~50 min nvcc, NICHT parallel zu GPU-Messungen — CPU-Last verfälscht tok/s)
+tatsächlich fahren und Dateinamen im Wheel listen; (4) Checklistenblock der
 PR-Vorlage anhängen; (5) Duplikatsprüfung am Tag des Eröffnens wiederholen;
 Peuqui liest die 20 Zeilen selbst (AGENTS.md).
 
@@ -42,15 +63,26 @@ modules: `_sm70_exact_reduce_C`, `_h3_w8a16_C`, `_h3_flashinfer_C`,
 
 The fix from #320 does not carry over. `_sm70_sampler_C` registers its ops
 through `TORCH_LIBRARY` and could move to the stable ABI; these five are
-pybind11 modules (`PYBIND11_MODULE`, `pybind11::class_`, `pybind11::bytes`),
-and pybind11 cannot be built against the limited API. The CMake side is
-therefore right, and the declaration has to follow it: `CMakeExtension` now
-accepts a `py_limited_api` override, and the five modules pass `False`. Every
-other extension keeps its current declaration.
+pybind11 modules (`PYBIND11_MODULE(TORCH_EXTENSION_NAME, …)` in
+`csrc/sm70_turbomind/ops/exact_row_reduce.cu`, `csrc/sm70_turbomind/ops/h3_w8a16.cu`,
+`flashinfer-sm70/csrc/h3_noncausal_sm70.cu`,
+`flash-attention-v100/kernel/h3/forward.cu` and
+`flash-attention-v100/kernel/h3/forward_sparse.cu`), and pybind11 cannot be
+built against the limited API. The CMake side is therefore right, and the
+declaration has to follow it: `CMakeExtension` now accepts a `py_limited_api`
+override, and the five modules pass `False`. Every other extension keeps its
+current declaration.
 
-Only builds that copy extensions into the source tree are affected (`pip
-install -e .`, `setup.py build_ext --inplace`). Wheel builds install the CMake
-output directly, which is why the official wheels never hit this.
+Only builds that copy extensions into the source tree are affected. In
+setuptools 80.10.2, `pip install -e .` and `setup.py build_ext --inplace` end
+in the same place: `editable_wheel` sets `build_ext.editable_mode`,
+`build_ext.finalize_options` turns that into `inplace`, `build_ext.run` then
+calls `copy_extensions_to_source`, and `get_ext_filename` derives the expected
+`.abi3.so` name from `ext.py_limited_api`. A wheel build never takes that
+copy step, and its ABI tag comes from `bdist_wheel.py_limited_api`, not from
+the extension declarations — the official wheel is tagged `cp312-cp312`
+(`1cat_vllm-1.5.0-cp312-cp312-linux_x86_64.whl`), so the change cannot
+move it.
 
 ## Test Plan
 
@@ -107,10 +139,12 @@ setuptools expects for these five modules.
 
 ## Not a duplicate
 
-Searched `1CatAI/1Cat-vLLM` issues and PRs on 2026-09-10 for `editable`,
-`abi3` and `py_limited_api`: the only related work is #319/#320 (merged), which
-fixed `_sm70_sampler_C` on the CMake side, a route not open to pybind11
-modules. No open PR touches these declarations.
+Searched `1CatAI/1Cat-vLLM` issues and PRs on 2026-09-11 for `editable`,
+`abi3`, `py_limited_api`, `build_ext inplace` and `pybind11 limited`: the only
+related work is #319/#320 (merged), which fixed `_sm70_sampler_C` on the CMake
+side, a route not open to pybind11 modules. The one open search hit, #409
+(TokenSpeed MLA optional), does not touch `setup.py`. No open PR touches these
+declarations.
 
 Two further editable-install gaps exist that this PR leaves alone: the
 `flash_attn_v100` package is missing from the editable finder mapping, and the

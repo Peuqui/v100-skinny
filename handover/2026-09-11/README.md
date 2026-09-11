@@ -8,8 +8,8 @@ aus. Übergabe und Reihenfolge: `../../HANDOVER.md`.
 
 | Datei | Stand |
 |---|---|
-| `cleanup_neutral.diff` | Befunde 1, 3, 4, 5, 7, 8 — **angewendet**, unkommittiert |
-| `cleanup_befund6.diff` | Befund 6 (`kv_cache_utils.py`) — **angewendet**, unkommittiert |
+| `cleanup_neutral.diff` | Befunde 1, 3, 4, 5, 7, 8 — **committet** `43ccb9b8` (11.09. abends) |
+| `cleanup_befund6.diff` | Befund 6 (`kv_cache_utils.py`) — **committet** `43ccb9b8` (11.09. abends) |
 | `befund2.diff` | Befund 2 (`speculative.py`, index_share) — freigegeben, **nicht angewendet** |
 | `punkt15_skinny_per_arch.diff` | Skinny-Build pro Architektur (`marlin.py`) — **nicht angewendet** |
 
@@ -41,3 +41,18 @@ verschieden), `ds_main.out`, `prod_accept.out`, `dflash2_accept.out`,
 (`ctx_1m_512.out` OOM im Profillauf, `ctx_128k_1200.out` bootet,
 `ctx_64k2_cycle.out` bestanden), `dsv4_pp5.out` (13k-Test),
 `pr_editable_build.log` (Belegbau PR 8).
+
+## scripts/abnahme2/ (Nachmittag/Abend 11.09.)
+
+| Datei | Zweck |
+|---|---|
+| `driver.sh` | Abnahme-Treiber: 27B-MTP, DFlash2-V100, Flash-Next 3x mit / 3x ohne Aufräumen, DeepSeek; Log `ergebnisse/cleanup_accept2_driver.log` |
+| `after.sh` | Nacharbeit-Kette: Chat-Sonde 3x, 11a E2E, E5-A/B, Wheel |
+| `flashnext_qual_chat.sh` | Flash-Next-Sonde über den Produktionspfad (Chat-Template, enable_thinking, Parser-Flags) |
+| `fnq_check.py` | Vorfilter für Flash-Next-Antworten (Coandă-Regel 11.09., CJK, Wiederholungen) |
+| `e2e_11a.sh`, `pr11a_fix.diff` | Paket 11a: main+#572 mit/ohne Fix, RTX-Paar, plus CUDA-Tests auf GPU 4 |
+| `e5_ab.sh` | E5-Cache A/B auf dem Produktionsbefehl 27B-MTP (Decode-Rate, SHA, e5-Zeilen) |
+| `wheel_test.sh` | Editable-PR: bdist_wheel aus dem Belegbau, Namensvergleich, venv-Kopie, DFlash2-V100 |
+
+`patches/cleanup_committed_43ccb9b8.diff` ist der exakte Diff, der als
+`43ccb9b8` committet wurde (Befunde 1, 3–8 zusammen).

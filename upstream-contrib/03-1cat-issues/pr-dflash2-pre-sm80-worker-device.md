@@ -5,14 +5,26 @@ Worktree `1Cat-vLLM-pr-dflash2`, Basis origin/main fe67339d. Teil des Pakets
 „gemischte Hardware" (Punkt 11, Freigabe Peuqui 2026-09-10 für die Aufbereitung;
 Commit, Push und Eröffnen erst auf Ansage).
 
-Review 2026-09-11, Lücke: `has_device_capability(…, device_id=
+Review 2026-09-11 vormittags, Lücke: `has_device_capability(…, device_id=
 torch.accelerator.current_device_index())` fragt NVML (PCI-Reihenfolge) mit
-einem torch-Index (CUDA-Reihenfolge). Ohne `CUDA_DEVICE_ORDER=PCI_BUS_ID` fragt
-das Gate auf einem gemischten Rechner womöglich wieder die falsche Karte — genau
-den Fehler, den der PR behebt. vLLM warnt selbst davor (`cuda.py`,
-`log_warnings`). Vorschlag: Vorbedingung im Text nennen (betrifft auch #576).
-Der E2E-Beleg hängt an #572 (offen, ohne Review) — zurückstellen, bis sich dort
-etwas tut.
+einem torch-Index (CUDA-Reihenfolge).
+
+**Geklärt 2026-09-11 nachmittags, kein Blocker:** `NvmlCudaPlatform.
+get_device_capability(device_id)` nimmt `CUDA_VISIBLE_DEVICES[device_id]` und
+deutet den Eintrag als NVML-Index (`device_id_to_physical_device_id`,
+`vllm/platforms/cuda.py` ~643 und `interface.py` ~227); torch zählt in
+CUDA-Reihenfolge. Beides deckt sich nur mit `CUDA_DEVICE_ORDER=PCI_BUS_ID`.
+Das ist vLLM-weites Verhalten für JEDEN Aufruf mit Geräteindex, steckt
+genauso im gemergten #514 und im offenen #576, und vLLM warnt beim Start
+selbst (`NvmlCudaPlatform.log_warnings`, `cuda.py` ~872: „Detected different
+devices in the system … make sure to set `CUDA_DEVICE_ORDER=PCI_BUS_ID`").
+Folge: als Vorbedingung in den Purpose-Text (unten eingefügt), nicht als
+eigener Fix. Der E2E-Beleg hängt an #572 (offen, ohne Review): messen lokal
+mit #572 obendrauf (Worktree `1Cat-vLLM-e2e-572` = fe67339d + Merge
+`fork/sm75-gdn-prefill-route`, Extensions aus dem Belegbau verlinkt, Skript
+`scratchpad/abnahme2/e2e_11a.sh`). **Entscheidung Peuqui 11.09. nachmittags:
+NICHT auf den Merge von #572 warten — sofort nach der Messung senden und
+#572 im Text als Voraussetzung für den Turing-Beleg nennen.**
 
 Titel:
 
@@ -40,6 +52,14 @@ for the worker's own device (`torch.accelerator.current_device_index()`, as in
 #576) and emulates wherever the answer is no. Ampere and newer are unchanged;
 the `VLLM_SM70_DFLASH2_BF16_EMULATION` switch is unchanged.
 
+Precondition, shared with every per-device capability query in vLLM (#514,
+#576 included): the platform resolves `device_id` through
+`CUDA_VISIBLE_DEVICES` to an NVML index, i.e. PCI bus order, while torch
+numbers devices in CUDA order. The two agree only with
+`CUDA_DEVICE_ORDER=PCI_BUS_ID`, which vLLM already asks for at startup on
+nodes with mixed device names (`NvmlCudaPlatform.log_warnings`). This change
+does not alter that contract; it only stops asking device 0.
+
 ## Test Plan
 
 1. `pre-commit run --files <both files>` and
@@ -66,11 +86,14 @@ the `VLLM_SM70_DFLASH2_BF16_EMULATION` switch is unchanged.
 
 ## Not a duplicate
 
-Checked on 2026-09-10 against `1CatAI/1Cat-vLLM` (`gh pr list --state all`
-for "dflash2", "bf16 emulation", "dflash sm75", "dflash turing"; issues for
-"dflash2 turing"). The open DFlash2 PRs (#561, #405) and #435 do not touch
-`_use_sm70_bf16_emulation` or its capability check (`gh pr diff`). #576 is our
-own sibling change for the quantization gate and uses the same device query.
+Checked on 2026-09-11 against `1CatAI/1Cat-vLLM` (`gh pr list --state open
+--search` for "dflash2 turing", "bf16 emulation", "dflash sm75", "pre-ampere
+dflash", "_use_sm70_bf16_emulation", "worker device capability"; issues for
+"dflash2 turing" and "sm75"; plus `gh pr diff --name-only` over every open PR):
+no open PR modifies `vllm/model_executor/models/qwen3_dflash2.py`. The search
+hits are #572 and #576 (our own, prerequisite and sibling), #435 (csrc build
+fixes, no Python gate), #239 and #523 (unrelated areas). #576 uses the same
+device query for the quantization gate.
 
 AI assistance (Claude) was used to trace the failure and prepare the change;
 I reviewed every line and ran the tests above.

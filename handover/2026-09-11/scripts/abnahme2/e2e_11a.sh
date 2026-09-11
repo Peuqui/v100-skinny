@@ -31,15 +31,21 @@ trap restore EXIT
 git -C "$E2E" diff --quiet -- "$F" || { echo "ABBRUCH: e2e-Worktree hat lokale Aenderungen an $F"; exit 1; }
 echo "e2e HEAD: $(git -C "$E2E" log --oneline -1)"
 
-stamp "CUDA-Tests auf GPU 4 (freie V100): main+#572 OHNE Fix"
-( cd "$E2E" && CUDA_VISIBLE_DEVICES=4 HF_HUB_OFFLINE=1 PYTHONPATH=$E2E "$PY" -m pytest -q -p no:cacheprovider \
-    "tests/v1/spec_decode/test_dflash2.py::test_sm70_dflash2_exact_rerank_matches_gathered_bmm" \
-    tests/v1/spec_decode/test_dflash2_pre_ampere_gate.py 2>&1 | tail -4 ) || true
+# Der neue Gate-Test liegt nur im PR-Worktree (untracked); fuer den Lauf in den
+# e2e-Worktree kopieren, danach wieder entfernen.
+GATE_SRC=/home/mp/Projekte/vllm-research/1Cat-vLLM-pr-dflash2/tests/v1/spec_decode/test_dflash2_pre_ampere_gate.py
+GATE=tests/v1/spec_decode/test_dflash2_pre_ampere_gate.py
+cp "$GATE_SRC" "$E2E/$GATE"
+RERANK="tests/v1/spec_decode/test_dflash2.py::test_sm70_dflash2_exact_rerank_matches_gathered_bmm"
+stamp "CUDA-Tests auf GPU 4 (freie V100): main+#572 OHNE Fix (Rerank-Faelle; Gate-Test muss hier 3 rot zeigen)"
+( cd "$E2E" && CUDA_VISIBLE_DEVICES=4 HF_HUB_OFFLINE=1 PYTHONPATH=$E2E "$PY" -m pytest -q -p no:cacheprovider "$RERANK" 2>&1 | tail -3 ) || true
+( cd "$E2E" && CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 PYTHONPATH=$E2E "$PY" -m pytest -q -p no:cacheprovider "$GATE" 2>&1 | tail -2 ) || true
 git -C "$E2E" apply "$FIX"
-stamp "CUDA-Tests auf GPU 4: main+#572 MIT Fix"
-( cd "$E2E" && CUDA_VISIBLE_DEVICES=4 HF_HUB_OFFLINE=1 PYTHONPATH=$E2E "$PY" -m pytest -q -p no:cacheprovider \
-    "tests/v1/spec_decode/test_dflash2.py::test_sm70_dflash2_exact_rerank_matches_gathered_bmm" 2>&1 | tail -4 ) || true
+stamp "CUDA-Tests auf GPU 4: main+#572 MIT Fix (Rerank-Faelle + Gate-Test, alles gruen erwartet)"
+( cd "$E2E" && CUDA_VISIBLE_DEVICES=4 HF_HUB_OFFLINE=1 PYTHONPATH=$E2E "$PY" -m pytest -q -p no:cacheprovider "$RERANK" 2>&1 | tail -3 ) || true
+( cd "$E2E" && CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 PYTHONPATH=$E2E "$PY" -m pytest -q -p no:cacheprovider "$GATE" 2>&1 | tail -2 ) || true
 restore
+rm -f "$E2E/$GATE"
 
 cd "$REPO"
 export PYTHONPATH=$E2E

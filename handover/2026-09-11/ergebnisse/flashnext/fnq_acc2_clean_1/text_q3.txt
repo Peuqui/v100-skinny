@@ -1,0 +1,45 @@
+1.
+
+<think>
+The user is asking me to explain the "Kuanda-Effekt" (Coandă effect) in 30 sentences. They explicitly state this task is independent of the background material above ("unabhaengig vom Hintergrundmaterial oben"). The background material about Hamburg port terminals is irrelevant to the task.
+
+The Coandă effect (Kuanda-Effekt in German) is the tendency of a fluid jet to stay attached to a convex surface. It's named after Romanian aerodynamicist Henri Coandă. Let me write 30 sentences in German explaining this effect.
+
+Let me count carefully to make sure I have exactly 30 sentences.
+
+1. Der Kuanda-Effekt, auch Coandă-Effekt genannt, beschreibt die Tendenz eines Fluidstrahls, an einer angrenzenden konvexen Oberfläche anzuhaften.
+2. Er wurde nach dem rumänischen Aerodynamiker Henri Coandă benannt, der das Phänomen in den 1930er-Jahren systematisch untersuchte.
+3. Der Effekt tritt auf, wenn ein Fluidstrahl auf eine gekrümmte Fläche trifft und dabei nicht geradeaus weiterströmt, sondern der Krümmung folgt.
+4. Physikalisch lässt sich das Phänomen durch den Bernoulli-Effekt und die Viskosität des Fluids erklären.
+5. An der Oberfläche entsteht durch die Reibung eine Grenzschicht, in der die Geschwindigkeit des Fluids auf null abfällt.
+6. Durch die Krümmung der Oberfläche wird der Strahl zur Oberfläche hin abgelenkt, weil auf der der Oberfläche abgewandten Seite ein geringerer Druck herrscht.
+7. Der Druckunterschied zwischen der Oberfläche und der freien Strömung erzeugt eine resultierende Kraft, die den Strahl an die Oberfläche zieht.
+8. Je größer die Krümmung der Oberfläche ist, desto stärker neigt der Strahl dazu, sich abzulösen.
+9. Die Reynoldszahl spielt eine entscheidende Rolle dafür, ob der Effekt deutlich ausgeprägt ist oder nicht.
+10. Bei niedrigen Reynoldszahlen dominiert die Viskosität, und der Strahl haftet stärker an der Oberfläche.
+11. Bei sehr hohen Reynoldszahlen kann der Strahl dagegen leichter von der Oberfläche abreißen.
+12. Ein einfaches Alltagsbeispiel ist der Wasserstrahl, der an einer Löffelrückseite entlangläuft, statt gerade abzufallen.
+13. Ein weiteres Beispiel ist der Luftstrom, der an einer Flaschenwand entlangströmt und eine Kerzenflamme hinter der Flasche zum Flackern bringt.
+14. In der Luftfahrt wird der Effekt beim Design von Tragflächen und bei der Strömungslenkung an Leitwerken berücksichtigt.
+15. Der sogenannte Coandă-Flügel nutzt den Effekt, um durch einen angeblasenen Spalt zusätzlichen Auftrieb zu erzeugen.
+16. Auch bei der Strömung über die Oberseite eines Tragflügels spielt der Effekt eine untergeordnete Rolle.
+17. In der Heizungs- und Klimatechnik wird der Kuanda-Effekt genutzt, um Luftströme an Decken entlangzuführen.
+18. Deckenventilatoren und Luftschlitze in Flugzeugkabinen basieren auf diesem Prinzip.
+19. In der Fahrzeugtechnik wird der Effekt bei der Gestaltung von Heckspoiler und Diffusoren beachtet.
+20. Der Effekt ist auch für die Funktionsweise bestimmter Ventile ohne bewegliche Teile, sogenannter Coandă-Ventile, verantwortlich.
+21. Diese Ventile nutzen den Strahl, der je nach Steuersignal auf eine der beiden Seiten einer Kammer umschaltet.
+22. In der Medizin findet der Effekt Anwendung bei bestimmten Inhalationsgeräten und Beatmungssystemen.
+23. Der Kuanda-Effekt ist nicht zu verwechseln mit dem Magnus-Effekt, der die Ablenkung eines rotierenden Zylinders in einer Strömung beschreibt.
+24. Während der Magnus-Effekt auf der Rotation eines Körpers beruht, ist der Kuanda-Effekt ein reines Grenzschichtphänomen.
+25. Die mathematische Beschreibung erfordert die Lösung der Navier-Stokes-Gleichungen mit geeigneten Randbedingungen.
+26. In der Praxis wird der Effekt häufig durch numerische Strömungssimulationen (CFD) modelliert.
+27. Experimentell lässt sich der Effekt mit Rauchkanälen oder Wasserkanälen sichtbar machen.
+28. Die Ablösung des Strahls von der Oberfläche wird als Strömungsabriss bezeichnet und ist ein zentrales Problem im Flugzeugbau.
+29. Der Kuanda-Effekt zeigt, dass selbst scheinbar einfache Strömungsphänomene komplexe Wechselwirkungen zwischen Druck, Geschwindigkeit und Viskosität beinhalten.
+30. Trotz seiner Entdeckung vor fast einem Jahrhundert bleibt der Effekt in vielen ingenieurwissenschaftlichen Disziplinen von großer praktischer Bedeutung.
+
+That's 30 sentences. Let me verify the count... yes, 30 sentences. Good.
+</think>
+
+1. Der Kuanda-Effekt, auch Coandă-Effekt genannt, beschreibt die Tendenz eines Fluidstrahls, an einer angrenzenden konvexen Oberfläche anzuhaften.
+2. Er wurde nach dem rumänischen Aerodynamiker Henri Coandă benannt, der das Phänomen in den 1930er-Jahren

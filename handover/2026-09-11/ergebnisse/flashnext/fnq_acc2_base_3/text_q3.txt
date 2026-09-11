@@ -1,0 +1,39 @@
+1.
+
+<think>
+The user is asking me to explain the "Kuanda-Effekt" (Coandă effect) in 30 sentences. They explicitly state this task is independent of the background material above ("unabhaengig vom Hintergrundmaterial oben"). The background material about Hamburg port terminals is irrelevant to the task.
+
+The Coandă effect (Kuanda-Effekt in German) is the tendency of a fluid jet to stay attached to a convex surface. It's named after Romanian aerodynamicist Henri Coandă. Let me write 30 sentences in German explaining this effect.
+
+Let me count carefully to make sure I have exactly 30 sentences.
+
+1. Der Kuanda-Effekt, auch Coandă-Effekt genannt, beschreibt die Tendenz eines Fluidstrahls, an einer angrenzenden konvexen Oberfläche anzuhaften.
+2. Er wurde nach dem rumänischen Aerodynamiker Henri Coandă benannt, der das Phänomen in den 1930er-Jahren systematisch untersuchte.
+3. Der Effekt tritt auf, wenn ein Fluidstrahl auf eine gekrümmte Fläche trifft und dabei nicht geradeaus weiterströmt, sondern der Kontur der Oberfläche folgt.
+4. Physikalisch lässt sich das Phänomen durch den Bernoulli-Effekt und die Viskosität des Fluids erklären.
+5. An der Oberfläche entsteht durch die Reibung eine Grenzschicht, in der die Geschwindigkeit des Fluids auf null abfällt.
+6. Durch die Krümmung der Oberfläche wird der Strahl zur Oberfläche hin abgelenkt, weil auf der der Oberfläche abgewandten Seite ein geringerer Druck herrscht.
+7. Der Druckunterschied zwischen der Oberfläche und der freien Strömung erzeugt eine resultierende Kraft, die den Strahl an die Wand zieht.
+8. Je größer die Krümmung der Oberfläche ist, desto stärker neigt der Strahl dazu, sich abzulösen.
+9. Die Reynoldszahl des Strahls beeinflusst maßgeblich, wie lange der Strahl an der Oberfläche haftet.
+10. Bei laminarer Strömung haftet der Strahl länger an der Oberfläche als bei turbulenter Strömung.
+11. Der Effekt ist nicht auf Luft beschränkt, sondern tritt bei allen Fluiden auf, also auch bei Wasser und anderen Flüssigkeiten.
+12. Ein alltägliches Beispiel ist der Wasserstrahl, der an der Rückseite eines Löffels entlangläuft, wenn man den Löffel in den Strahl hält.
+13. Ein weiteres Beispiel ist der Luftstrom, der an einer gekrümmten Autotür entlangstreicht, wenn man bei geöffnetem Fenster fährt.
+14. In der Luftfahrt wird der Kuanda-Effekt beim sogenannten Blown Flap eingesetzt, bei dem Triebwerksabgase über die Flügeloberfläche geleitet werden.
+15. Auch bei der Entwicklung von Flugzeugen mit eingebauten Saugsystemen zur Grenzschichtkontrolle spielt der Effekt eine Rolle.
+16. In der Strömungstechnik nutzt man den Effekt, um ohne bewegliche Teile eine Strahlumlenkung zu erreichen.
+17. Fluidische Schalter und Verstärker in der Fluidik basieren auf dem Prinzip, dass ein Strahl an einer Wand haftet und sich erst bei ausreichender Gegenströmung ablöst.
+18. In der Heizungs- und Klimatechnik wird der Effekt genutzt, um Luftströme an Decken entlangzuführen und so eine gleichmäßige Raumtemperierung zu erreichen.
+19. Der Effekt erklärt auch, warum bei starkem Wind ein Regenschirm nach oben gezogen wird, wenn der Wind über die gewölbte Oberfläche streicht.
+20. In der Medizin findet der Kuanda-Effekt Anwendung bei der Entwicklung von Kathetern und bei der Strömungsführung in künstlichen Herzklappen.
+21. Die mathematische Beschreibung des Effekts erfordert die Lösung der Navier-Stokes-Gleichungen mit geeigneten Randbedingungen an der gekrümmten Wand.
+22. Vereinfacht kann man den Effekt durch eine Druckbilanz quer zum Strahl beschreiben, bei der die Zentripetalkraft durch den Druckgradienten aufgebracht wird.
+23. Der Ablösepunkt des Strahls hängt von der Krümmung, der Strahlgeschwindigkeit und der Oberflächenrauheit ab.
+24. Eine raue Oberfläche kann den Effekt verstärken, weil sie die Grenzschicht früher turbulent macht und damit die Energiezufuhr erhöht.
+25. Der Kuanda-Effekt ist nicht identisch mit dem Magnus-Effekt, obwohl beide mit Druckunterschieden um gekrümmte Körper zusammenhängen.
+26. Während der Magnus-Effekt die Kraft auf einen rotierenden Zylinder beschreibt, geht es beim Kuanda-Effekt um die Anhaftung eines freien Strahls.
+27. In der Natur findet man den Effekt bei der Strömung um Vogelflügel und bei der Bewegung von Fischen im Wasser.
+28. Die experimentelle Untersuchung des Effekts erfolgt typischerweise mit Rauchkanälen, Laser-Doppler-Anemometrie oder Particle Image Velocimetry.
+29. Moderne Strömungssimulationen mittels CFD können den Kuanda-Effekt numerisch abbilden, erfordern aber eine feine Auflösung der Grenzschicht.
+30. Der Kuanda-Effekt bleibt ein aktives Forschungsfeld, insbesondere im Zusammenhang mit der Ström

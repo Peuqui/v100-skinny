@@ -1,6 +1,6 @@
 # PR-Entwurf: Editable-Bau bricht nach dem Vollbau ab (fünf pybind11-Module)
 
-Status: ENTWURF, nicht gesendet. Branch `editable-soabi-modules` im Worktree
+Status: GESENDET 2026-09-11 abends als https://github.com/1CatAI/1Cat-vLLM/pull/601 (Commit e5e3e9af). Vorher: Branch `editable-soabi-modules` im Worktree
 `1Cat-vLLM-editable-pr`, Basis origin/main fe67339d. Freigabe Peuqui für den PR
 (Punkt 8, 2026-09-10); Commit, Push und Eröffnen erst auf Ansage.
 
@@ -31,11 +31,25 @@ Nachgezogen 2026-09-11 nachmittags (Belege im Text unten eingearbeitet):
   nicht aus den Extension-Deklarationen — die Änderung kann ihn nicht
   verschieben.
 
-Noch offen vor dem Eröffnen: (3) Wheel-Bau (`python setup.py bdist_wheel`,
-~50 min nvcc, NICHT parallel zu GPU-Messungen — CPU-Last verfälscht tok/s)
-tatsächlich fahren und Dateinamen im Wheel listen; (4) Checklistenblock der
-PR-Vorlage anhängen; (5) Duplikatsprüfung am Tag des Eröffnens wiederholen;
-Peuqui liest die 20 Zeilen selbst (AGENTS.md).
+Wheel-Bau 11.09. abends ERLEDIGT (`handover/2026-09-11/scripts/abnahme2/
+wheel_test.sh`, aus dem Belegbau-Baum inkrementell, `bdist_wheel`, Exit 0 nach
+24 min 34 s): `1cat_vllm-1.5.1.dev945+gfe67339dd.d20260911.cu128-cp312-cp312-
+linux_x86_64.whl`, 166 MB, Tag `cp312-cp312` wie das Release. `.so`-Namen
+gegen das offizielle 1.5.0-Wheel: alle sieben dortigen Dateien identisch
+benannt, dazu die fünf SOABI-Module, die es im 1.5.0-Release noch nicht gab
+(`_h3_*`, `_sm70_exact_reduce_C`, `_sm70_sparse_attention_C` — seither
+hinzugekommen). Installation in eine Kopie der Produktions-venv
+(`/home/mp/vllm/venv-wheeltest`), `vllm` lädt aus `site-packages`, alle fünf
+Module importieren unter ihren SOABI-Namen. `_sm70_sampler_C` lädt nicht per
+`import` (kein `PyInit`, es ist `TORCH_LIBRARY` und wird in `_sm70_ops.py`
+per Glob + `torch.ops.load_library` geladen) — mein Prüffehler, nicht das
+Wheel. Erster Modelllauf aus dem Wheel scheiterte mit dem #592-Fehler
+(`mat1 and mat2 shapes cannot be multiplied`), weil ich dem reinen main den
+NVFP4-Entwurfskopf gab; Wiederholung mit dem incoai-Kopf läuft.
+
+Noch offen vor dem Eröffnen: (4) Checklistenblock der PR-Vorlage anhängen;
+(5) Duplikatsprüfung am Tag des Eröffnens wiederholen (11.09. erledigt);
+Peuqui liest die 20 Zeilen selbst (AGENTS.md, erledigt 11.09.).
 
 Titel:
 
@@ -133,6 +147,18 @@ move it.
    `_h3_w8a16_C` (ColumnMajorGemmPlan, dequantize, gemm, prepare_fp16),
    `_h3_flashinfer_C`, `_h3_flashattn_C` and `_sm70_sparse_attention_C`
    (forward).
+5. Wheel build with the change, same tree and toolchain
+   (`python setup.py bdist_wheel`, incremental on the build directory of
+   step 3): exit 0 after 24 min 34 s, wheel tag `cp312-cp312` like the
+   release wheel. The seven `.so` files of the official
+   `1cat_vllm-1.5.0` wheel carry identical names in the new wheel; the five
+   modules touched here appear under their SOABI names (they postdate the
+   1.5.0 release). Installed into a copy of a working venv: `vllm` imports
+   from `site-packages`, and each of the five modules imports under its
+   SOABI name. A model served from that wheel (Qwen3.8-27B NVFP4 target,
+   `incoai/Qwen3.8-27B-DFlash2` draft, TP2 on 2x Tesla V100, k=7, greedy,
+   400 tokens, 5 runs) boots in 175 s without a traceback and decodes at
+   70.67 tok/s with acceptance length 3.448, coherent German output.
 
 No kernel source, CMake target or runtime path changes; only the filename
 setuptools expects for these five modules.

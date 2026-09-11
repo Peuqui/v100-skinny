@@ -1085,8 +1085,18 @@ Augustwerten (6,5 min Boot).
       drei weitere V100-Läufe mit und ohne Aufräumen: 3,325); Flash-Next je
       drei Läufe, q1/q2 sechsmal sauber, q3 2/3 mit gegen 1/3 ohne
       Aufräumen (Rohtext-Sonde, siehe Fallstrick unten); DeepSeek PP5 8/8
-      byteidentisch. Offen bleiben Befund 2 (index_share, A/B) und Befund 9
-      (E5, Messung freigegeben).
+      byteidentisch. Offen bleibt Befund 2 (index_share, A/B).
+    - **Befund 9, E5-Cache: GEMESSEN 11.09. abends** (`handover/2026-09-11/
+      scripts/abnahme2/e5_ab.sh`, exakter Produktionsbefehl 27B-MTP, V1-Runner,
+      RTX-Paar, 6 Anfragen à 600 Token, Median der Läufe 2–6, Decode vom
+      ersten bis zum letzten Token): **E5 aus 70,17 tok/s, E5 an 73,11 tok/s,
+      +4,2 %**, Text in allen zwölf Läufen byteidentisch (`dc8d4f97f6910e01`).
+      Nachweis, dass der Cache feuerte: beide Ränge `[e5-cache] captured:
+      groups=4` und `[e5-v2] persistent prepare active`, zurückgewiesen nur
+      drei Aufwärmrunden. Boot mit E5 an 410 s statt 195 s (anderer
+      Compile-Cache-Schlüssel, #536). Einordnung: E5 wirkt nur im V1-Runner;
+      der schnellste 27B-Pfad ist DFlash2 im V2-Runner (77 tok/s auf dem
+      RTX-Paar) und nutzt ihn nicht. **Entscheidung Peuqui offen.**
     - **Die Rohtext-Sonde `flashnext_qual.sh` misst nicht den
       Produktionspfad** (11.09.). Sie schickt Kontext + Frage roh an
       `/v1/completions`, ohne Chat-Template und ohne `enable_thinking`. Das
@@ -1096,8 +1106,33 @@ Augustwerten (6,5 min Boot).
       Erfindung. Die q3-Ausfallquote der Sonde ist deshalb NICHT die
       Quote in AIfred. Chat-Variante mit Template, `chat_template_kwargs`
       und Reasoning-Parser wie im llama-swap-Eintrag:
-      `scratchpad/abnahme2/flashnext_qual_chat.sh` (11.09., Ergebnis folgt);
+      `handover/2026-09-11/scripts/abnahme2/flashnext_qual_chat.sh`;
       wandert nach Bewährung neben die alte nach `tools/mtp-diagnostics/`.
+
+      **Ergebnis der Chat-Sonde (11.09. abends, drei Läufe, Aufräum-Stand,
+      `MAXTOK=3300` — mehr passt bei 13.053 Prompt-Token nicht in MML 16384,
+      mit 8.000 kam HTTP 400):**
+
+      | Frage | Lauf 1 | Lauf 2 | Lauf 3 |
+      |---|---|---|---|
+      | q1 Quantenphysik | 30 Sätze, sauber, Denkblock 7,1k Zeichen | sauber, 7,4k | sauber, 6,4k |
+      | q2 Regenbogen | 30 Sätze, sauber, 7,1k | sauber, 5,0k | sauber, 4,5k |
+      | q3 Kuanda | **kein Inhalt**, Denkblock 12,9k Zeichen bis zum Limit | kein Inhalt, 13,4k | kein Inhalt, 12,5k |
+
+      Decode 37–44 tok/s, Annahmelänge 2,8–3,6, Reasoning-Parser `qwen3`
+      aktiv (Denkblock im Feld `reasoning`). q3 ist damit auf dem
+      Produktionspfad **nie beantwortet**: Das Modell denkt auf Deutsch
+      („Kuanda-Effekt? Kenne ich nicht… vielleicht erfunden…"), entwirft
+      dreißig Sätze über einen undefinierten Begriff, zählt sie nach und
+      verwirft sie wieder, bis das Tokenlimit greift; Coandă kommt in keinem
+      der drei Denkblöcke vor (im Rohtext-Modus dachte es auf Englisch und
+      erkannte Coandă sofort). **Befund über den Betriebspunkt, nicht über
+      das Aufräumen:** Flash-Next mit Denken unter MML 16384 hat bei 13k
+      Kontext keinen Platz für eine grübelnde Antwort — in AIfred mit
+      Tool-Schemata und History ist das der Alltag. Offen: q3-Verhalten mit
+      größerem Ausgabebudget (braucht MML > 16384, also PLE-Kaskade oder
+      kleineren Kontext) und ob `enable_thinking=false` für solche Fälle die
+      bessere Produktionswahl ist.
 
 17. **DeepSeek-Eintrag läuft als PP5** (10.09.): TP1 PP5 über alle fünf
     Karten, `CUDA_VISIBLE_DEVICES=0,1,4,3,2`, Partition 11,8,8,8,8,

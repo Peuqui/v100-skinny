@@ -56,3 +56,20 @@ verschieden), `ds_main.out`, `prod_accept.out`, `dflash2_accept.out`,
 
 `patches/cleanup_committed_43ccb9b8.diff` ist der exakte Diff, der als
 `43ccb9b8` committet wurde (Befunde 1, 3–8 zusammen).
+
+Nachtrag 11.09. abends (scripts/abnahme2/):
+
+| Datei | Zweck |
+|---|---|
+| `rerank_v100.sh` | 11a: die drei SM70-Rerank-CUDA-Fälle auf der echten V100 (PCI-Index 4), mit/ohne Fix — `CUDA_DEVICE_ORDER=PCI_BUS_ID` ist Pflicht |
+| `devcap_probe.sh`, `devcap_fix.diff` | Wurzelfix Plattform: Hardware-Probe auf GPU 0+1 (main gegen Fix, beide Geräteordnungen) und der Diff |
+| `chat_ask.py`, `after2.sh` | Frageteil der Chat-Sonde gegen einen laufenden Server; Fortsetzungskette nach Sitzungsneustart |
+| `ergebnisse/device0_capability_calls_inventory.md` | 263 Capability-Aufrufe ohne Geräteindex in 1Cat-main, grob klassifiziert (Klasse „Modulebene" unzuverlässig) |
+| `ergebnisse/e5_ab/` | E5-A/B: Boot-Logs beider Arme, Antworttexte (run1–6), 70,17 gegen 73,11 tok/s |
+| `ergebnisse/nacharbeit_after4.log` | Log der Kette: Chat-Sonde 3×3300, 11a E2E (main blockt Turing-NVFP4), E5-A/B |
+
+Lehren: `systemd-run --user` überlebt Sitzungsneustarts, hat aber einen
+minimalen PATH (ninja aus dem venv-bin fehlt) und CMake findet darunter die
+Python-Header nicht — Bauten aus der Shell per `setsid nohup` starten,
+Messungen dürfen in die Unit. Ohne `CUDA_DEVICE_ORDER=PCI_BUS_ID` ist
+`CUDA_VISIBLE_DEVICES=4` eine RTX 8000, nicht die V100.

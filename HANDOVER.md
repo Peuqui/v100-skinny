@@ -8,11 +8,17 @@ Referenz- und Ergebnisdateien dieser Runde liegen in
 
 ---
 
-## Zuerst: halb fertige Änderung in der Produktion
+## Erledigt 11.09. abends: Aufräumen abgenommen und committet
+
+`43ccb9b8` auf work-main, Tag `verified-2026-09-11`, gepusht nach
+`fork/verified/volta-turing`. Ergebnisse in `STAND.md`, Punkt 16. Der
+Abschnitt darunter ist damit Geschichte und bleibt nur als Beleg stehen.
+
+## (erledigt) Halb fertige Änderung in der Produktion
 
 Der Worktree `1Cat-vLLM-work` **ist die Produktion** (editable in
-`.venv-sm70-main` hinter `~/vllm/venv`). Darin liegen seit 11.09. früh
-**unkommittierte** Aufräum-Patches aus der Overlay-Inventur
+`.venv-sm70-main` hinter `~/vllm/venv`). Darin lagen seit 11.09. früh
+Aufräum-Patches aus der Overlay-Inventur
 (`upstream-contrib/OVERLAY-INVENTUR.md`, Befunde 1, 3, 4, 5, 6, 7, 8), in
 7 Dateien:
 
@@ -62,10 +68,12 @@ einen Hinweis an 1Cat.
 
 ## Aufträge mit Freigabe (Peuqui 10./11.09.)
 
-### 1. Abnahme des Aufräumens abschließen
+### 1. ~~Abnahme des Aufräumens abschließen~~ — ERLEDIGT 11.09. abends
 
-Siehe oben: 27B-MTP-Textvergleich, DeepSeek, Flash-Next mehrfach, die
-V100-Annahmelänge klären. Erst danach committen — **nur auf Ansage**.
+Alle vier Modelle abgenommen, V100-Annahmelänge geklärt (Einzelausreißer),
+committet als `43ccb9b8` auf Ansage. Treiber und Ergebnisse:
+`scratchpad/abnahme2/` der Sitzung vom 11.09. nachmittags (driver.sh,
+driver.log) — bei Bedarf nach `handover/` sichern.
 
 ### 2. Befund 2: `index_share_for_mtp_iteration` (freigegeben)
 
@@ -206,7 +214,7 @@ MoE-Backend erst nach Rückfrage in #441. `VLLM_SKINNY_*` in dem PR in
 
 | Repo / Worktree | Inhalt |
 |---|---|
-| `1Cat-vLLM-work` (work-main) | Aufräum-Patches, 7 Dateien — erst nach Abnahme |
+| `1Cat-vLLM-work` (work-main) | ~~Aufräum-Patches~~ — committet `43ccb9b8`, gepusht 11.09. abends |
 | `1Cat-vLLM-editable-pr` | `setup.py` (PR 8) |
 | `1Cat-vLLM-pr-dflash2` | `qwen3_dflash2.py` + neuer Test (PR 11a) |
 | `v100-skinny` (work) | `STAND.md`, `HANDOVER.md`, pgrep-Fix in `flashnext_qual.sh`/`flashnext_ab.sh`, `upstream-contrib/OVERLAY-INVENTUR.md`, zwei PR-Entwürfe, `handover/` |

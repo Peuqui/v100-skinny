@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-10 abends.** Dieses Dokument beschreibt, WIE der Stack heute
+**Stand 2026-09-11 abends.** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -19,9 +19,20 @@ Produktion und alle Messskripte laufen über den Symlink **`/home/mp/vllm/venv`*
 `/home/mp/Projekte/vllm-research/1Cat-vLLM-work` installiert, Branch
 `work-main` (lokaler Arbeitszweig; abgenommene Stände gehen als
 `verified/volta-turing` in den Fork Peuqui/1Cat-vLLM, jeder mit Tag —
-`verified-2026-09-10` → `f03a7102`): 1Cat `origin/main` `0a0d4d67` +
-unsere offenen PRs #572 #573 #574 #576 #592 + v100-skinny-Overlay (`5099866f`)
-+ FA2-Koexistenz und Bau-Fix (`f03a7102`).
+aktuell `verified-2026-09-11` → `43ccb9b8`): 1Cat `origin/main` `fe67339d`
+(Merge `82301e6b`) + unsere offenen PRs #572 #573 #574 #576 #592 +
+v100-skinny-Overlay (`5099866f`) + FA2-Koexistenz und Bau-Fix (`f03a7102`)
++ Aufräumen der Merge-Reste, Befunde 1 und 3–8 (`43ccb9b8`, abgenommen
+11.09. auf allen vier Produktionsmodellen, siehe offener Punkt 16).
+
+**Regel seit 11.09. (Peuqui):** Sobald 1Cat einen PR von uns merged, wird
+der zugehörige Teil des Overlays beim nächsten Hereinholen von main
+ENTFERNT, nicht neu darübergelegt. Der Diff des Worktrees gegen `origin/main`
+darf nur enthalten, was bei 1Cat noch nicht angekommen ist — er ist damit
+zugleich die Liste der noch offenen PR-Pakete. Nach jedem Merge die
+hinzugefügten Zeilen gegen die Upstream-Fassung derselben Datei abgleichen
+(Methode in `upstream-contrib/OVERLAY-INVENTUR.md`); „konfliktfrei" heißt
+nicht „sauber".
 
 - **Der Worktree IST die Produktion.** Dort keine anderen Branches
   auschecken; PR-Arbeit im Haupt-Checkout `1Cat-vLLM`. Jede Python-Änderung
@@ -530,9 +541,15 @@ Augustwerten (6,5 min Boot).
 - **Die Fangfrage heißt „Kuanda-Effekt", nicht „Coandă".** Erledigt 08.09.:
   `qual_longctx.sh` und `flashnext_qual.sh` fragen den absichtlich falsch
   geschriebenen Begriff, mit Kommentar im Skript, der das Zurückändern
-  verbietet. Bestanden ist die Frage, wenn das Modell den Verschreiber erkennt
-  und den Coandă-Effekt erklärt — **nicht**, wenn es ein neues Phänomen
-  erfindet oder den Begriff bloß für nicht existent erklärt.
+  verbietet. **Bewertung (Peuqui, 11.09.):** Bestanden ist die Frage in zwei
+  Formen — das Modell erkennt den Verschreiber und erklärt den Coandă-Effekt,
+  ODER es weist den Begriff als nicht existent zurück und nennt Coandă als
+  möglichen Kandidaten, ohne etwas zu erfinden. Beides ist korrektes
+  Verhalten. **Durchgefallen** ist nur, wer ein neues Phänomen erfindet,
+  Wissenschaftler halluziniert oder in eine Wiederholungsschleife gerät.
+  Die frühere, strengere Fassung („nur Erklären zählt") ist zurückgenommen:
+  Halluzination ist das Schlimmere, striktes Festhalten am gestellten
+  Begriff ist kein Fehler.
 - **Ein einzelner Durchfall beim 180B beweist nichts** (09.09.). Im ersten von
   drei Läufen verfehlte q3 die Coandă-Erkennung und drehte sich im Kreis; in
   zwei weiteren Läufen korrekt. Bei dieser Ausgabelänge reproduziert sich das
@@ -1060,12 +1077,27 @@ Augustwerten (6,5 min Boot).
       Upstream-Optimierung (`speculative.py`, Qwen4Exp-MTP index_share) und der
       E5-Cache mit Vorgabe an. Freigabe Peuqui 10./11.09.: Reste
       bereinigen, index_share per A/B auf Flash-Next.
-    - **Aufräumen 11.09. angewendet, NICHT committet, Abnahme unvollständig**
-      (Befunde 1, 3–8; Patches in `handover/2026-09-11/patches/`). 27B
-      DFlash2 SHA gleich auf beiden Paaren; 27B-MTP Antwortanfang gleich;
-      Flash-Next 2/3 (q3 „Kuanda-Effekt" statt Coandă — bekannter
-      sporadischer Aussetzer, mit Einzellauf nicht entscheidbar); DeepSeek
-      nicht gelaufen. Details `HANDOVER.md`.
+    - **Aufräumen (Befunde 1, 3–8) ABGENOMMEN und COMMITTET 11.09. abends**
+      (`43ccb9b8`, Tag `verified-2026-09-11`, gepusht). Abnahme mit und
+      ohne Aufräumen am selben Abend, gleiche Skripte: 27B-MTP Text gleich
+      der Referenz; 27B DFlash2 SHA `0106659946c064b1` auf RTX und V100,
+      Annahmelänge 3,325 (die 3,353 vom Vormittag war ein Einzelausreißer,
+      drei weitere V100-Läufe mit und ohne Aufräumen: 3,325); Flash-Next je
+      drei Läufe, q1/q2 sechsmal sauber, q3 2/3 mit gegen 1/3 ohne
+      Aufräumen (Rohtext-Sonde, siehe Fallstrick unten); DeepSeek PP5 8/8
+      byteidentisch. Offen bleiben Befund 2 (index_share, A/B) und Befund 9
+      (E5, Messung freigegeben).
+    - **Die Rohtext-Sonde `flashnext_qual.sh` misst nicht den
+      Produktionspfad** (11.09.). Sie schickt Kontext + Frage roh an
+      `/v1/completions`, ohne Chat-Template und ohne `enable_thinking`. Das
+      Modell muss selbst entscheiden, ob es `<think>` öffnet; in den
+      Ausfällen tat es das nicht (oder erfand vorher eine weitere
+      Nutzeranweisung) und rutschte ohne Denkblock in Schleife oder
+      Erfindung. Die q3-Ausfallquote der Sonde ist deshalb NICHT die
+      Quote in AIfred. Chat-Variante mit Template, `chat_template_kwargs`
+      und Reasoning-Parser wie im llama-swap-Eintrag:
+      `scratchpad/abnahme2/flashnext_qual_chat.sh` (11.09., Ergebnis folgt);
+      wandert nach Bewährung neben die alte nach `tools/mtp-diagnostics/`.
 
 17. **DeepSeek-Eintrag läuft als PP5** (10.09.): TP1 PP5 über alle fünf
     Karten, `CUDA_VISIBLE_DEVICES=0,1,4,3,2`, Partition 11,8,8,8,8,

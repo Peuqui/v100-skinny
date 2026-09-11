@@ -148,7 +148,7 @@ cd /home/mp/Projekte/vllm-research/v100-skinny
 VLLM_SM70_E5_CACHE=0 CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
 ENV_PREFIX=/home/mp/vllm/venv \
-TP=2 PP=2 K=4 GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
+TP=2 PP=2 K=4 GMU=0.95 MML=262144 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 PORT=8026 \
 bash scripts/serve-qwen38-flash-next.sh <checkpoint>
 ```
@@ -731,10 +731,31 @@ Augustwerten (6,5 min Boot).
    zählt, ist freie GPU gegen Platte** — 30 GB Host-RAM reichen für 50,7 GiB
    PLE nicht.
 
-   **Warum nötig:** Flash-Next-PLE = 50,7 GiB (ein Tensor, 128 Shards). Bei
-   TP2×PP2 liegt GPU 4 (V100, 32 GB) brach. Der MTP-Betriebspunkt hängt bei
-   MML 16384, weil PLE die RTX-Stufe füllt. Die Kaskade erlaubt MTP **und**
-   großen Kontext — und macht künftige, noch größere Modelle unterbringbar.
+   **Warum (korrigiert 11.09. abends):** Flash-Next-PLE = 50,7 GiB (ein
+   Tensor, 128 Shards). Bei TP2×PP2 liegt GPU 4 (V100, 32 GB) brach. Die
+   frühere Begründung „der MTP-Betriebspunkt hängt bei MML 16384, weil PLE die
+   RTX-Stufe füllt" ist **falsch**: der llama-swap-Produktionseintrag bootet
+   mit `--max-model-len 262144`, KV-Cache 400.187 Token (1,53× 262k), der
+   KV-Bedarf für 262k liegt bei 0,31 GiB (nur 12 von 48 Schichten Attention).
+   Die 16384 standen nur im Abnahme-Skript. **Für Flash-Next braucht es die
+   Kaskade nicht.** Motivation (Peuqui 11.09.): Zukunft — Qwen4 nach der
+   Next-Architektur mit größeren PLE-Tabellen, die sonst in TP2×PP2 nicht mehr
+   passen; Nutzer mit nur zwei Karten. **TP4 ist keine Motivation** (drei V100
+   plus zwei RTX 8000, ungleiche Karten nur über PP). GPU-4-Budget = Rest nach
+   dem gemessenen Bedarf von Vigilantia-VLM und TTS des jeweiligen
+   llama-swap-Profils, per Umgebungsvariable aus der Kalibration.
+
+   **Zwei Fakten aus dem Code (11.09.):** Die Tabelle ist hash-adressiert
+   (16 Köpfe, N-Gramm modulo Primzahlen ab 20 Mio.), „niedrige Token-IDs =
+   heiße Zeilen" gilt nicht — jede belegte Stufe wird anteilig bei jedem
+   Schritt getroffen, die langsamste bestimmt die Schrittlatenz mit; die
+   Disk-Stufe bleibt auf dem Mini planmäßig leer (Generalitäts-Feature). Die
+   Disk-Stufe existiert bei 1Cat als separater Offload-Prozess
+   (`VLLM_PLE_DISK_OFFLOAD`, mmap + MADV_RANDOM, bis 32 Threads, CUDA-IPC),
+   nur in der Hybrid-Spur ohne MTP und nur für den Prefill; der mmap-Leser ist
+   wiederverwendbar. Paketierung: (1) Planer vierstufig + Vorabholen +
+   GPU-4-Stufe, (2) Disk-Anschluss + Messung. **Reihenfolge (Peuqui 11.09.
+   abends): ans Ende des Plans, hinter Punkt 10.**
 
    **Wo im Code (geprüft 08.09.):**
    - Die eigentliche Arbeit liegt im Platzierungsplaner
@@ -1152,13 +1173,30 @@ Augustwerten (6,5 min Boot).
       dreißig Sätze über einen undefinierten Begriff, zählt sie nach und
       verwirft sie wieder, bis das Tokenlimit greift; Coandă kommt in keinem
       der drei Denkblöcke vor (im Rohtext-Modus dachte es auf Englisch und
-      erkannte Coandă sofort). **Befund über den Betriebspunkt, nicht über
-      das Aufräumen:** Flash-Next mit Denken unter MML 16384 hat bei 13k
-      Kontext keinen Platz für eine grübelnde Antwort — in AIfred mit
-      Tool-Schemata und History ist das der Alltag. Offen: q3-Verhalten mit
-      größerem Ausgabebudget (braucht MML > 16384, also PLE-Kaskade oder
-      kleineren Kontext) und ob `enable_thinking=false` für solche Fälle die
-      bessere Produktionswahl ist.
+      erkannte Coandă sofort). **Befund über das Abnahme-Skript, nicht über
+      den Betriebspunkt:** die 16384 standen nur in `serve-qwen38-flash-next.sh`-
+      Aufrufen; der Produktionseintrag fährt MML 262144.
+
+      **Nachmessung gegen den llama-swap-Produktionseintrag (11.09. spät,
+      `handover/2026-09-11/scripts/abnahme2/chat_ask_prod.py`, Vorkontext ×3
+      = 38.995 Prompt-Token, `MAXTOK=16000`, Denken an, Ergebnisse in
+      `handover/2026-09-11/ergebnisse/flashnext_prod_kuanda/`):**
+
+      | Frage | Ausgabe-Token | Denkblock | Antwort | Ende |
+      |---|---|---|---|---|
+      | q1 Quantenphysik | 3.073 | 8,4k Zeichen | 30 Sätze, sauber | stop |
+      | q2 Regenbogen | 1.597 | 4,7k | 30 Sätze, sauber | stop |
+      | q3 Kuanda | 4.172 | 15,3k | 30 Sätze, Zurückweisung | stop |
+
+      Decode 56–58 tok/s (q1 26,5 inkl. Kaltstart). q3: „nicht als Fachbegriff
+      bekannt", Tippfehler vermutet, **Kunda-Effekt** (motiviertes
+      Schlussfolgern, Ziva Kunda) angeboten, ausdrücklich keine erfundenen
+      Namen/Zahlen/Experimente. Coandă kommt nicht vor. Nach der Kuanda-Regel
+      kein Durchfall (Zurückweisen ohne Erfindung); Einordnung Peuqui offen.
+      **Folge: Denken bleibt an, die Denkfrage aus `HANDOVER.md` ist
+      aufgelöst, die PLE-Kaskade ist dafür nicht nötig.** Abnahme-Skripte
+      (`flashnext_qual.sh`, `flashnext_ab.sh`, `flashnext_qual_chat.sh`) und
+      Betriebspunkt-Angaben stehen seitdem auf `MML=262144`.
 
 17. **DeepSeek-Eintrag läuft als PP5** (10.09.): TP1 PP5 über alle fünf
     Karten, `CUDA_VISIBLE_DEVICES=0,1,4,3,2`, Partition 11,8,8,8,8,

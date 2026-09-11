@@ -34,7 +34,7 @@ cd $REPO
  CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
 ENV_PREFIX=/home/mp/vllm/venv \
-TP=2 PP=2 K=4 GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
+TP=2 PP=2 K=4 GMU=0.95 MML=262144 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 PORT=$PORT LOG=$W/boot.log \
 EXTRA_ARGS='--compilation-config {"cudagraph_capture_sizes":[1,2,4,5,8]}' \
 bash scripts/serve-qwen38-flash-next.sh "$CKPT" 2>&1 | tail -3

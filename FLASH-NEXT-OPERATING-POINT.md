@@ -29,7 +29,7 @@ VLLM_SM70_E5_CACHE=0 \
 CUDA_VISIBLE_DEVICES=0,2,1,4 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
 ENV_PREFIX=<repo>/.venv-sm70-150 \
-TP=2 PP=2 K=4 GMU=0.95 MML=16384 PORT=<port> \
+TP=2 PP=2 K=4 GMU=0.95 MML=262144 PORT=<port> \
 PP_PARTITION=24,24 PLE_HOST_GIB=6 \
 EXTRA_ARGS="--compilation-config {\"cudagraph_capture_sizes\":[1,2,4,5,8]}" \
 bash scripts/serve-qwen38-flash-next.sh /home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ

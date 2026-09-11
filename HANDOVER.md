@@ -33,15 +33,16 @@ abgleichen — „konfliktfrei" heißt nicht „sauber".
 
 ---
 
-## Zuerst klären (Peuqui): Flash-Next mit Denken bei 13k Kontext
+## ~~Zuerst klären: Flash-Next mit Denken bei 13k Kontext~~ — ERLEDIGT 11.09. spät
 
-Befund der Chat-Sonde (Produktionspfad, `STAND.md` Punkt 16): Bei 13.053
-Prompt-Token und MML 16384 bleiben rund 3.300 Ausgabetoken, und Flash-Next
-füllt die bei der Kuanda-Frage dreimal allein mit dem Denkblock — keine
-Antwort. In AIfred mit Tool-Schemata und History ist 13k der Alltag. Zwei
-Wege: (a) `enable_thinking=false` für Flash-Next in AIfred, (b) mehr Kontext
-über die PLE-Kaskade (Punkt 6 der offenen Punkte, bisher „nach der
-Turing-Arbeit"). Entscheidung Peuqui, betrifft den Alltag.
+Die drei Kuanda-Ausfälle kamen vom `MML=16384` des Abnahme-Skripts, nicht
+vom Betriebspunkt: der llama-swap-Eintrag fährt MML 262144 (KV 400k Token).
+Nachmessung gegen Produktion mit 39k Prompt und Denken: alle drei Fragen
+beantwortet, q3 als Zurückweisung ohne Erfindung (`STAND.md` Punkt 16).
+**Denken bleibt an.** Die PLE-Kaskade ist dafür nicht nötig; sie ist
+beschlossen (Zukunft: Qwen4 mit größeren PLE-Tabellen, Zwei-Karten-Nutzer),
+rückt aber ans Ende des Plans hinter Punkt 10 (`STAND.md` Punkt 6).
+Abnahme-Skripte stehen jetzt auf `MML=262144`.
 
 ---
 

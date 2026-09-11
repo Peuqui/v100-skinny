@@ -86,11 +86,12 @@ else
   echo "STATUS nicht_oben (rc=$RC)"; tail -5 $W/boot.log
 fi
 
+# Nur die eigene Prozessgruppe: das Serve-Skript startet den Server per
+# setsid, die Worker haengen daran. Ein pgrep auf alle VLLM::-Prozesse
+# wuerde auch fremde Server treffen (etwa ein Modell aus llama-swap).
 [ -n "${PID:-}" ] && kill -TERM -$PID 2>/dev/null
-for p in $(pgrep -f 'VLLM[:]:'); do kill -TERM $p 2>/dev/null; done
 sleep 20
 [ -n "${PID:-}" ] && kill -KILL -$PID 2>/dev/null
-for p in $(pgrep -f 'VLLM[:]:'); do kill -KILL $p 2>/dev/null; done
 echo "   NACHWEIS: armed=$(grep -c 'full-forward guard armed' $W/boot.log) route=$(grep -c 'full-forward route enabled' $W/boot.log) sm75-Modul=$(grep -c 'qwen_gdn_linear_attn_sm75' $W/boot.log) upstream=$(grep -c 'cannot run on Turing' $W/boot.log)"
 echo "   ZUSTAND je Rang:"; sort -u $W/state.txt 2>/dev/null | sed "s/^/     /"
 echo "FERTIG fn_$NAME"

@@ -105,11 +105,12 @@ else
   echo "STATUS nicht_oben"; tail -5 $W/boot.log
 fi
 
+# Nur die eigene Prozessgruppe: das Serve-Skript startet den Server per
+# setsid, die Worker haengen daran. Ein pgrep auf alle VLLM::-Prozesse
+# wuerde auch fremde Server treffen (etwa ein Modell aus llama-swap).
 [ -n "${PID:-}" ] && kill -TERM -$PID 2>/dev/null
-for p in $(pgrep -f 'VLLM[:]:'); do kill -TERM $p 2>/dev/null; done
 sleep 20
 [ -n "${PID:-}" ] && kill -KILL -$PID 2>/dev/null
-for p in $(pgrep -f 'VLLM[:]:'); do kill -KILL $p 2>/dev/null; done
 echo "   NACHWEIS: armed=$(grep -c 'full-forward guard armed' $W/boot.log) sm75=$(grep -c 'qwen_gdn_linear_attn_sm75' $W/boot.log) upstream=$(grep -c 'cannot run on Turing' $W/boot.log)"
 echo "   FA2: sm75=$(grep -c 'Loaded FA2 library _vllm_fa2_C_sm75' $W/boot.log) sm70=$(grep -c 'Loaded FA2 library _vllm_fa2_C.abi3' $W/boot.log) v100_backend=$(grep -c 'Using FLASH_ATTN_V100 attention backend' $W/boot.log) fa2_backend=$(grep -c 'Using FLASH_ATTN attention backend' $W/boot.log)"
 echo "FERTIG fnq_$NAME"

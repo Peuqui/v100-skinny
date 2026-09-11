@@ -73,3 +73,10 @@ minimalen PATH (ninja aus dem venv-bin fehlt) und CMake findet darunter die
 Python-Header nicht — Bauten aus der Shell per `setsid nohup` starten,
 Messungen dürfen in die Unit. Ohne `CUDA_DEVICE_ORDER=PCI_BUS_ID` ist
 `CUDA_VISIBLE_DEVICES=4` eine RTX 8000, nicht die V100.
+
+Nachtrag 11.09. nachts: `scripts/abnahme2/driver2.sh` (Abnahme E5-Ausbau +
+Befund 2: 27B-MTP, DFlash2-V100, Flash-Next 3× index_share=True, DeepSeek;
+Log `ergebnisse/e5out_ishare_accept_driver.log`), `e5_remove.diff` (die zehn
+rückwärts angewendeten E5-Hunks), `ergebnisse/flashnext/fnq_acc3_ishare_*`.
+`VLLM_SM70_E5_CACHE=0` aus 21 aktiven Skripten entfernt (Archiv unangetastet,
+`e5_ab.sh` bleibt als Messvorrichtung mit dem Schalter).

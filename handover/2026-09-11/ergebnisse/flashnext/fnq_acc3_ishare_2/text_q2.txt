@@ -1,0 +1,38 @@
+1.
+
+<think>
+The user is asking me to explain the rainbow effect in 30 sentences. They've provided a large background document about port terminals (which they explicitly state is NOT part of the task - "unabhängig vom Hintergrundmaterial oben" means "independent of the background material above"). The task is simply to explain the rainbow effect in 30 sentences.
+
+Let me write a thorough explanation of the rainbow effect in German, in exactly 30 sentences. I'll cover: what a rainbow is, how it forms, the physics of light refraction, dispersion, reflection, the spectrum, why it's circular, when/where you see it, double rainbows, Alexander's dark band, etc.
+
+Let me count carefully to make sure I have exactly 30 sentences.
+
+1. Ein Regenbogen ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft.
+2. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum elektromagnetischer Strahlung, das für das menschliche Auge als Mischung aller sichtbaren Farben wahrgenommen wird.
+3. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen, also in seiner Ausbreitungsrichtung abgelenkt.
+4. Diese Brechung folgt dem Snelliusschen Brechungsgesetz, bei dem der Einfallswinkel und der Brechungswinkel durch die Brechungsindizes der beiden Medien verknüpft sind.
+5. Entscheidend ist, dass der Brechungsindex von Wasser wellenlängenabhängig ist, sodass kurzwelliges blaues Licht stärker gebrochen wird als langwelliges rotes Licht.
+6. Diese wellenlängenabhängige Brechung nennt man Dispersion, und sie ist der eigentliche Grund, warum das weiße Licht in seine Spektralfarben aufgespalten wird.
+7. Im Inneren des Tropfens durchläuft das Licht einen Weg, an dessen Ende es auf die Rückseite des Tropfens trifft und dort teilweise reflektiert wird.
+8. Bei einem primären Regenbogen erfolgt diese Reflexion genau einmal an der inneren Rückseite des Tropfens.
+9. Beim Austritt aus dem Tropfen wird das Licht erneut gebrochen, wobei die Dispersion die Farbentrennung weiter verstärkt.
+10. Der Gesamtablenkungswinkel zwischen einfallendem und austretendem Licht beträgt beim primären Regenbogen etwa 42 Grad für rotes Licht und etwa 40 Grad für violettes Licht.
+11. Da jeder Wassertropfen das Licht in einem bestimmten Winkel ablenkt, sieht ein Beobachter nur die Tropfen, die genau den richtigen Winkel zur Blickrichtung einhalten.
+12. Alle Tropfen, die den gleichen Ablenkwinkel zum Auge des Beobachters bilden, liegen auf einem Kreis um den Gegenpunkt der Sonne, weshalb ein Regenbogen als Kreisbogen erscheint.
+13. Am Himmel sieht man meist nur den oberen Teil dieses Kreises, weil der untere Teil durch den Horizont verdeckt wird.
+14. Von einem Flugzeug aus kann man den Regenbogen als vollständigen Kreis beobachten, wenn die Sonne hinter dem Beobachter steht.
+15. Die Farbfolge im primären Regenbogen verläuft von außen nach innen: Rot, Orange, Gelb, Grün, Blau, Indigo, Violett.
+16. Diese Reihenfolge ergibt sich daraus, dass rotes Licht mit dem geringsten Ablenkwinkel am äußeren Rand des Bogens erscheint.
+17. Ein sekundärer Regenbogen entsteht, wenn das Licht im Tropfen zweimal reflektiert wird, bevor es wieder austritt.
+18. Durch die zusätzliche Reflexion wird der Gesamtablenkwinkel auf etwa 50 bis 53 Grad vergrößert, weshalb der sekundäre Bogen außerhalb des primären erscheint.
+19. Die zweite Reflexion kehrt zudem die Farbfolge um, sodass beim sekundären Regenbogen Violett außen und Rot innen liegt.
+20. Der sekundäre Regenbogen ist deutlich lichtschwächer, weil bei jeder Reflexion ein Teil der Lichtintensität verloren geht.
+21. Zwischen dem primären und dem sekundären Regenbogen liegt eine auffällig dunkle Zone, die sogenannte Alexandersche Dunkelheit.
+22. Diese Dunkelheit entsteht, weil in diesem Winkelbereich kein Licht von den Tropfen zum Beobachter gelenkt wird.
+23. Die Breite des sichtbaren Regenbogens hängt von der Größe der Wassertropfen ab: Größere Tropfen erzeugen einen breiteren und farbintensiveren Bogen.
+24. Sehr kleine Tröpfchen, wie sie in Nebel vorkommen, erzeugen dagegen einen breiten, blassen Nebelbogen, bei dem die Farben durch Beugungseffekte vermischt werden.
+25. Die Intensität des Regenbogens ist am größten, wenn die Sonne niedrig steht, da dann mehr Licht unter dem richtigen Winkel gestreut wird.
+26. Steht die Sonne höher als etwa 42 Grad über dem Horizont, ist kein Regenbogen mehr sichtbar, weil der erforderliche Ablenkwinkel dann unter dem Horizont läge.
+27. Regenbögen können auch künstlich erzeugt werden, etwa durch eine Gartenschlauch-Düse oder einen Wasserfall im Gegenlicht.
+28. In der Kulturgeschichte wurde der Regenbogen in vielen Mythologien als Brücke zwischen Himmel und Erde oder als göttliches Zeichen gedeutet.
+29. Die wissenschaftliche Erklärung des Regenbogens geht auf Roger Bacon im 13.

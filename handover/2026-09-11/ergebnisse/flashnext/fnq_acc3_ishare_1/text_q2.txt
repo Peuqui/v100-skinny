@@ -1,0 +1,49 @@
+1.
+
+<think>
+The user is asking me to explain the rainbow effect in 30 sentences. They explicitly state "Aufgabe, unabhängig vom Hintergrundmaterial oben" (Task, independent of the background material above), meaning I should ignore all the terminal/port background material and simply explain the rainbow effect in 30 sentences.
+
+Let me write a comprehensive explanation of the rainbow effect in German, in exactly 30 sentences. I'll number them 1-30.
+
+Let me count carefully to make sure I have exactly 30 sentences.
+
+1. Der Regenbogen ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft.
+2. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum aller sichtbaren Wellenlängen.
+3. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen.
+4. Dabei wird das Licht in seine spektralen Bestandteile aufgespalten, da jede Wellenlänge einen leicht anderen Brechungsindex erfährt.
+5. Kurzwelliges blaues Licht wird stärker gebrochen als langwelliges rotes Licht.
+6. Im Inneren des Tropfens wird das Licht an der Rückseite des Tropfens reflektiert.
+7. Beim Austritt aus dem Tropfen wird das Licht erneut gebrochen und weiter aufgespalten.
+8. Der Gesamtablenkungswinkel zwischen einfallendem und austretendem Licht beträgt für den primären Regenbogen etwa 42 Grad.
+9. Für rotes Licht liegt dieser Winkel bei etwa 42 Grad, für violettes Licht bei etwa 40 Grad.
+10. Der Beobachter sieht den Regenbogen als kreisförmigen Bogen, dessen Mittelpunkt auf der Verlängerung der Sonnenlinie durch das Auge liegt.
+11. Die Farben erscheinen in der Reihenfolge Rot, Orange, Gelb, Grün, Blau, Indigo und Violett von außen nach innen.
+12. Ein sekundärer Regenbogen entsteht durch eine doppelte Reflexion im Tropfen und erscheint bei einem Ablenkungswinkel von etwa 51 Grad.
+13. Beim sekundären Regenbogen ist die Farbfolge umgekehrt, da die zusätzliche Reflexion die Reihenfolge vertauscht.
+14. Der sekundäre Bogen ist deutlich schwächer, weil bei der zweiten Reflexion ein Teil des Lichts verloren geht.
+15. Zwischen primärem und sekundärem Bogen liegt die sogenannte Alexandersche Dunkelzone, in der kaum Licht gestreut wird.
+16. Oberhalb des sekundären Bogens können gelegentlich schwache, überlagerte Interferenzstreifen sichtbar sein.
+17. Die Intensität des Regenbogens hängt von der Größe der Wassertropfen ab; größere Tropfen erzeugen kräftigere Farben.
+18. Sehr kleine Tröpfchen, wie sie in Nebel vorkommen, erzeugen einen breiten, blassen Nebelbogen.
+19. Der Regenbogen ist kein physikalisches Objekt an einem festen Ort, sondern ein richtungsabhängiges Beobachtungsphänomen.
+20. Jeder Beobachter sieht seinen eigenen Regenbogen, der sich mit der Bewegung des Betrachters mitverschiebt.
+21. Die Polarisation des Lichts im Regenbogen ist teilweise linear, was mit der Brewster-Winkel-Abhängigkeit der Reflexion zusammenhängt.
+22. Isaac Newton untersuchte die Lichtbrechung im Prisma und legte damit die Grundlage für das Verständnis des Regenbogens.
+23. René Descartes berechnete 1637 erstmals die Ablenkungswinkel für einen einzelnen Wassertropfen geometrisch.
+24. Thomas Young ergänzte die Erklärung 1802 durch die Interferenztheorie des Lichts.
+25. Die vollständige quantitative Beschreibung liefert die Mie-Streuungstheorie, die alle Wellenlängen und Tropfengrößen berücksichtigt.
+26. Ein Regenbogen ist am deutlichsten sichtbar, wenn die Sonne niedrig steht und sich vor dem Beobachter eine Regenwand befindet.
+27. Morgens und abends, wenn die Sonne unter 42 Grad über dem Horizont steht, kann der gesamte Halbkreis sichtbar werden.
+28. In der Mittagssonne ist der Regenbogenbogen flacher, weil der Mittelpunkt des Bogens unter dem Horizont liegt.
+29. Künstliche Regenbögen lassen sich durch Besprühen von Wasser in die Sonne oder durch Prismen erzeugen.
+30. Der Regenbogen bleibt eines der eindrucksvollsten Beispiele dafür, wie einfache physikalische Gesetze – Brechung, Reflexion und Dispersion – ein komplexes Naturphänomen hervorbringen.
+
+Let me count: 1-30. Yes, exactly 30 sentences. Good.
+</think>
+
+1. Der Regenbogen ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft.
+2. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum aller sichtbaren Wellenlängen.
+3. Tritt das Licht in einen Wassertropfen ein, wird es an der Grenzfläche zwischen Luft und Wasser gebrochen.
+4. Dabei wird das Licht in seine spektralen Bestandteile aufgespalten, da jede Wellenlänge einen leicht anderen Brechungsindex erfährt.
+5. Kurzwelliges blaues Licht wird stärker gebrochen als langwelliges rotes Licht.
+6. Im Inneren des Tropfens wird das Licht an der Rückseite des Trop

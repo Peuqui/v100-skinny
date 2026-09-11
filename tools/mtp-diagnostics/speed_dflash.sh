@@ -18,7 +18,7 @@ W=$BASE/qual_$NAME; rm -rf "$W"; mkdir -p "$W"; cd "$BASE" || exit 1
 VENV=${VENV:-/home/mp/vllm/venv}
 export PATH="$VENV/bin":/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0
-export NCCL_P2P_DISABLE=1 VLLM_SM70_E5_CACHE=0 VLLM_SM70_NVFP4_TURBOMIND=1
+export NCCL_P2P_DISABLE=1 VLLM_SM70_NVFP4_TURBOMIND=1
 # QUANT_BACKEND ueberschreibbar: auf Turing waehlt "auto" den Skinny-Pfad
 # (skinny_nvfp4_qpn2, 1614 ms im Decode-Profil 09.09.), waehrend die V100
 # ueber TurboMind laeuft (gemm_kernel, 1396 ms). "marlin" ist der dritte,

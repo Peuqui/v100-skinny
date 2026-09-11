@@ -39,7 +39,7 @@ ENV.update({
     "CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": GPUS,
     "CUDA_HOME": "/home/mp/Projekte/v100-skinny/.cuda-nvcc-deb/usr/local/cuda-12.8",
     "TORCH_CUDA_ARCH_LIST": "7.0;7.5", "NCCL_P2P_DISABLE": "1",
-    "VLLM_SM70_E5_CACHE": "0", "VLLM_SM70_NVFP4_TURBOMIND": "0",
+    "VLLM_SM70_NVFP4_TURBOMIND": "0",
     # Ueber GRID_QUANT_BACKEND steuerbar: "marlin" ist fuer NVFP4 richtig
     # (Skinny-Pfad), zwingt bei FP8 aber use_sm70_turbomind() auf False und
     # umgeht damit 1Cats eigene FP8-Kernel (envs.py:812).

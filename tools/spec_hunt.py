@@ -36,7 +36,7 @@ ENV.update({
     "CUDA_HOME": "/home/mp/Projekte/v100-skinny/.cuda-nvcc-deb/usr/local/cuda-12.8",
     "TORCH_CUDA_ARCH_LIST": "7.5",
     "NCCL_P2P_DISABLE": "1",
-    "VLLM_SM70_E5_CACHE": "0",
+    
     "VLLM_SM70_NVFP4_TURBOMIND": "0",
     "VLLM_SM70_QUANT_BACKEND": "marlin",
     "VLLM_SKINNY_NVFP4": "1",

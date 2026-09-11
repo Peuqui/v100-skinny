@@ -75,7 +75,14 @@ committet als `43ccb9b8` auf Ansage. Treiber und Ergebnisse:
 `scratchpad/abnahme2/` der Sitzung vom 11.09. nachmittags (driver.sh,
 driver.log) — bei Bedarf nach `handover/` sichern.
 
-### 2. Befund 2: `index_share_for_mtp_iteration` (freigegeben)
+### ERLEDIGT 11.09. nachts: E5 raus, Befund 2 angewendet, beides abgenommen
+
+Details `STAND.md` Punkt 16. Unkommittiert im Produktions-Worktree, Commit
+auf Ansage. Danach: `VLLM_SM70_E5_CACHE=0` aus den v100-skinny-Skripten
+(35 Dateien, harmlos) und den 8 llama-swap-Einträgen (Peuqui, kalter Boot je
+Eintrag) entfernen.
+
+### 2. ~~Befund 2: `index_share_for_mtp_iteration` (freigegeben)~~ → erledigt
 
 Unser doppelter Qwen4Exp-MTP-Block in `vllm/config/speculative.py` setzt den
 Wert auf `False`; Upstream (70b63a1e „Reduce Qwen4Exp MTP cost") setzt `True`.
@@ -87,7 +94,7 @@ A/B auf Flash-Next: Annahmelänge und tok/s über mehrere Läufe; der Text
 sollte bei greedy gleich bleiben (der Zielkopf prüft jeden Token), aber
 Flash-Next ist ohnehin nicht hash-stabil — Kohärenz zählen.
 
-### 3. Befund 9: E5-Cache — Entscheidung bei Peuqui offen
+### 3. ~~Befund 9: E5-Cache — Entscheidung bei Peuqui offen~~ → RAUS, erledigt
 
 Peuqui fragte „was schlägst du vor?"; Vorschlag war **ganz ausbauen**: keiner
 der sieben vLLM-Einträge nutzt ihn (`VLLM_SM70_E5_CACHE=0` überall, Vorgabe im

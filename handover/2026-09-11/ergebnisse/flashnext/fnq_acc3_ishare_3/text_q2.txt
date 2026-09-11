@@ -1,0 +1,46 @@
+Beginne deine Antwort mit exakt diesem String: "Der Regenbogeneffekt"
+
+<think>
+The user is asking me to explain the rainbow effect in 30 sentences, starting with the exact string "Der Regenbogeneffekt". The background material about port terminals is explicitly stated as irrelevant to the task ("unabhängig vom Hintergrundmaterial oben"). I need to write exactly 30 sentences in German about the rainbow effect, starting with "Der Regenbogeneffekt".
+
+Let me count carefully to make sure I have exactly 30 sentences.
+
+Let me write 30 sentences about the rainbow effect in German:
+
+1. Der Regenbogeneffekt ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft.
+2. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum aller sichtbaren Wellenlängen.
+3. Beim Eintritt in einen Wassertropfen wird das Licht an der Oberfläche gebrochen, also in seiner Ausbreitungsrichtung verändert.
+4. Da verschiedene Wellenlängen unterschiedlich stark gebrochen werden, spaltet sich das Licht in seine Spektralfarben auf.
+5. Dieser Vorgang wird als Dispersion bezeichnet und ist der Kernmechanismus der Farbentrennung.
+6. Im Inneren des Tropfens wird das Licht an der Rückseite reflektiert und tritt anschließend erneut gebrochen aus.
+7. Der blaue Anteil des Spektrums wird stärker abgelenkt als der rote Anteil.
+8. Für einen einzelnen Beobachter erscheint der Regenbogen als kreisförmiger Bogen am Himmel.
+9. Der Beobachter muss der Sonne den Rücken zukehren, um den Regenbogen sehen zu können.
+10. Der Winkel zwischen einfallendem Sonnenlicht und dem zum Auge zurückgelenkten Licht beträgt etwa 42 Grad für Rot.
+11. Für Violett beträgt dieser Winkel etwa 40 Grad, weshalb die Farben in dieser Reihenfolge erscheinen.
+12. Jeder einzelne Wassertropfen sendet Licht aller Farben aus, aber nur eine Farbe erreicht das Auge des Beobachters.
+13. Der Regenbogen ist daher kein festes Objekt, sondern ein perspektivisches Phänomen.
+14. Bewegt sich der Beobachter, verschiebt sich auch der scheinbare Standort des Regenbogens.
+15. Ein doppelter Regenbogen entsteht, wenn das Licht im Tropfen zweimal reflektiert wird.
+16. Beim sekundären Regenbogen ist die Farbfolge umgekehrt, da die zusätzliche Reflexion die Reihenfolge vertauscht.
+17. Zwischen den beiden Bögen liegt ein dunklerer Bereich, der als Alexanders Band bekannt ist.
+18. Die Intensität des sekundären Regenbogens ist geringer, weil bei der zweiten Reflexion mehr Licht verloren geht.
+19. Vollständige kreisförmige Regenbögen sind vom Flugzeug aus oder von erhöhten Standpunkten sichtbar.
+20. Am Boden sieht man nur den oberen Teil des Kreises, da der untere Teil vom Horizont verdeckt wird.
+21. Die Breite des Regenbogens hängt von der Größe der Wassertropfen ab.
+22. Kleine Tropfen erzeugen einen breiteren und blasseren Regenbogen als große Tropfen.
+23. Bei sehr kleinen Tröpfchen, wie in Nebel, verschmelzen die Farben zu einem weißen Nebelbogen.
+24. Der Regenbogeneffekt wurde bereits von Aristoteles im vierten Jahrhundert vor Christus beschrieben.
+25. Isaac Newton zeigte 1666 mit einem Prisma, dass weißes Licht aus farbigen Komponenten besteht.
+26. René Descartes lieferte 1637 die erste geometrische Erklärung der Lichtbrechung im Regentropfen.
+27. Die vollständige physikalische Beschreibung lieferte Thomas Young im frühen neunzehnten Jahrhundert mit der Wellentheorie.
+28. Heute wird der Regenbogen mit der Mie-Streuung und der geometrischen Optik präzise modelliert.
+29. Der Regenbogeneffekt tritt nicht nur bei Wasser auf, sondern auch bei anderen transparenten Partikeln in der Atmosphäre.
+30. Er bleibt eines der eindrucksvollsten Beispiele dafür, wie einfache physikalische Gesetze komplexe Naturphänomene hervorbringen.
+
+Let me count: 1-30. Yes, exactly 30 sentences. Good.
+
+The response must start with exactly "Der Regenbogeneffekt" - and my first sentence starts with "Der Regenbogeneffekt ist ein optisches Phänomen..." which begins with that exact string. Good.
+</think>
+
+Der Regenbogeneffekt ist ein optisches Phänomen, das entsteht, wenn Sonnenlicht auf Wassertropfen in der Atmosphäre trifft. Das weiße Sonnenlicht besteht aus einem kontinuierlichen Spektrum aller sichtbaren Wellenlängen. Beim Eintritt in einen Wassertropfen wird das Licht an der Oberfläche gebrochen, also in seiner Ausbreitungsrichtung verändert. Da verschiedene Wellenlängen unterschiedlich stark gebrochen werden, spaltet sich das Licht in seine Spektralfarben auf. Dieser Vorgang wird als Dispersion bezeichnet und ist der Kernmechanismus der Farbentrennung. Im Inneren des Tropfens wird das Licht an der Rückseite reflektiert und tritt anschließend erneut gebrochen aus. Der blaue Anteil des Spektrums wird stärker abgelenkt als der rote Anteil. Für einen einzelnen Beobachter erscheint der Regenbogen als kreisförmiger Bogen am Himmel. Der Beobachter muss der Sonne den Rücken zukehren,

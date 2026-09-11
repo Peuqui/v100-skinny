@@ -1096,7 +1096,31 @@ Augustwerten (6,5 min Boot).
       drei Aufwärmrunden. Boot mit E5 an 410 s statt 195 s (anderer
       Compile-Cache-Schlüssel, #536). Einordnung: E5 wirkt nur im V1-Runner;
       der schnellste 27B-Pfad ist DFlash2 im V2-Runner (77 tok/s auf dem
-      RTX-Paar) und nutzt ihn nicht. **Entscheidung Peuqui offen.**
+      RTX-Paar) und nutzt ihn nicht. **Entscheidung Peuqui 11.09. nachts:
+      RAUS** („statt MTP lieber DFlash2, dann schmeiß es raus"). Ausgebaut:
+      die zehn E5-Hunks in `gpu_model_runner.py` rückwärts angewendet
+      (`handover/2026-09-11/scripts/abnahme2/e5_remove.diff`), 14.357 →
+      13.267 Zeilen, keine E5-Reste, ruff auf der Datei jetzt sauber (die
+      zwei alten Fehler steckten in E5). Gegen main bleiben 27 Hunks,
+      +353/−41: #574-Trim, PP-Draft-Broadcast, Mamba-Kopierfunktionen, PLE,
+      `only_gids`, und die drei lokalen Haken `STAGED_PREP_SPEC_FORCE`,
+      `GDN_SLOT_DEBUG`, `MTP_THINK_ONLY`. E5 war quantisierungsunabhängig,
+      aber an V1 + MTP + Single-Stream gebunden und auf QSA inkompatibel. Der
+      längere Boot im A/B (410 s) war der Compile-Cache-Schlüssel (#536), kein
+      E5-Preis. `VLLM_SM70_E5_CACHE=0` steht noch in 8 llama-swap-Einträgen
+      (Peuquis Datei; Entfernen ändert den Cache-Schlüssel → je Eintrag ein
+      kalter Boot) — eigener Punkt.
+    - **Befund 2 (index_share) ANGEWENDET 11.09. nachts**: `speculative.py`
+      = Upstream + DSV4-Guard, Qwen4Exp-MTP fährt `index_share_for_mtp_
+      iteration=True` wie Upstream. Flash-Next, Rohtext-Sonde, drei Läufe:
+      q1/q2 sauber, **q3 3 von 3** (heute Abend mit `False`: 3 von 6),
+      Annahmelänge 2,70–3,12, Decode 27,6–31,8 tok/s — gleiches Band wie mit
+      `False`. Kein Beweis für besser, kein Hinweis auf schlechter, Upstream-
+      Vorgabe bleibt.
+    - **Abnahme E5-Ausbau + Befund 2 (driver2.sh, 11.09. 20:42–21:25):**
+      27B-MTP Text gleich der Referenz, 0 E5-Zeilen im Log, Boot 116 s;
+      DFlash2 V100 76,27 tok/s, SHA `0106659946c064b1`, Annahme 3,325;
+      Flash-Next 3/3; DeepSeek PP5 8/8 byteidentisch. Committen auf Ansage.
     - **Die Rohtext-Sonde `flashnext_qual.sh` misst nicht den
       Produktionspfad** (11.09.). Sie schickt Kontext + Frage roh an
       `/v1/completions`, ohne Chat-Template und ohne `enable_thinking`. Das

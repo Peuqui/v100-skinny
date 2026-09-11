@@ -15,7 +15,7 @@ cd "$BASE" || exit 1
 
 export PATH=/home/mp/vllm/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
 export CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_HOME=/home/mp/vllm/cuda TORCH_CUDA_ARCH_LIST=7.0
-export NCCL_P2P_DISABLE=1 VLLM_SM70_E5_CACHE=0
+export NCCL_P2P_DISABLE=1
 export VLLM_SM70_QUANT_BACKEND=${VLLM_SM70_QUANT_BACKEND:-auto}
 export VLLM_SM70_NVFP4_TURBOMIND=${VLLM_SM70_NVFP4_TURBOMIND:-1}
 export VLLM_SKINNY_NVFP4=${VLLM_SKINNY_NVFP4:-1}

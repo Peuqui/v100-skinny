@@ -31,7 +31,7 @@ ENV.update({
     "CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": GPUS,
     "CUDA_HOME": "/home/mp/Projekte/v100-skinny/.cuda-nvcc-deb/usr/local/cuda-12.8",
     "TORCH_CUDA_ARCH_LIST": "7.0;7.5", "NCCL_P2P_DISABLE": "1",
-    "VLLM_SM70_E5_CACHE": "0", "VLLM_SM70_NVFP4_TURBOMIND": "0",
+    "VLLM_SM70_NVFP4_TURBOMIND": "0",
     "VLLM_SM70_QUANT_BACKEND": "marlin", "VLLM_SKINNY_NVFP4": "1",
     "VLLM_SKINNY_QPN": "1", "VLLM_SKINNY_QPN2": "1",
     "VLLM_SKINNY_NVFP4_SRC": "/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu",

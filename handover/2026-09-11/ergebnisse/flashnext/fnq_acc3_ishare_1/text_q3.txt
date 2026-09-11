@@ -1,0 +1,45 @@
+1.
+
+<think>
+The user is asking me to explain the "Kuanda-Effekt" (Coandă effect) in 30 sentences. They explicitly state this task is independent of the background material above ("unabhaengig vom Hintergrundmaterial oben"). The background material about Hamburg port terminals is irrelevant to the task.
+
+The Coandă effect (Kuanda-Effekt in German) is the tendency of a fluid jet to stay attached to a convex surface. It's named after Romanian-born Aerodynamicist Henri Coandă. Let me write 30 sentences explaining this effect in German.
+
+Let me count carefully to make sure I have exactly 30 sentences.
+
+1. Der Kuanda-Effekt, auch Coandă-Effekt genannt, beschreibt die Tendenz eines Fluidstrahls, an einer angrenzenden konvexen Oberfläche anzuhaften.
+2. Er wurde nach dem rumänisch-amerikanischen Aerodynamiker Henri Coandă benannt, der das Phänomen in den 1930er-Jahren systematisch untersuchte.
+3. Bereits Leonardo da Vinci hatte das Phänomen beobachtet, ohne es jedoch wissenschaftlich zu beschreiben.
+4. Der Effekt tritt auf, wenn ein Fluidstrahl auf eine gekrümmte Fläche trifft und dabei von seiner ursprünglichen geradlinigen Flugbahn abweicht.
+5. Statt sich von der Oberfläche abzulösen, folgt der Strahl der Krümmung der Oberfläche.
+6. Physikalisch lässt sich der Effekt durch den Bernoulli-Effekt und die Viskosität des Fluids erklären.
+7. An der Oberfläche entsteht durch die Reibung eine Grenzschicht, in der die Geschwindigkeit des Fluids abnimmt.
+8. Durch die Krümmung der Oberfläche wird der Strahl zur Oberfläche hin abgelenkt, da auf der der Oberfläche abgewandten Seite ein geringerer Druck herrscht.
+9. Der Druckunterschied zwischen der Oberfläche und der freien Strömung erzeugt eine resultierende Kraft, die den Strahl an die Oberfläche zieht.
+10. Die Viskosität des Fluids sorgt dafür, dass die Fluidteilchen an der Oberfläche haften bleiben und nicht sofort abreissen.
+11. Der Effekt ist bei laminarer Strömung besonders ausgeprägt, da hier die Schichten geordnet fliessen.
+12. Bei turbulenter Strömung ist der Effekt ebenfalls vorhanden, jedoch schwerer vorherzusagen.
+13. Ein alltägliches Beispiel ist der Wasserstrahl, der an einer Löffelrückseite entlangfliesst, statt gerade weiterzufliessen.
+14. Ein weiteres Beispiel ist der Luftstrom, der an einer Autotür entlangstreicht und dabei der Krümmung folgt.
+15. In der Luftfahrt wird der Effekt beim Design von Flugzeugflügeln und bei der Strömungslenkung an Leitwerken berücksichtigt.
+16. Der Effekt spielt eine Rolle bei der Entwicklung von Blown-Wing-Systemen, bei denen Triebwerksabgase über die Flügeloberfläche geleitet werden.
+17. In der Technik wird der Kuanda-Effekt bei der Konstruktion von Fluidik-Bauteilen genutzt, die ohne bewegliche Teile auskommen.
+18. Auch bei der Kühlung von Gasturbinenschaufeln wird der Effekt gezielt eingesetzt, um Kühlluft entlang der Schaufeloberfläche zu führen.
+19. In der Medizin findet der Effekt Anwendung bei der Entwicklung von Kathetern und bei der Strömungsführung in Herzklappenprothesen.
+20. Der Effekt ist auch für die Funktionsweise bestimmter Ventile ohne mechanische Teile verantwortlich.
+21. Die Stärke des Effekts hängt von der Krümmung der Oberfläche, der Geschwindigkeit des Fluids und der Viskosität ab.
+22. Je stärker die Krümmung, desto grösser ist die Ablenkung des Strahls, bis ein kritischer Winkel überschritten wird.
+23. Oberhalb dieses kritischen Winkels löst sich der Strahl von der Oberfläche ab, und der Effekt endet.
+24. Die Reynolds-Zahl ist ein entscheidender Parameter, der bestimmt, ob der Strahl laminar oder turbulent fliesst.
+25. Bei sehr hohen Reynolds-Zahlen kann der Effekt durch Turbulenz verstärkt werden, da turbulente Strömungen mehr Impuls zur Oberfläche transportieren.
+26. Der Kuanda-Effekt ist nicht zu verwechseln mit dem Magnus-Effekt, der die Kraft auf einen rotierenden Zylinder in einer Strömung beschreibt.
+27. In der Natur findet sich der Effekt bei der Strömung um Baumstämme, Felsen in Flüssen und um Vogelfedern.
+28. Die mathematische Beschreibung erfordert die Lösung der Navier-Stokes-Gleichungen mit geeigneten Randbedingungen an der gekrümmten Oberfläche.
+29. Experimentell lässt sich der Effekt mit Rauchkanälen, Wasserkanälen und Particle-Image-Velocimetry sichtbar machen.
+30. Der Kuanda-Effekt bleibt ein aktives Forschungsgebiet, insbesondere in der Strömungsmechanik und der Bionik.
+
+That's 30 sentences. Let me verify the count... yes, 30 sentences. Good.
+</think>
+
+1. Der Kuanda-Effekt, auch Coandă-Effekt genannt, beschreibt die Tendenz eines Fluidstrahls, an einer angrenzenden konvexen Oberfläche anzuhaften.
+2. Er wurde nach dem rumänisch-amerikanischen Aerodynam

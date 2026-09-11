@@ -31,7 +31,7 @@ export AIFRED_STATE_FILE=$W/state.txt   # ALLE Stufen auf Upstream, sonst faehrt
 [ "$MODE" = "wrapper" ] && export VLLM_SM70_QWEN_GDN_FULL_FORWARD=1
 
 cd $REPO
-VLLM_SM70_E5_CACHE=0 CUDA_VISIBLE_DEVICES=0,2,1,3 \
+ CUDA_VISIBLE_DEVICES=0,2,1,3 \
 TURBOMIND=1 QUANT_BACKEND=turbomind \
 ENV_PREFIX=/home/mp/vllm/venv \
 TP=2 PP=2 K=4 GMU=0.95 MML=16384 PP_PARTITION=24,24 PLE_HOST_GIB=6 \

@@ -187,7 +187,7 @@ setsid $NUMA_PREFIX "$PY" -m vllm.entrypoints.openai.api_server \
   --limit-mm-per-prompt '{"image":0,"video":0}' \
   --default-chat-template-kwargs "{\"enable_thinking\":$THINKING}" \
   --reasoning-parser qwen3 \
-  --enable-auto-tool-choice --tool-call-parser hermes \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder \
   ${SPEC_ARGS[@]+"${SPEC_ARGS[@]}"} \
   --host "$HOST" --port "$PORT" > "$LOG" 2>&1 < /dev/null &
 SERVER_PID=$!

@@ -151,7 +151,7 @@ setsid $NUMA_PREFIX "$PY" -m vllm.entrypoints.openai.api_server \
   --limit-mm-per-prompt '{"image":0,"video":0}' \
   --default-chat-template-kwargs "{\"enable_thinking\":$THINKING}" \
   --reasoning-parser qwen3 \
-  --enable-auto-tool-choice --tool-call-parser hermes \
+  --enable-auto-tool-choice --tool-call-parser qwen3_coder \
   --compilation-config "{\"cudagraph_capture_sizes\":[$K1,$K2]}" \
   --speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":$K,\"draft_sample_method\":\"greedy\",\"use_local_argmax_reduction\":true}" \
   --host "$HOST" --port "$PORT" > "$LOG" 2>&1 < /dev/null &

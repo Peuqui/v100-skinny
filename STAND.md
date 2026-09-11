@@ -1107,9 +1107,11 @@ Augustwerten (6,5 min Boot).
       `GDN_SLOT_DEBUG`, `MTP_THINK_ONLY`. E5 war quantisierungsunabhängig,
       aber an V1 + MTP + Single-Stream gebunden und auf QSA inkompatibel. Der
       längere Boot im A/B (410 s) war der Compile-Cache-Schlüssel (#536), kein
-      E5-Preis. `VLLM_SM70_E5_CACHE=0` steht noch in 8 llama-swap-Einträgen
-      (Peuquis Datei; Entfernen ändert den Cache-Schlüssel → je Eintrag ein
-      kalter Boot) — eigener Punkt.
+      E5-Preis. `VLLM_SM70_E5_CACHE=0` aus den 8 llama-swap-Einträgen entfernt
+      (11.09. 21:31, Freigabe Peuqui, Sicherung `backups/config.yaml.bak-
+      2026-09-11-vor-e5`; YAML geprüft, 25 Modelle) — jeder vLLM-Eintrag
+      bootet beim nächsten Laden einmal kalt (Compile-Cache-Schlüssel, #536).
+      Committet: work-main `433dfa10` = Tag `verified-2026-09-11b`.
     - **Befund 2 (index_share) ANGEWENDET 11.09. nachts**: `speculative.py`
       = Upstream + DSV4-Guard, Qwen4Exp-MTP fährt `index_share_for_mtp_
       iteration=True` wie Upstream. Flash-Next, Rohtext-Sonde, drei Läufe:

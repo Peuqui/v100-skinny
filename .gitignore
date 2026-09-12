@@ -24,13 +24,10 @@ ac_suite/
 *.whl
 
 # Lokale venvs und entpackte CUDA-Toolchains (maschinenspezifisch)
-.venv-sm70/
+.venv-*/
 .cuda-nvcc-deb/
 .cuda128/
 hunt-results/
-.venv-sm70-150/
-.venv-sm70-main/
-.venv-sm70-tltest/
 .wheels/
 nsys-dsv4-het-moeqpn.sqlite
 nsys-dsv4-het-moeqpn.nsys-rep

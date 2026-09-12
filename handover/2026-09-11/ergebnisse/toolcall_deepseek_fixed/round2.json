@@ -1,0 +1,38 @@
+{
+ "id": "chatcmpl-ac0a888696ce58c4",
+ "object": "chat.completion",
+ "created": 1789180833,
+ "model": "DeepSeek-V4-Flash-nvfp4-DSpark-vllm",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "Das aktuelle Wetter in Hamburg:\n\n- **Temperatur:** 17 °C\n- **Wetterlage:** bewölkt ☁️\n\nEs ist also eher bedeckt in Hamburg. Soll ich dir noch eine andere Stadt heraussuchen?",
+    "refusal": null,
+    "annotations": null,
+    "audio": null,
+    "function_call": null,
+    "tool_calls": [],
+    "reasoning": null
+   },
+   "logprobs": null,
+   "finish_reason": "stop",
+   "stop_reason": null,
+   "token_ids": null,
+   "routed_experts": null
+  }
+ ],
+ "service_tier": null,
+ "system_fingerprint": "vllm-1.5.1.dev932+g5099866fa.d20260910-pp5-ecaee26d",
+ "usage": {
+  "prompt_tokens": 428,
+  "total_tokens": 482,
+  "completion_tokens": 54,
+  "prompt_tokens_details": null
+ },
+ "prompt_logprobs": null,
+ "prompt_token_ids": null,
+ "prompt_text": null,
+ "kv_transfer_params": null
+}

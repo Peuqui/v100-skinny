@@ -1,0 +1,12 @@
+{
+ "model": "DeepSeek-V4-Flash-nvfp4-DSpark-vllm",
+ "messages": [
+  {
+   "role": "user",
+   "content": "Guten Tag."
+  }
+ ],
+ "max_tokens": 8,
+ "temperature": 0,
+ "seed": 1
+}

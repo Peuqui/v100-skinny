@@ -1,0 +1,47 @@
+{
+ "id": "chatcmpl-a63890c0ea2c25c0",
+ "object": "chat.completion",
+ "created": 1789163043,
+ "model": "DeepSeek-V4-Flash-nvfp4-DSpark-vllm",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": null,
+    "refusal": null,
+    "annotations": null,
+    "audio": null,
+    "function_call": null,
+    "tool_calls": [
+     {
+      "id": "chatcmpl-tool-8c06b6dd68371bf9",
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "arguments": "{\"city\": \"Hamburg\", \"unit\": \"celsius\"}"
+      }
+     }
+    ],
+    "reasoning": null
+   },
+   "logprobs": null,
+   "finish_reason": "tool_calls",
+   "stop_reason": null,
+   "token_ids": null,
+   "routed_experts": null
+  }
+ ],
+ "service_tier": null,
+ "system_fingerprint": "vllm-1.5.1.dev932+g5099866fa.d20260910-pp5-ecaee26d",
+ "usage": {
+  "prompt_tokens": 323,
+  "total_tokens": 387,
+  "completion_tokens": 64,
+  "prompt_tokens_details": null
+ },
+ "prompt_logprobs": null,
+ "prompt_token_ids": null,
+ "prompt_text": null,
+ "kv_transfer_params": null
+}

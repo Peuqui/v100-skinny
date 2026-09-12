@@ -1029,6 +1029,204 @@ Augustwerten (6,5 min Boot).
     Billigster erster Versuch: NCCL-Umgebungsschalter (`NCCL_ALGO`,
     `NCCL_PROTO`, Puffergrößen) — reine Env-Experimente.
 
+    **Env-Sweep GEMESSEN (12.09. nachts, Punkt 3 des Plans, RTX-Paar `0,2`,
+    `handover/2026-09-11/scripts/nccl_sweep.sh`, 27B DFlash2 mit
+    maurienne-NVFP4-Kopf, je Variante fünf Läufe à 400 Token, greedy; Rohdaten
+    `handover/2026-09-11/ergebnisse/nccl_sweep_rtx*.out`):**
+
+    | Variante | Median tok/s | Spanne | Boot |
+    |---|---:|---|---|
+    | Basis | 76,65 / 77,04 | 76,64–76,83 / 76,89–77,16 | Sweep 1 / Sweep 2 |
+    | `NCCL_PROTO=Simple` | 75,86 | 75,73–75,88 | 1 |
+    | `NCCL_ALGO=Ring` | 76,88 | 76,86–77,00 | 1 |
+    | `NCCL_PROTO=LL` | 71,25 | 71,21–71,42 | 1 |
+    | `NCCL_PROTO=LL128` | 71,33 | 71,25–71,45 | 1 |
+    | `NCCL_ALGO=Tree` | — | bootet nicht: „no algorithm/protocol available for AllGather" | 1 |
+    | `NCCL_BUFFSIZE=524288` | 77,77 | 77,60–77,85 | 2 |
+    | `NCCL_BUFFSIZE=1048576` | 77,57 / 77,73 | 77,47–77,82 / 77,53–77,97 | 1 / 2 |
+    | `NCCL_BUFFSIZE=2097152` | 76,65 | 76,61–76,84 | 2 |
+
+    Annahmelänge überall 3,325, SHA überall `0106659946c064b1` — kein Schalter
+    ändert den Text. **Befund:** Ring und Simple sind bereits die Vorgabe
+    (Wechsel = Rauschen), LL/LL128 kosten 7 %, Tree gibt es für AllGather
+    nicht. Einzig ein kleinerer NCCL-Puffer (512 KiB–1 MiB statt 4 MiB
+    Vorgabe) bringt in zwei unabhängigen Boots reproduzierbar **+0,9 bis
+    +1,2 %** bei nicht überlappenden Spannen; 2 MiB liegt auf der Basis. Die
+    Boot-zu-Boot-Streuung der Basis beträgt 0,5 %. **Schluss: der AllReduce
+    ist über die Umgebung nicht zu heben; die 31,8 % sind der Preis des
+    Host-Stagings ohne P2P und nur strukturell zu senken (weniger AllReduces
+    je Schritt).** Vorschlag für die Produktion (Entscheidung Peuqui):
+    `NCCL_BUFFSIZE=1048576` in die vLLM-TP-Einträge von llama-swap; +1 % ist
+    wenig, kostet aber nichts. Punkt 3 des Plans damit ERLEDIGT.
+
+    **Sweep-Skript-Falle (12.09.):** `speed_dflash.sh` bricht ab, wenn die
+    Karten nach dem Abbau der Vorgänger-Variante noch über 500 MiB belegt sind
+    oder ein `api_server` nachläuft — vier Varianten des ersten Laufs blieben
+    so ohne Ergebnis, die Meldung ging im `/dev/null` verloren. Das Skript
+    wartet jetzt auf freie Karten und schreibt je Variante ein Log.
+
+    **Paket G (Punkt 5 des Plans) VORBEREITET, nicht eröffnet (12.09.
+    nachts):** Worktrees `1Cat-vLLM-pr-timeout` (Branch
+    `nccl-subgroup-timeout`) und `1Cat-vLLM-pr-compilecache` (Branch
+    `drop-forced-compile-cache-off`) auf `origin/main`, beide uncommitted,
+    pre-commit + mypy-3.10 grün, Entwürfe in `upstream-contrib/03-1cat-issues/
+    pr-nccl-subgroup-timeout.md` und `pr-drop-forced-compile-cache-off.md`.
+    - Timeout: Beleg am Code, torch 2.10 `_new_group_with_tag` nimmt bei
+      `timeout=None` die 600-s-Konstante, nie den Wert der Weltgruppe; neuer
+      CPU-Test (3 passed). Der Wachhund-Fall vom 06.09. im Memory betraf die
+      Weltgruppe; ein Log eines Untergruppen-Abbruchs liegt nicht vor.
+    - Compile-Cache: die Erzwingung sitzt upstream ZWEIMAL (`config/vllm.py`
+      und `envs.py` `disable_compile_cache()`); der Fork trägt die zweite
+      noch, deshalb ist der Cache auf dem 0DOT3-Pfad auch in Produktion aus.
+      Kalt/Warm-Beleg (`handover/2026-09-11/scripts/cache_coldwarm.sh`, RTX-
+      Paar, DFlash2): kalt 447 s, warm 121 s mit 4× „Directly load AOT",
+      erzwungen-aus 127 s; SHA `0106659946c064b1` und Annahme 3,325 in allen
+      drei. **Kein Drift, aber auch kein Bootzeit-Gewinn** bei warmem
+      Inductor-Cache; der Kalt-Export kostet einmal ~5 min. Der PR ist eine
+      Bereinigung, Entscheidung Peuqui. Overlay-Folge unabhängig vom PR:
+      envs.py-Default im Fork zurücknehmen (siehe OVERLAY-INVENTUR).
+
+    **Punkt 15, Skinny-Build pro Architektur — GEMESSEN 12.09. nachts (Punkt 4
+    des Plans, `handover/2026-09-11/scripts/p15_chain.sh`, Patch
+    `patches/punkt15_skinny_per_arch.diff` auf work-main ANGEWENDET,
+    uncommitted):** Extension heißt jetzt `skinny_nvfp4_v11_sm{cc}` und baut
+    mit `-gencode` der eigenen Karte; cuobjdump zeigt sm_75 bzw. sm_70.
+
+    | Paar | Median tok/s | Referenz | SHA | Annahme |
+    |---|---:|---:|---|---:|
+    | RTX 8000 (sm75-Build) | 77,25 (77,10–77,32) | 76,65 / 77,04 (sm70-Build, zwei Boots) | `0106659946c064b1` | 3,325 |
+    | V100 (sm70-Build) | 76,28 (76,26–76,59) | 76,27 | `0106659946c064b1` | 3,325 |
+
+    Bitgleich auf beiden Paaren. Der RTX-Zuwachs von +0,3 bis +0,8 % liegt
+    innerhalb der Boot-Streuung (0,5 %); die 1–6 % aus dem Mikrobenchmark
+    bei M ≤ 4 kommen im Decode nicht an, weil der Skinny-GEMM nur 24 % des
+    Schritts ist und der Rest AllReduce/QPN8 bleibt. **Behalten oder
+    zurücknehmen — Entscheidung Peuqui:** korrekt ist der Bau für die eigene
+    Architektur allemal (Paket E braucht ihn für die Turing-Kopie), ein
+    Tempo-Argument gibt es nicht. Rückweg: `git apply -R` des Diffs.
+
+    **Punkt 14, Decode-Profil MIT NVFP4-Entwurfskopf — GEMESSEN 12.09. nachts
+    (Punkt 6 des Plans, `prof_dflash.sh nvfp4head 0,2`, `DRAFT=maurienne`,
+    sm75-Skinny-Build aus Punkt 15, Rohdaten
+    `handover/2026-09-11/ergebnisse/prof_nvfp4head_rtx.out`):** Rang 0
+    **5.194 ms** GPU-Zeit im Fenster (10.09. mit fp16-Kopf: 5.395 ms, −3,7 %).
+
+    | Posten | ms | Anteil | gegenüber 10.09. |
+    |---|---:|---:|---|
+    | `ncclDevKernel_AllReduce_Sum_f16_RING_LL` | 1.786 | 34,4 % | 1.714 → gleich; NCCL wählt LL von selbst |
+    | `skinny_nvfp4_qpn2` | 1.399 | 26,9 % | 1.303 → gleich (Boot-Streuung) |
+    | `skinny_fp8_qpn8` | 912 | 17,6 % | 889 → gleich |
+    | `fused_sigmoid_gating_delta_rule` | 182 | 3,5 % | 180 |
+    | `ncclDevKernel_AllGather_RING_LL` | 182 | 3,5 % | 178 |
+    | `Kernel2` (neu, 7.387 Aufrufe) | 138 | 2,7 % | vermutlich der NVFP4-Kopf selbst |
+    | `turing_fp16_s1688gemm` | — | — | 273 → **weg** (fp16-Kopf) |
+    | `cutlass_75_wmma…f16` | — | — | 291 → **weg aus den Top 14** |
+
+    **Befund:** Nach Block-Pack und Kopfwechsel bleiben drei Posten mit
+    79 % des Schritts: AllReduce (Umgebung ausgereizt, siehe Env-Sweep),
+    qpn2 (87–98 % Dachlinie) und qpn8 (DRAM-gebunden). Der Kopfwechsel hat
+    564 ms fp16-GEMM gegen 138 ms `Kernel2` getauscht. **Weitere Hebel sind
+    nur strukturell: weniger AllReduces je Schritt.** Punkt 6 des Plans
+    ERLEDIGT.
+
+    **Punkt 10, TileLang-Pin 0.1.14 — Kernel-Tests GRÜN (12.09. nachts, Punkt 7
+    des Plans, `handover/2026-09-11/scripts/p7_tilelang_chain.sh`, venv
+    `.venv-sm70-tltest`, tilelang 0.1.14):**
+
+    | Karte | `test_mhc_kernels.py` | `test_mhc_sm70_fp16.py` |
+    |---|---|---|
+    | V100 (Karte 1) | 43 passed, 8 skipped | 24 passed, 1 skipped |
+    | RTX 8000 (Karte 0) | 43 passed, 8 skipped | 10 passed, 15 skipped |
+
+    Belegt am Code: tilelang 0.1.14 `cuda/target.py` liest die Architektur
+    über `torch.cuda.current_device()`, exakt unser Overlay-Patch
+    `fork_patches_150/tilelang_target.py` (0.1.10 nahm Gerät 0). Der Patch
+    wird mit dem Pin überflüssig. Modellboots (DeepSeek PP5, 27B-GDN) mit der
+    venv: siehe Folgeeintrag. **Falle:** ohne `CUDA_HOME=/home/mp/vllm/cuda`
+    (und dessen `bin` im PATH) übersetzt tilelang mit `/usr/bin/nvcc` (CUDA
+    12.0), das den System-g++ 13 ablehnt — ein erster Lauf scheiterte so
+    komplett; `speed_dflash.sh` setzt beides, jede pytest-Kette muss es auch.
+
+    **Modellboots mit 0.1.14 — BESTANDEN (12.09. nachts,
+    `handover/2026-09-11/scripts/p7_p10_chain.sh`):** DeepSeek-V4-Flash PP5
+    über `ds_accept.sh tl014` (Boot 710 s): acht Prompts zweimal im selben
+    Prozess **8/8 byteidentisch**, Code 26,5 tok/s (Referenz 26,7), Prosa
+    23,6. Qwen3.8-27B (GDN) DFlash2 auf dem RTX-Paar: **77,14 tok/s, SHA
+    `0106659946c064b1`, Annahme 3,325** — wie mit 0.1.10. Pin-Vorschlag an
+    1Cat als Entwurf: `upstream-contrib/03-1cat-issues/comment-tilelang-pin-
+    0114.md` (nicht gepostet, Freigabe Peuqui; vorher `gh issue list --search
+    tilelang`). Danach: Overlay-Patch `tilelang_target.py` und die 11-GB-venv
+    `.venv-sm70-tltest` löschen, sobald der Pin in work-main gezogen ist.
+    Punkt 7 des Plans ERLEDIGT.
+
+    **DeepSeek-Eintrag: Tool-Call und kurze Chat-Prompts — BEFUND (12.09.
+    nachts, Punkt 10 des Plans, `handover/2026-09-11/scripts/abnahme2/
+    toolcall_probe.py`, Ergebnisse `ergebnisse/toolcall_deepseek*/`):**
+    - **Runde 1 (Tool-Call) BESTANDEN:** 323 Prompt-Token mit `get_weather`-
+      Schema, `finish_reason=tool_calls`, Parser `deepseek_v4` liefert Name
+      und Argumente `{"city":"Hamburg","unit":"celsius"}` korrekt.
+    - **Runde 2 (Werkzeugergebnis als `role=tool` zurück) HÄNGT:** 420
+      Token berechnet, dann Decode ohne Fortschritt, nach 300 s `RPC call to
+      sample_tokens timed out`, EngineCore tot, HTTP 500. Die fünf Worker
+      überleben den API-Server-Tod als Waisen mit **180 GB VRAM** (das
+      `cmdStop`-Skript greift nur beim Entladen, nicht beim Selbsttod) —
+      zweimal von Hand per PID beendet.
+    - **Boot-Prompt „Guten Tag." (8 Token nach Template, max_tokens 8) STÜRZT
+      AB:** `AssertionError: topk_indices is not None` in
+      `deepseek_v4/amd/rocm.py:788` `_forward_prefill` (Worker PP0). Der
+      C128A-Builder setzt `c128a_prefill_topk_indices` nur bei
+      `num_prefill_tokens > 0` mit Schwelle `1 + num_spec = 6`; der SWA-Builder
+      (`sparse_swa.py:294`) hat Klassenschwelle 1 — Verdacht auf eine
+      Decode/Prefill-Einstufung, die zwischen beiden Buildern auseinanderläuft.
+      Die Abnahme vom 11.09. hatte nur 13k-Vorkontext; die acht Kohärenz-
+      Prompts (16–32 Token) laufen über das Serve-Skript **ohne**
+      `--enable-prefix-caching`, das der llama-swap-Eintrag setzt. A/B dazu:
+      `abnahme2/ds_short_prompt_ab.sh` — **ERGEBNIS: beide stürzen ab.** (A)
+      Serve-Skript ohne Prefix-Cache, up nach 500 s, „Guten Tag." → dieselbe
+      Assertion in Worker PP0, HTTP 500 nach 300 s; (B) llama-swap-Eintrag,
+      identisch. **Prefix-Caching ist nicht die Ursache; der Auslöser ist
+      der kurze Prompt (8 Token). 16 Token liefen in derselben Nacht.** Die
+      Logs: `ergebnisse/ds_short_prompt_ab/`.
+    - **GRENZE AUSGEMESSEN und URSACHE GEFUNDEN (12.09. ~04:00,
+      `abnahme2/ds_short_prompt_boundary.sh`, zwei Boots über das Serve-
+      Skript, Prompts mit exakt 4–16 Token nach Template):** 4, 5, 6 laufen;
+      **7, 8, 11 stürzen ab** (7 und 11 gemessen, 8 dreimal zuvor); **12, 13,
+      14, 15, 16 laufen.** Das Fenster ist exakt (6, 11].
+      **Ursache:** drei Metadaten-Bauer, zwei Schwellen. `flashmla_sparse`
+      (C128A) holt seine Decode-Schwelle über `_init_reorder_batch_threshold(1,
+      supports_spec_as_decode=True)` = `1 + 2·k` unter parallelem Drafting
+      (`backend.py:617`), DSpark setzt `parallel_drafting=True`
+      (`config/speculative.py:951`) → **11**. `sparse_swa.py:304` rechnet
+      `1 + k` → **6** (der Indexer ebenso, `indexer.py:447`). Eine Anfrage mit
+      7–11 Query-Token ist für C128A Decode (`treat_short_extends_as_decodes`,
+      also keine Prefill-Topk-Indizes), für SWA Prefill → `_forward_prefill`
+      → `assert topk_indices is not None`. **Die Werkzeug-Rückrunde vom Abend
+      war derselbe Fehler:** Prefix-Cache-Treffer ließ 8 neue Token übrig
+      (`num_scheduled_tokens: 8`, Assertion im `crash_journal.txt`); der
+      „Hänger" war nur der 300-s-RPC-Timeout nach dem Worker-Tod. Upstream
+      identisch (`origin/main` sparse_swa.py:304).
+      **Fix:** SWA-Builder ruft denselben Helfer (`_init_reorder_batch_threshold`),
+      Worktree `1Cat-vLLM-pr-swathreshold` (Branch `sparse-swa-spec-threshold`,
+      pre-commit + mypy grün), als Overlay auf work-main ANGEWENDET
+      (`handover/2026-09-11/patches/sparse_swa_spec_threshold.diff`).
+      **Verifikation `abnahme2/ds_fix_verify.sh` (12.09. ~04:45, ein Boot mit
+      Fix, Serve-Skript): alle 13 Längen 4–16 OK, null Assertions im Log.**
+      Tool-Call dort nicht prüfbar (Serve-Skript ohne `--enable-auto-tool-
+      choice` → HTTP 400 ist Anfrage-Ablehnung, kein Engine-Fehler); Tool-
+      Runden gegen den llama-swap-Eintrag mit Fix (`ergebnisse/
+      toolcall_deepseek_fixed/`): **Runde 1 `get_weather` mit Argumenten
+      BESTANDEN, Runde 2 (Werkzeugergebnis zurück, der Absturzfall vom
+      Abend) BESTANDEN in 5,3 s**, Antwort nennt 17 °C und bewölkt.
+      **Punkt 10 des Plans damit ERLEDIGT: Fehler gefunden, behoben, belegt.**
+      Offen: Fix committen (work-main + PR-Worktree) und PR eröffnen —
+      Entscheidung Peuqui.
+    - Passt zu 1Cat-Issue #597 (delubee, DSML-Tool-Calls auf 8× V100). Ob und
+      was dort gemeldet wird: Entscheidung Peuqui.
+    - **Betriebsrisiko für AIfred:** ein toter Engine-Kern hinterlässt 180 GB
+      belegtes VRAM; llama-swap meldet „running: []", der nächste Boot scheitert
+      am Speicher. Vorschlag: `vllm-swap-stop` um eine Prüfung auf verwaiste
+      `VLLM::Worker` derselben Prozessgruppe ergänzen, oder ein Watchdog.
+
     **Cutlass-fp16-GEMM — zugeordnet (11.09., aus den vorhandenen
     nsys-Berichten, Aufrufzahlen je Grid):** Es ist kein einzelner GEMM,
     sondern eine Kernelfamilie für alles, was fp16 bleibt. Der Großteil ist

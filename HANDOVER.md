@@ -199,3 +199,10 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
    work-main auf main hereinholen und die Overlay-Teile von #572/#573
    ENTFERNEN, danach Abnahme (`abnahme2/driver.sh`). Größerer Eingriff in
    den Produktionsbaum — vorher Freigabe.
+
+## Paket C — Stand 12.09. abends
+- Messung abgeschlossen (RTX-Paar, 27B, fp16-KV): FA2-sm75 gegen Triton kurz 74,19/70,91 tok/s, 13k TTFT 17,75/36,26 s, 13k Decode 56,48/15,03 tok/s, Text identisch. Details `upstream-contrib/03-1cat-issues/paket-c-plan.md`.
+- Eigenständiger sm75-Bau aus dem FA-Fork mit neuer CMake-Option `VLLM_FA2_OUTPUT_NAME` (uncommitted im Fork) funktioniert; Fork liest `Python_EXECUTABLE`, nicht `VLLM_PYTHON_EXECUTABLE`.
+- 1Cat-Issue #612 (Bauform, drei Formen ohne Empfehlung) veröffentlicht; wir warten auf die Antwort, sonst Form 1 als PR.
+- FA2+fp8-KV auf Turing GESTRICHEN (Peuqui): kein Nutzen bei unseren Modellen, Turing rechnet fp16 am schnellsten. Vierter Schritt = Overlay-Politik `checkpoint_kv_quant_allowed` (Boot unter `auto` auf Turing).
+- Worktree `1Cat-vLLM-pr-fa2sm75` (Branch `sm75-fa2-pr` auf origin/main): drei FA2-Python-Diffs + Doku-Tabelle, Lint+mypy grün, uncommitted.

@@ -186,7 +186,9 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 7. **PLE-Kaskade** bleibt am Ende des Plans (deine Entscheidung vom Abend).
 8. ~~SWA-Schwellen-Fix committen und als PR eröffnen~~ — ERLEDIGT 12.09.
    ~05:30: work-main `911c259f` (auf fork/work-main), **PR #603** offen.
-9. **Paket E läuft (12.09.):** E-1 als **PR #604** eröffnet (Turing-Pfad
+9. **Paket E (12.09.):** E-1 als **PR #604**, E-2 als **PR #611** eröffnet
+   (Block-Pack, Turing-Schwelle 7 gemessen). Befund Compile-Münze/AOT-
+   Cache pro Env-Hash in `paket-e-plan.md` + Memory. E-1 als (Turing-Pfad
    für modelopt NVFP4+FP8 über die kompilierten QPN-Kernel; RTX 71,0 tok/s
    gegen V100 63,4, SHA gleich). Reihenfolge Peuqui: E-2 Block-Pack →
    FlashInfer-Turing-Dreizeiler → Paket C (sm75-FA2) → fp8-KV-Cast. Plan:

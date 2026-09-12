@@ -32,7 +32,8 @@ export VLLM_SM70_QUANT_BACKEND=${VLLM_SM70_QUANT_BACKEND:-auto}
 export VLLM_SKINNY_NVFP4=${VLLM_SKINNY_NVFP4:-1}
 export VLLM_SKINNY_QPN=${VLLM_SKINNY_QPN:-1} VLLM_SKINNY_QPN2=${VLLM_SKINNY_QPN2:-1}
 export VLLM_SKINNY_NVFP4_SRC=/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu
-export TORCHINDUCTOR_CACHE_DIR=/home/mp/.cache/torchinductor VLLM_NO_USAGE_STATS=1
+# TORCHINDUCTOR_CACHE_DIR ueberschreibbar (frischer Ordner fuer Compile-Determinismus-Tests).
+export TORCHINDUCTOR_CACHE_DIR=${TORCHINDUCTOR_CACHE_DIR:-/home/mp/.cache/torchinductor} VLLM_NO_USAGE_STATS=1
 # Cache-Root ueberschreibbar: der Kalt/Warm-Beleg fuer den Compile-Cache braucht einen frischen Ordner.
 export VLLM_CACHE_ROOT=${VLLM_CACHE_ROOT:-/home/mp/.cache/vllm-calibration} HOME=/home/mp
 export CUDA_VISIBLE_DEVICES=$DEVS
@@ -72,7 +73,7 @@ if [ -n "${ATTN_BACKEND:-}" ]; then
 fi
 SPEC=()
 case "$MODE" in
-  mtp)    SPEC=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"draft_sample_method\":\"greedy\"$SPEC_ATTN}") ;;
+  mtp)    SPEC=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":${MTP_K:-3},\"draft_sample_method\":\"greedy\"$SPEC_ATTN}") ;;
   dflash) SPEC=(--speculative-config "{\"method\":\"dflash\",\"model\":\"$DRAFT\",\"num_speculative_tokens\":7,\"draft_sample_method\":\"greedy\"$SPEC_ATTN}") ;;
   0)      SPEC=() ;;
   *)      echo "unbekannter MODE: $MODE"; exit 1 ;;

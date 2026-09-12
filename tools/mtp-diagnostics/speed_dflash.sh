@@ -33,7 +33,8 @@ export VLLM_SKINNY_NVFP4=${VLLM_SKINNY_NVFP4:-1}
 export VLLM_SKINNY_QPN=${VLLM_SKINNY_QPN:-1} VLLM_SKINNY_QPN2=${VLLM_SKINNY_QPN2:-1}
 export VLLM_SKINNY_NVFP4_SRC=/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu
 export TORCHINDUCTOR_CACHE_DIR=/home/mp/.cache/torchinductor VLLM_NO_USAGE_STATS=1
-export VLLM_CACHE_ROOT=/home/mp/.cache/vllm-calibration HOME=/home/mp
+# Cache-Root ueberschreibbar: der Kalt/Warm-Beleg fuer den Compile-Cache braucht einen frischen Ordner.
+export VLLM_CACHE_ROOT=${VLLM_CACHE_ROOT:-/home/mp/.cache/vllm-calibration} HOME=/home/mp
 export CUDA_VISIBLE_DEVICES=$DEVS
 export VLLM_USE_V2_MODEL_RUNNER=1 VLLM_1CAT_ENABLE_SM70_MTP_DEFAULTS=1
 unset VLLM_SKINNY_PPDIAG

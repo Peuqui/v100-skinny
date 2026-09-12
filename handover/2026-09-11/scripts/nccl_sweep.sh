@@ -8,10 +8,18 @@ D=/home/mp/.cache/huggingface/hub/models--maurienne-ai--Qwen3.8-27B-DFlash2-NVFP
 cd /home/mp/Projekte/vllm-research/v100-skinny
 for V in "$@"; do
   NAME="nccl_${TAG}_$(echo "$V" | tr '=,' '__' | tr -cd 'A-Za-z0-9_')"
+  # speed_dflash.sh bricht ab, wenn noch ein api_server lebt oder die Karten
+  # ueber 500 MiB belegt sind; nach dem Abbau der Vorgaenger-Variante ist das
+  # fuer einige Sekunden der Fall (Lauf 11.09.: vier Varianten ohne Ergebnis).
+  for i in $(seq 1 60); do
+    u=$(nvidia-smi --id=$DEVS --query-gpu=memory.used --format=csv,noheader,nounits | paste -sd+ | bc)
+    if [ "${u:-0}" -le 500 ] && ! pgrep -f '[a]pi_server' > /dev/null; then break; fi
+    sleep 5
+  done
   if [ "$V" = "base" ]; then
-    DEVS=$DEVS DRAFT=$D bash tools/mtp-diagnostics/speed_dflash.sh "$NAME" fork dflash > /dev/null 2>&1
+    DEVS=$DEVS DRAFT=$D bash tools/mtp-diagnostics/speed_dflash.sh "$NAME" fork dflash > "$HOME/.cache/mtp-diagnostics/sweep_$NAME.log" 2>&1
   else
-    env $V DEVS=$DEVS DRAFT=$D bash tools/mtp-diagnostics/speed_dflash.sh "$NAME" fork dflash > /dev/null 2>&1
+    env $V DEVS=$DEVS DRAFT=$D bash tools/mtp-diagnostics/speed_dflash.sh "$NAME" fork dflash > "$HOME/.cache/mtp-diagnostics/sweep_$NAME.log" 2>&1
   fi
   R=$HOME/.cache/mtp-diagnostics/qual_$NAME
   /home/mp/vllm/venv/bin/python - "$V" "$R/result.json" <<'PY'

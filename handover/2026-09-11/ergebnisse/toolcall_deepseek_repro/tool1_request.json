@@ -1,0 +1,40 @@
+{
+ "model": "DeepSeek-V4-Flash-nvfp4-DSpark-vllm",
+ "messages": [
+  {
+   "role": "user",
+   "content": "Wie ist das Wetter gerade in Hamburg? Nutze das Werkzeug."
+  }
+ ],
+ "max_tokens": 200,
+ "temperature": 0,
+ "seed": 1,
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "get_weather",
+    "description": "Aktuelles Wetter fuer eine Stadt abrufen.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "city": {
+       "type": "string"
+      },
+      "unit": {
+       "type": "string",
+       "enum": [
+        "celsius",
+        "fahrenheit"
+       ]
+      }
+     },
+     "required": [
+      "city"
+     ]
+    }
+   }
+  }
+ ],
+ "tool_choice": "auto"
+}

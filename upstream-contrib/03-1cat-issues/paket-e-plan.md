@@ -124,3 +124,48 @@ sm75 ≥ M5, sm70 ≥ M8 (STAND Punkt 8/13). E-3: MoE, wenn die Kampagne
 - Worktree `1Cat-vLLM-pr-turing-ops` auf ae75fb9b; `setup.py` trägt die
   lokale #601-Nachhilfe (NICHT Teil des PRs). E2E-Kette
   `handover/2026-09-12/e1_chain2.sh`.
+
+## Nachträge 12.09. nachmittags (E-1 raus, E-2 in Arbeit)
+
+- **E-1 = PR #604** (RTX 71,0 vs V100 63,4 tok/s, SHA gleich). CI rot nur
+  durch die fremde #602-Datei (wie #603).
+- **E-2 Block-Pack** in `nvfp4_qpn2_sm70.cu` (Branch `sm70-qpn2-block-pack`
+  auf E-1): Pack-Kernel `[k/16][rows][16]`, `Packed`-Template auf GEMM und
+  gated GEMM, Schwelle sm75 ≥ M5 / sm70 ≥ M8, `VLLM_SM70_NVFP4_QPN2_PACK`
+  0/1 für A/B. Kernel-Test 58/58 bitgleich auf der V100 (alle Splits,
+  Ketten, Formen inkl. 62080, M 1..32, beide Kacheln). E2E MTP k=3 (M=4,
+  unter der Schwelle): 70,9/71,0 mit Pack auto = Basis, wie erwartet.
+- **DFlash2 auf reinem main + Turing ist GESPERRT**: der Entwurfskopf
+  braucht nicht-kausale Attention, `TRITON_ATTN` kann das nicht, und
+  `FLASH_ATTN_V100` prüft hart auf `(7, 0)` (`flash_attn_v100.py:1662`).
+  Erst Paket C hebt das. E-2-Beleg auf Turing deshalb über MTP mit k=4
+  (M=5) und k=7 (M=8): Pack auto gegen 0 bei gleichem k.
+- **Offener Punkt:** ein MTP-Boot mit `PACK=0` lieferte eine andere SHA
+  (`cb2d4b3b…`, Trennung ab Zeichen 590, Annahme 2,92) als vier Boots mit
+  Pack auto/E-1/V100 (`38848c…`). Bei M=4 laufen beide ungepackt im Decode;
+  nur der Prompt-Prefill (M≈15) unterscheidet sich. Kernel isoliert bitgleich.
+  Wiederholung `e2m_rtx_nopack2` läuft — reproduzierbar oder Boot-Rauschen.
+
+## Befund 12.09. nachmittags: Text hängt am Env-Hash, nicht am Pack
+
+Sieben Boots RTX MTP k=3: `PACK=auto` 4× SHA `38848c…` (71,0 tok/s, Annahme
+3,000); `PACK=0` 3×, `PACK=1` 2×, Variable weg 1× SHA `cb2d4b…` (68,1–68,9,
+Annahme 2,920). Kernel-Ebene: 58/58 bitgleich auf V100 UND RTX, alle vier
+Schalterzustände identisch bei M=4 und M=15. Kein AOT-Load in den Logs.
+**Mechanismus (Code):** `decorators.py:~540`: mit `VLLM_USE_AOT_COMPILE=1`
+(auf dem 0DOT3-Pfad automatisch) legt der AOT-Pfad *unconditional* ein
+Inductor-Cache-Verzeichnis `{hash}/inductor_cache/` an; `{hash}` enthält den
+Env-Hash aus `compile_factors()` (#536: unregistrierte `VLLM_`-Variablen
+samt Wert). Jeder Wert → neuer Hash → neues Inductor-Verzeichnis → erster
+Compile misst Combo-Kernel per Zeit (`benchmark_combo_kernel=True`), spätere
+Boots desselben Hashes nehmen die gespeicherte Wahl. Deshalb je Wert stabil,
+zwischen Werten verschieden — trotz „torch.compile cache is disabled".
+Das ist auch 1Cats „Token-Drift beim AOT-Reload".
+**Fix für den A/B:** `VLLM_SM70_NVFP4_QPN2_PACK` in `envs.py` registriert
+(str, Default "auto") und in `compile_factors`-Ignorierliste (bitgleich
+belegt) → alle Arme gleicher Hash. Prüfung: Ketten 5 (auto mit frischem
+`VLLM_CACHE_ROOT` 3×), 6 (Dummy-Variable alpha/beta), 7 (registrierter
+Schalter, k=3/4/7 je aus/auto).
+**Für 1Cat:** eigener Befund/Issue-Kandidat: numerischer Drift zwischen
+Compiles durch Combo-Kernel-Benchmark + per-Hash-Inductor-Cache auf dem
+AOT-Pfad; Peuqui entscheidet, ob melden.

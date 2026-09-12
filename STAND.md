@@ -1255,6 +1255,29 @@ Augustwerten (6,5 min Boot).
     nachmittags, Freigabe Peuqui). Nächste Schritte in Peuquis Reihenfolge:
     E-2 Block-Pack, dann der Dreizeiler gegen FlashInfer auf Turing, dann
     Paket C (sm75-FA2), dann der fp8-KV-Cast.
+
+    **E-2 Block-Pack — IN ARBEIT (12.09. nachmittags), Branch
+    `sm70-qpn2-block-pack` auf E-1 im selben Worktree:** Pack-Kernel
+    `[k/16][rows][16]`, `Packed`-Template auf GEMM und gated GEMM, Schwelle
+    sm75 ≥ M5 / sm70 ≥ M8, Schalter `VLLM_SM70_NVFP4_QPN2_PACK` (registriert,
+    aus den Compile-Faktoren genommen). **Kernel bitgleich 58/58 auf V100 und
+    RTX.** Bau in `.venv-pr-turing` (`handover/2026-09-12/build_e2.log`).
+    **Befund nebenbei, wichtig für alle Abnahmen:** auf dem 0DOT3-Pfad ist
+    jeder frische Compile eine Münze (Combo-Kernel-Benchmark), der AOT-Pfad
+    friert die Wahl pro Env-Hash ein — 400-Token-SHA ist dort kein
+    Korrektheitskriterium, A/B nur bei gleichem Env-Hash. 12 Boots belegt,
+    Details `paket-e-plan.md`, Memory `reference_aot_inductor_cache_env_hash_drift`.
+    DFlash2 auf main+Turing gesperrt (FA_V100 exakt SM70) → Tempo-Beleg über
+    MTP mit k=3..7. **ERGEBNIS (RTX, gleicher Env-Hash, je 5×400 Token):**
+    M=4 68,8/68,9 (ungepackt), M=5 69,7/69,4, M=6 71,4/71,6, M=7 66,5/**67,8
+    (+1,9 %)**, M=8 64,4/**66,7 (+3,7 %)**; SHA und Annahme je Paar gleich.
+    **Turing-Schwelle auf 7 gesetzt** (statt 5 aus dem Mikrobenchmark),
+    Volta bleibt 8. PR-Worktree `1Cat-vLLM-pr-blockpack` (Branch
+    `sm70-qpn2-block-pack-pr` auf main): `nvfp4_qpn2_sm70.cu`, `envs.py`,
+    neuer Test. Entwurf `upstream-contrib/03-1cat-issues/pr-qpn2-block-pack.md`.
+    Committet `82ae4e0e` auf fork/sm70-qpn2-block-pack-pr, **PR #611**
+    (12.09. nachmittags, Freigabe Peuqui). Nächster Schritt: **Paket C**
+    (sm75-FA2 für 1Cat), Reihenfolge Peuqui.
     - Passt zu 1Cat-Issue #597 (delubee, DSML-Tool-Calls auf 8× V100). Ob und
       was dort gemeldet wird: Entscheidung Peuqui.
     - **Betriebsrisiko für AIfred:** ein toter Engine-Kern hinterlässt 180 GB

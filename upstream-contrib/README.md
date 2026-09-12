@@ -40,8 +40,9 @@ Damit sind neun PRs gemergt; die Repo-Regel „Autor braucht ≥4 gemergte PRs"
 | #599 | [Bugfix][Spec Decode][SM70] Gate DFlash2's BF16 emulation and FlashInfer top-k on the worker's own device | `pr-dflash2-pre-sm80-worker-device.md` |
 | #600 | [Bugfix][Platform] Resolve an unspecified device_id to the worker's own device | `pr-platform-default-device-id.md` |
 | #601 | [Bugfix][Build][SM70] Declare the pybind11 SM70 extensions non-limited-API | `pr-editable-soabi-modules.md` |
+| #603 | [Bugfix][DeepSeek-V4] Align the SWA decode threshold with the sparse MLA builder | `pr-sparse-swa-spec-threshold.md` |
 
-#599–#601 eröffnet 2026-09-11 abends (Freigabe Peuqui). #600 ist der
+#599–#601 eröffnet 2026-09-11 abends (Freigabe Peuqui). #603 eröffnet 2026-09-12 früh (Freigabe Peuqui); #572 und #573 am 2026-09-12 03:30 GEMERGT — Overlay-Teile beim nächsten main-Hereinholen entfernen. #600 ist der
 Wurzelfix für die Gerät-0-Fehlerklasse aus #412 und macht die Einzelfixes
 #514/#576/#599 überflüssig, nicht falsch. Nach dem Merge eines eigenen PRs
 den zugehörigen Overlay-Teil im Produktions-Worktree ENTFERNEN (STAND.md).

@@ -1,0 +1,38 @@
+{
+ "id": "chatcmpl-98b4d507c9450089",
+ "object": "chat.completion",
+ "created": 1789253425,
+ "model": "Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ-vllm",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "Ein Regenbogen entsteht, wenn Sonnenlicht auf Wassertropfen in der Luft trifft und dabei gebrochen, im Inneren des Tropfens reflektiert und beim Austritt erneut gebrochen wird. Durch diese Brechung wird das wei\u00dfe Sonnenlicht in seine einzelnen Spektralfarben aufgespalten, da jede Wellenl\u00e4nge einen leicht anderen Winkel durchl\u00e4uft. Der Beobachter sieht dieses farbige Lichtband nur, wenn die Sonne hinter ihm steht und die Wassertropfen vor ihm in einem bestimmten Winkel zur Blickrichtung liegen.",
+    "refusal": null,
+    "annotations": null,
+    "audio": null,
+    "function_call": null,
+    "tool_calls": [],
+    "reasoning": null
+   },
+   "logprobs": null,
+   "finish_reason": "stop",
+   "stop_reason": null,
+   "token_ids": null,
+   "routed_experts": null
+  }
+ ],
+ "service_tier": null,
+ "system_fingerprint": "vllm-11b1.dev40+gf381618a4-tp2-pp2-b23c95f2",
+ "usage": {
+  "prompt_tokens": 26,
+  "total_tokens": 138,
+  "completion_tokens": 112,
+  "prompt_tokens_details": null
+ },
+ "prompt_logprobs": null,
+ "prompt_token_ids": null,
+ "prompt_text": null,
+ "kv_transfer_params": null
+}

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+export PATH=/home/mp/vllm/venv/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin
+export CUDA_DEVICE_ORDER=PCI_BUS_ID
+export CUDA_HOME=/home/mp/vllm/cuda
+export TORCH_CUDA_ARCH_LIST=7.0
+export NCCL_P2P_DISABLE=1
+export VLLM_SM70_NVFP4_TURBOMIND=1
+export VLLM_SM70_QUANT_BACKEND=auto
+export VLLM_SKINNY_NVFP4=1
+export VLLM_SKINNY_QPN=1
+export VLLM_SKINNY_QPN2=1
+export VLLM_SKINNY_NVFP4_SRC=/home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu
+export TORCHINDUCTOR_CACHE_DIR=/home/mp/.cache/torchinductor
+export VLLM_NO_USAGE_STATS=1
+export CUDA_VISIBLE_DEVICES=0,2,1,3
+export VLLM_PP_LAYER_PARTITION=24,24
+export VLLM_QWEN4EXP_PLE_HOST_GIB=6
+export HOME=/home/mp
+exec /home/mp/vllm/venv/bin/python -m vllm.entrypoints.openai.api_server --model /home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ --served-model-name Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ-vllm --trust-remote-code --dtype float16 --disable-custom-all-reduce --enable-auto-tool-choice --tool-call-parser qwen3_coder --reasoning-parser qwen3 --enable-prompt-tokens-details --enable-prefix-caching --distributed-timeout-seconds 3600 --tensor-parallel-size 2 --pipeline-parallel-size 2 --gpu-memory-utilization 0.95 --block-size 16 --max-model-len 262144 --max-num-seqs 1 --max-num-batched-tokens 2048 --host 127.0.0.1 --port 8093 --language-model-only --async-scheduling --speculative-config '{"method":"mtp","num_speculative_tokens":4,"draft_sample_method":"greedy"}' --compilation-config '{"cudagraph_capture_sizes":[1,2,4,5,8]}'

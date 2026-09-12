@@ -200,9 +200,17 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
    ENTFERNEN, danach Abnahme (`abnahme2/driver.sh`). Größerer Eingriff in
    den Produktionsbaum — vorher Freigabe.
 
+## Punkt 2 ERLEDIGT: work-main auf main dfef3342 (13.09. früh)
+- Merge `34f3f340` + `f381618a`, Neubau, Abnahme komplett bestanden (Tabelle in STAND.md "Abnahme work-main-Merge"). Produktionskopf: RTX 76,88 / V100 76,42 tok/s, SHA gleich; DeepSeek 8/8; Flash-Next q1/q2 sauber, Kuanda 2:1 wie alt; alle vier llama-swap-Einträge kalt+warm ok.
+- **Vorschlag:** `speed_dflash.sh` Vorgabe `DRAFT` auf den Produktionskopf (maurienne RTNcal) stellen, sonst misst jede Abnahme 5 % zu wenig. Noch nicht geändert.
+- **Aufräumen bei Gelegenheit:** Worktree `1Cat-vLLM-old-prod` und `.venv-sm70-old` (~10 GB) waren nur für den Alt-gegen-Neu-Vergleich.
+- Tag `verified-2026-09-13` für work-main wäre fällig (nur auf Ansage).
+
 ## Paket C — Stand 12.09. abends
 - Messung abgeschlossen (RTX-Paar, 27B, fp16-KV): FA2-sm75 gegen Triton kurz 74,19/70,91 tok/s, 13k TTFT 17,75/36,26 s, 13k Decode 56,48/15,03 tok/s, Text identisch. Details `upstream-contrib/03-1cat-issues/paket-c-plan.md`.
 - Eigenständiger sm75-Bau aus dem FA-Fork mit neuer CMake-Option `VLLM_FA2_OUTPUT_NAME` (uncommitted im Fork) funktioniert; Fork liest `Python_EXECUTABLE`, nicht `VLLM_PYTHON_EXECUTABLE`.
 - 1Cat-Issue #612 (Bauform, drei Formen ohne Empfehlung) veröffentlicht; wir warten auf die Antwort, sonst Form 1 als PR.
 - FA2+fp8-KV auf Turing GESTRICHEN (Peuqui): kein Nutzen bei unseren Modellen, Turing rechnet fp16 am schnellsten. Vierter Schritt = Overlay-Politik `checkpoint_kv_quant_allowed` (Boot unter `auto` auf Turing).
 - Worktree `1Cat-vLLM-pr-fa2sm75` (Branch `sm75-fa2-pr` auf origin/main): drei FA2-Python-Diffs + Doku-Tabelle, Lint+mypy grün, uncommitted.
+- **Vierter Schritt ERLEDIGT: PR #613** (KV-Quant-Vorgabe nur auf Ampere+, Worktree `1Cat-vLLM-pr-kvpolicy`, Belege in `upstream-contrib/03-1cat-issues/pr-checkpoint-kv-quant-pre-ampere.md`). Nach Merge: Overlay-Teil `utils/torch_utils.py`/`layers/attention/attention.py` (OVERLAY-INVENTUR Z.126) entfernen; der PR-Schnitt ist NICHT identisch mit dem Overlay (Teilnahme-Helfer statt Gerät 0, kein Env-Schalter).
+- **Turing-Lücke gefunden (12.09. nachts, Abnahme):** die neuen DFlash2-Tail-Cudagraphs (main #609ff., `v1/worker/gpu/cudagraph_utils.py`) und der MTP-Split-Draft-Cudagraph sind mit `is_device_capability((7, 0))` gated — exakt Volta UND Gerät 0. Turing bekommt sie nicht (RTX-Boot-Log ohne „Capturing SM70 DFlash2 target tail"), V100 +1,2 % (75,09 gegen 74,21 tok/s). Kandidat für einen kleinen PR: pre-Ampere-Gate auf dem eigenen Gerät (Muster #576/#600).

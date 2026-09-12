@@ -1,0 +1,38 @@
+{
+ "id": "chatcmpl-a8a46553d3a5df8f",
+ "object": "chat.completion",
+ "created": 1789254080,
+ "model": "Qwen3.8-27B-NVFP4-vllm",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "Ein Regenbogen entsteht, wenn Sonnenlicht auf fallende Regentropfen trifft und dabei gebrochen, reflektiert und erneut gebrochen wird. Diese optischen Prozesse zerlegen das wei\u00dfe Licht in seine einzelnen Spektralfarben, da jede Wellenl\u00e4nge unterschiedlich stark abgelenkt wird. F\u00fcr den Betrachter erscheinen diese Farben als ein farbiges Bogenband am Himmel, sofern die Sonne sich hinter ihm befindet und die Sonne niedrig am Horizont steht.",
+    "refusal": null,
+    "annotations": null,
+    "audio": null,
+    "function_call": null,
+    "tool_calls": [],
+    "reasoning": null
+   },
+   "logprobs": null,
+   "finish_reason": "stop",
+   "stop_reason": null,
+   "token_ids": null,
+   "routed_experts": null
+  }
+ ],
+ "service_tier": null,
+ "system_fingerprint": "vllm-11b1.dev40+gf381618a4-tp2-8e07de77",
+ "usage": {
+  "prompt_tokens": 26,
+  "total_tokens": 124,
+  "completion_tokens": 98,
+  "prompt_tokens_details": null
+ },
+ "prompt_logprobs": null,
+ "prompt_token_ids": null,
+ "prompt_text": null,
+ "kv_transfer_params": null
+}

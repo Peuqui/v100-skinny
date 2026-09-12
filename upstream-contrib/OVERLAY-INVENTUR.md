@@ -123,7 +123,7 @@ Block-Pack, (c) MoE-Backend erst nach Rückfrage in #441.
 | Datei | Inhalt | Einschätzung |
 |---|---|---|
 | `distributed/parallel_state.py` | NCCL-Untergruppen bekommen `--distributed-timeout-seconds`; bisher behielten TP/PP-Gruppen PyTorchs 600 s, ein kalter PP-Boot riss am Wachhund | klarer Bug, klein |
-| `utils/torch_utils.py`, `layers/attention/attention.py` | Die KV-Quant-Angabe eines Checkpoints gilt unter SM80 nicht mehr als Anweisung (V100, 27B: +4,82 ms/Runde durch FP8-KV ohne FP8-Hardware) | Politikfrage, gut belegt |
+| `utils/torch_utils.py`, `layers/attention/attention.py` | Die KV-Quant-Angabe eines Checkpoints gilt unter SM80 nicht mehr als Anweisung (V100, 27B: +4,82 ms/Runde durch FP8-KV ohne FP8-Hardware) | **PR #613 (12.09.)**, anderer Schnitt: Teilnahme-Helfer aus #579, kein Env-Schalter; nach Merge Overlay-Teil raus |
 | `config/vllm.py` | erzwungenes `VLLM_DISABLE_COMPILE_CACHE=1` für den 0DOT3-Compile-Graph entfernt; die Ursache ist seit #536 behoben | klein, direkte Folge von #536 |
 | `envs.py` (**FEHLT im Overlay**, 12.09.) | `disable_compile_cache()` setzt den Default auf 1, sobald `VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1` — die zweite Erzwingung. Deshalb meldet jeder Fork- und Produktionsboot auf dem 0DOT3-Pfad „torch.compile cache is disabled" (Flash-Next 11.09. 11:48, DFlash2-Sweeps 12.09.). Die Zwei-Stunden-Ersparnis aus dem Fork-Kommentar wurde nie realisiert | gehört in denselben PR wie die Zeile darüber; Worktree `1Cat-vLLM-pr-compilecache` nimmt beide zurück |
 | `models/qwen3_5_mtp.py` | SupportsPP für Qwen3_5MTP, Verzweigung nach Eingabe statt PP-Rang | Upstream fehlt es noch, PR-würdig |

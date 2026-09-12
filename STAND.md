@@ -62,6 +62,53 @@ die GDN-Erweiterung wie `setup.py::bundle_flash_qla_sm70` nach
 danebenlegen und `fork_patches_150/tilelang_target.py` nach
 `tilelang/utils/target.py`. Warum jeder Schritt: Fallstricke unten.
 
+## Abnahme work-main-Merge auf main dfef3342 (12./13.09. nachts, Peuqui: "vorwärts fixen, nicht zurücksetzen")
+
+**Was passiert ist:** `git merge origin/main` in work-main (`34f3f340`), ein Konflikt
+(unser Erklärkommentar in `eagle/utils.py`, main hat den Fix selbst übernommen),
+veralteter Overlay-Kommentar in `config/vllm.py` entfernt (`f381618a`). Die Overlay-
+Teile von #572/#573 sind durch den Merge automatisch verschwunden (Dateien identisch
+zu main). Editable-Neubau in `.venv-sm70-main` nach dem Rezept, 45 min, Exit 0:
+`_C` 41, `_moe_C` 15, `_vllm_fa2_C` 9 Cubins, alle sm_70; sm75-FA2 und GDN-.so
+unverändert daneben.
+
+**Alt gegen neu am selben Abend** (alter Stand 911c259f in Worktree
+`1Cat-vLLM-old-prod`, venv `.venv-sm70-old` = Kopie der tltest-venv + editable, keine
+neuen Pakete). Alle DFlash2-Läufe Text-SHA `0106659946c064b1`:
+
+| DFlash2 27B, greedy, 400 Token | alt | neu |
+|---|---|---|
+| RTX-Paar, **Produktionskopf** (maurienne RTNcal) | 76,92 (Annahme 3,325) | **76,88** (3,325) |
+| V100-Paar, Produktionskopf | – | **76,42** (3,325); Referenz 10.09. 76,30 |
+| RTX-Paar, incoai-Kopf (Skript-Vorgabe) | 72,68 | 73,15 / 72,77 / 72,98 |
+| V100-Paar, incoai-Kopf | 74,08 | 75,09 (Tail-Cudagraphs an, main-Default) / 74,21 (aus) |
+
+Der erste Schreck "RTX 73 statt 77" war der Entwurfskopf: `speed_dflash.sh` nimmt
+als Vorgabe den unquantisierten incoai-Kopf, die Produktion und alle 77er-Läufe vom
+11.09. fahren den quantisierten maurienne-Kopf. Kein Merge-Effekt. mains neue
+Tail-Cudagraphs bringen auf der V100 +1,2 %; **Turing bekommt sie nicht**
+(`is_device_capability((7, 0))`, exakt Volta und Gerät 0 - Kandidat für einen PR).
+
+**Weitere Schritte:** DeepSeek PP5 Kohärenz 8/8, zwei Läufe identisch in Text,
+Denkblock und Tokenzahl, identisch zur Referenz `ds_tl014`, gleiches Tempo.
+Flash-Next Chat k=4: q1/q2 sauber, 37-48 tok/s; **Kuanda alt gegen neu je 3x
+dieselbe Anfrage: beide 2x Zurückweisung, 1x Erfindung** - das 180B ist trotz greedy
+und Seed nicht deterministisch, das Erfinden ist Modelleigenschaft, kein Merge-Effekt.
+Vier produktive llama-swap-Einträge kalt (exakter Befehl) und warm (llama-swap):
+alle ohne Traceback, Antworten je Eintrag in beiden Phasen identisch, 27B-Einträge
+laden die sm75-FA2 auf beiden Workern; Warmstarts 122 / 149 / 301 / 519 s
+(`handover/2026-09-12/prod/`). Erster Durchlauf hatte einen Skriptfehler auf meiner
+Seite (relativer Ausgabepfad, prod_accept.sh wechselt nach /tmp), im llama-swap-
+Journal waren die Boots trotzdem als 200 OK belegt.
+
+**Neu von main, das uns betrifft:** `VLLM_SM70_DFLASH2_TAIL_CUDAGRAPHS` Default an
+(gemessen, s. o.); Qwen3.8-NVFP4-Defaults ohne MTP (#579, greift nur ohne
+Spekulation und nur bei lauter 7.0-Karten); QSA-E4M3-Skalen unkalibriert = Warnung
+statt Abbruch; V100-Long-Context-Layout (#609/#610) im FA2-Target.
+Skripte: `handover/2026-09-12/abnahme_*.sh`, `rebuild_work_main.sh`,
+`flashnext_q3_rate.sh`, `prod_accept4.sh`. Rohdaten `~/.cache/mtp-diagnostics/qual_rb_*`,
+`ds_rebuild`, `fnqc_rb`, `fnq3_q3_{old,new}`.
+
 **Abnahme 10.09., alt gegen neu am selben Tag, gleiche Karten und Skripte:**
 
 | Test | neu (`.venv-sm70-main`) | alt (`.venv-sm70-150`) |

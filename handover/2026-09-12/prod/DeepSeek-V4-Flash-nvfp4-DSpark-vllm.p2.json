@@ -1,0 +1,38 @@
+{
+ "id": "chatcmpl-be55ddb7f8256d5d",
+ "object": "chat.completion",
+ "created": 1789255159,
+ "model": "DeepSeek-V4-Flash-nvfp4-DSpark-vllm",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "Ein Regenbogen entsteht, wenn Sonnenlicht auf Regentropfen trifft und darin gebrochen wird. Dabei wird das wei\u00dfe Licht in seine farbigen Bestandteile (Rot, Orange, Gelb, Gr\u00fcn, Blau, Indigo, Violett) aufgespalten. Diese Farben werden an der R\u00fcckseite des Tropfens reflektiert und beim Austritt erneut gebrochen, sodass sie als farbiger Bogen am Himmel sichtbar werden.",
+    "refusal": null,
+    "annotations": null,
+    "audio": null,
+    "function_call": null,
+    "tool_calls": [],
+    "reasoning": null
+   },
+   "logprobs": null,
+   "finish_reason": "stop",
+   "stop_reason": null,
+   "token_ids": null,
+   "routed_experts": null
+  }
+ ],
+ "service_tier": null,
+ "system_fingerprint": "vllm-11b1.dev40+gf381618a4-pp5-167eced6",
+ "usage": {
+  "prompt_tokens": 22,
+  "total_tokens": 135,
+  "completion_tokens": 113,
+  "prompt_tokens_details": null
+ },
+ "prompt_logprobs": null,
+ "prompt_token_ids": null,
+ "prompt_text": null,
+ "kv_transfer_params": null
+}

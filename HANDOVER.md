@@ -186,7 +186,12 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 7. **PLE-Kaskade** bleibt am Ende des Plans (deine Entscheidung vom Abend).
 8. ~~SWA-Schwellen-Fix committen und als PR eröffnen~~ — ERLEDIGT 12.09.
    ~05:30: work-main `911c259f` (auf fork/work-main), **PR #603** offen.
-9. **#572 und #573 sind GEMERGT (12.09. 03:30), main ist 24 Commits weiter
+9. **Paket E läuft (12.09.):** E-1 als **PR #604** eröffnet (Turing-Pfad
+   für modelopt NVFP4+FP8 über die kompilierten QPN-Kernel; RTX 71,0 tok/s
+   gegen V100 63,4, SHA gleich). Reihenfolge Peuqui: E-2 Block-Pack →
+   FlashInfer-Turing-Dreizeiler → Paket C (sm75-FA2) → fp8-KV-Cast. Plan:
+   `upstream-contrib/03-1cat-issues/paket-e-plan.md`.
+10. **#572 und #573 sind GEMERGT (12.09. 03:30), main ist 24 Commits weiter
    (`ae75fb9b`, u. a. #602 „SM70 grouped long-context route on by default",
    #596 DFlash2-Tail-Graphen, #595 FP8-MTP-Experten).** Nach der Regel:
    work-main auf main hereinholen und die Overlay-Teile von #572/#573

@@ -1,0 +1,21 @@
+Server pid 684892, pgid 684892
+STATUS up_540s
+--- Lauf 1 ---
+[capital ] 2 tok in 2.25s (0.89 tok/s): Paris
+[arith   ] 3 tok in 1.15s (2.61 tok/s): 1591
+[count   ] 2 tok in 0.71s (2.82 tok/s): 10
+[seq     ] 48 tok in 1.77s (27.12 tok/s): The sequence you've given is: 2, 4, 8, 16 Each term is multiplied by 2 to get the next term: 2 × 2 = 4 4 × 2 = 8
+[recall  ] 3 tok in 0.68s (4.41 tok/s): Mercury
+[prose   ] 38 tok in 1.78s (21.35 tok/s): A pipeline parallel split divides a sequential data processing task into multiple independent stages that can execute concurrently on different data items, allo
+[code    ] 48 tok in 1.94s (24.74 tok/s): Here's a Python one-liner that reverses a string `s`: ```python s[::-1] ``` This uses Python's slice notation with a step of `-1`, which effectively reverses th
+[longctx ] 19 tok in 1.09s (17.43 tok/s): apple, brick, candle, dune, ember, forge, granite, harbor.
+--- Lauf 2 ---
+[capital ] 2 tok in 0.59s (3.39 tok/s): Paris
+[arith   ] 3 tok in 0.66s (4.55 tok/s): 1591
+[count   ] 2 tok in 0.74s (2.70 tok/s): 10
+[seq     ] 48 tok in 1.79s (26.82 tok/s): The sequence you've given is: 2, 4, 8, 16 Each term is multiplied by 2 to get the next term: 2 × 2 = 4 4 × 2 = 8
+[recall  ] 3 tok in 0.68s (4.41 tok/s): Mercury
+[prose   ] 38 tok in 1.73s (21.97 tok/s): A pipeline parallel split divides a sequential data processing task into multiple independent stages that can execute concurrently on different data items, allo
+[code    ] 48 tok in 1.99s (24.12 tok/s): Here's a Python one-liner that reverses a string `s`: ```python s[::-1] ``` This uses Python's slice notation with a step of `-1`, which effectively reverses th
+[longctx ] 19 tok in 1.05s (18.10 tok/s): apple, brick, candle, dune, ember, forge, granite, harbor.
+FERTIG ds_route_ds

@@ -55,10 +55,25 @@ CKPT=${CKPT:-/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4
 # bleiben. Ein quantisierter Kopf aendert die Annahmerate, aber NIE den Text:
 # angenommen wird nur, was das Zielmodell ohnehin erzeugt haette.
 DRAFT=${DRAFT:-/home/mp/.cache/huggingface/hub/models--incoai--Qwen3.8-27B-DFlash2/snapshots/dedf8df68adfb1afeaf7b7480c0a0243108177b4}
+# ATTN_BACKEND (optional): Attention-Backend per Kommandozeile, auch fuer den
+# Drafter der Spekulation (Vorgabe dort ist FLASH_ATTN_V100, auf Turing tot).
+# Reines main waehlt auf Turing FlashInfer, dessen sm70-Bau dort mit
+# "invalid argument" scheitert; TRITON_ATTN laeuft auf beiden Kartentypen.
+# KV_DTYPE (optional): --kv-cache-dtype ueberschreiben. Der 27B-Checkpoint
+# bringt fp8_e4m3-KV mit; auf Turing kann Triton (Inductor-Fusion vor dem
+# KV-Store) nicht nach fp8e4nv casten -> fuer Turing-Tests "auto" (fp16).
+KVD=()
+[ -n "${KV_DTYPE:-}" ] && KVD=(--kv-cache-dtype "$KV_DTYPE")
+ATTN=()
+SPEC_ATTN=""
+if [ -n "${ATTN_BACKEND:-}" ]; then
+  ATTN=(--attention-backend "$ATTN_BACKEND")
+  SPEC_ATTN=",\"attention_backend\":\"$ATTN_BACKEND\""
+fi
 SPEC=()
 case "$MODE" in
-  mtp)    SPEC=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"draft_sample_method\":\"greedy\"}") ;;
-  dflash) SPEC=(--speculative-config "{\"method\":\"dflash\",\"model\":\"$DRAFT\",\"num_speculative_tokens\":7,\"draft_sample_method\":\"greedy\"}") ;;
+  mtp)    SPEC=(--speculative-config "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"draft_sample_method\":\"greedy\"$SPEC_ATTN}") ;;
+  dflash) SPEC=(--speculative-config "{\"method\":\"dflash\",\"model\":\"$DRAFT\",\"num_speculative_tokens\":7,\"draft_sample_method\":\"greedy\"$SPEC_ATTN}") ;;
   0)      SPEC=() ;;
   *)      echo "unbekannter MODE: $MODE"; exit 1 ;;
 esac
@@ -84,7 +99,7 @@ fi
   --disable-custom-all-reduce --no-enable-prefix-caching \
   --tensor-parallel-size 2 --pipeline-parallel-size 1 --gpu-memory-utilization 0.90 \
   --block-size 16 --max-model-len 32768 --max-num-seqs 4 --max-num-batched-tokens 2048 \
-  --language-model-only --host 127.0.0.1 --port 8066 "${SPEC[@]}" "${TUNE[@]}" \
+  --language-model-only --host 127.0.0.1 --port 8066 "${SPEC[@]}" "${TUNE[@]}" "${ATTN[@]}" "${KVD[@]}" \
   --compilation-config "$COMPCFG" > "$W/boot.log" 2>&1 &
 S=$!
 STATUS=timeout

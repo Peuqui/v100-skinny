@@ -184,7 +184,11 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
    unbewiesen in beide Richtungen. Kurzprompt-Grenzmessung läuft
    (`abnahme2/ds_short_prompt_boundary.sh`).
 7. **PLE-Kaskade** bleibt am Ende des Plans (deine Entscheidung vom Abend).
-8. **SWA-Schwellen-Fix committen und als PR eröffnen** (Entwurf
-   `pr-sparse-swa-spec-threshold.md`, Worktree `1Cat-vLLM-pr-swathreshold`).
-   Overlay in work-main ist angewendet, damit der DeepSeek-Eintrag in AIfred
-   ab sofort stabil ist — sollte in den nächsten work-main-Commit.
+8. ~~SWA-Schwellen-Fix committen und als PR eröffnen~~ — ERLEDIGT 12.09.
+   ~05:30: work-main `911c259f` (auf fork/work-main), **PR #603** offen.
+9. **#572 und #573 sind GEMERGT (12.09. 03:30), main ist 24 Commits weiter
+   (`ae75fb9b`, u. a. #602 „SM70 grouped long-context route on by default",
+   #596 DFlash2-Tail-Graphen, #595 FP8-MTP-Experten).** Nach der Regel:
+   work-main auf main hereinholen und die Overlay-Teile von #572/#573
+   ENTFERNEN, danach Abnahme (`abnahme2/driver.sh`). Größerer Eingriff in
+   den Produktionsbaum — vorher Freigabe.

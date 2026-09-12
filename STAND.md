@@ -1218,8 +1218,7 @@ Augustwerten (6,5 min Boot).
       BESTANDEN, Runde 2 (Werkzeugergebnis zurück, der Absturzfall vom
       Abend) BESTANDEN in 5,3 s**, Antwort nennt 17 °C und bewölkt.
       **Punkt 10 des Plans damit ERLEDIGT: Fehler gefunden, behoben, belegt.**
-      Offen: Fix committen (work-main + PR-Worktree) und PR eröffnen —
-      Entscheidung Peuqui.
+      Committet: work-main `911c259f`, **PR #603** (12.09. früh).
     - Passt zu 1Cat-Issue #597 (delubee, DSML-Tool-Calls auf 8× V100). Ob und
       was dort gemeldet wird: Entscheidung Peuqui.
     - **Betriebsrisiko für AIfred:** ein toter Engine-Kern hinterlässt 180 GB

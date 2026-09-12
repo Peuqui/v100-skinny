@@ -1,0 +1,9 @@
+==> booting /home/mp/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ  (TP=2 PP=2 k=4 GMU=0.95 MML=262144 partition=24,24 block=16 ple_host=6)
+==> pid 657590, log /home/mp/.cache/mtp-diagnostics/fnq_route_fn/boot.log
+==> UP on port 8027 (pid 657590)
+  q1: {'prompt_tokens': 13004, 'completion_tokens': 1200, 's': 52.09, 'tok_per_s': 23.04, 'finish': 'length', 'sha256': 'e0d582bfc730981b', 'acc_rate': 0.4817, 'acc_len': 2.927}
+  q2: {'prompt_tokens': 13005, 'completion_tokens': 1200, 's': 42.89, 'tok_per_s': 27.98, 'finish': 'length', 'sha256': '16e2f0526599fa63', 'acc_rate': 0.4335, 'acc_len': 2.734}
+  q3: {'prompt_tokens': 13005, 'completion_tokens': 1200, 's': 40.34, 'tok_per_s': 29.75, 'finish': 'length', 'sha256': 'dc8f203e316c0caf', 'acc_rate': 0.4536, 'acc_len': 2.815}
+   NACHWEIS: armed=0 sm75=0 upstream=1
+   FA2: sm75=0 sm70=0 v100_backend=0 fa2_backend=0
+FERTIG fnq_route_fn

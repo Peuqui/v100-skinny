@@ -1,0 +1,8 @@
+STATUS up_415s  (route_27b_mtp_rtx: fork, mtp, DEVS=0,2)
+  #1: {'tok': 400, 's': 5.444, 'tok_per_s': 73.48, 'acc_rate': 0.6543, 'acc_len': 2.963}
+  #2: {'tok': 400, 's': 5.452, 'tok_per_s': 73.37, 'acc_rate': 0.6543, 'acc_len': 2.963}
+  #3: {'tok': 400, 's': 5.457, 'tok_per_s': 73.29, 'acc_rate': 0.6543, 'acc_len': 2.963}
+  #4: {'tok': 400, 's': 5.454, 'tok_per_s': 73.34, 'acc_rate': 0.6543, 'acc_len': 2.963}
+  #5: {'tok': 400, 's': 5.452, 'tok_per_s': 73.37, 'acc_rate': 0.6543, 'acc_len': 2.963}
+MEDIAN 73.37 tok/s  Spanne 73.29-73.48  Annahmelaenge 2.963
+FERTIG qual_route_27b_mtp_rtx (up_415s)

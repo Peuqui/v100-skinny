@@ -41,6 +41,7 @@ Damit sind neun PRs gemergt; die Repo-Regel „Autor braucht ≥4 gemergte PRs"
 | #600 | [Bugfix][Platform] Resolve an unspecified device_id to the worker's own device | `pr-platform-default-device-id.md` |
 | #601 | [Bugfix][Build][SM70] Declare the pybind11 SM70 extensions non-limited-API | `pr-editable-soabi-modules.md` |
 | #603 | [Bugfix][DeepSeek-V4] Align the SWA decode threshold with the sparse MLA builder | `pr-sparse-swa-spec-threshold.md` |
+| #604 | [Feature][SM75] Run ModelOpt NVFP4 and FP8 linears on Turing through the SM70 QPN kernels | `pr-turing-nvfp4-fp8-linear.md` (Paket E-1) |
 
 #599–#601 eröffnet 2026-09-11 abends (Freigabe Peuqui). #603 eröffnet 2026-09-12 früh (Freigabe Peuqui); #572 und #573 am 2026-09-12 03:30 GEMERGT — Overlay-Teile beim nächsten main-Hereinholen entfernen. #600 ist der
 Wurzelfix für die Gerät-0-Fehlerklasse aus #412 und macht die Einzelfixes

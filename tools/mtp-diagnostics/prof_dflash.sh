@@ -46,9 +46,13 @@ unset VLLM_SKINNY_PPDIAG
 
 CKPT=${CKPT:-/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/319f741cce68d7914884900c138a1fbb70a42f30}
 DRAFT=${DRAFT:-/home/mp/.cache/huggingface/hub/models--incoai--Qwen3.8-27B-DFlash2/snapshots/dedf8df68adfb1afeaf7b7480c0a0243108177b4}
+# ATTN_BACKEND / KV_DTYPE wie in speed_dflash.sh (Turing: TRITON_ATTN, float16).
+ATTN=(); SPEC_ATTN=""; KVD=()
+if [ -n "${ATTN_BACKEND:-}" ]; then ATTN=(--attention-backend "$ATTN_BACKEND"); SPEC_ATTN=",\"attention_backend\":\"$ATTN_BACKEND\""; fi
+[ -n "${KV_DTYPE:-}" ] && KVD=(--kv-cache-dtype "$KV_DTYPE")
 case "$MODE" in
-  dflash) SPEC="{\"method\":\"dflash\",\"model\":\"$DRAFT\",\"num_speculative_tokens\":7,\"draft_sample_method\":\"greedy\"}" ;;
-  mtp)    SPEC="{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"draft_sample_method\":\"greedy\"}" ;;
+  dflash) SPEC="{\"method\":\"dflash\",\"model\":\"$DRAFT\",\"num_speculative_tokens\":7,\"draft_sample_method\":\"greedy\"$SPEC_ATTN}" ;;
+  mtp)    SPEC="{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"draft_sample_method\":\"greedy\"$SPEC_ATTN}" ;;
   *)      echo "unbekannter MODE: $MODE"; exit 1 ;;
 esac
 
@@ -70,7 +74,7 @@ nsys launch --session-new="$SESSION" --trace=cuda --cuda-graph-trace=node \
   --block-size 16 --max-model-len 32768 --max-num-seqs 4 --max-num-batched-tokens 2048 \
   --language-model-only --host 127.0.0.1 --port 8066 \
   --speculative-config "$SPEC" \
-  --compilation-config '{"cudagraph_capture_sizes":[1,2,4,8]}' > "$W/boot.log" 2>&1 &
+  --compilation-config '{"cudagraph_capture_sizes":[1,2,4,8]}' "${ATTN[@]}" "${KVD[@]}" > "$W/boot.log" 2>&1 &
 S=$!
 
 STATUS=timeout

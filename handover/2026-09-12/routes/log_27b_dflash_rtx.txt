@@ -1,0 +1,8 @@
+STATUS up_540s  (route_27b_dflash_rtx: fork, dflash, DEVS=0,2)
+  #1: {'tok': 400, 's': 5.304, 'tok_per_s': 75.41, 'acc_rate': 0.3321, 'acc_len': 3.325}
+  #2: {'tok': 400, 's': 5.322, 'tok_per_s': 75.16, 'acc_rate': 0.3321, 'acc_len': 3.325}
+  #3: {'tok': 400, 's': 5.305, 'tok_per_s': 75.4, 'acc_rate': 0.3321, 'acc_len': 3.325}
+  #4: {'tok': 400, 's': 5.311, 'tok_per_s': 75.32, 'acc_rate': 0.3321, 'acc_len': 3.325}
+  #5: {'tok': 400, 's': 5.31, 'tok_per_s': 75.34, 'acc_rate': 0.3321, 'acc_len': 3.325}
+MEDIAN 75.34 tok/s  Spanne 75.16-75.41  Annahmelaenge 3.325
+FERTIG qual_route_27b_dflash_rtx (up_540s)

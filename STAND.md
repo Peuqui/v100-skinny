@@ -1219,6 +1219,42 @@ Augustwerten (6,5 min Boot).
       Abend) BESTANDEN in 5,3 s**, Antwort nennt 17 °C und bewölkt.
       **Punkt 10 des Plans damit ERLEDIGT: Fehler gefunden, behoben, belegt.**
       Committet: work-main `911c259f`, **PR #603** (12.09. früh).
+
+18. **Paket E gestartet (12.09. vormittags, Freigabe Peuqui):** Plan und
+    Befunde in `upstream-contrib/03-1cat-issues/paket-e-plan.md`, Gate-Karte
+    in `paket-e-gates.md`. Kern: 1Cat trägt unsere Kernel kompiliert
+    (`csrc/sm70_turbomind/ops/`, MIT-Vermerk), aber nur Volta; Turing ist im
+    TurboMind-C++ per `Arch<700, 750>` ausgeschlossen. Routenkampagne: unser
+    Skinny-Pfad ist in Produktion nur beim 27B auf der RTX aktiv (qpn2/qpn
+    Decode, Dequant+cuBLAS Prefill); Flash-Next (Marlin-MoE) und DeepSeek
+    (Marlin) laden ihn nicht → E-3 entfällt ohne Beleg. Vorschlag E-1: unseren
+    Turing-Pfad in 1Cats NVFP4-Op (Entscheidung Peuqui offen). Quellbau
+    reines main → `.venv-pr-turing` (`handover/2026-09-12/
+    build_pr_turing.sh`, Worktree `1Cat-vLLM-pr-turing-ops`).
+
+    **E-1 UMGESETZT und BELEGT (12.09. nachmittags):** Turing-Pfad für
+    modelopt NVFP4 (qpn2-Decode + Dequant-Prefill, neuer Op
+    `utils/nvfp4_qpn2_dequant.py`) und FP8 (per-Tensor → QPN8 mit Kanal-
+    skalen, ihr `fp8_qpn8_dispatch`), Gates pro Worker-Gerät.
+    **Ergebnis 27B MTP k=3, Triton-Attention, fp16-KV: RTX 8000 mit E-1
+    71,0 tok/s, V100 auf main 63,4 tok/s, SHA beider `38848c08a44405ae`
+    identisch, Annahme 3,000.** Reines main lädt den 27B auf Turing gar
+    nicht (Mixed-Config 89; darunter `orig_dtype`-Absturz im Marlin-FP8).
+    Zwei Turing-Fallen außerhalb des Linear-Pfads, im PR nur vermerkt:
+    FlashInfer (Default auf Turing) scheitert in `BatchPrefillWithPagedKVCache`
+    → `--attention-backend TRITON_ATTN`; fp8-KV lässt Inductor `fp8e4nv`
+    casten, das Triton auf sm75 ablehnt → `--kv-cache-dtype float16`.
+    Lehre: ein Python-Zweig auf M im Forward wird von torch.compile beim
+    Warmup-M eingefroren (17 tok/s, Dequant 64 % des Fensters) — der Split
+    gehört in den Op (wie 1Cats C++-Dispatcher). Profil RTX: qpn2 31 %
+    (ohne Block-Pack, → E-2), AllReduce 21 %, qpn8 18 %, Triton-Attn 6,5 %.
+    Tests: 13 CPU, 11 GPU auf V100 und RTX, bestehende sm70-Testdateien
+    grün (Mixed-Min-Cap-Test auf Pre-Ampere umgestellt). Entwurf
+    `upstream-contrib/03-1cat-issues/pr-turing-nvfp4-fp8-linear.md`.
+    Committet `78a78f5e` auf fork/sm70-ops-on-turing, **PR #604** (12.09.
+    nachmittags, Freigabe Peuqui). Nächste Schritte in Peuquis Reihenfolge:
+    E-2 Block-Pack, dann der Dreizeiler gegen FlashInfer auf Turing, dann
+    Paket C (sm75-FA2), dann der fp8-KV-Cast.
     - Passt zu 1Cat-Issue #597 (delubee, DSML-Tool-Calls auf 8× V100). Ob und
       was dort gemeldet wird: Entscheidung Peuqui.
     - **Betriebsrisiko für AIfred:** ein toter Engine-Kern hinterlässt 180 GB

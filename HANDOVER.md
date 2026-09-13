@@ -204,9 +204,9 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 - **Paket G, Teil 1 ERLEDIGT: PR #619** (NCCL-Untergruppen-Timeout, 13.09.). Teil 2 (Compile-Cache-Zwangsabschaltung) bleibt zurückgestellt bis zum Kartentyp-Test: auf V100 kompilieren, mit identischer Umgebung auf RTX booten, prüfen ob das AOT-Artefakt geladen wird (Ordner ist nach Env-Hash benannt, nicht nach Kartentyp). Fällt der Test sauber aus, ist der PR wasserdicht; fällt er durch, ist es ein Befund für 1Cat.
 - **AIfred `fcdc9db1`:** Kalibrations-Cache wird nach abgeschlossenem Lauf geleert, Produktions-Cache nächtlich nach 21 Tagen Nichtnutzung oder über 40 GiB gestutzt (Peuqui 13.09.). Wirksam ab dem nächsten AIfred-Start.
 - Merge `34f3f340` + `f381618a`, Neubau, Abnahme komplett bestanden (Tabelle in STAND.md "Abnahme work-main-Merge"). Produktionskopf: RTX 76,88 / V100 76,42 tok/s, SHA gleich; DeepSeek 8/8; Flash-Next q1/q2 sauber, Kuanda 2:1 wie alt; alle vier llama-swap-Einträge kalt+warm ok.
-- **Vorschlag:** `speed_dflash.sh` Vorgabe `DRAFT` auf den Produktionskopf (maurienne RTNcal) stellen, sonst misst jede Abnahme 5 % zu wenig. Noch nicht geändert.
-- **Aufräumen bei Gelegenheit:** Worktree `1Cat-vLLM-old-prod` und `.venv-sm70-old` (~10 GB) waren nur für den Alt-gegen-Neu-Vergleich.
-- Tag `verified-2026-09-13` für work-main wäre fällig (nur auf Ansage).
+- ERLEDIGT 13.09.: `speed_dflash.sh` Vorgabe `DRAFT` = Produktionskopf (maurienne RTNcal), Commit 4df1d52.
+- ERLEDIGT 13.09.: `1Cat-vLLM-old-prod` und `.venv-sm70-old` entfernt.
+- ERLEDIGT 13.09.: Tag `verified-2026-09-13` auf f381618a gesetzt und gepusht.
 
 ## Paket C — Stand 12.09. abends
 - Messung abgeschlossen (RTX-Paar, 27B, fp16-KV): FA2-sm75 gegen Triton kurz 74,19/70,91 tok/s, 13k TTFT 17,75/36,26 s, 13k Decode 56,48/15,03 tok/s, Text identisch. Details `upstream-contrib/03-1cat-issues/paket-c-plan.md`.

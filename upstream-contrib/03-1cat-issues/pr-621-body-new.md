@@ -32,12 +32,6 @@ Two things on torch 2.10.0, which requirements/cuda.txt pins:
    TP2 PP2 boots cold 340 s, first warm 312 s, second warm 343 s, six artifacts loaded
    each time, text identical (SHA-256 `e948a82ead51948c`).
 
-# C) Test Result ergänzen
-
-4. torch backport: `tools/torch_patches/apply.sh` applied twice (second run reports
-   "already applied"); 27B cold/warm/warm as above.
-5. Flash-Next cold/warm/warm with #622: as above.
-
 ## Test Plan
 
 1. `pre-commit run --files benchmarks/benchmark_sm70_decode.py vllm/config/vllm.py vllm/envs.py` and `pre-commit run mypy-3.10 --hook-stage manual --files vllm/config/vllm.py vllm/envs.py`.

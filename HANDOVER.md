@@ -1,6 +1,15 @@
-# Übergabe — Stand 12.09.2026 früh (autonome Nacht nach dem 11.09.)
+# Übergabe — Stand 13.09.2026 abends
 
-**Ergebnis der Nacht in einem Absatz:** Punkte 1, 3, 4, 6, 7 des Plans sind
+**Stand in einem Absatz (13.09. abends):** Paket C (FA2 für Turing) ist im Fork
+und als PR #623 bei 1Cat; der Compile-Cache ist in der Produktion an und belegt,
+nachdem zwei Fehler gefunden und behoben wurden (PLE-Zeiger im AOT-Artefakt →
+PR #622; torch 2.10.0 ohne Kernel-Tabelle → Backport in `tools/torch_patches/`,
+auf #621). work-main `f6c42de7`, Produktions-venv gepatcht, Abnahme aller vier
+Produktionseinträge kalt und warm bestanden. Alles committet und gepusht.
+Details im Nachtrag 13.09. abends am Dateiende; der Kopf darunter ist der
+Stand vom 12.09. früh und gilt, wo der Nachtrag nichts anderes sagt.
+
+**Ergebnis der Nacht 11./12.09. in einem Absatz:** Punkte 1, 3, 4, 6, 7 des Plans sind
 erledigt und in `STAND.md` (Punkte 13, 14, 15, 10 der offenen Liste)
 dokumentiert; Punkt 5 (Paket G) ist als zwei PR-Worktrees mit Entwürfen
 vorbereitet, nicht eröffnet; Punkt 10 (DeepSeek-Tool-Call) ist am
@@ -22,10 +31,14 @@ Ergebnisse der Runden vom 10./11.09. liegen in `handover/2026-09-11/`
 
 | Repo / Worktree | Stand | Inhalt |
 |---|---|---|
-| `1Cat-vLLM-work` (work-main) = Produktion | `433dfa10` = Tag `verified-2026-09-11b`, auf `fork/verified/volta-turing` | 1Cat main `fe67339d` + fünf offene PRs + Overlay; Merge-Reste bereinigt (`43ccb9b8`), **E5 ausgebaut**, Befund 2 `index_share=True` |
+| `1Cat-vLLM-work` (work-main) = Produktion | **13.09. abends: `f6c42de7` auf fork/work-main** (vorher `433dfa10` = Tag `verified-2026-09-11b`) | 1Cat main `fe67339d` + fünf offene PRs + Overlay; Merge-Reste bereinigt (`43ccb9b8`), **E5 ausgebaut**, Befund 2 `index_share=True` |
 | `1Cat-vLLM-pr-dflash2` | `90c9efee` | PR #599 |
 | `1Cat-vLLM-pr-devcap` | `2b59521a` | PR #600 |
 | `1Cat-vLLM-editable-pr` | `e5e3e9af` (+ `build/` 2,1 GB für inkrementelle Nachbauten) | PR #601 |
+| `1Cat-vLLM-pr-fa2sm75` (13.09.) | `d22daa74` auf fork/sm75-fa2-pr | PR #623 Paket C |
+| `1Cat-vLLM-pr-plegather` (13.09.) | `5f668ebb` auf fork/ple-gather-no-baked-pointer | PR #622 PLE-Gather |
+| `1Cat-vLLM-pr-compilecache` (13.09.) | `7fa6b04a` auf fork/drop-forced-compile-cache-off | PR #621 + tools/torch_patches |
+| `1Cat-vLLM-e2e-fa2mixed` (13.09., Wegwerf) | Branch `e2e-fa2mixed`, WIP-Commits | Testgerüst main+#604+#600+PR-C, löschbar |
 | `v100-skinny` (work) | `639d750` auf `fork/work` | Doku, Skripte ohne E5-Schalter, Handover-Material |
 | llama-swap `config.yaml` | ohne `VLLM_SM70_E5_CACHE`, Sicherung `backups/config.yaml.bak-2026-09-11-vor-e5` | jeder vLLM-Eintrag bootet beim nächsten Laden einmal kalt |
 
@@ -218,9 +231,10 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 
 ## Nachtrag 13.09. abends — Paket C im Fork, zwei Fehler beim Compile-Cache gefunden und behoben
 
-- **Paket C (FA2 für Turing) ist im Fork** (work-main `08d62424` + Volta-Testkorrektur, uncommitted): Lader pro Gerät mit Volta-Ladefix (`ensure_fa2_library_loaded`, drei SM70-Aufrufstellen), CMake-ExternalProject, heutige sm75-Bibliothek statt Drop-in (`.drop-in-0903` daneben). PR-Branch `sm75-fa2-pr` gepusht (1d20869e), Text `upstream-contrib/03-1cat-issues/pr-turing-fa2-sm75.md`, Belege: RTX-Paar, V100-Paar, PP2 gemischt (RTX Stufe 0, V100 Stufe 1, ohne MTP), Text byteidentisch. Grenzen auf main: 27B-MTP-Drafter ohne SupportsPP; TP2 gemischt hängt in `awq_sm70_warmup.py:170` (broadcast in der TP-Gruppe).
-- **Fehler 1, PLE-Gather backt Host-Zeiger in den Graphen** (1Cat #403, von uns in #528 fortgeführt): Flash-Next stirbt beim ersten Warmstart mit Cache auf Stufe 0 (illegal memory access). Fix im Fork `ple_layer.py` (Layer-Name + `use_host_table` statt `weight_ptr`, Auflösung im Op über `no_compile_layers`), Tests angepasst, 60 grün. PR-Branch `ple-gather-no-baked-pointer` (Worktree `1Cat-vLLM-pr-plegather`), Text `pr-ple-gather-no-baked-pointer.md`. Beleg: kalt 340 s, warm1 312 s, warm2 343 s, je 6 Artefakte geladen.
-- **Fehler 2, torch 2.10.0 serialisiert die Triton-Kernel-Tabelle nicht** (erster Warmstart verpufft): Backport pytorch #173556 als `tools/torch_patches/` im Fork, Produktions-venv gepatcht, `rebuild_work_main.sh` ruft `apply.sh`. Beleg 27B: kalt 476 s, warm1 85 s (4 geladen, 0 Ladefehler), warm2 80 s. Für #621: Ergänzung `pr-621-amendment.md` (Commit mit tools/torch_patches + neuer Body-Absatz).
+- **Paket C (FA2 für Turing) ist im Fork** (work-main `f6c42de7`, PR **#623** eröffnet 13.09. ~17:05): Lader pro Gerät mit Volta-Ladefix (`ensure_fa2_library_loaded`, drei SM70-Aufrufstellen), CMake-ExternalProject, heutige sm75-Bibliothek statt Drop-in (`.drop-in-0903` daneben). PR-Branch `sm75-fa2-pr` (1d20869e + d22daa74 Volta-Testkorrektur), Text `upstream-contrib/03-1cat-issues/pr-turing-fa2-sm75.md`, Belege: RTX-Paar, V100-Paar, PP2 gemischt (RTX Stufe 0, V100 Stufe 1, ohne MTP), Text byteidentisch. Grenzen auf main: 27B-MTP-Drafter ohne SupportsPP; TP2 gemischt hängt in `awq_sm70_warmup.py:170` (broadcast in der TP-Gruppe).
+- **Fehler 1, PLE-Gather backt Host-Zeiger in den Graphen** (1Cat #403, von uns in #528 fortgeführt): Flash-Next stirbt beim ersten Warmstart mit Cache auf Stufe 0 (illegal memory access). Fix im Fork `ple_layer.py` (Layer-Name + `use_host_table` statt `weight_ptr`, Auflösung im Op über `no_compile_layers`), Tests angepasst, 60 grün. PR **#622** (Branch `ple-gather-no-baked-pointer`, Worktree `1Cat-vLLM-pr-plegather`, 5f668ebb), Text `pr-ple-gather-no-baked-pointer.md`. Beleg: kalt 340 s, warm1 312 s, warm2 343 s, je 6 Artefakte geladen.
+- **Fehler 2, torch 2.10.0 serialisiert die Triton-Kernel-Tabelle nicht** (erster Warmstart verpufft): Backport pytorch #173556 als `tools/torch_patches/` im Fork, Produktions-venv gepatcht, `rebuild_work_main.sh` ruft `apply.sh`. Beleg 27B: kalt 476 s, warm1 85 s (4 geladen, 0 Ladefehler), warm2 80 s. #621 ergänzt (Commit 7fa6b04a mit tools/torch_patches, Body-Absatz, Kommentar; `pr-621-amendment.md`, `pr-621-body-new.md`).
 - **AOT-Artefakte einmal gelöscht** (22 GB), Inductor-Cache blieb. Nach jedem torch-Install: `tools/torch_patches/apply.sh`, danach `torch_aot_compile/` leeren.
 - **Fallen des Tages:** (1) Freeze mitten im Bau → 0-Byte-.o gelten als fertig, Link schluckt sie; Objekte aus dem Absturzfenster löschen, `nm -D | grep ' U '` prüfen. (2) `nohup`-Launcher erben das cwd der Shell → `cd /tmp` in jedes Launch-Skript, Baum-Beleg per `grep 'File "/home/mp/Projekte/vllm-research/[^/]*/'` im Boot-Log. (3) Teardown mit `pgrep -f 'VLLM::'` hat den llama-swap-Server QUASAR getötet → nur `kill -- -<PGID>` der eigenen Gruppe.
-- **Offen:** Turing-Testdateien `test_attention_backends.py` (55) und `test_flash_attn.py` (640) auf der RTX (laufen), Commits/Pushes, PR-Eröffnung PLE-Fix → Paket C → #621-Ergänzung, Issue #614 (fremd, Flash-V100-Politik unter TP2) beim nächsten Upstream-Check lesen.
+- **Turing-Testdateien auf der RTX:** `test_flash_attn.py` ist bf16-only (jeder Fall scheitert am fp16-Gate der sm75-Bibliothek, gewollt); als fp16-Variante ohne fp8-KV 160 bestanden, 160 FA3-Fälle übersprungen. `test_attention_backends.py` hier nicht ausführbar (gesperrte HF-Repos meta-llama/embeddinggemma). Beides so in #623 benannt.
+- **Offen:** Reviews/Merges #621 #622 #623 abwarten, Overlay-Rückbau je Merge (fork_patches_150: cuda.py, flash_attn.py, flash_attn_interface.py, flash_attn_v100.py, sm70_e4m3_long/scalar.py für #623; ple_layer-Anteil für #622); Issue #614 (fremd, Flash-V100-Politik unter TP2, mode=none) beim nächsten Upstream-Check lesen; Tag `verified-2026-09-13` auf work-main nur auf Ansage; Wegwerf-Worktree `1Cat-vLLM-e2e-fa2mixed` + `.venv-pr-fa2sm75` + `.wheels/` aufräumbar; #621-Body war ~1 min in einer Zwischenfassung sichtbar (Bearbeitungshistorie), inhaltlich korrekt.

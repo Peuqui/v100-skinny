@@ -11,7 +11,16 @@ so", nicht „wie ist es".
 
 ---
 
-## Laufzeitumgebung (seit 10.09. abends)
+## Laufzeitumgebung (seit 10.09. abends; Nachtrag 13.09. abends)
+
+**Nachtrag 13.09. abends:** work-main `f6c42de7` auf fork/work-main = 1Cat main
+`dfef3342` + Overlay + Paket C + PLE-Gather-Fix; Produktions-venv
+`.venv-sm70-main` mit torch-Backport #173556 (`tools/torch_patches/apply.sh`,
+Hash-geprüft, Original als `.orig-2.10.0` daneben); sm75-FA2 als Datei
+`vllm/vllm_flash_attn/_vllm_fa2_C_sm75.abi3.so` (Bau 13.09. per ExternalProject,
+Drop-in vom 03.09. als `.drop-in-0903`); Compile-Cache AN, AOT-Artefakte am
+13.09. geleert und neu geschrieben. Abschnitt "Paket C im Fork und zwei
+Compile-Cache-Fehler" unten. Der Rest dieses Abschnitts ist der Stand vom 10.09.
 
 Produktion und alle Messskripte laufen über den Symlink **`/home/mp/vllm/venv`**
 → `venv-main` → **`.venv-sm70-main`** (Python 3.12, torch 2.10.0+cu128, siehe

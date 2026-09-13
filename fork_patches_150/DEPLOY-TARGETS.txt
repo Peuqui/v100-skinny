@@ -93,3 +93,6 @@ qwen4_exp_ple_layer_nvidia.py vllm/models/qwen4_exp/nvidia/ple_layer.py
 qwen4_exp_ops_qsa.py vllm/models/qwen4_exp/nvidia/ops/qsa.py
 qwen4_exp_nvidia_mtp.py vllm/models/qwen4_exp/nvidia/mtp.py
 qwen3_dflash2.py vllm/model_executor/models/qwen3_dflash2.py
+flash_attn_v100.py vllm/v1/attention/backends/flash_attn_v100.py
+sm70_e4m3_long.py vllm/v1/attention/ops/sm70_e4m3_long.py
+sm70_e4m3_scalar.py vllm/v1/attention/ops/sm70_e4m3_scalar.py

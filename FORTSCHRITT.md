@@ -12,7 +12,7 @@ langer Kontext und vorhersagbarer Text sind verschiedene Maßstäbe.
 | llama.cpp Produktion, 27B Q8 mit MTP n=3, RTX 8000 | 32 / 26 / 35 tok/s |
 | vLLM upstream 0.27, 27B, RTX 8000, ohne Spekulation | 27,5–28,5 tok/s |
 | v100-skinny (dnv2003) auf 2× V100 TP2, k=7, vorhersagbarer Text | 88 / 59 / 86 tok/s |
-| DeepSeek-V4-Flash unter vLLM auf Volta | lief nicht |
+| DeepSeek-V4-Flash | llama.cpp mit dspark: 40 tok/s kurz, Prosa 21, Code 38; unter vLLM auf Volta lief er nicht |
 | Qwen3.8-Flash-Next 180B unter vLLM auf Volta | lief nicht |
 | Turing (RTX 8000) im Fork | unbrauchbar, kein korrekter Prefill |
 
@@ -28,7 +28,7 @@ Tag erfüllt und ist es seitdem geblieben.
 | 27B MTP k=3, RTX, reines 1Cat-main + unsere PRs | 74,6 | 63,4 (V100) / 71,0 (RTX, E-1) → 74,6 (Split-Graphen, #618) |
 | **Flash-Next 180B**, TP2×PP2 heterogen, 13k Vorkontext, Chat mit Denken | **37–48** | 33 (27.08., k=0) → 49/67 kurz (28.08., NVFP4-Entwurfskopf) → 20–21 bei 9–10k echtem Text (07.09.) → 37–48 bei 13k (12./13.09.) |
 | Flash-Next, kurzer Prompt | 56 | Prefill 413–466 tok/s |
-| **DeepSeek-V4-Flash**, TP1×PP5 alle fünf Karten, 13k Kontext | **15–19** | 4 (26.08., erster Lauf) → 11× durch Per-Experten-MoE → 13–20 (02.09.) → 21/27 (03.09., fp16-mHC) → 25/28 heterogen (06.09., moe_qpn = llama.cpp-Schrittlatenz erreicht) → PP5-Produktion mit 65k Kontext |
+| **DeepSeek-V4-Flash**, TP1×PP5 alle fünf Karten, 13k Kontext | **15–19** | 4 (26.08., erster vLLM-Lauf) → 11× durch Per-Experten-MoE → 13–20 (02.09.) → 21/27 (03.09., fp16-mHC) → 25/28 heterogen (06.09., moe_qpn: llama.cpp-Schrittlatenz von 110 ms erreicht, Prosa eingeholt) → PP5-Produktion mit 65k Kontext; llama.cpp-Eintrag seitdem abgelöst |
 | Turing-Attention (Paket C, sm75-FA2), 27B, 13k Vorkontext | TTFT 17,8 s statt 36,3, Decode 56 statt 15 | gemessen 12.09., Bauform bei 1Cat angefragt (#612) |
 
 Kontext: alle drei Produktionseinträge fahren ihre volle Länge (27B und

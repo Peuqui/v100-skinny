@@ -1,4 +1,4 @@
-# Entwurf: Pin-Vorschlag tilelang 0.1.14 an 1Cat (Issue/Diskussion, NICHT gepostet)
+# Vorschlag tilelang 0.1.14 an 1Cat — VERÖFFENTLICHT als Issue #620 (13.09.)
 
 Stand 12.09. nachts. Freigabe Peuqui ausstehend. Ort: neues Issue oder
 Kommentar in einem passenden bestehenden Thread (zu klären: gibt es bei 1Cat

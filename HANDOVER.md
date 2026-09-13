@@ -172,8 +172,7 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 3. ✅ ERLEDIGT 13.09.: `NCCL_BUFFSIZE=1048576` in den sechs TP2-Einträgen (27B, DFlash2, vier Flash-Next-Varianten), Sicherung `backups/config.yaml.pre-nccl-buffsize-20260913-1035`, llama-swap neu gestartet.
 4. **envs.py-Default im Fork** zurücknehmen (Compile-Cache auf 0DOT3-Pfad
    ist in Produktion aus) — Overlay-Änderung, unabhängig vom PR.
-5. ~~TileLang-Pin~~ — ENTSCHIEDEN 12.09. früh (Peuqui): als Wartung
-   übernehmen, kein Leistungsziel. Offen bleibt nur das Wann des Postens.
+5. ✅ ERLEDIGT 13.09.: TileLang-Pin-Vorschlag als **Issue #620** bei 1Cat gepostet.
 6. ~~DeepSeek an #597 melden~~ — ENTSCHIEDEN 12.09. früh (Peuqui): NICHT
    kommentieren. #597 (delubee, 8× V100 SXM2 NVLink, offizielles Wheel)
    meldet (1) DSML-Tool-Calls 0/10 korrekt durch falsche Sondertoken-Wahl im

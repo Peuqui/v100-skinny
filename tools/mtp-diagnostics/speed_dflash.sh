@@ -51,11 +51,14 @@ export VLLM_SM70_DFLASH2_QUANT_LM_HEAD=${VLLM_SM70_DFLASH2_QUANT_LM_HEAD:-1}
 # DFlash2-Referenz QUASAR-QAT nimmt ihn per ignore-Liste aus. Vorgabe bleibt
 # RadixArk, damit alle bisherigen Zahlen vergleichbar bleiben.
 CKPT=${CKPT:-/home/mp/.cache/huggingface/hub/models--RadixArk--Qwen3.8-27B-NVFP4/snapshots/319f741cce68d7914884900c138a1fbb70a42f30}
-# Entwurfskopf ueber DRAFT umschaltbar, wie in prof_dflash.sh. Vorgabe bleibt
-# der unquantisierte incoai-Kopf, damit alle bisherigen Zahlen vergleichbar
-# bleiben. Ein quantisierter Kopf aendert die Annahmerate, aber NIE den Text:
-# angenommen wird nur, was das Zielmodell ohnehin erzeugt haette.
-DRAFT=${DRAFT:-/home/mp/.cache/huggingface/hub/models--incoai--Qwen3.8-27B-DFlash2/snapshots/dedf8df68adfb1afeaf7b7480c0a0243108177b4}
+# Entwurfskopf ueber DRAFT umschaltbar, wie in prof_dflash.sh. Vorgabe ist
+# der quantisierte maurienne-Kopf, den der Produktionseintrag faehrt (Peuqui
+# 13.09.2026): mit der alten incoai-Vorgabe mass die Abnahme vom 12.09.
+# unbemerkt 5 % unter Produktion (RTX 73 statt 77 tok/s, Annahme 3,38 statt
+# 3,325). Ein anderer Kopf aendert die Annahmerate, aber NIE den Text:
+# angenommen wird nur, was das Zielmodell ohnehin erzeugt haette. Den alten
+# Kopf misst man mit DRAFT=<incoai-Snapshot> ausdruecklich.
+DRAFT=${DRAFT:-/home/mp/.cache/huggingface/hub/models--maurienne-ai--Qwen3.8-27B-DFlash2-NVFP4-RTNcal/snapshots/bd7a934213c47a9e7ef69eef36bb3325f47fd1f1}
 # ATTN_BACKEND (optional): Attention-Backend per Kommandozeile, auch fuer den
 # Drafter der Spekulation (Vorgabe dort ist FLASH_ATTN_V100, auf Turing tot).
 # Reines main waehlt auf Turing FlashInfer, dessen sm70-Bau dort mit

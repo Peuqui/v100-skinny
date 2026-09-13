@@ -1,4 +1,4 @@
-# PR-Entwurf: NCCL-Untergruppen bekommen --distributed-timeout-seconds
+# PR-Entwurf: NCCL-Untergruppen bekommen --distributed-timeout-seconds — VERÖFFENTLICHT als PR #619 (13.09., Commit a03e82ef auf origin/main dfef3342)
 
 Worktree: `1Cat-vLLM-pr-timeout`, Branch `nccl-subgroup-timeout` auf
 `origin/main` (fe67339d). Stand 12.09. nachts: Änderung + Test fertig,

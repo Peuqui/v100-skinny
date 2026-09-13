@@ -134,6 +134,32 @@ Port, lange Geduld) und danach warm über llama-swap selbst:
 
 ---
 
+## Paket C im Fork und zwei Compile-Cache-Fehler (13.09. abends)
+
+- **Laufzeitumgebung:** work-main `08d62424` (Paket C: FA2 für Turing als
+  eigene Bibliothek `_vllm_fa2_C_sm75`, Lader pro Gerät, Volta-Ladefix) plus
+  uncommitted: PLE-Gather-Fix, Volta-Testkorrektur, `tools/torch_patches/`.
+  Produktions-venv `.venv-sm70-main` mit torch-Backport #173556 gepatcht
+  (`tools/torch_patches/apply.sh`, `rebuild_work_main.sh` ruft es). Compile-
+  Cache AN (adf3e5bd), AOT-Artefakte am 13.09. einmal geleert.
+- **Abnahme Fork (prod_accept4, Phase 1 kalt):** 27B, DFlash2, Flash-Next,
+  DeepSeek bestanden; Flash-Next lädt `_vllm_fa2_C` (V100-Stufe) und
+  `_vllm_fa2_C_sm75` (RTX-Stufe) in einem Modell. Phase 2 warm: 27B, DFlash2,
+  DeepSeek bestanden, Flash-Next ABGESTÜRZT → Fehler 1.
+- **Fehler 1 (behoben):** PLE-Gather-Op nahm den Tabellenzeiger als int, Inductor
+  backte ihn ins Artefakt; erster Warmstart mit Cache → illegal memory access auf
+  Stufe 0. Fix: Layer-Name + `use_host_table`, Zeiger zur Laufzeit im Op.
+  Beleg Flash-Next: kalt 340 s, warm1 312 s, warm2 343 s, je 6 Artefakte.
+- **Fehler 2 (behoben):** torch 2.10.0 ohne Kernel-Tabelle im Artefakt → erster
+  Warmstart verpuffte. Backport belegt am 27B: kalt 476 s, warm1 85 s (0
+  Ladefehler), warm2 80 s. Text byteidentisch (`a3dffc7c5e9b417a`).
+- **Bootzeiten RTX-Paar 27B ohne Cache (Vergleich):** kalt 451 s, warm 175 s
+  (davon 104 s torch.compile, weil Cache aus); mit Cache siehe oben.
+- **Turing-Tests:** `test_sm70_flash_v100_policy.py` (81, eine Erwartung für 7.5
+  angepasst) + `test_sm70_e4m3_scalar_fp32.py`: 144 grün in PR-Branch und Fork;
+  `test_ple.py`: 60 grün; `test_attention_backends.py` (55) und
+  `test_flash_attn.py` (640) auf der RTX: siehe HANDOVER-Nachtrag.
+
 ## Hardware (gemessen 07.09.)
 
 | GPU | PCI | Karte | sm | SMs | Shared/SM | VRAM | Anbindung |

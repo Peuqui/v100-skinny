@@ -45,6 +45,7 @@ Nach dem Aufräumen genügt deshalb die übliche Abnahme (Text-SHA, Tempo) auf
 |---|---|
 | #572 Turing bootbar | `config/vllm.py` (Teil: pre-Ampere-Gate), `layers/mamba/gdn/qwen_gdn_linear_attn.py`, 3 Tests |
 | #573 Qwen4Exp-MTP stufenlokal | `models/qwen4_exp/nvidia/mtp.py`, 1 Test |
+| #618 SM70-Cudagraph-Gates pre-Ampere/eigenes Gerät | `v1/worker/gpu/cudagraph_utils.py` (Helfer + 3 Gates), 3 Tests |
 | #574 Output-Trim auf allen PP-Rängen | `v1/worker/gpu_model_runner.py` (ein Hunk), 1 Test |
 | #576 SM70-Quant-Gate pro Gerät | `layers/quantization/sm70_turbomind.py`, 2 Tests |
 | #592 DFlash quantisierter Entwurfskopf | `models/qwen3_dflash.py`, 1 Test |

@@ -104,3 +104,33 @@ PRs touching `vllm/config/vllm.py` (#572, #579, #239, #235) and `vllm/envs.py`
 
 AI assistance (Claude) was used to trace the two defaults and run the
 measurements; I reviewed every line and ran the tests above.
+
+## Kartentyp-Test und Reload-Befund (13.09., work-main = main dfef3342 + Overlays, 27B DFlash2 Produktionskopf, VLLM_DISABLE_COMPILE_CACHE=0 explizit)
+
+| Boot | Root | Ergebnis |
+|---|---|---|
+| V100 kalt | frisch | kompiliert, 3 Artefakte, Schlüssel 9bb08da7…, Boot 210 s, 76,46 tok/s |
+| RTX auf demselben Root, identische Umgebung | geteilt | **eigener Schlüssel b334e866…**, kompiliert, kein Fremdladen, 76,81 tok/s |
+| RTX kalt | frisch | derselbe Schlüssel b334e866… wie oben → Schlüssel reproduzierbar und kartentypabhängig |
+| V100 warm (1. nach kalt) | wie Zeile 1 | **Laden scheitert** („load failure … reason:" leer), kompiliert neu, speichert neu, 120 s |
+| V100 warm (2.) | dito | lädt alle 6 Artefakte (2 Ränge × 3 Graphen), **70–75 s**, 76,55 / 77,14 tok/s |
+| frischer Root: kalt → warm → warm | neu | reproduziert exakt: 1. Warmstart scheitert, 2. lädt |
+
+Text-SHA in allen elf Boots `0106659946c064b1`; Annahmelänge 3,298–3,353 (Kernelwahl je Compile, „Münze").
+
+**Ursache des ersten Fehlschlags** (Boot mit `VLLM_FORCE_AOT_LOAD=1`, Traceback in
+`~/.cache/mtp-diagnostics/qual_tr_force/boot.log`): beim `finalize_loading` des
+Artefakts berechnet torch den AOTAutograd-Cache-Schlüssel des Graphen
+(`autograd_cache.py:493 → codecache.py:832`) und schlägt in
+`torch/_higher_order_ops/triton_kernel_wrap.py:167 get_kernel` mit
+`assert idx in self.id_to_kernel` fehl: die benutzerdefinierten Triton-Kernel sind
+im Graphen per Index einer PROZESSLOKALEN Tabelle referenziert, und im frischen
+Prozess ist dieser Index (noch) nicht vergeben. Das vom scheiternden Warmstart neu
+gespeicherte Artefakt lädt in allen folgenden Prozessen. torch 2.10.0, vLLM-Wrapper
+`backends.py:332` ist Upstream-Code (Dedup), nicht die Ursache. Im Netz kein
+bekannter Bericht (Suche 13.09.).
+
+**Bewertung:** Kartentyp-Risiko vom Tisch. Cache an bedeutet: je Artefakt-Generation
+ein stiller Fehlschlag mit einem Extra-Compile (~40 s), danach Warmstarts in 70–75 s
+statt 110–120 s (Inductor warm, kein AOT) bzw. 170–210 s kalt. Text unverändert.
+Der leere Fehlergrund ist ein eigener Befund (torch-Assertion ohne Meldung).

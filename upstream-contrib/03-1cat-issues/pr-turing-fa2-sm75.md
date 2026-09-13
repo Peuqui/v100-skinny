@@ -1,4 +1,4 @@
-# PR-Entwurf 1Cat: FlashAttention-2 für Turing (Paket C, Form 1) — NICHT veröffentlicht
+# PR-Entwurf 1Cat: FlashAttention-2 für Turing (Paket C, Form 1) — VERÖFFENTLICHT als #623 (13.09.)
 
 Worktree `1Cat-vLLM-pr-fa2sm75`, Branch `sm75-fa2-pr` auf origin/main dfef3342.
 FA-Fork: Peuqui/flash-attention @ 43b9d29c (Tag `sm75-1cat-2026-09-13`).
@@ -22,6 +22,7 @@ Turing GPUs (RTX 8000, RTX 6000, T4, RTX 20xx) get no FlashAttention backend tod
 - `flash_attn_interface.ensure_fa2_library_loaded()` (new) and one call each in `vllm/v1/attention/backends/flash_attn_v100.py`, `vllm/v1/attention/ops/sm70_e4m3_long.py` and `vllm/v1/attention/ops/sm70_e4m3_scalar.py`: the SM70 backend resolves its D256 prefill, grouped long-context and scalar tail operators from `torch.ops._vllm_fa2_C` before the first attention call, and relied on the module import to have loaded the library. With loading moved to first use, those lookups now load the library for the worker's device first. Without this, Volta booted but logged "SM70 D256 exact-prefill operators are unavailable" and took its slower long-prefill fallback (found in the end-to-end run below).
 - `vllm/v1/attention/backends/flash_attn.py`: capability floor 7.5; below 8.0 only fp16 is accepted (the sm75 build is fp16-only, bf16 is rejected by its entry points).
 - `docs/design/attention_backends.md`: FA2 row 7.5+.
+- `tests/v1/attention/test_sm70_flash_v100_policy.py::test_flash_v100_priority_is_sm70_only`: the expectation for 7.5 follows the new priority list (FLASH_ATTN, TRITON_ATTN, FLEX_ATTENTION; FlashInfer not offered).
 
 ## Measurements
 
@@ -42,7 +43,7 @@ Volta is untouched: 2x V100 TP2 with the same checkpoint and DFlash2 gives 76.42
 Wheel built from this branch (dfef3342 plus these changes) with the sm75 tree fetched by the new ExternalProject, nothing prebuilt on the path:
 
 ```
-TORCH_CUDA_ARCH_LIST=7.5 MAX_JOBS=4 CUDA_HOME=<cuda 12.8> python -m pip wheel . --no-build-isolation --no-deps -w <out>
+TORCH_CUDA_ARCH_LIST=7.5 MAX_JOBS=4 CUDA_HOME=<cuda 12.8> .venv/bin/python -m pip wheel . --no-build-isolation --no-deps -w <out>
 ```
 
 Result: `1cat_vllm-1.5.1.dev986+gdfef33421.d20260913.cu128-cp312-cp312-linux_x86_64.whl`, 167,220,823 bytes, containing
@@ -69,22 +70,26 @@ With this wheel, `load_fa2_library` on a Tesla V100 loads `_vllm_fa2_C.abi3.so` 
 
 ## Test Plan
 
-1. `pre-commit run --files <the changed files>` and `pre-commit run mypy-3.10 --hook-stage manual --files <python files>`.
+1. `pre-commit run --files <the 12 changed and new files>` and `pre-commit run mypy-3.10 --hook-stage manual --files <the 8 python files>`.
 2. New tests without a Turing device (the gates test imports `FlashAttentionBackend`, whose class body calls `get_flash_attn_version()`, so one CUDA device has to be visible once an FA2 library is installed): `tests/vllm_flash_attn/test_fa2_library_per_device.py` (library path per capability, one load per process, the current-device helper loads once, refusal without a library), `tests/v1/attention/test_flash_attn_turing_gates.py` (capability floor, fp16 gate), `tests/v1/attention/test_cuda_backend_priority_turing.py` (priority list on 7.5 and 8.0).
 3. New GPU test on a 7.5 device: `tests/kernels/attention/test_fa2_sm75_forward.py` (loader picks the sm75 library, varlen forward against a torch SDPA reference for head sizes 64/128/256 and query lengths 1/8/333).
-4. The measurement matrix above (`fa2_chain.sh`, `fa2_probe2.sh` in our v100-skinny repository).
+4. Existing test files that touch the changed modules, run in full on a V100: `tests/v1/attention/test_sm70_flash_v100_policy.py` (81 tests, one expectation updated as listed above) and `tests/kernels/attention/test_sm70_e4m3_scalar_fp32.py`.
+5. The measurement matrix above (`fa2_chain.sh`, `fa2_probe2.sh` in our v100-skinny repository).
 
 ## Test Result
 
 Turing rig: 2x Quadro RTX 8000 (compute capability 7.5), driver 580, CUDA 12.8, torch 2.10.0+cu128, Python 3.12.
 
-1. `pre-commit run --files <all 11 changed and new files>`: every hook passed (including `check-torch-cuda-call`, SPDX, attention-backend docs check). `pre-commit run mypy-3.10 --hook-stage manual --files <7 python files>`: passed.
+1. `pre-commit run --files <all 12 changed and new files>`: every hook passed (including `check-torch-cuda-call`, SPDX, attention-backend docs check). `pre-commit run mypy-3.10 --hook-stage manual --files <8 python files>`: passed.
 2. Tests without a Turing device, run with one V100 visible:
    - `tests/vllm_flash_attn/test_fa2_library_per_device.py`: 5 passed
    - `tests/v1/attention/test_flash_attn_turing_gates.py` and `tests/v1/attention/test_cuda_backend_priority_turing.py`: 8 passed
 3. GPU test on one RTX 8000 (`CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=<the RTX>`): `tests/kernels/attention/test_fa2_sm75_forward.py`: 9 passed (head sizes 64/128/256 x query lengths 1/8/333, loader picked `_vllm_fa2_C_sm75.abi3.so`, output matches torch SDPA).
-4. Measurement matrix: see the tables above.
-5. End to end with the mixed 7.0;7.5 wheel (this branch plus #604 so that the NVFP4 checkpoint loads on Turing; the wheel's libraries, the branch's Python):
+4. Existing test files, in full, one V100 visible: `tests/v1/attention/test_sm70_flash_v100_policy.py` and `tests/kernels/attention/test_sm70_e4m3_scalar_fp32.py`: 144 passed (both in this branch and in our fork).
+   - `tests/kernels/attention/test_flash_attn.py` on the RTX 8000, as shipped: every case fails with `FlashAttention on Turing (sm75) only supports fp16 data type`, because the file parametrizes `DTYPES = [torch.bfloat16]` only and the sm75 build rejects bf16 by design. The same file with `DTYPES = [torch.float16]` and `QDTYPES = [None]` (no fp8 KV on this build): 160 passed, 160 skipped (the FA3 half, "Flash attention version 3 not supported").
+   - `tests/v1/attention/test_attention_backends.py` could not run here: it needs the gated `meta-llama/Meta-Llama-3-8B` and `google/embeddinggemma-300m` configs from Hugging Face (403).
+5. Measurement matrix: see the tables above.
+6. End to end with the mixed 7.0;7.5 wheel (this branch plus #604 so that the NVFP4 checkpoint loads on Turing; the wheel's libraries, the branch's Python):
 
    - 2x Quadro RTX 8000, TP2, our production command for Qwen3.8-27B-NVFP4 (MTP k=3, prefix caching, 262k window) plus `--kv-cache-dtype float16` (the checkpoint declares FP8 KV; #613 is not in this stack): both TP workers log `Loaded FA2 library _vllm_fa2_C_sm75.abi3.so for compute capability 7.5`, backend FLASH_ATTN, ready after 451 s on an empty compile cache; a 400-token answer and a 13k-token-prefix answer, both coherent.
    - 2x Tesla V100, TP2, the same command with `--max-model-len 32768 --gpu-memory-utilization 0.90` (32 GB cards) and without the drafter's explicit `attention_backend: FLASH_ATTN` (main selects FLASH_ATTN_V100 on 7.0 itself; the explicit value is a convention of our fork): both workers log `Loaded FA2 library _vllm_fa2_C.abi3.so for compute capability 7.0`, backend FLASH_ATTN_V100, no "D256 exact-prefill operators are unavailable" line, ready after 145 s.

@@ -169,7 +169,7 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 1. **Paket G eröffnen?** Timeout-PR ist klar (Code-Beweis + Test). Compile-
    Cache-PR ist Bereinigung ohne Tempo-Gewinn; Messtabelle im Entwurf.
 2. **Punkt-15-Patch behalten** (korrekt, kein Gewinn) oder `git apply -R`.
-3. **`NCCL_BUFFSIZE=1048576`** in die vLLM-TP-Einträge von llama-swap (+1 %).
+3. ✅ ERLEDIGT 13.09.: `NCCL_BUFFSIZE=1048576` in den sechs TP2-Einträgen (27B, DFlash2, vier Flash-Next-Varianten), Sicherung `backups/config.yaml.pre-nccl-buffsize-20260913-1035`, llama-swap neu gestartet.
 4. **envs.py-Default im Fork** zurücknehmen (Compile-Cache auf 0DOT3-Pfad
    ist in Produktion aus) — Overlay-Änderung, unabhängig vom PR.
 5. ~~TileLang-Pin~~ — ENTSCHIEDEN 12.09. früh (Peuqui): als Wartung
@@ -201,7 +201,7 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
    den Produktionsbaum — vorher Freigabe.
 
 ## Punkt 2 ERLEDIGT: work-main auf main dfef3342 (13.09. früh)
-- **Paket G, Teil 1 ERLEDIGT: PR #619** (NCCL-Untergruppen-Timeout, 13.09.). Teil 2 (Compile-Cache-Zwangsabschaltung): Kartentyp-Test 13.09. BESTANDEN (RTX bekommt eigenen Schlüssel). NEUER BEFUND: der erste Warmstart nach einem Kaltlauf lädt das Artefakt nicht (torch-Assertion `kernel_side_table` ohne Meldung), speichert neu, ab dem zweiten Warmstart lädt alles (70–75 s statt 110–120 s). Details + Traceback in `pr-drop-forced-compile-cache-off.md`. Entscheidung Peuqui: PR mit diesem Befund stellen, Fork-Default umstellen, oder beides lassen.
+- **Paket G, Teil 1 ERLEDIGT: PR #619** (NCCL-Untergruppen-Timeout, 13.09.). Teil 2 (Compile-Cache-Zwangsabschaltung): Kartentyp-Test 13.09. BESTANDEN (RTX bekommt eigenen Schlüssel). NEUER BEFUND: der erste Warmstart nach einem Kaltlauf lädt das Artefakt nicht (torch-Assertion `kernel_side_table` ohne Meldung), speichert neu, ab dem zweiten Warmstart lädt alles (70–75 s statt 110–120 s). Details + Traceback in `pr-drop-forced-compile-cache-off.md`. Ursache ist bei PyTorch BEHOBEN (PR #173556, gemergt 28.01.2026, `torch/_dynamo/aot_compile_types.py` serialisiert die Kernel-Tabelle; enthalten ab torch 2.11, NICHT in 2.10.0, das 1Cat pinnt; vLLM upstream ist auf 2.13). Kein PyTorch-Issue nötig. Entscheidung Peuqui: 1Cat-PR mit Hinweis auf #173556 stellen, Fork-Default umstellen, oder beides lassen.
 - **AIfred `fcdc9db1`:** Kalibrations-Cache wird nach abgeschlossenem Lauf geleert, Produktions-Cache nächtlich nach 21 Tagen Nichtnutzung oder über 40 GiB gestutzt (Peuqui 13.09.). Wirksam ab dem nächsten AIfred-Start.
 - Merge `34f3f340` + `f381618a`, Neubau, Abnahme komplett bestanden (Tabelle in STAND.md "Abnahme work-main-Merge"). Produktionskopf: RTX 76,88 / V100 76,42 tok/s, SHA gleich; DeepSeek 8/8; Flash-Next q1/q2 sauber, Kuanda 2:1 wie alt; alle vier llama-swap-Einträge kalt+warm ok.
 - ERLEDIGT 13.09.: `speed_dflash.sh` Vorgabe `DRAFT` = Produktionskopf (maurienne RTNcal), Commit 4df1d52.

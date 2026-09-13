@@ -134,3 +134,5 @@ bekannter Bericht (Suche 13.09.).
 ein stiller Fehlschlag mit einem Extra-Compile (~40 s), danach Warmstarts in 70–75 s
 statt 110–120 s (Inductor warm, kein AOT) bzw. 170–210 s kalt. Text unverändert.
 Der leere Fehlergrund ist ein eigener Befund (torch-Assertion ohne Meldung).
+
+**Nachtrag 13.09. mittags:** der Fehlschlag ist upstream behoben: pytorch/pytorch PR #173556 „[precompile] Serialize triton kernel side table for bundled AOT artifacts" (bobrenjc93, gemergt 28.01.2026, Datei `torch/_dynamo/aot_compile_types.py`, +108). Enthalten in release/2.11 und 2.12, NICHT in release/2.10 (unser und 1Cats Pin torch==2.10.0; vLLM upstream pinnt 2.13). Duplikatsuche bei PyTorch: kein offenes Issue, der Fix ist die PR. Für den 1Cat-PR-Text: „auf torch 2.10 verpufft der erste Warmstart je Artefakt-Generation (torch #173556 fehlt), ab 2.11 sollte er laden; nicht von uns geprüft, da 1Cat 2.10 pinnt."

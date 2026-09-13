@@ -201,7 +201,7 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
    den Produktionsbaum — vorher Freigabe.
 
 ## Punkt 2 ERLEDIGT: work-main auf main dfef3342 (13.09. früh)
-- **Paket G, Teil 1 ERLEDIGT: PR #619** (NCCL-Untergruppen-Timeout, 13.09.). Teil 2 (Compile-Cache-Zwangsabschaltung) bleibt zurückgestellt bis zum Kartentyp-Test: auf V100 kompilieren, mit identischer Umgebung auf RTX booten, prüfen ob das AOT-Artefakt geladen wird (Ordner ist nach Env-Hash benannt, nicht nach Kartentyp). Fällt der Test sauber aus, ist der PR wasserdicht; fällt er durch, ist es ein Befund für 1Cat.
+- **Paket G, Teil 1 ERLEDIGT: PR #619** (NCCL-Untergruppen-Timeout, 13.09.). Teil 2 (Compile-Cache-Zwangsabschaltung): Kartentyp-Test 13.09. BESTANDEN (RTX bekommt eigenen Schlüssel). NEUER BEFUND: der erste Warmstart nach einem Kaltlauf lädt das Artefakt nicht (torch-Assertion `kernel_side_table` ohne Meldung), speichert neu, ab dem zweiten Warmstart lädt alles (70–75 s statt 110–120 s). Details + Traceback in `pr-drop-forced-compile-cache-off.md`. Entscheidung Peuqui: PR mit diesem Befund stellen, Fork-Default umstellen, oder beides lassen.
 - **AIfred `fcdc9db1`:** Kalibrations-Cache wird nach abgeschlossenem Lauf geleert, Produktions-Cache nächtlich nach 21 Tagen Nichtnutzung oder über 40 GiB gestutzt (Peuqui 13.09.). Wirksam ab dem nächsten AIfred-Start.
 - Merge `34f3f340` + `f381618a`, Neubau, Abnahme komplett bestanden (Tabelle in STAND.md "Abnahme work-main-Merge"). Produktionskopf: RTX 76,88 / V100 76,42 tok/s, SHA gleich; DeepSeek 8/8; Flash-Next q1/q2 sauber, Kuanda 2:1 wie alt; alle vier llama-swap-Einträge kalt+warm ok.
 - ERLEDIGT 13.09.: `speed_dflash.sh` Vorgabe `DRAFT` = Produktionskopf (maurienne RTNcal), Commit 4df1d52.

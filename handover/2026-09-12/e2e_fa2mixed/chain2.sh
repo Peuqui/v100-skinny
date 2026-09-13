@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+for A in v100 mixed27b; do bash /home/mp/Projekte/vllm-research/v100-skinny/handover/2026-09-12/e2e_fa2mixed.sh $A /home/mp/Projekte/vllm-research/v100-skinny/handover/2026-09-12/e2e_fa2mixed > /home/mp/Projekte/vllm-research/v100-skinny/handover/2026-09-12/e2e_fa2mixed/$A.out 2>&1; echo "KETTE $A: $(grep -o '^FERTIG.*' /home/mp/Projekte/vllm-research/v100-skinny/handover/2026-09-12/e2e_fa2mixed/$A.out)"; done; echo KETTE-ENDE

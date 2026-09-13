@@ -201,6 +201,8 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
    den Produktionsbaum — vorher Freigabe.
 
 ## Punkt 2 ERLEDIGT: work-main auf main dfef3342 (13.09. früh)
+- **Paket G, Teil 1 ERLEDIGT: PR #619** (NCCL-Untergruppen-Timeout, 13.09.). Teil 2 (Compile-Cache-Zwangsabschaltung) bleibt zurückgestellt bis zum Kartentyp-Test: auf V100 kompilieren, mit identischer Umgebung auf RTX booten, prüfen ob das AOT-Artefakt geladen wird (Ordner ist nach Env-Hash benannt, nicht nach Kartentyp). Fällt der Test sauber aus, ist der PR wasserdicht; fällt er durch, ist es ein Befund für 1Cat.
+- **AIfred `fcdc9db1`:** Kalibrations-Cache wird nach abgeschlossenem Lauf geleert, Produktions-Cache nächtlich nach 21 Tagen Nichtnutzung oder über 40 GiB gestutzt (Peuqui 13.09.). Wirksam ab dem nächsten AIfred-Start.
 - Merge `34f3f340` + `f381618a`, Neubau, Abnahme komplett bestanden (Tabelle in STAND.md "Abnahme work-main-Merge"). Produktionskopf: RTX 76,88 / V100 76,42 tok/s, SHA gleich; DeepSeek 8/8; Flash-Next q1/q2 sauber, Kuanda 2:1 wie alt; alle vier llama-swap-Einträge kalt+warm ok.
 - **Vorschlag:** `speed_dflash.sh` Vorgabe `DRAFT` auf den Produktionskopf (maurienne RTNcal) stellen, sonst misst jede Abnahme 5 % zu wenig. Noch nicht geändert.
 - **Aufräumen bei Gelegenheit:** Worktree `1Cat-vLLM-old-prod` und `.venv-sm70-old` (~10 GB) waren nur für den Alt-gegen-Neu-Vergleich.

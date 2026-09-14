@@ -11,7 +11,18 @@ so", nicht „wie ist es".
 
 ---
 
-## Laufzeitumgebung (seit 10.09. abends; Nachtrag 13.09. abends)
+## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
+
+**Nachtrag 14.09.:** work-main `ebc5dc52` (Tag `verified-2026-09-14b`) = 1Cat main
+`80c88e8d` (Merge `1d3439f2`, Tag `verified-2026-09-14`) + Overlay (77 Dateien,
++4.771/−375 gegen main) inkl. #636-Fassung von `qwen3_5_mtp.py`; PP5-
+Warteschlangen-Deckel und #572-Rest entfernt. Neubau 14.09. mit `MAX_JOBS=3`
+(Skript `handover/2026-09-14/rebuild_work_main.sh`, 38 min). Abnahme: 27B DFlash2
+SHA `0106659946c064b1` RTX 76,72 / V100 76,48; 27B MTP TP2 73,34 (SHA gleich),
+PP2 61,05; DeepSeek PP5 8/8 (neue Referenz `ds_merge0914`, alte `ds_tl014` beim
+Plattenaufräumen gelöscht); Flash-Next q1/q2 sauber, Kuanda uneinheitlich.
+llama-swap-Einträge: `Qwen3.8-27B-NVFP4-vllm` (MTP) wieder aktiv, DeepSeek ohne
+`VLLM_SM70_ASYNC_SCHEDULING_QUEUE_DEPTH`. Details `HANDOVER.md` Nachtrag 14.09.
 
 **Nachtrag 13.09. abends:** work-main `f6c42de7` auf fork/work-main = 1Cat main
 `dfef3342` + Overlay + Paket C + PLE-Gather-Fix; Produktions-venv

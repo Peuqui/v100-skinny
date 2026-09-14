@@ -1,4 +1,12 @@
-# Übergabe — Stand 13.09.2026 abends
+# Übergabe — Stand 14.09.2026 abends
+
+**Stand in einem Absatz (14.09. abends):** 1Cat main `80c88e8d` ist in work-main
+gemergt (`1d3439f2`, Neubau, Tag `verified-2026-09-14`), danach der Overlay
+zurückgebaut (`ebc5dc52`, Tag `verified-2026-09-14b`), beides gepusht. Neuer PR
+**#636** (Qwen3.5-MTP unter PP), **#611** auf a6f5e834 rebased, neu gemessen (RTX
++3,8 %) und kommentiert. Der PR-Kandidat PP5-Warteschlangen-Deckel ist verworfen
+(DeepSeek braucht ihn auf main nicht mehr). Details im Nachtrag 14.09. am
+Dateiende; der Absatz darunter ist der Stand vom 13.09.
 
 **Stand in einem Absatz (13.09. abends):** Paket C (FA2 für Turing) ist im Fork
 und als PR #623 bei 1Cat; der Compile-Cache ist in der Produktion an und belegt,
@@ -238,3 +246,13 @@ invariante Kernel kommen nicht; PIECEWISE bleibt unangefasst.
 - **Fallen des Tages:** (1) Freeze mitten im Bau → 0-Byte-.o gelten als fertig, Link schluckt sie; Objekte aus dem Absturzfenster löschen, `nm -D | grep ' U '` prüfen. (2) `nohup`-Launcher erben das cwd der Shell → `cd /tmp` in jedes Launch-Skript, Baum-Beleg per `grep 'File "/home/mp/Projekte/vllm-research/[^/]*/'` im Boot-Log. (3) Teardown mit `pgrep -f 'VLLM::'` hat den llama-swap-Server QUASAR getötet → nur `kill -- -<PGID>` der eigenen Gruppe.
 - **Turing-Testdateien auf der RTX:** `test_flash_attn.py` ist bf16-only (jeder Fall scheitert am fp16-Gate der sm75-Bibliothek, gewollt); als fp16-Variante ohne fp8-KV 160 bestanden, 160 FA3-Fälle übersprungen. `test_attention_backends.py` hier nicht ausführbar (gesperrte HF-Repos meta-llama/embeddinggemma). Beides so in #623 benannt.
 - **Offen:** Reviews/Merges #621 #622 #623 abwarten, Overlay-Rückbau je Merge (fork_patches_150: cuda.py, flash_attn.py, flash_attn_interface.py, flash_attn_v100.py, sm70_e4m3_long/scalar.py für #623; ple_layer-Anteil für #622); Issue #614 (fremd, Flash-V100-Politik unter TP2, mode=none) beim nächsten Upstream-Check lesen; Tag `verified-2026-09-13` auf work-main nur auf Ansage; Wegwerf-Worktree `1Cat-vLLM-e2e-fa2mixed` + `.venv-pr-fa2sm75` + `.wheels/` aufräumbar; #621-Body war ~1 min in einer Zwischenfassung sichtbar (Bearbeitungshistorie), inhaltlich korrekt.
+
+## Nachtrag 14.09. — main-Merge, #636, #611 neu gemessen, Overlay-Rückbau
+
+- **Merge:** 1Cat main `80c88e8d` (20 Commits: SM70-79T/Q8000-Prefill im FA2-Target, geteilte NVFP4-Codes für DFlash2 #561, QPN2-Zeilenblock-Ordnung d66797cc) in work-main, konfliktfrei (`1d3439f2`). Neubau mit `MAX_JOBS=3` (79T-Kernel = 6.800 Zeilen, 30 GB RAM), 38 min, Skript `handover/2026-09-14/rebuild_work_main.sh`. Keine neuen `WITH_SOABI`-Targets. Tag `verified-2026-09-14`.
+- **Abnahme:** 27B DFlash2 SHA `0106659946c064b1` RTX 76,72 / V100 76,48 tok/s, Annahme 3,325; alle vier vLLM-Einträge laden und antworten; DeepSeek PP5 Kohärenz 8/8, zwei Läufe identisch (`ds_merge0914`); Flash-Next q1/q2 sauber, Kuanda aus vier Läufen 1 Zurückweisung, 1 Grenzfall (zerfasert), 2 „Kunda-Effekt"-Deutungen — nicht deterministisch, nicht dem Merge zugeschrieben (A/B alt/neu nur bei Auffälligkeiten im Alltag). Decode messbar unverändert; die neuen Prefill-Kernel greifen bei uns laut Doku nicht (79T nur Hq6/Hkv1 = 27B TP4, Chunks >= 8000, V100).
+- **VERLUST:** `~/.cache/mtp-diagnostics` wurde beim Plattenaufräumen gelöscht, darin die DeepSeek-Referenz `ds_tl014` und ältere `qual_*`-Ergebnisse. Neue Referenzen: `ds_merge0914`, `qual_accept0914` (RTX), `qual_accept0914v100`, `qual_accept0914mtp`.
+- **#636 eröffnet** (Qwen3.5-MTP unter PP, drei gestapelte Ursachen: fehlendes SupportsPP, Weiche nach Ziel-PP-Rang, geteiltes Embedding unter PP nie ersetzt). PP2 RTX 61,05 tok/s, Text bitgleich. Text `upstream-contrib/03-1cat-issues/pr-qwen3-5-mtp-pp.md`. Der llama-swap-Eintrag `Qwen3.8-27B-NVFP4-vllm` (MTP) ist wieder aktiv.
+- **Overlay-Rückbau `ebc5dc52`:** PP5-Warteschlangen-Deckel aus `multiproc_executor.py` und aus dem DeepSeek-Eintrag entfernt (vier Anfragen ohne Deckel, 22–26 tok/s, kein Deadlock — 1Cats PP-Spec-Transport reicht); tote Adapterklasse `QwenGatedDeltaNetAttentionUpstreamCall` (#572-Rest) raus; `qwen3_5_mtp.py` = #636-Fassung. Abnahme 27B MTP TP2 SHA gleich, 73,34 tok/s. Tag `verified-2026-09-14b`.
+- **#611 rebased** auf a6f5e834 (Konflikt mit d66797cc: `Packed` als weiterer Template-Parameter neben `TurboMindLayout`/`CacheCodes`), force-gepusht `16c241ef`, Kommentar gepostet. Messung Testbranch `e2-test-0914` (Worktree `1Cat-vLLM-e2test`, #611+#604+#601, venv `.venv-pr-turing`): RTX MTP k=7 Pack 0 68,47 → auto 71,10 (+3,8 %), SHA und Annahme gleich. V100 TP2: NVFP4 läuft über den TurboMind-GEMM, Pack springt nicht an → keine V100-Aussage; ein V100-Ausreißer 58,88 tok/s mit anderem Text ist Compile-Münze. `SHARED_WEIGHT=1` (d66797cc-Pfad, TP4-Opt-in) unter TP2 nicht gemessen. 1Cat hat dasselbe Input-Layout intern auf V100 TP4 getestet (<1 ms/Runde, zurückgestellt, `docs/design/sm70_quasar_dflash2_15ms.md`). Die DFlash2-V100-Läufe im Testbranch scheitern ohne #592 (quantisierter Entwurfskopf).
+- **Offen:** main ist mit #635 (79T Q8192) weiter → nächster regulärer Merge braucht Neubau; Overlay-Rückbau je Merge unserer 16 offenen PRs; Testbranch/Worktree `e2test` bis #611/#604 entschieden; nvidia/Qwen3.8-Flash-Next-NVFP4 wird geladen (Vergleichsmodell, Kuanda-Vergleich danach).

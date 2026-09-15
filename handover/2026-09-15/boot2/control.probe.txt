@@ -1,0 +1,5 @@
+[kontrolle] p0 sha=369bcfa9089deaca 260 tok 60.0 tok/s
+[kontrolle] p1 sha=c0aa90558c9b3b86 260 tok 55.0 tok/s
+[kontrolle] p2 sha=5c0a59ecaba94444 260 tok 63.9 tok/s
+[kontrolle] p0 sha=369bcfa9089deaca 260 tok 60.2 tok/s
+[kontrolle] Wiederholung p0 gleich: True

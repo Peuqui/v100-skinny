@@ -1,0 +1,5 @@
+[kaskade] p0 sha=369bcfa9089deaca 260 tok 57.9 tok/s
+[kaskade] p1 sha=c0aa90558c9b3b86 260 tok 55.5 tok/s
+[kaskade] p2 sha=605ebab041dc7656 260 tok 62.5 tok/s
+[kaskade] p0 sha=369bcfa9089deaca 260 tok 58.3 tok/s
+[kaskade] Wiederholung p0 gleich: True

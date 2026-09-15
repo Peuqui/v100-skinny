@@ -1,0 +1,42 @@
+Tracebacks: 8
+(APIServer pid=431608) INFO 09-15 19:36:58 [vllm.py:1908] Qwen4Exp PLE overflow cascade: store device 4; the PLE offload worker serves the rows beyond the resident tiers.
+(Worker pid=432133) INFO 09-15 19:37:18 [gpu_worker.py:264] PleOffload: spawning worker (rank=0, local_rank=0, dp_size=1, tp_size=2, num_workers=2, ipc_addr=ipc:///tmp/5d224fca-6e1e-4ab0-92d8-3b406f2342d6).
+(PleOffloadWorker pid=432691) INFO 09-15 19:37:25 [worker.py:161] PLE CPU lookup affinity: GPU-local NUMA node 0, CPUs 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15; memory policy is local-first with host-RAM fallback.
+(PleOffloadWorker pid=432691) INFO 09-15 19:37:25 [parallel_state.py:1818] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_ple_offload_p1juonxv/store backend=gloo
+(PleOffloadWorker pid=432691) INFO 09-15 19:37:25 [scheduler.py:243] Chunked prefill is enabled with max_num_batched_tokens=2048.
+(PleOffloadWorker pid=432691) INFO 09-15 19:37:25 [vllm.py:1700] Asynchronous scheduling is enabled.
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535] Unexpected failure in PLE offload worker.
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535] Traceback (most recent call last):
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]   File "/home/mp/Projekte/vllm-research/1Cat-vLLM-work/vllm/v1/ple_offload/worker.py", line 504, in proc_main
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]     _init_offload_distributed()
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]   File "/home/mp/Projekte/vllm-research/1Cat-vLLM-work/vllm/v1/ple_offload/worker.py", line 362, in _init_offload_distributed
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]     offload_config = VllmConfig()
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]                      ^^^^^^^^^^^^
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]   File "/home/mp/vllm/venv/lib/python3.12/site-packages/pydantic/_internal/_dataclasses.py", line 121, in __init__
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]     s.__pydantic_validator__.validate_python(ArgsKwargs(args, kwargs), self_instance=s)
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535] pydantic_core._pydantic_core.ValidationError: 1 validation error for VllmConfig
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]   Value error, VLLM_QWEN4EXP_PLE_STORE_DEVICE is set, but the model has no PLE layers [type=value_error, input_value=ArgsKwargs(()), input_type=ArgsKwargs]
+(PleOffloadWorker pid=432691) ERROR 09-15 19:37:25 [worker.py:535]     For further information visit https://errors.pydantic.dev/2.13/v/value_error
+(PleOffloadWorker pid=432691) Process PleOffloadWorker:
+(PleOffloadWorker pid=432691) Traceback (most recent call last):
+(PleOffloadWorker pid=432691)   File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+(PleOffloadWorker pid=432691)     self.run()
+(PleOffloadWorker pid=432691)   File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+(PleOffloadWorker pid=432691)     self._target(*self._args, **self._kwargs)
+(PleOffloadWorker pid=432691)   File "/home/mp/Projekte/vllm-research/1Cat-vLLM-work/vllm/v1/ple_offload/worker.py", line 504, in proc_main
+(PleOffloadWorker pid=432691)     _init_offload_distributed()
+(PleOffloadWorker pid=432691)   File "/home/mp/Projekte/vllm-research/1Cat-vLLM-work/vllm/v1/ple_offload/worker.py", line 362, in _init_offload_distributed
+(PleOffloadWorker pid=432691)     offload_config = VllmConfig()
+(PleOffloadWorker pid=432691)                      ^^^^^^^^^^^^
+(PleOffloadWorker pid=432691)   File "/home/mp/vllm/venv/lib/python3.12/site-packages/pydantic/_internal/_dataclasses.py", line 121, in __init__
+(PleOffloadWorker pid=432691)     s.__pydantic_validator__.validate_python(ArgsKwargs(args, kwargs), self_instance=s)
+(PleOffloadWorker pid=432691) pydantic_core._pydantic_core.ValidationError: 1 validation error for VllmConfig
+(PleOffloadWorker pid=432691)   Value error, VLLM_QWEN4EXP_PLE_STORE_DEVICE is set, but the model has no PLE layers [type=value_error, input_value=ArgsKwargs(()), input_type=ArgsKwargs]
+(PleOffloadWorker pid=432691)     For further information visit https://errors.pydantic.dev/2.13/v/value_error
+(Worker_PP0_TP1 pid=432136) INFO 09-15 19:40:03 [ple_layer.py:810] Qwen4Exp PLE table placement: 119735450 of 160000768 rows in device memory (17.84), 40265318 rows in pinned host memory (6.0)
+(Worker_PP0_TP0 pid=432133) INFO 09-15 19:40:03 [ple_layer.py:810] Qwen4Exp PLE table placement: 119735450 of 160000768 rows in device memory (17.84), 40265318 rows in pinned host memory (6.0)
+(Worker_PP0_TP0 pid=432133) INFO 09-15 19:43:23 [connector.py:250] PleOffload: registered 1 PleOffloadLayer(s) (dp_rank=0, tp_rank=0, ipc_addr=ipc:///tmp/5d224fca-6e1e-4ab0-92d8-3b406f2342d6): ['language_model.model.layers.1.ple.ple_embedding']
+(Worker_PP0_TP1 pid=432136) INFO 09-15 19:43:23 [connector.py:250] PleOffload: registered 1 PleOffloadLayer(s) (dp_rank=0, tp_rank=1, ipc_addr=ipc:///tmp/5d224fca-6e1e-4ab0-92d8-3b406f2342d6): ['language_model.model.layers.1.ple.ple_embedding']
+(Worker_PP0_TP0 pid=432133) ERROR 09-15 19:43:23 [multiproc_executor.py:887]     PleOffloadWorker.wait_for_ready(self._ple_offload_worker_handle)
+(Worker_PP1_TP1 pid=432138) INFO 09-15 19:43:39 [model_runner.py:452] PleOffload: no PleOffloadLayer on this rank, no connector
+(Worker_PP1_TP0 pid=432137) INFO 09-15 19:43:39 [model_runner.py:452] PleOffload: no PleOffloadLayer on this rank, no connector

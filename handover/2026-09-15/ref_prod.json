@@ -1,0 +1,42 @@
+{
+ "label": "referenz-prod",
+ "model": "Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm-vlm-qwen3vl4b",
+ "url": "http://127.0.0.1:11435",
+ "tokens": 260,
+ "repeat_ok": true,
+ "runs": [
+  {
+   "prompt": 0,
+   "sha": "369bcfa9089deaca",
+   "tokens": 260,
+   "seconds": 4.288,
+   "tok_s": 60.63,
+   "head": "\nassistant\n<think>\n\n</think>\n\nTo explain how a pipelined CPU executes instructions, we must first understand the problem"
+  },
+  {
+   "prompt": 1,
+   "sha": "c0aa90558c9b3b86",
+   "tokens": 260,
+   "seconds": 4.58,
+   "tok_s": 56.77,
+   "head": "\n\n<think>\nThe user is asking in German for a detailed explanation of how a rainbow forms and why it is round. I need to "
+  },
+  {
+   "prompt": 2,
+   "sha": "5c0a59ecaba94444",
+   "tokens": 260,
+   "seconds": 3.974,
+   "tok_s": 65.43,
+   "head": "\n\ndef merge_intervals(intervals):\n\n<think>\nThe user wants me to write a Python function that merges overlapping interval"
+  },
+  {
+   "prompt": 0,
+   "sha": "369bcfa9089deaca",
+   "tokens": 260,
+   "seconds": 4.314,
+   "tok_s": 60.27,
+   "head": "\nassistant\n<think>\n\n</think>\n\nTo explain how a pipelined CPU executes instructions, we must first understand the problem"
+  }
+ ],
+ "time": "2026-09-15 19:24:56"
+}

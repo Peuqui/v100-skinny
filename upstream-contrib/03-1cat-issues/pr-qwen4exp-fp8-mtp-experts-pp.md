@@ -1,6 +1,6 @@
 # PR-Entwurf: [Bugfix][Qwen4Exp] Allow checkpoint FP8 MTP experts under pipeline parallelism
 
-Status: ENTWURF 14.09.2026, nicht gesendet. Worktree `1Cat-vLLM-pr-fp8mtppp`,
+Status: GESENDET 15.09.2026 als #639 (Go Peuqui). Worktree `1Cat-vLLM-pr-fp8mtppp`,
 Branch `qwen4exp-fp8-mtp-experts-pp` auf origin/main 02c87ab8, gestaged, nicht
 committet, nicht gepusht. Fork-Stand: work-main d228c725 (Tag verified-2026-09-14c
 auf 914333d6 + d228c725 Sync).

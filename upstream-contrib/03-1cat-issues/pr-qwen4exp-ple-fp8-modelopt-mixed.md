@@ -1,6 +1,6 @@
 # PR-Entwurf: [Bugfix][Qwen4Exp] Detect the FP8 PLE table from ModelOpt mixed-precision configs
 
-Status: ENTWURF 14.09.2026, nicht gesendet. Worktree `1Cat-vLLM-pr-plemixed`,
+Status: GESENDET 15.09.2026 als #640 (Go Peuqui). Worktree `1Cat-vLLM-pr-plemixed`,
 Branch `qwen4exp-ple-fp8-modelopt-mixed` auf origin/main 02c87ab8, gestaged,
 nicht committet, nicht gepusht. Fork-Stand: work-main 914333d6.
 

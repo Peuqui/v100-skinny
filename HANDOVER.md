@@ -1,4 +1,115 @@
-# Übergabe — Stand 14.09.2026 abends
+# Übergabe — Stand 15.09.2026 spät
+
+**Auftrag für die nächste Instanz: PLE-Überlaufkaskade, Paket 2 — vierstufiger
+Planer und echte Zeilen auf GPU 4.** Paket 1 (Durchstich) ist gebaut, gebootet
+und nach angepasstem Kriterium abgenommen. Stand in `STAND.md` Punkt 6,
+Entwurf und alle Messungen in `docs/PLE-KASKADE-ENTWURF.md` (zuerst Abschnitte
+3, 4, 8, 9, 10 lesen).
+
+**Arbeitsort:** 1Cat-Fork, Branch `qwen4exp-ple-tier-cascade` im
+PRODUKTIONS-Checkout `1Cat-vLLM-work`, Paket 1 = `98cba400`, gepusht nach `fork`. llama-swap lädt beim
+nächsten Flash-Next-Boot diesen Branch; ohne Schalter ist er bitgleich zur
+Produktion belegt (3 Kontroll-Läufe). Rückweg `git switch work-main`.
+
+**Was Paket 1 gebaut hat (Einstiegspunkte im Code):**
+- Schalter `VLLM_QWEN4EXP_PLE_STORE_DEVICE` (envs.py, Compile-Schlüssel).
+  `config/vllm.py`: `_qwen4exp_ple_cascade_requested` prüft den Vertrag nur
+  für Configs mit Modell (der Offload-Worker baut eine modellose
+  `VllmConfig()` — daran scheiterte Boot 1), `_apply_qwen4exp_ple_cascade_defaults`
+  setzt `VLLM_PLE_CPU_OFFLOAD` und den IPC-Pfad.
+- `PleOffloadLayer.offload_keeps_local_tables()`: Konstruktor und Gewichte
+  bleiben in den Rängen; `wait_offloaded_output` ist das Warten im Graphen.
+- `Qwen4ExpPinnedHostEmbedding.forward(ids, remote_rows=…)`: Maskierung wie
+  VocabParallelEmbedding, Zusammenführen per `where` nach rang-lokaler Id
+  `>= local_rows` VOR dem All-Reduce, Dequant der Worker-Bytes mit demselben
+  Kernel.
+- Registrierung trägt `remote_placements` (`PLERemotePlacement`: tp_start,
+  tp_end, local_rows); Worker bindet sie in `_bind_remote_placements`.
+- Worker-Seite `Qwen4ExpNGramEmbedding`: mmap-Shards (`_file_backed_shards`),
+  `bind_remote_placements` (lehnt `remote_rows > 0` noch ab, öffnet GPU 4),
+  `_remote_lookup` (füllt Nullen).
+- MRV2 `_setup_ple_offload`: Ränge ohne PleOffloadLayer bauen keinen Connector.
+
+**Paket 2 — was zu tun ist:**
+1. `plan_ple_placement`/`PLEPlacement` (`common/ple.py`) auf Bereiche
+   VRAM / Host / Store erweitern; Host-Kappung (`cap_host_budget_bytes`) immer
+   anwenden, explizite Überschreitung = Startfehler (heute umgeht ein
+   gesetztes `VLLM_QWEN4EXP_PLE_HOST_GIB` die Kappung); neues Budget
+   `VLLM_QWEN4EXP_PLE_STORE_GIB`. Die Ränge allokieren den Store-Anteil nicht.
+2. Worker lädt je TP-Rang dessen Store-Bereich vom mmap direkt auf die
+   Speicherkarte und gathert dort (`index_select`), statt Nullen zu schreiben.
+3. **Achtung Fan-out:** `PleOffloadRunner._handle_requests` rechnet EIN Ergebnis
+   und kopiert es in alle TP-Ränge. Mit Kaskade hat jeder Rang eigene Zeilen
+   (eigener Vokabelbereich) — die Ausgabe muss je Rang gebaut werden. Reihenfolge
+   der Bytes: je N-Gramm-Id in `(tokens × 16)`-Ordnung, 160 B je Id; Ids
+   außerhalb des Rangbereichs werden im Rang ohnehin maskiert.
+4. Unit-Tests: Planer-Grenzen, Kopie in drei Ziele, Worker-Gather gegen
+   Referenz, Merge mit echten Worker-Zeilen (Muster: die Tests
+   `test_pinned_host_ple_merges_the_workers_rows_bit_identically` und
+   `…_merge_stays_bit_identical_under_inductor`).
+5. Test-Boot vorher bei Peuqui ansagen. Abnahme: Host-Anteil wie eingestellt,
+   Rest auf GPU 4; MemAvailable und Swap nach dem Start (heute ~2 GiB / ~10
+   GiB), tok/s, Prefill-Zeit, Text gegen `ref_full.json` (Abweichung nur an
+   Beinahe-Gleichständen, siehe Kriterium), mehrere Host-Einstellungen.
+
+**Werkzeuge (`handover/2026-09-15/`):**
+- `ple_cascade_boot.sh OUTDIR [SWAP_MODEL] [REF_JSON] [SKIP_CONTROL]` — entlädt
+  Flash-Next, bootet den llama-swap-Eintrag exakt nach (Port 8093) mit
+  `CUDA_VISIBLE_DEVICES=0,2,1,3,4` und dem Schalter, Sonden, Log-Belege, Stopp
+  über `vllm-swap-stop`, optional Kontroll-Boot. Für Paket 2 die zusätzlichen
+  Env-Werte in der `overrides`-Zeile ergänzen. AIfred während des Boots
+  stoppen, sonst fordert Vigilantia Flash-Next an.
+- `ple_probe.py` (3 Prompts, greedy, 260 Token, voller Text),
+  `ple_logprobs.py` (Top-2 für Prompt 3), Referenzen `ref_full.json`,
+  `ref_logprobs.json` (Produktion 15.09., Tempo 56–67 tok/s).
+- Kalter Boot mit neuem Schalterwert ≈ 13,5 min, warm ≈ 7,5 min.
+
+**Nebenbefunde, nicht behoben (eigenes Paket vorgeschlagen):**
+- `tests/compile/passes/test_functionalization.py`: 7 bf16-Fälle scheitern auf
+  SM70 (Inductor lehnt BF16 ab).
+- `tests/models/qwen4_exp/test_qsa_reference.py`: 3× fehlendes Attribut
+  `block_table_buffer`, 1 Vergleichsfehler; weitere GPU-Tests laufen bei
+  belegten Karten in OOM.
+- Test-Verschmutzung über `vllm.envs` (setattr hinterlässt Modulattribute,
+  delenv merkt sich fehlende Variablen nicht): Helper `set_lazy_env` in
+  `tests/utils.py`, von neuen Tests genutzt; ältere Tests nutzen weiter
+  `monkeypatch.setattr(envs, …)`.
+
+**AIfred (erledigt, gepusht `18197f85`):** Chat-Liste sortiert nach
+`last_message_at` (nur neue Nachrichten heben an), Login-Autoload bleibt bei
+`last_seen`.
+
+## Übergabe — Stand 15.09.2026 abends (abgelöst)
+
+**Auftrag für die nächste Instanz: PLE-Überlaufkaskade bauen, Paket 1
+(Durchstich).** Entwurf mit allen Entscheidungen: `docs/PLE-KASKADE-ENTWURF.md`
+(zuerst lesen, Abschnitte 2, 4, 7, 8, 9).
+
+- Anlass: Flash-Next pinnt 12 GiB PLE im Host-RAM (je Rang 6 GiB, Tabelle
+  TP-geteilt, NICHT doppelt); der Mini swappt ~20 GiB. Messung und Sampler in
+  `handover/2026-09-15/` (`coldstart_mem.csv`, `memsample.sh`).
+- Reihenfolge der Stufen: VRAM → Host (konfiguriert, z. B. 10 GiB gesamt) →
+  freie GPU (GPU 4) → SSD. Budgets und Reserven konfigurierbar und dynamisch,
+  nichts fest eingebaut. SSOT: vorhandenen Planer, Host-Budget-/Reserve-
+  Funktionen und den PLE-Offload-Worker (`vllm/v1/ple_offload/`) übernehmen
+  und anpassen.
+- NIE vorschlagen, die ganze PLE in den VRAM der Rechenkarten zu legen
+  (`PLE_HOST_GIB=0`) — passt nicht.
+- Keine Ankündigung bei 1Cat; im Fork bauen und abnehmen, danach PR anbieten.
+- **Arbeitsort:** Branch `qwen4exp-ple-tier-cascade` im PRODUKTIONS-Checkout
+  `1Cat-vLLM-work` (von work-main `d228c725`, noch ohne Änderung). llama-swap
+  lädt beim nächsten Flash-Next-Boot diesen Branch. Neue Stufen nur per
+  Umgebungsvariable aktiv; vor jedem Test-Boot Unit-Tests; jeden Test-Boot
+  (≈ 8 min ohne Flash-Next in AIfred) vorher bei Peuqui ansagen; zum Schluss
+  Kontroll-Boot mit unverändertem Eintrag, bitgleich. Rückweg:
+  `git switch work-main`.
+- Größtes Risiko: Offload-Worker lief nie mit MTP k=4 + PP2 + async; Produktion
+  nutzt `FULL_AND_PIECEWISE` (volle Decode-Graphen), Warten über
+  `ple_offload_wait` im Graphen.
+- Nicht committet: `docs/PLE-KASKADE-ENTWURF.md`, `handover/2026-09-15/`.
+  Commit/Push nur auf Peuquis Ansage.
+
+## Übergabe — Stand 14.09.2026 abends (abgelöst)
 
 **Stand in einem Absatz (14.09. abends):** 1Cat main `80c88e8d` ist in work-main
 gemergt (`1d3439f2`, Neubau, Tag `verified-2026-09-14`), danach der Overlay

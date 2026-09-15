@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-11 abends.** Dieses Dokument beschreibt, WIE der Stack heute
+**Stand 2026-09-11 abends, Punkt 6 aktualisiert 2026-09-15 spät.** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -815,66 +815,35 @@ Augustwerten (6,5 min Boot).
    wären die Kandidaten. Herleitung: Gedächtnisnotiz
    `project_z_slice_materialization_closed`, Kasten in `HANDOVER.md`.
 
-6. **PLE-Überlaufkaskade — vier Stufen statt zwei.** Zielbild (Peuqui, 06.09.,
-   bekräftigt 08.09.): die PLE-Tabelle läuft über wie ein Glas —
-   **VRAM der Rechenkarten → VRAM überschüssiger Karten → gepinnter Host-RAM →
-   SSD**, jede Stufe bis zu ihrem gemessenen Budget, hardware-agnostisch. Ob
-   die freie Karte oder der Host-RAM die zweite Stufe wird, ist offen: der Host
-   ist ein Hop weniger, die freie Karte hat mehr Platz. **Der Vergleich, der
-   zählt, ist freie GPU gegen Platte** — 30 GB Host-RAM reichen für 50,7 GiB
-   PLE nicht.
+6. **PLE-Überlaufkaskade — Paket 1 (Durchstich) gebootet 15.09., Paket 2 als
+   Nächstes.** Reihenfolge der Stufen VRAM → Host → freie GPU → SSD, Budgets
+   konfigurierbar und dynamisch; Entwurf, Entscheidungen und Messungen in
+   `docs/PLE-KASKADE-ENTWURF.md` (Abschnitte 9 und 10), Werkzeuge in
+   `handover/2026-09-15/`. Vorgezogen am 15.09., weil der Mini nach jedem
+   Flash-Next-Start zäh ist (12 GiB PLE gepinnt, MemAvailable ~2 GiB, Swap
+   ~10 GiB).
 
-   **Warum (korrigiert 11.09. abends):** Flash-Next-PLE = 50,7 GiB (ein
-   Tensor, 128 Shards). Bei TP2×PP2 liegt GPU 4 (V100, 32 GB) brach. Die
-   frühere Begründung „der MTP-Betriebspunkt hängt bei MML 16384, weil PLE die
-   RTX-Stufe füllt" ist **falsch**: der llama-swap-Produktionseintrag bootet
-   mit `--max-model-len 262144`, KV-Cache 400.187 Token (1,53× 262k), der
-   KV-Bedarf für 262k liegt bei 0,31 GiB (nur 12 von 48 Schichten Attention).
-   Die 16384 standen nur im Abnahme-Skript. **Für Flash-Next braucht es die
-   Kaskade nicht.** Motivation (Peuqui 11.09.): Zukunft — Qwen4 nach der
-   Next-Architektur mit größeren PLE-Tabellen, die sonst in TP2×PP2 nicht mehr
-   passen; Nutzer mit nur zwei Karten. **TP4 ist keine Motivation** (drei V100
-   plus zwei RTX 8000, ungleiche Karten nur über PP). GPU-4-Budget = Rest nach
-   dem gemessenen Bedarf von Vigilantia-VLM und TTS des jeweiligen
-   llama-swap-Profils, per Umgebungsvariable aus der Kalibration.
-
-   **Zwei Fakten aus dem Code (11.09.):** Die Tabelle ist hash-adressiert
-   (16 Köpfe, N-Gramm modulo Primzahlen ab 20 Mio.), „niedrige Token-IDs =
-   heiße Zeilen" gilt nicht — jede belegte Stufe wird anteilig bei jedem
-   Schritt getroffen, die langsamste bestimmt die Schrittlatenz mit; die
-   Disk-Stufe bleibt auf dem Mini planmäßig leer (Generalitäts-Feature). Die
-   Disk-Stufe existiert bei 1Cat als separater Offload-Prozess
-   (`VLLM_PLE_DISK_OFFLOAD`, mmap + MADV_RANDOM, bis 32 Threads, CUDA-IPC),
-   nur in der Hybrid-Spur ohne MTP und nur für den Prefill; der mmap-Leser ist
-   wiederverwendbar. Paketierung: (1) Planer vierstufig + Vorabholen +
-   GPU-4-Stufe, (2) Disk-Anschluss + Messung. **Reihenfolge (Peuqui 11.09.
-   abends): ans Ende des Plans, hinter Punkt 10.**
-
-   **Wo im Code (geprüft 08.09.):**
-   - Die eigentliche Arbeit liegt im Platzierungsplaner
-     `plan_ple_placement`/`PLEPlacement` (`common/ple.py`) und im Gather in
-     `Qwen4ExpPinnedHostEmbedding` (`nvidia/ple_layer.py`), auf dem
-     #528-Code — von zwei auf vier Stufen erweitern, Budgets aus
-     `mem_get_info` je Gerät.
-   - **Block A** in `config/vllm.py` (`if sm70_flash_v100_baseline:`) ist die
-     Stelle, an der die Stufen scharfgeschaltet werden:
-     `_apply_sm70_qwen38_hybrid_ple_defaults` setzt `VLLM_SM70_QWEN38_HYBRID_PLE`,
-     `VLLM_PLE_CPU_OFFLOAD` und `VLLM_PLE_DISK_OFFLOAD`. Dort käme die Vorgabe
-     für eine neue Stufe hin. **Achtung:** der Aufruf hängt an
-     `_is_sm70_qwen38_nomtp_dual_compile_contract` — er greift nur **ohne MTP**
-     und feuert bei unseren k=4-Läufen gar nicht; dort kommt die Platzierung
-     über `PLE_HOST_GIB` von der Kommandozeile.
-   - **Block B** (`if sm70_flash_0dot3_compile_graph:`) ist **nicht** beteiligt,
-     der setzt nur Compile- und Broadcast-Vorgaben.
-   - Stufen jenseits des Rechen-VRAM sind nicht graph-capturable (kein P2P):
-     Zeilen für die bekannten nächsten Token-IDs vor dem Decode-Schritt in
-     einen Puffer auf der Rechenkarte vorabholen, Prefill eager.
-   - Zeilen nach Token-ID aufteilen (niedrige IDs = häufige Token bei BPE),
-     dann hält die schnellste Stufe automatisch die heißen Zeilen.
-
-   **Reihenfolge — ausdrücklich festgelegt (Peuqui, 08.09.):** Die Kaskade wird
-   erst angegangen, wenn die laufende Turing-Arbeit **maximiert, optimiert und
-   als Pull Request veröffentlicht** ist. Vorher nicht anfangen.
+   - **Stand Code** (1Cat-Fork, Branch `qwen4exp-ple-tier-cascade`): Schalter
+     `VLLM_QWEN4EXP_PLE_STORE_DEVICE=<sichtbarer Index>` startet den
+     vorhandenen PLE-Offload-Worker neben den residenten Tabellen. Die Ränge
+     gathern VRAM- und Host-Stufe wie bisher, warten per `ple_offload_wait` im
+     Graphen und führen die Worker-Zeilen vor dem TP-All-Reduce per `where`
+     zusammen. Der Worker hält die Checkpoint-Shards nur als mmap und liefert
+     in Paket 1 Nullen; meldet ein Rang Zeilen jenseits seiner residenten
+     Stufen, bricht er mit „store tier is not built yet“ ab.
+   - **Belegt (15.09.):** läuft mit MTP k=4, TP2×PP2, async, volle Graphen,
+     0 Tracebacks; ohne Schalter 3× bitgleich zur Produktion; mit Schalter
+     2–5 % langsamer, ein Prompt kippt an einem Beinahe-Gleichstand (Token 76).
+     Das Zusammenführen ist unter Inductor bitgleich, die Drift kommt aus der
+     Neu-Bündelung des PLE-Graphstücks.
+   - **Abnahme (Peuqui 15.09.):** Bitgleiche Ausgaben sind bei Flash-Next über
+     Graph-Änderungen nicht zu verlangen. Kriterium: unveränderter Pfad
+     bitgleich, Kaskade fehlerfrei, Abweichungen nur an Beinahe-Gleichständen,
+     Tempo dokumentiert.
+   - **Fakten, die bleiben:** Tabelle hash-adressiert (jede belegte Stufe wird
+     bei jedem Schritt anteilig getroffen, keine heißen Zeilen); TP-geteilt,
+     je Rang 160.000.768 Zeilen; SSD-Stufe auf dem Mini planmäßig leer; TP4 ist
+     keine Motivation; GPU-4-Budget = Rest nach VLM/TTS-Spitzenbedarf.
 
 7. **QUASAR-QAT ist in diesem Stack unbrauchbar — Ursache offen** (09.09.).
    1Cats DFlash2-Referenzcheckpoint `QUASAR-QAT/Qwen3.8-27B-QUASAR-NVFP4`

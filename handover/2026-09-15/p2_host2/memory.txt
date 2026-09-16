@@ -1,0 +1,18 @@
+== vor Phase 1 06:06:12
+MemAvailable:   26716512 kB
+SwapFree:       30466464 kB
+Shmem:             27228 kB
+0, 0 MiB, 49152 MiB
+1, 0 MiB, 32768 MiB
+2, 0 MiB, 49152 MiB
+3, 0 MiB, 32768 MiB
+4, 0 MiB, 32768 MiB
+== Phase 1 nach Boot (up_841s) 06:20:13
+MemAvailable:   12329080 kB
+SwapFree:       20146084 kB
+Shmem:           4517456 kB
+0, 43979 MiB, 49152 MiB
+1, 31358 MiB, 32768 MiB
+2, 44161 MiB, 49152 MiB
+3, 31358 MiB, 32768 MiB
+4, 5178 MiB, 32768 MiB

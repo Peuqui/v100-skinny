@@ -1,0 +1,36 @@
+{
+ "label": "produktion",
+ "model": "Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm-vlm-qwen3vl4b",
+ "url": "http://127.0.0.1:11435",
+ "runs": [
+  {
+   "words": 13000,
+   "repeat": 0,
+   "prompt_tokens": 13000,
+   "seconds": 20.873,
+   "tok_s": 622.8
+  },
+  {
+   "words": 13000,
+   "repeat": 1,
+   "prompt_tokens": 13001,
+   "seconds": 11.815,
+   "tok_s": 1100.3
+  },
+  {
+   "words": 39000,
+   "repeat": 0,
+   "prompt_tokens": 39000,
+   "seconds": 35.704,
+   "tok_s": 1092.3
+  },
+  {
+   "words": 39000,
+   "repeat": 1,
+   "prompt_tokens": 39000,
+   "seconds": 35.617,
+   "tok_s": 1095.0
+  }
+ ],
+ "time": "2026-09-16 06:51:16"
+}

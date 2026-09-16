@@ -1,4 +1,31 @@
-# Übergabe — Stand 15.09.2026 spät
+# Übergabe — Stand 16.09.2026 früh
+
+**PLE-Überlaufkaskade Paket 2 ist gebaut und gemessen** (Planer dreistufig,
+echte Zeilen auf GPU 4). Alle Messungen in `docs/PLE-KASKADE-ENTWURF.md`
+Abschnitt 11, Belege in `handover/2026-09-15/p2_*`. Kurz:
+
+- Host 2 GiB je Rang → 4,3 GiB auf GPU 4, MemAvailable nach Start 12,3 GiB
+  statt ~2 GiB; Host 0 → 8,3 GiB auf GPU 4, MemAvailable 16,8 GiB.
+- Text in allen Läufen bitgleich zur Produktionsreferenz, auch im
+  Kontroll-Boot; Decode kostet 2,3–2,4 %, Prefill unverändert.
+- `VLLM_QWEN4EXP_PLE_HOST_GIB` bleibt fester Anteil je Rang, wird aber einmal
+  vor dem Start geprüft (`check_ple_host_share` in `create_engine_config`).
+  Neu: `VLLM_QWEN4EXP_PLE_STORE_GIB` (gesamt, Pflicht mit `STORE_DEVICE`).
+- Kein Fan-out je Rang nötig: Store-Bereiche der TP-Ränge sind disjunkt, ein
+  Worker-Puffer bedient beide Ränge (Test + Mutationsprobe).
+- llama-swap-Eintrag `…-vllm-ple-cascade` angelegt (Sicherung in
+  `~/.config/llama-swap/backups/`). Test-Boots NUR über llama-swap fahren:
+  aus dem Terminal gestartet, killt `systemd-oomd` ab 50 % Druck den ganzen
+  VSCode-Scope samt Treiberskript (zweimal passiert, 15.09. 21:43 und
+  16.09. 06:53).
+
+**Offen / Entscheidungen für Peuqui:** Code ist uncommitted im
+Produktions-Checkout `1Cat-vLLM-work` (Branch `qwen4exp-ple-tier-cascade`);
+Commit, Produktionsumstellung auf die Kaskade und PR an 1Cat auf Ansage.
+Danach Paket 3 (SSD-Stufe), Paket 4 (Loader-Spitze), Paket 5 (AIfred berechnet
+das Store-Budget).
+
+## Übergabe — Stand 15.09.2026 spät (abgelöst)
 
 **Auftrag für die nächste Instanz: PLE-Überlaufkaskade, Paket 2 — vierstufiger
 Planer und echte Zeilen auf GPU 4.** Paket 1 (Durchstich) ist gebaut, gebootet

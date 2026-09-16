@@ -1,0 +1,36 @@
+{
+ "label": "kaskade",
+ "model": "Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm-ple-cascade",
+ "url": "http://127.0.0.1:11435",
+ "runs": [
+  {
+   "words": 13000,
+   "repeat": 0,
+   "prompt_tokens": 13000,
+   "seconds": 12.096,
+   "tok_s": 1074.7
+  },
+  {
+   "words": 13000,
+   "repeat": 1,
+   "prompt_tokens": 13001,
+   "seconds": 11.806,
+   "tok_s": 1101.2
+  },
+  {
+   "words": 39000,
+   "repeat": 0,
+   "prompt_tokens": 39000,
+   "seconds": 35.585,
+   "tok_s": 1096.0
+  },
+  {
+   "words": 39000,
+   "repeat": 1,
+   "prompt_tokens": 39000,
+   "seconds": 35.529,
+   "tok_s": 1097.7
+  }
+ ],
+ "time": "2026-09-16 08:56:30"
+}

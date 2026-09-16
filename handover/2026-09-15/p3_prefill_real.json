@@ -1,0 +1,36 @@
+{
+ "label": "kaskade-echttext",
+ "model": "Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm",
+ "url": "http://127.0.0.1:11435",
+ "runs": [
+  {
+   "words": 9000,
+   "repeat": 0,
+   "prompt_tokens": 22485,
+   "seconds": 34.413,
+   "tok_s": 653.4
+  },
+  {
+   "words": 9000,
+   "repeat": 1,
+   "prompt_tokens": 21749,
+   "seconds": 32.815,
+   "tok_s": 662.8
+  },
+  {
+   "words": 28000,
+   "repeat": 0,
+   "prompt_tokens": 74316,
+   "seconds": 111.838,
+   "tok_s": 664.5
+  },
+  {
+   "words": 28000,
+   "repeat": 1,
+   "prompt_tokens": 71128,
+   "seconds": 107.428,
+   "tok_s": 662.1
+  }
+ ],
+ "time": "2026-09-16 12:03:40"
+}

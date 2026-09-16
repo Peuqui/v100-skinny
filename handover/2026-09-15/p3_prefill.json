@@ -1,0 +1,36 @@
+{
+ "label": "ssd-kaskade",
+ "model": "Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-pledisk-vllm",
+ "url": "http://127.0.0.1:11435",
+ "runs": [
+  {
+   "words": 13000,
+   "repeat": 0,
+   "prompt_tokens": 13000,
+   "seconds": 16.168,
+   "tok_s": 804.0
+  },
+  {
+   "words": 13000,
+   "repeat": 1,
+   "prompt_tokens": 13001,
+   "seconds": 11.823,
+   "tok_s": 1099.6
+  },
+  {
+   "words": 39000,
+   "repeat": 0,
+   "prompt_tokens": 39000,
+   "seconds": 35.588,
+   "tok_s": 1095.9
+  },
+  {
+   "words": 39000,
+   "repeat": 1,
+   "prompt_tokens": 39000,
+   "seconds": 35.526,
+   "tok_s": 1097.8
+  }
+ ],
+ "time": "2026-09-16 11:19:51"
+}

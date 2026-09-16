@@ -1,7 +1,7 @@
 # Entwurf: PLE-Überlaufkaskade VRAM → Host → freie GPU → SSD
 
-Stand 2026-09-15 spät: Paket 1 gebaut, gebootet und abgenommen (Abschnitt 10);
-nächstes Paket 2. Umsetzung im Fork
+Stand 2026-09-16: Pakete 1 bis 3 gebaut und abgenommen (Abschnitte 10 bis 12);
+offen sind Paket 4 (Loader-Spitze) und Paket 5 (AIfred berechnet das Budget). Umsetzung im Fork
 `1Cat-vLLM-work` (work-main). Hintergrund und frühere Entscheidungen:
 Projekt-Memory `project_ple_tier_cascade`.
 
@@ -292,3 +292,135 @@ bitgleich (erfüllt, 3×), Kaskade ohne Fehler, Abweichung nur an
 Beinahe-Gleichständen, Tempo-Kosten dokumentiert. Werkzeuge:
 `handover/2026-09-15/ple_probe.py`, `ple_logprobs.py`, `ple_cascade_boot.sh`
 (Parameter: OUTDIR, SWAP_MODEL, REF_JSON, SKIP_CONTROL).
+
+## 11. Paket 2 — Umsetzung (2026-09-15 nachts)
+
+Entscheidungen beim Bauen:
+
+1. **Planer** (`plan_ple_placement`, `PLEPlacement` mit `vram_rows`,
+   `host_rows`, `store_rows`): Der Host bekommt sein Budget, der VRAM den Rest
+   bis zu seinem Budget, der Store den Rest. Ohne Kaskade gibt es kein
+   VRAM-Budget (wie bisher: fester Host-Anteil, Rest unvermessen auf die
+   Karte). Mit Kaskade wird der VRAM gemessen (`_device_spill_bytes`, dieselbe
+   Rechnung wie der Automatikmodus), der Überlauf geht auf die Speicherkarte.
+   Rest jenseits des Store-Budgets = Startfehler.
+2. **`VLLM_QWEN4EXP_PLE_HOST_GIB` bleibt ein fester Anteil je Rang.** Er wird
+   einmal geprüft, in `create_engine_config` vor dem Start der Worker
+   (`check_ple_host_share`): Anteil × TP ≤ MemAvailable − Reserve, sonst
+   Startfehler. Nicht in `VllmConfig.__post_init__`, weil der Modellaufbau die
+   Config in jedem Worker neu baut (`with_hf_config`), während Stufe 0 schon
+   pinnen kann; nicht im Rang, weil beide Ränge gleichzeitig platzieren und
+   einer die Anteile des anderen doppelt zählen würde. Der Automatikmodus
+   kappt weiter im Rang.
+3. **`VLLM_QWEN4EXP_PLE_STORE_GIB`**: Gesamtbudget auf der Speicherkarte,
+   gleichmäßig auf die TP-Ränge; Pflicht mit `STORE_DEVICE`, ohne ihn Fehler.
+   Der Worker prüft beim Binden den freien Speicher der Karte.
+4. **Kein Fan-out je Rang nötig** (Übergabe-Punkt 3 entfällt): Die
+   Store-Bereiche der Ränge sind im globalen Id-Raum disjunkt
+   (`plan_ple_store_segments`), ein Rang übernimmt nur Ids seines Bereichs und
+   maskiert fremde. Ein Gather über die aneinandergelegten Bereiche
+   (`ple_store_indices`) füllt einen Puffer für alle Ränge;
+   `_handle_requests` bleibt unverändert. Test
+   `test_one_worker_buffer_merges_into_every_rank_bit_identically` (zwei
+   simulierte Ränge, Summe bitgleich zur vollen Tabelle), Mutationsprobe
+   (genullte Indizes, fehlende Offsets) schlägt an.
+5. **Laden:** Ränge kopieren über `copy_ple_embedding_shard_tiers_` (VRAM,
+   Host, Store = `None`), der Worker lädt die Store-Bereiche beim Binden aus
+   den gemappten Shards als Rohbytes auf die Speicherkarte. Pro Schritt:
+   Indizes auf der CPU, `index_select` auf der Karte, blockierende Kopie in
+   den gepinnten Puffer, danach wie bisher asynchron in die Ränge.
+6. **SSOT:** Budget-/Reserve-Helfer liegen in `common/ple.py` und werden von
+   Config und Rang genutzt; die doppelte STORE_DEVICE-Prüfung aus Paket 1 ist
+   weg.
+
+Tests: 147 in beiden Reihenfolgen grün (PLE, Offload-Worker, SM70-Config,
+Executor), ruff/typos/mypy 3.10 sauber.
+
+### Abnahme 2026-09-16 (Belege in `handover/2026-09-15/p2_*`)
+
+| Lauf | Host gepinnt | GPU 4 | MemAvailable nach Start | Text | Decode tok/s |
+|---|---|---|---|---|---|
+| Produktion (Referenz `ref_full.json`) | 12 GiB | — | ~2 GiB | Referenz | 60,5 / 56,5 / 66,8 / 60,2 |
+| Kaskade `PLE_HOST_GIB=2` | 4 GiB | 4,3 GiB (28,85 Mio. Zeilen) | **12,3 GiB** | 4/4 bitgleich | 59,0 / 54,9 / 65,0 / 58,8 |
+| Kaskade `PLE_HOST_GIB=0` | 0 | 8,3 GiB (55,70 Mio. Zeilen) | **16,8 GiB** | 4/4 bitgleich | 59,1 / 55,1 / 65,3 / 58,8 |
+| Kontrolle, Eintrag unverändert | 12 GiB | — | ~2 GiB | 4/4 bitgleich | 60,1 / 56,0 / 65,9 / 60,6 |
+| llama-swap-Eintrag `-ple-cascade` | 4 GiB | 4,3 GiB | 15,7 GiB | 4/4 bitgleich | 59,2 / 55,1 / 64,9 / 59,2 |
+
+- **Prefill unverändert** (`ple_prefill.py`, je Lauf eigener Zufallstext gegen
+  den Prefix-Cache): Produktion 13k 11,8 s / 39k 35,6 s = 1.092–1.100 tok/s,
+  Kaskade 13k 11,8–12,1 s / 39k 35,5 s = 1.075–1.098 tok/s.
+- **Decode kostet 2,3–2,4 %.** Die Store-Stufe wird bei jedem Schritt
+  anteilig getroffen (Hash-Adressierung), der Weg ist Prozesswechsel plus zwei
+  PCIe-Hops über den USB4-Tunnel.
+- Laden der Store-Zeilen: 84,6 s für 4,3 GiB, 157,6 s für 8,3 GiB, vom mmap
+  direkt auf die Karte, ohne anonyme Kopie im Host.
+- Placement je Rang bei `HOST_GIB=0`: 131,5 / 132,8 Mio. Zeilen im VRAM
+  (19,6 / 19,8 GiB), Rest auf der Speicherkarte — die Ränge sind ungleich, weil
+  der gemessene VRAM-Überlauf je Karte leicht abweicht.
+- **Fallstrick beim Messen:** Test-Boots aus dem Terminal laufen im
+  Benutzer-Slice; `systemd-oomd` killt dort ab 50 % Speicherdruck die Einheit
+  mit dem größten Druck — zweimal traf es den kompletten VSCode-Scope (und
+  damit Terminal, Treiberskript und Test-Server). Boots über llama-swap laufen
+  im System-Slice und sind davon nicht betroffen. Deshalb gibt es den Eintrag
+  `Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm-ple-cascade` (Sicherung der
+  Config unter `~/.config/llama-swap/backups/`).
+
+## 12. Paket 3 — SSD-Stufe (2026-09-16)
+
+Umsetzung:
+
+1. **Vierte Stufe im Planer.** Reihenfolge Host-Budget, gemessener VRAM,
+   Store-Budget, Rest auf die gemappte Checkpoint-Datei. Ohne
+   `VLLM_QWEN4EXP_PLE_DISK=1` ist ein Rest weiterhin ein Startfehler; die
+   Meldung nennt beide Auswege (Budgets erhöhen oder SSD-Stufe erlauben).
+2. **Kaskade ohne freie Karte.** Der Schalter allein startet den Worker
+   (`ple_cascade_configured`), `STORE_GIB` ist nur mit `STORE_DEVICE` Pflicht.
+   Damit deckt die Kaskade den Zwei-Karten-Fall ab: VRAM → Host → SSD.
+3. **Der vorhandene mmap-Leser wird wiederverwendet.** Sein Kern (sortierte
+   eindeutige Ids je Shard, `MADV_RANDOM`, Thread-Pool) liegt als
+   `_gather_mapped_rows` und bedient die alte Disk-Spur wie die neue Stufe.
+   `PLERemotePlacement` trägt jetzt zusätzlich `store_rows`; was darüber
+   hinausgeht, ist die SSD-Stufe (`plan_ple_worker_segments` liefert beide
+   Segmentlisten).
+4. **Ein Puffer für beide Außenstufen:** Store-Zeilen per `index_select` von
+   der Karte, SSD-Zeilen per mmap, beide in dieselbe Ausgabe; jeder Rang nimmt
+   nur die Slots seiner eigenen Segmente.
+
+Tests: 148 im PLE-Satz grün (beide Reihenfolgen), Executor-Tests grün bei
+freien Karten; Mutationsprobe (genullte bzw. verschobene SSD-Zeilen) lässt die
+beiden neuen Worker-Tests durchfallen. ruff/typos/mypy sauber.
+
+### Abnahme 2026-09-16 (Eintrag `…-MTP-PLE-Disk-vllm`, Store-Budget 1 GiB)
+
+| | Rang 0 | Rang 1 | Worker gesamt |
+|---|---|---|---|
+| VRAM | 19,60 GiB | 19,79 GiB | — |
+| Host gepinnt | 2,00 GiB | 2,00 GiB | 4,0 GiB |
+| Store (GPU 4) | 0,50 GiB | 0,50 GiB | 1,0 GiB (6,71 Mio. Zeilen, Laden 25,5 s) |
+| SSD | 1,74 GiB | 1,56 GiB | 3,3 GiB (22,14 Mio. Zeilen) |
+
+- Text **4/4 bitgleich** zur Produktionsreferenz, zweimal gemessen.
+- Decode 58,1 / 53,7 / 63,8 / 58,7 tok/s, Wiederholung 59,1 / 55,3 / 65,6 /
+  58,9 — also rund 1,5 % unter der Kaskade ohne SSD-Stufe und 3–4 % unter der
+  Produktion.
+- Prefill unverändert: 13k in 11,8 s, 39k in 35,5 s (1.096–1.100 tok/s).
+- MemAvailable nach dem Start 12,2 GiB, GPU 4 belegt 1,8 GiB.
+
+**Einschränkung, ehrlich gemessen:** Die SSD-Stufe wurde in diesen Läufen
+**nicht von der Platte** bedient. Der Offload-Worker hält die Shards gemappt;
+seine Dateiseiten bleiben resident (`RssFile` 967 MiB), und
+`posix_fadvise(DONTNEED)` kann gemappte Seiten nicht verwerfen — gemessen am
+Worker-Prozess: 76 KiB gelesen und 18 Major-Faults über eine ganze Sonde (warm),
+0 MiB und 3 Major-Faults nach dem Freigabeversuch. Die Zahlen oben belegen also
+den Mechanismus und die Bitgleichheit, nicht die Latenz echter Plattenzugriffe.
+Dafür müsste der Page-Cache mit Root-Rechten geleert werden
+(`drop_caches`) oder die SSD-Stufe deutlich größer als der freie RAM sein.
+
+**Nachtrag zur Prefill-Messung (16.09., Peuqui):** `ple_prefill.py` baute seine
+Prompts aus 16 Wörtern. Ein MoE-Modell routet so einen Text an wenige Experten
+und misst viel zu schnell — 1.100 tok/s gegen die im Alltag üblichen 550–580.
+Die Sonde liest jetzt echten Fließtext (Markdown der Repos, je Lauf ein anderer
+Abschnitt gegen den Prefix-Cache) und misst auf der Produktion mit Kaskade
+653–664 tok/s bei 22k und 74k Prompt-Token. Der Vergleich Kaskade gegen
+Produktion bleibt gültig, weil beide Seiten denselben Text bekamen; die
+absoluten Zahlen in Abschnitt 11 und 12 sind es nicht.

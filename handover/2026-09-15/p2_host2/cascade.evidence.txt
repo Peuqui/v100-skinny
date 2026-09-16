@@ -1,0 +1,63 @@
+Tracebacks: 0
+(APIServer pid=883149) INFO 09-16 06:06:20 [vllm.py:1921] Qwen4Exp PLE overflow cascade: store device 4; the PLE offload worker serves the rows beyond the resident tiers.
+(APIServer pid=883149) INFO 09-16 06:06:21 [ple.py:504] Qwen4Exp PLE host share 2.0 GiB per rank fits: 2 ranks, 24.67 GiB available, 7.67 GiB kept in reserve.
+(Worker pid=883760) INFO 09-16 06:06:40 [gpu_worker.py:264] PleOffload: spawning worker (rank=0, local_rank=0, dp_size=1, tp_size=2, num_workers=2, ipc_addr=ipc:///tmp/64404048-4e1c-48b5-abac-5be57c98d74c).
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [worker.py:161] PLE CPU lookup affinity: GPU-local NUMA node 0, CPUs 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15; memory policy is local-first with host-RAM fallback.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [parallel_state.py:1818] world_size=1 rank=0 local_rank=0 distributed_init_method=file:///tmp/vllm_ple_offload_idye0z69/store backend=gloo
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [scheduler.py:243] Chunked prefill is enabled with max_num_batched_tokens=2048.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [vllm.py:1711] Asynchronous scheduling is enabled.
+(PleOffloadWorker pid=884239) WARNING 09-16 06:06:46 [vllm.py:2275] Ignoring VLLM_SM70_FLASH_V100_0DOT3_COMPILE_GRAPH=1 because the current platform is not SM70 CUDA or VLLM_SM70_FLASH_ATTN_V100 is disabled.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [kernel.py:278] Final IR op priority after setting platform defaults: IrOpPriorityConfig(rms_norm=['native'], fused_add_rms_norm=['native'])
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [vllm.py:3070] Extending SM70 Flash-V100 0.0.3 compile range endpoint to 2049 for CUDA graph capture.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [parallel_state.py:2131] rank 0 in world size 1 is assigned as DP rank 0, PP rank 0, PCP rank 0, TP rank 0, EP rank 0, EPLB rank N/A
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [worker.py:382] Distributed environment initialized (backend=gloo, rank=0, world_size=1).
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:46 [worker.py:591] Initializing model structure for PLE weight discovery ...
+(PleOffloadWorker pid=884239) WARNING 09-16 06:06:51 [qwen_gdn_linear_attn.py:1758] FlashQLA-SM70 GDN prefill cannot run on Turing (sm75): the kernel asks for 86016 B of dynamic shared memory per block and Turing caps the opt-in limit at 65536 B, so the worker dies during engine init. Its VLK CUDA variant does fit but is slower than Triton/FLA from 2048 tokens per chunk upwards. Falling back to Triton/FLA.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:51 [qwen_gdn_linear_attn.py:1815] Using Triton/FLA GDN prefill kernel (requested=auto, head_k_dim=128, model_dtype=torch.float16).
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:51 [qwen_gdn_linear_attn.py:2582] SM70 FlashQLA GDN decode route enabled.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:52 [nvfp4.py:347] Using 'MARLIN' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'SM70_SKINNY', 'EMULATION'].
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:52 [shared_experts.py:76] Disabling MoE shared_experts cuda stream for this layer via legacy Qwen3Next SM70 overlap gate.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:52 [ple_layer.py:1130] Qwen4Exp PLE cascade worker: 128 checkpoint shards stay file-backed, store device 4.
+(PleOffloadWorker pid=884239) INFO 09-16 06:06:52 [flash_attn.py:640] Using FlashAttention version 2
+(PleOffloadWorker pid=884239) WARNING 09-16 06:07:02 [compilation.py:1325] Op 'quant_fp8' not present in model, enabling with '+quant_fp8' has no effect
+(PleOffloadWorker pid=884239) INFO 09-16 06:07:02 [worker.py:611] Found 1 PleOffloadLayer(s): ['language_model.model.layers.1.ple.ple_embedding']
+(PleOffloadWorker pid=884239) INFO 09-16 06:07:02 [worker.py:264] PLE host-memory requirement: 0.00 GiB weights/buffers, 17.21 GiB currently available of 30.68 GiB total (3.22 GiB swap in use).
+(PleOffloadWorker pid=884239) INFO 09-16 06:07:06 [weight_utils.py:978] Filesystem type for checkpoints: EXT4. Checkpoint size: 123.57 GiB. Available RAM: 18.24 GiB.
+(PleOffloadWorker pid=884239) INFO 09-16 06:07:06 [weight_utils.py:1008] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre) and the checkpoint size (123.57 GiB) exceeds 90% of available RAM (18.24 GiB).
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:   0% Completed | 0/11 [00:00<?, ?it/s]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:   9% Completed | 1/11 [00:23<03:53, 23.36s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  18% Completed | 2/11 [01:01<04:46, 31.81s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  27% Completed | 3/11 [01:38<04:36, 34.55s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  36% Completed | 4/11 [02:06<03:42, 31.84s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  45% Completed | 5/11 [02:34<03:01, 30.27s/it]
+(Worker_PP0_TP0 pid=883760) INFO 09-16 06:09:40 [ple_layer.py:664] Qwen4Exp PLE auto placement: 44.91 usable at gmu=0.95, 19.76 already allocated, 1.76 KV for 262144 tokens, 3.78 reserve -> 4.24 of the table do not fit in device memory
+(Worker_PP0_TP1 pid=883761) INFO 09-16 06:09:40 [ple_layer.py:664] Qwen4Exp PLE auto placement: 44.91 usable at gmu=0.95, 19.58 already allocated, 1.76 KV for 262144 tokens, 3.78 reserve -> 4.06 of the table do not fit in device memory
+(Worker_PP0_TP1 pid=883761) INFO 09-16 06:09:43 [ple_layer.py:786] Qwen4Exp PLE table placement: 132782254 of 160000768 rows in device memory (19.79), 13421772 rows in pinned host memory (2.0), 13796742 rows on the store tier (2.06)
+(Worker_PP0_TP0 pid=883760) INFO 09-16 06:09:43 [ple_layer.py:786] Qwen4Exp PLE table placement: 131523962 of 160000768 rows in device memory (19.6), 13421772 rows in pinned host memory (2.0), 15055034 rows on the store tier (2.24)
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  55% Completed | 6/11 [03:13<02:47, 33.52s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  64% Completed | 7/11 [03:55<02:24, 36.24s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  73% Completed | 8/11 [04:13<01:30, 30.31s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  82% Completed | 9/11 [04:19<00:45, 22.86s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards:  91% Completed | 10/11 [04:19<00:15, 15.85s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards: 100% Completed | 11/11 [04:23<00:00, 12.18s/it]
+(PleOffloadWorker pid=884239) Loading safetensors checkpoint shards: 100% Completed | 11/11 [04:23<00:00, 23.99s/it]
+(PleOffloadWorker pid=884239) 
+(PleOffloadWorker pid=884239) INFO 09-16 06:11:30 [ple_layer.py:1735] Qwen4Exp PLE retained 47.684 GiB across 1 file-backed safetensor mappings without an anonymous table copy.
+(PleOffloadWorker pid=884239) INFO 09-16 06:11:31 [worker.py:675] PLE offload matched 132 checkpoint tensor(s), loaded 5 offload entries, and verified 2/2 materialized parameter(s) for layers: ['language_model.model.layers.1.ple.ple_embedding']
+(PleOffloadWorker pid=884239) INFO 09-16 06:11:31 [worker.py:698] PLE weight loading complete.
+(PleOffloadWorker pid=884239) INFO 09-16 06:11:32 [worker.py:514] Bound IPC address ipc:///tmp/64404048-4e1c-48b5-abac-5be57c98d74c; waiting for 2 GPU worker registration(s).
+(PleOffloadWorker pid=884239) INFO 09-16 06:11:32 [worker.py:706] Waiting for 2 GPU worker registration(s) ...
+(Worker_PP0_TP0 pid=883760) INFO 09-16 06:12:58 [connector.py:250] PleOffload: registered 1 PleOffloadLayer(s) (dp_rank=0, tp_rank=0, ipc_addr=ipc:///tmp/64404048-4e1c-48b5-abac-5be57c98d74c): ['language_model.model.layers.1.ple.ple_embedding']
+(PleOffloadWorker pid=884239) INFO 09-16 06:12:59 [worker.py:716] GPU worker 0 registered (dp_rank=0, tp_rank=0, layers=['language_model.model.layers.1.ple.ple_embedding']).
+(Worker_PP0_TP1 pid=883761) INFO 09-16 06:13:00 [connector.py:250] PleOffload: registered 1 PleOffloadLayer(s) (dp_rank=0, tp_rank=1, ipc_addr=ipc:///tmp/64404048-4e1c-48b5-abac-5be57c98d74c): ['language_model.model.layers.1.ple.ple_embedding']
+(PleOffloadWorker pid=884239) INFO 09-16 06:13:01 [worker.py:716] GPU worker 1 registered (dp_rank=0, tp_rank=1, layers=['language_model.model.layers.1.ple.ple_embedding']).
+(PleOffloadWorker pid=884239) INFO 09-16 06:13:01 [ple_layer.py:1217] Qwen4Exp PLE cascade worker: store device 4 has 31.43 of 31.73 free; the ranks leave 28851776 rows (4.3) to the store tier: [PLEStoreSegment(start=144945734, end=160000768, offset=0), PLEStoreSegment(start=306204794, end=320001536, offset=15055034)]
+(Worker_PP1_TP1 pid=883763) INFO 09-16 06:13:22 [model_runner.py:452] PleOffload: no PleOffloadLayer on this rank, no connector
+(Worker_PP1_TP0 pid=883762) INFO 09-16 06:13:22 [model_runner.py:452] PleOffload: no PleOffloadLayer on this rank, no connector
+(PleOffloadWorker pid=884239) INFO 09-16 06:14:26 [ple_layer.py:1265] Qwen4Exp PLE cascade worker: loaded 28851776 store rows (4.3) onto store device 4 in 84.6 s.
+(PleOffloadWorker pid=884239) INFO 09-16 06:14:26 [worker.py:848] PLE layer language_model.model.layers.1.ple.ple_embedding: remote placements of 2 tensor-parallel rank(s): [PLERemotePlacement(tp_start=0, tp_end=160000768, local_rows=144945734), PLERemotePlacement(tp_start=160000768, tp_end=320001536, local_rows=146204026)]
+(PleOffloadWorker pid=884239) INFO 09-16 06:14:26 [worker.py:804] Registrations complete (dp_size=1, tp_size=2, layers=['language_model.model.layers.1.ple.ple_embedding']).
+(PleOffloadWorker pid=884239) INFO 09-16 06:14:26 [worker.py:242] PLE RAM prefault touched 0.00 GiB in 0.01 s (process RSS 4.28 GiB, swap 0.72 -> 0.72 GiB).
+(Worker_PP0_TP0 pid=883760) INFO 09-16 06:14:26 [worker.py:456] Worker ready - 1 PleOffloadLayer(s): ['language_model.model.layers.1.ple.ple_embedding']
+(PleOffloadWorker pid=884239) INFO 09-16 06:14:26 [worker.py:862] Busy-loop started.
+(EngineCore pid=883584) INFO 09-16 06:19:58 [vllm.py:1921] Qwen4Exp PLE overflow cascade: store device 4; the PLE offload worker serves the rows beyond the resident tiers.

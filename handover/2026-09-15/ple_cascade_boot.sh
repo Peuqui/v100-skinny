@@ -8,8 +8,10 @@
 #          den AIfred geladen hatte), Sonde. Stellt die Produktion wieder her.
 # Vergleich beider Sonden gegen ref_prod.json (Produktion vor der Aenderung).
 #
-# Aufruf: ple_cascade_boot.sh OUTDIR [SWAP_MODEL] [REF_JSON] [SKIP_CONTROL=1]
+# Aufruf: [CASCADE_ENV="K=V K=V"] ple_cascade_boot.sh OUTDIR [SWAP_MODEL] [REF_JSON] [SKIP_CONTROL=1]
+# CASCADE_ENV: Kaskaden-Werte fuer Phase 1 (Paket 2: STORE_DEVICE, STORE_GIB, HOST_GIB).
 set -uo pipefail
+CASCADE_ENV=${CASCADE_ENV:-VLLM_QWEN4EXP_PLE_STORE_DEVICE=4}
 OUT=$1
 SWAP_MODEL=${2:-Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm-vlm-qwen3vl4b}
 REF=${3:-ref_prod.json}
@@ -44,12 +46,13 @@ compute_gpus_free || { log "Rechenkarten nicht frei, Abbruch"; exit 1; }
 snapshot "vor Phase 1"
 
 log "Phase 1: Kaskaden-Boot aus Eintrag $ENTRY"
-$PY - "$ENTRY" "$OUT/cascade.launch.sh" "$PORT" <<'PY'
+$PY - "$ENTRY" "$OUT/cascade.launch.sh" "$PORT" "$CASCADE_ENV" <<'PY'
 import shlex, sys, yaml
-name, out, port = sys.argv[1:4]
+name, out, port, cascade_env = sys.argv[1:5]
 entry = yaml.safe_load(open("/home/mp/.config/llama-swap/config.yaml"))["models"][name]
 cmd = " ".join(entry["cmd"].split()).replace("${PORT}", port)
-overrides = {"CUDA_VISIBLE_DEVICES": "0,2,1,3,4", "VLLM_QWEN4EXP_PLE_STORE_DEVICE": "4"}
+overrides = {"CUDA_VISIBLE_DEVICES": "0,2,1,3,4"}
+overrides.update(item.split("=", 1) for item in cascade_env.split())
 env = dict(e.split("=", 1) for e in entry.get("env", []))
 if env.get("CUDA_VISIBLE_DEVICES") != "0,2,1,3":
     sys.exit(f"Eintrag hat CUDA_VISIBLE_DEVICES={env.get('CUDA_VISIBLE_DEVICES')}, erwartet 0,2,1,3")
@@ -62,6 +65,8 @@ with open(out, "w") as f:
 print("launch geschrieben, Abweichungen:", overrides)
 PY
 [ -s "$OUT/cascade.launch.sh" ] || { log "launch.sh fehlt, Abbruch"; exit 1; }
+bash "$HERE/memsample.sh" "$OUT/cascade.mem.csv" &
+SAMPLER=$!
 setsid bash "$OUT/cascade.launch.sh" > "$OUT/cascade.boot.log" 2>&1 &
 PID=$!; T0=$(date +%s); STATE=timeout
 for _ in $(seq 1 480); do
@@ -70,13 +75,14 @@ for _ in $(seq 1 480); do
   sleep 5
 done
 log "  Boot: $STATE"
+kill "$SAMPLER" 2>/dev/null
 snapshot "Phase 1 nach Boot ($STATE)"
 if [ "${STATE#up_}" != "$STATE" ]; then
   $PY "$HERE/ple_probe.py" http://127.0.0.1:$PORT "$ENTRY" kaskade "$OUT/cascade.json" | tee "$OUT/cascade.probe.txt"
   $PY "$HERE/ple_logprobs.py" http://127.0.0.1:$PORT "$ENTRY" "$OUT/cascade_logprobs.json"
 fi
 { echo "Tracebacks: $(grep -c Traceback "$OUT/cascade.boot.log")"
-  grep -E "PleOffload|PLE cascade|remote placements|Worker ready|PLE table placement|Registrations complete|store device|overflow cascade" "$OUT/cascade.boot.log" | cut -c1-400
+  grep -E "PleOffload|PLE cascade|remote placements|Worker ready|PLE table placement|PLE auto placement|PLE host share|host budget cut|store rows|Registrations complete|store device|overflow cascade|Error|error" "$OUT/cascade.boot.log" | cut -c1-600
 } > "$OUT/cascade.evidence.txt"
 cat "$OUT/cascade.evidence.txt"
 log "  stoppe Kaskaden-Server (pid $PID)"

@@ -424,3 +424,33 @@ Abschnitt gegen den Prefix-Cache) und misst auf der Produktion mit Kaskade
 653–664 tok/s bei 22k und 74k Prompt-Token. Der Vergleich Kaskade gegen
 Produktion bleibt gültig, weil beide Seiten denselben Text bekamen; die
 absoluten Zahlen in Abschnitt 11 und 12 sind es nicht.
+
+## 13. PR und Produktionsentscheidung (2026-09-16 abends)
+
+**PR #646 an 1Cat gesendet** (Go Peuqui): Branch `qwen4exp-ple-tier-cascade-pr`
+auf origin/main 02c87ab8, Commit 1 = Kopie von #622, Commit 2 = Kaskade mit
+`docs/design/qwen4exp_ple_tier_cascade.md`. Abhängigkeiten im Text: #622 (Code),
+#640 (Flash-Next-NVFP4 auf pre-Ampere), #639 (MTP unter PP). Beim Zuschneiden
+gefunden und im Fork nachgezogen (e89b6543): Partition-Fix im Offload-Worker
+war nur Overlay (jetzt mit Regressionstest), 1Cats Hook verbietet neue
+`torch.cuda`-Aufrufe (→ `torch.accelerator`), deutsches Zitat im Testkommentar.
+Fork-Boot danach sauber, Sonde 4/4 bitgleich (`p3_probe_fork_commit.json`).
+Entwurf und Belege: `upstream-contrib/03-1cat-issues/pr-qwen4exp-ple-tier-cascade.md`.
+
+**Produktion zurück auf PLE ohne Kaskade, aber `HOST_GIB=3` statt 6.** Die
+RTX 8000 hatten auf beiden Wegen KV-Überschuss (Stufe 0 bekam 4,2–7,2 GiB,
+262k brauchen 1,76 GiB; der KV-Pool hängt an der V100-Stufe). Messung
+(`handover/2026-09-15/p4_classic_host3.json`, kalter Compile):
+
+| | PLE-VRAM je Rang | Host | GPU 4 | KV Stufe 0 | MemAvailable | Text | Decode |
+|---|---|---|---|---|---|---|---|
+| Classic 6 GiB | 17,84 GiB | 12 GiB | frei | 6,14 GiB | 2,5 GiB | Referenz | 60,1 / 56,0 / 65,9 / 60,6 |
+| Classic 3 GiB | 20,84 GiB | 6 GiB | frei | 3,15 GiB | 8,2 GiB | 4/4 | 59,7 / 56,0 / 66,3 / 60,1 |
+| Kaskade | 19,6 / 19,8 GiB | 4 GiB | 4,3 GiB | 4,19 GiB | 11,8 GiB | 4/4 | 59,0 / 54,9 / 65,0 / 58,8 |
+
+Die vier Produktionseinträge in llama-swap stehen seitdem auf
+`CUDA_VISIBLE_DEVICES=0,2,1,3` und `VLLM_QWEN4EXP_PLE_HOST_GIB=3` (Sicherung
+`~/.config/llama-swap/backups/config.yaml.pre-prod-classic-host3-20260916`).
+`…-MTP-PLE-Classic-vllm` ist damit gleich der Produktion, `…-MTP-PLE-Disk-vllm`
+bleibt als Kaskaden-Testeintrag. Die Kaskade bleibt im Fork und ist für
+Tabellen gedacht, die deutlich nicht mehr in VRAM plus Host passen.

@@ -168,6 +168,26 @@ good = err <= 2e-3 * max(ref, 1e-3) + 1e-3
 ok &= good
 print(f"multipass (expert 3 x {T} slots): max|diff|={err:.2e} {'OK' if good else 'FAIL'}")
 
+# --- Prefill chunks: above 8 tokens the per-expert loop is the reference
+# (moe_simt stops at 8). With 64 experts and top-6 every expert takes the
+# multi-pass here, several times over at 512 tokens. ---
+for T in (64, 128, 512):
+    torch.manual_seed(T)
+    hs = (torch.randn(T, hidden, device="cuda", dtype=torch.float16) / 8).contiguous()
+    ids = torch.topk(torch.randn(T, E, device="cuda"), topk, dim=-1)[1].to(torch.int32)
+    w = torch.rand(T, topk, device="cuda") + 0.1
+    a = loop(hs, ids, w)
+    b = grouped_qpn(hs, ids, w, (16, 1), (8, 1))
+    err = (a.float() - b.float()).abs().max().item()
+    ref = a.float().abs().max().item()
+    rows = torch.bincount(ids.flatten().long(), minlength=E).max().item()
+    good = err <= 2e-3 * max(ref, 1e-3) + 1e-3
+    ok &= good
+    print(f"prefill T={T} (up to {rows} rows per expert): max|diff|={err:.2e} "
+          f"(ref max {ref:.2f}) {'OK' if good else 'FAIL'}   "
+          f"loop {t(lambda: loop(hs, ids, w), 8):.2f} ms   "
+          f"qpn {t(lambda: grouped_qpn(hs, ids, w, (16, 1), (8, 1)), 8):.2f} ms")
+
 # --- Timing sweep at the production point T=6 ---
 torch.manual_seed(2)
 T, topk = 6, 6

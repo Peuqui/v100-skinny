@@ -2603,7 +2603,7 @@ void skinny_moe_simt(torch::Tensor x, torch::Tensor codes, torch::Tensor scales,
 // ---------------------------------------------------------------------------
 // Grouped MoE QPN kernel (fork addition, v100-skinny): the moe_simt routing
 // skeleton (device-side perm/offsets, inactive experts exit before touching
-// their weights, tokens <= 8, CUDA-graph safe) driving the QPN2 tensor-core
+// their weights, CUDA-graph safe) driving the QPN2 tensor-core
 // dataflow (mma.m8n8k4 on fragment-order prepacked weights, SPLITK warps
 // splitting K on one N=32 tile, NACC independent accumulator fragments).
 // Weights must be prepacked per expert with the dense shim's _qpn_prepack
@@ -2653,8 +2653,9 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
       qscales + ((size_t)e * (N >> 5) + tile) * G * 32 + lane;
   const half2 gm2 = __float2half2_rn(gscales[e] * 16384.f);
 
-  // Same multi-pass as moe_simt: hash routing can hand one expert more
-  // than MMAX slots; the rare extra pass re-reads this tile's weights.
+  // Same multi-pass as moe_simt: an expert with more than MMAX slots (hash
+  // routing at decode, any prefill chunk) takes one pass per MMAX rows, each
+  // re-reading this tile's weights.
   for (int base = 0; base < cnt; base += MMAX) {
     const int rows = min(MMAX, cnt - base);
     __syncthreads();  // previous pass done with slots/xrows/cs
@@ -2748,7 +2749,8 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   TORCH_CHECK(qscales.numel() == E * N * (K >> 4), "qpn scales size");
   TORCH_CHECK(gids.size(0) == S && goff.size(0) == S + 1, "compact routing size");
   TORCH_CHECK(perm.size(0) == S && y_slots.size(0) == S);
-  TORCH_CHECK(T <= 8, "grouped qpn MoE serves <= 8 tokens (decode/verify); got ", T);
+  TORCH_CHECK(S <= 65535, "grouped qpn MoE: tokens * topk = ", S,
+              " exceeds the CUDA grid y limit");
   TORCH_CHECK(K % 64 == 0 && (K / 16) % splitk == 0, "K/SPLITK");
   TORCH_CHECK(N % 32 == 0, "N % 32");
   const dim3 grid((unsigned)(N / 32), (unsigned)S);
@@ -2783,7 +2785,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         "grouped NVFP4 MoE GEMM (SIMT, device-side routing, tokens<=8)");
   m.def("moe_qpn", &skinny_moe_qpn,
         "grouped NVFP4 MoE GEMM (mma.m8n8k4 on prepacked fragments, "
-        "compact device-side routing, tokens<=8)");
+        "compact device-side routing, 8 rows per weight read)");
   m.def("gemm_qpn8", &skinny_gemm_qpn8,
         "skinny FP8 E4M3 GEMM (QPN8, M<=8)");
   m.def("qpn8_blk_dequant", &skinny_qpn8_blk_dequant,

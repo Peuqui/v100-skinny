@@ -234,19 +234,19 @@ DFlash2-Tempolücke, siehe offener Punkt 8.
 
 ## Betriebspunkte
 
-### DeepSeek-V4-Flash-NVFP4 + DSpark — Produktion, Stand 19.09. abends
+### DeepSeek-V4-Flash-NVFP4 + DSpark — Produktion, Stand 20.09. früh
 
 PP5 über alle fünf Karten (`CUDA_VISIBLE_DEVICES=0,1,4,3,2`, Partition 11,8,8,8,8;
 die letzte Stufe trägt zusätzlich die drei MoE-Schichten des Drafters, real also
 11/8/8/8/11 Schicht-Äquivalente), `--dtype half`, fp8-KV, 65k Kontext,
-`--max-num-seqs 1`, `--max-num-batched-tokens 128`, `--num-gpu-blocks-override 600`,
+`--max-num-seqs 1`, `--max-num-batched-tokens 256`, `--num-gpu-blocks-override 900`,
 DSpark K=5 (gierig), CUDA-Graph-Größe 6. Zweiter llama-swap-Eintrag
 `…-Coding-K7-vllm` mit K=7 und Graph-Größe 8, sonst identisch.
 
-| Messpunkt (temp 1.0, top_k 40) | 18.09. | 19.09. abends |
+| Messpunkt (temp 1.0, top_k 40) | 18.09. | 20.09. früh |
 |---|---|---|
-| kalter 18k-Prefill (TTFT) | 83 s | 19,2–19,4 s |
-| 62k-Prefill | — | 55 s |
+| kalter 18k-Prefill (TTFT) | 83 s | 18,3 s |
+| 62k-Prefill | — | 49 s |
 | TTFT auf gecachtem 18k-Präfix | 1,3 s | 0,8 s |
 | Decode Prosa 18k | 210 ms/Schritt, 14–15 tok/s | 91 ms, 33–36 tok/s |
 | Decode Code 18k | 22–24 tok/s | 94 ms, 50–56 tok/s |
@@ -254,17 +254,29 @@ DSpark K=5 (gierig), CUDA-Graph-Größe 6. Zweiter llama-swap-Eintrag
 
 Woher das kam: Sparse-MLA als Matrixprodukt (Decode 210 → 92 ms), Präfix-Cache-
 Backport vllm#44082, mHC-fp16-Wertebereich (NaN-Absturz), 128er- statt 64er-Häppchen
-(83 → 46 s), gebündelter MoE-Kernel `moe_qpn` auch im Prefill (46 → 19 s). Der
+(83 → 46 s), gebündelter MoE-Kernel `moe_qpn` auch im Prefill (46 → 19 s), 256er-
+Häppchen (19,2 → 18,3 s; 62k 55 → 49 s). Der
 Prefill war zuvor praktisch nur die Per-Experten-Schleife: ~0,13 ms Kernel-Starts je
 aktivem Experten, 26–32 ms je Schicht, Takt = RTX-Stufe mit elf Schichten. Profil
 danach (PP0): GPU ausgelastet, MoE 48 %, dichte FP8-Linears 21 %, Sparse-Attention
 ~10 %, Indexer ~6 %, mHC 3 %.
 
 Abnahme: Nadel-Test 30k und 62k je 4/4, Stresstest 120/120, Qualität bei temp 1.0
-25/25, V100 32,3 von 32 GiB stabil. Gemessen und verworfen: 256er-Häppchen (echter
-OOM auf den V100; KV-Cache ist mit ~130 MiB je Stufe nicht der Hebel, NCCL_BUFFSIZE
-gibt nichts frei, je RTX passt nur eine weitere Schicht), K=7 für Prosa (−8 %),
-probabilistisches Entwurfs-Sampling (kein Unterschied).
+25/25, Härtetest 61,7k Prompt + 3.000 erzeugte Tokens (64,7k Gesamtkontext), V100
+32.436 MiB stabil (Reserve 332 MiB). Die 256er-Häppchen liefen erst, nachdem der
+Attention-Workspace des bmm-Prefills auf 128 Query-Tokens gedeckelt war (vorher
+echter OOM auf den V100; der KV-Cache ist mit ~130 MiB je Stufe nicht der Hebel,
+NCCL_BUFFSIZE gibt nichts frei, je RTX passt nur eine weitere Schicht; die
+Blockzahl muss mit der Häppchengröße wachsen, weil der SWA-Bedarf
+`sliding_window - 1 + max_in_flight_tokens` ist). Gemessen und verworfen: K=7 für
+Prosa (−8 %, darum der eigene Coding-Eintrag), probabilistisches Entwurfs-Sampling
+(kein Unterschied).
+
+Decode-Profil (PP0, 17k Kontext): MoE ~0,75 ms je Schicht und Schritt (33 %), der
+Indexer-Kernel `_paged_index_logits_relu_kernel` 0,91 ms je Kompression-4-Schicht
+(18 %, wächst linear mit dem Kontext: ~19 ms von 91 ms bei 18k, bei 62k der
+Hauptposten, Schritt dort ~180 ms). Nächster Hebel: Indexer-Decode als GEMM wie im
+Prefill.
 
 
 ### Qwen3.8-Flash-Next (180B, Qwen4Exp) — geprüft 07.09., nachverifiziert 09.09.

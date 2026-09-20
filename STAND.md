@@ -1711,6 +1711,39 @@ Augustwerten (6,5 min Boot).
     721k Pool wird kaum noch verdrängt — 5 GB GEPINNTER Hauptspeicher (nicht
     auslagerbar!) für einen Dienst, den der Pool selbst erledigt. Host hat
     31 GB, davon 16 GB im Swap.
+    **TURING-BUILD EINGEBAUT (20.09. abends), Gewinn nur im Mikrotest.**
+    marlin.py baut jetzt `-gencode=arch=compute_70,code=sm_70` UND
+    `...compute_75,code=sm_75`. Mikrotest auf der RTX 8000 mit echten
+    Expertenformen (64 Experten, N=2048, K=4096, Decode-Batch 6):
+    moe_qpn 0,307 → 0,292 ms bei der w13-Konfiguration (16,1) und
+    0,315 → 0,294 ms bei w2 (8,1), also 5–7 %. IM GESAMTSYSTEM NICHT MESSBAR:
+    Schrittzeit 101/104/101/105 ms mit sm75 gegen 101/105/102/104 ms ohne —
+    identisch. Passt zur Hochrechnung (~1,5 % auf den Schritt, weil MoE die
+    halbe Schichtzeit ist und nur 19 von 43 Schichten auf RTX liegen). Bleibt
+    drin, weil er nachweislich nicht schadet und ein späterer m16n8k8-Pfad ihn
+    ohnehin braucht. Preis: erster Bau 270 statt 70 s, danach gecacht.
+    **ZIELKONFLIKT KONTEXT GEGEN TEMPO (gemessen, vorher unbekannt):**
+    | Fenster | Pool | Schritt | Decode |
+    |---|---|---|---|
+    | 65.536 | 71.493 | 79 ms | 35–40 tok/s |
+    | 524.288 | 721.221 | 101 ms | 30 tok/s |
+    Der zehnfach größere Pool kostet ~27 % Schrittzeit (größere Blocktabellen
+    und Metadaten je Decode-Schritt). Für AIfreds Alltag (meist < 30k Kontext)
+    ist das ein schlechter Tausch, für Langdokumente der richtige. Die
+    Gegenprobe oben zeigt, dass es NICHT am sm75-Build liegt.
+    **HÄPPCHENGRÖSSE 512 GESCHEITERT (20.09. abends).** Peuquis Idee, die
+    2.000 Scheduler-Runden eines langen Prefills zu halbieren. `_GROUPED_MAX_TOKENS`
+    = 512 wäre exakt die Obergrenze des gebündelten MoE-Pfads, darüber fällt er
+    in die Python-Schleife. Scheitert aber am Speicher: Der bmm-Prefill-Workspace
+    wächst mit T, und dann passt die Indexer-Reserve nicht mehr — zweimal
+    „Tried to allocate 512.00 MiB, 502/504 MiB free" auf den V100, auch nach
+    Rücknahme von 200 Blöcken (die brachten nur 2 MiB, der Workspace frisst sie
+    sofort). ⇒ Häppchen 512 und Halbe-Million-Kontext passen nicht gemeinsam auf
+    32-GB-Karten. Erst wieder aufgreifen, wenn beim Kontext zurückgegangen wird.
+    **CPU-KV-OFFLOAD auf 2 GB zurückgenommen** (war 5 GB, gepinnt und damit
+    nicht auslagerbar; Host hatte 16 GB im Swap). Bei 721k Pool wird kaum noch
+    verdrängt. Peuqui: für größere Modelle vormerken, dann kippt die Rechnung
+    zurück.
     OFFEN: für FREMDE MXFP4-Checkpoints die Bestimmung eines globalen Faktors —
     reine E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
     `weight_scale_2` = 2^-13 daneben. Und der Turing-Teil (siehe unten).

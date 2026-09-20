@@ -1625,6 +1625,28 @@ Augustwerten (6,5 min Boot).
     quantisiert, aber kein README und keine Qualitätszahlen) und
     `amd/…-MXFP4` (159,1 GB, saubere Modelkarte, GSM8K 99,9 %, ROCm-Ziel).
     Danach erst: Kontextfenster neu ausmessen.
+    **BEFUND 20.09. — KEIN DOWNLOAD UND KEINE KONVERSION NÖTIG.** Unser
+    NVFP4-Checkpoint IST MXFP4, nur in NVFP4-Verpackung. Nachgemessen an
+    `layers.0.ffn.experts.0.w1`: 262.144 von 262.144 Skalenpaaren sind
+    identisch, alle Skalen sind exakte Zweierpotenzen, und der globale Faktor
+    `weight_scale_2` ist 2^-13 — genau das `m=-13`, das
+    `cast_mxfp4_to_nvfp4.log` für diese Schicht nennt. Die gepackten 4-Bit-
+    Gewichte sind bereits die MXFP4-Gewichte, Byte für Byte; beim Hinweg wurde
+    lediglich jede Skala je 32 Werte auf zwei Skalen je 16 Werte dupliziert.
+    Genau das sind die ~8 GB Unterschied zu den fremden MXFP4-Checkpoints.
+    ⇒ Die Redundanz wird BEIM LADEN aufgelöst (Skalen halbiert als E8M0
+    halten), nicht durch einen zweiten Checkpoint auf der Platte. Spart 157 GB
+    Plattenplatz, den Download und die Qualitätsfrage bei `haanjack` (kein
+    README, keine Messwerte).
+    **VORGABE PEUQUI 20.09.:** generisch bauen, NICHT an TP-Stufen festmachen
+    („manchmal fahren wir auch TP2") und nicht auf eine Architektur
+    festklopfen. 1Cats vorhandener Code macht genau das Gegenteil:
+    `_mxfp4_qpn_m1_decode_contract` (mxfp4_sm70_moe.py) lässt den schnellen
+    Pfad nur zu bei `tp_size == 4`, 256 Experten und exakt passenden
+    Tensorformen — Kommentar dort: „Admit only the measured TP4 six-route
+    W13/W2 tensor pair." Für sm75 gibt es bei 1Cat überhaupt nichts; ihre
+    beiden Entwurfsdokumente zielen auf TP8 mit acht V100 und TurboMind
+    (Marlin ausdrücklich „out of scope").
 
 20. **KV-Auslagerung in den Hauptspeicher, generisch — DANACH** (Auftrag
     Peuqui 20.09.2026, ausdrücklich „nach Möglichkeit generisch, sodass da

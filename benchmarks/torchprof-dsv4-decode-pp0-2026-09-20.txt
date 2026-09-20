@@ -1,0 +1,321 @@
+INFO 09-20 01:30:37 [gpu_model_runner.py:10567] Starting to load model /home/mp/models/DeepSeek-V4-Flash-nvfp4-DSpark...
+INFO 09-20 01:30:37 [quant_config.py:75] DeepSeek V4 expert_dtype resolved to 'fp4'
+INFO 09-20 01:30:37 [__init__.py:538] Selected QPN8Fp8BlockScaledMMLinearKernel for Fp8LinearMethod
+INFO 09-20 01:30:38 [attention.py:845] Using DeepSeek's fp8_ds_mla KV cache format.
+WARNING 09-20 01:30:38 [modelopt.py:1491] Detected ModelOpt NVFP4 checkpoint (quant_algo=NVFP4). Please note that the format is experimental and could change in future.
+INFO 09-20 01:30:38 [nvfp4.py:347] Using 'SM70_SKINNY' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'SM70_SKINNY', 'EMULATION'].
+INFO 09-20 01:30:38 [attention.py:954] Using FP8 indexer cache for Lightning Indexer.
+INFO 09-20 01:30:39 [weight_utils.py:978] Filesystem type for checkpoints: EXT4. Checkpoint size: 164.06 GiB. Available RAM: 18.58 GiB.
+INFO 09-20 01:30:39 [weight_utils.py:1008] Auto-prefetch is disabled because the filesystem (EXT4) is not a recognized network FS (NFS/Lustre) and the checkpoint size (164.06 GiB) exceeds 90% of available RAM (18.58 GiB).
+Loading safetensors checkpoint shards:   0% Completed | 0/46 [00:00<?, ?it/s]
+Loading safetensors checkpoint shards:   2% Completed | 1/46 [00:02<01:31,  2.03s/it]
+Loading safetensors checkpoint shards:   4% Completed | 2/46 [00:05<02:15,  3.09s/it]
+Loading safetensors checkpoint shards:   7% Completed | 3/46 [00:10<02:39,  3.70s/it]
+Loading safetensors checkpoint shards:   9% Completed | 4/46 [00:14<02:48,  4.02s/it]
+Loading safetensors checkpoint shards:  11% Completed | 5/46 [00:29<05:29,  8.03s/it]
+Loading safetensors checkpoint shards:  13% Completed | 6/46 [01:23<15:41, 23.53s/it]
+Loading safetensors checkpoint shards:  15% Completed | 7/46 [01:27<11:03, 17.02s/it]
+Loading safetensors checkpoint shards:  17% Completed | 8/46 [01:32<08:20, 13.17s/it]
+Loading safetensors checkpoint shards:  20% Completed | 9/46 [01:36<06:22, 10.33s/it]
+Loading safetensors checkpoint shards:  22% Completed | 10/46 [01:40<05:09,  8.58s/it]
+Loading safetensors checkpoint shards:  24% Completed | 11/46 [01:45<04:20,  7.45s/it]
+Loading safetensors checkpoint shards:  26% Completed | 12/46 [01:50<03:44,  6.60s/it]
+Loading safetensors checkpoint shards:  28% Completed | 13/46 [01:54<03:16,  5.95s/it]
+Loading safetensors checkpoint shards:  30% Completed | 14/46 [01:59<03:00,  5.63s/it]
+Loading safetensors checkpoint shards:  33% Completed | 15/46 [02:04<02:48,  5.43s/it]
+Loading safetensors checkpoint shards:  35% Completed | 16/46 [02:10<02:43,  5.47s/it]
+Loading safetensors checkpoint shards:  37% Completed | 17/46 [02:15<02:33,  5.30s/it]
+Loading safetensors checkpoint shards:  39% Completed | 18/46 [02:20<02:28,  5.31s/it]
+Loading safetensors checkpoint shards:  41% Completed | 19/46 [02:25<02:17,  5.11s/it]
+Loading safetensors checkpoint shards:  43% Completed | 20/46 [02:29<02:08,  4.96s/it]
+Loading safetensors checkpoint shards:  46% Completed | 21/46 [02:34<02:01,  4.85s/it]
+Loading safetensors checkpoint shards:  48% Completed | 22/46 [02:39<01:55,  4.83s/it]
+Loading safetensors checkpoint shards:  50% Completed | 23/46 [02:43<01:50,  4.80s/it]
+Loading safetensors checkpoint shards:  52% Completed | 24/46 [02:48<01:44,  4.73s/it]
+Loading safetensors checkpoint shards:  54% Completed | 25/46 [02:53<01:38,  4.69s/it]
+Loading safetensors checkpoint shards:  57% Completed | 26/46 [02:57<01:33,  4.66s/it]
+Loading safetensors checkpoint shards:  59% Completed | 27/46 [03:02<01:27,  4.63s/it]
+Loading safetensors checkpoint shards:  61% Completed | 28/46 [03:06<01:23,  4.63s/it]
+Loading safetensors checkpoint shards:  63% Completed | 29/46 [03:11<01:20,  4.72s/it]
+Loading safetensors checkpoint shards:  65% Completed | 30/46 [03:16<01:16,  4.76s/it]
+Loading safetensors checkpoint shards:  67% Completed | 31/46 [03:21<01:11,  4.76s/it]
+Loading safetensors checkpoint shards:  70% Completed | 32/46 [03:26<01:06,  4.74s/it]
+Loading safetensors checkpoint shards:  72% Completed | 33/46 [03:30<01:01,  4.70s/it]
+Loading safetensors checkpoint shards:  74% Completed | 34/46 [03:35<00:56,  4.68s/it]
+Loading safetensors checkpoint shards:  76% Completed | 35/46 [04:12<02:39, 14.48s/it]
+Loading safetensors checkpoint shards:  78% Completed | 36/46 [04:17<01:55, 11.54s/it]
+Loading safetensors checkpoint shards:  80% Completed | 37/46 [04:22<01:25,  9.51s/it]
+Loading safetensors checkpoint shards:  83% Completed | 38/46 [04:26<01:04,  8.06s/it]
+Loading safetensors checkpoint shards:  85% Completed | 39/46 [04:31<00:49,  7.06s/it]
+Loading safetensors checkpoint shards:  87% Completed | 40/46 [04:36<00:37,  6.31s/it]
+Loading safetensors checkpoint shards:  89% Completed | 41/46 [04:40<00:29,  5.85s/it]
+Loading safetensors checkpoint shards:  91% Completed | 42/46 [04:45<00:21,  5.48s/it]
+Loading safetensors checkpoint shards:  93% Completed | 43/46 [04:50<00:15,  5.26s/it]
+Loading safetensors checkpoint shards:  96% Completed | 44/46 [04:55<00:10,  5.13s/it]
+Loading safetensors checkpoint shards:  98% Completed | 45/46 [04:55<00:03,  3.63s/it]
+Loading safetensors checkpoint shards: 100% Completed | 46/46 [05:09<00:00,  6.94s/it]
+Loading safetensors checkpoint shards: 100% Completed | 46/46 [05:09<00:00,  6.74s/it]
+(Worker_PP0 pid=3369890)
+INFO 09-20 01:35:49 [default_loader.py:434] Loading weights took 310.25 seconds
+INFO 09-20 01:35:50 [qpn8_blk.py:173] QPN8_BLK prepack INVERTED and byte-identical: model.layers.0.attn.fused_wqa_wkv n=1536 k=4096
+INFO 09-20 01:35:50 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.0.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:50 [qpn8_blk.py:173] QPN8_BLK prepack INVERTED and byte-identical: model.layers.0.attn.wq_b n=32768 k=1024
+INFO 09-20 01:35:50 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.0.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:50 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.0.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:50 [qpn8_blk.py:173] QPN8_BLK prepack INVERTED and byte-identical: model.layers.0.attn.wo_b n=4096 k=8192
+INFO 09-20 01:35:50 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.0.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:50 [qpn8_blk.py:173] QPN8_BLK prepack INVERTED and byte-identical: model.layers.0.ffn.shared_experts.gate_up_proj n=4096 k=4096
+INFO 09-20 01:35:50 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.0.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:50 [qpn8_blk.py:173] QPN8_BLK prepack INVERTED and byte-identical: model.layers.0.ffn.shared_experts.down_proj n=4096 k=2048
+INFO 09-20 01:35:50 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.0.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:50 [nvfp4.py:577] Using MoEPrepareAndFinalizeNoDPEPModular
+INFO 09-20 01:35:50 [nvfp4_skinny_moe.py:164] Using Nvfp4SkinnySm70Experts MoE backend: per-expert skinny NVFP4 GEMMs on checkpoint-layout weights, fp16 activations.
+INFO 09-20 01:35:51 [nvfp4_skinny_moe.py:214] Skinny NVFP4 MoE: expert weights re-permuted to QPN fragment order in place (256 experts)
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.1.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.1.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.1.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.1.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.1.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.1.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:173] QPN8_BLK prepack INVERTED and byte-identical: model.layers.2.attn.indexer.wq_b n=8192 k=1024
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.attn.indexer.wq_b K=1024 N=8192 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:51 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.2.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:52 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.3.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:52 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.3.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:52 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.3.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:52 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.3.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:52 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.3.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:52 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.3.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.attn.indexer.wq_b K=1024 N=8192 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.4.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.5.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.5.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.5.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.5.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.5.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:53 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.5.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:54 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:54 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:54 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:54 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:54 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.attn.indexer.wq_b K=1024 N=8192 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:54 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:54 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.6.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.7.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.7.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.7.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.7.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.7.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.7.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.attn.indexer.wq_b K=1024 N=8192 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:55 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.8.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:56 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.9.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:56 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.9.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:56 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.9.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:56 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.9.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:56 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.9.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:56 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.9.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:57 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.attn.fused_wqa_wkv K=4096 N=1536 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:57 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.attn.wq_b K=1024 N=32768 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:57 [qpn8_blk.py:158] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.attn.wo_a K=4096 N=8192 route=is_bmm-fp16-dequant
+INFO 09-20 01:35:57 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.attn.wo_b K=8192 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:57 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.attn.indexer.wq_b K=1024 N=8192 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:57 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.ffn.shared_experts.gate_up_proj K=4096 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:35:57 [qpn8_blk.py:184] QPN8_BLK_CENSUS_LOAD layer=model.layers.10.ffn.shared_experts.down_proj K=2048 N=4096 block=[128,128] split=16 nacc=3
+INFO 09-20 01:36:30 [gpu_model_runner.py:10662] Model loading took 40.54 GiB memory and 320.556387 seconds
+INFO 09-20 01:36:30 [breakable_cudagraph.py:304] Breakable CUDA graph enabled
+INFO 09-20 01:36:30 [interface.py:509] Setting kv cache block size to 256 for DEEPSEEK_SPARSE_SWA backend.
+INFO 09-20 01:40:41 [marlin.py:188] SM70 skinny NVFP4 kernel loaded from /home/mp/Projekte/v100-skinny/kernels/skinny_kernels.cu
+INFO 09-20 01:40:41 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=256 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:40:41 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=256 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:40:41 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=256 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:40:41 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=256 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:40:41 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=256 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:40:42 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=8192 M=256 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:40:44 [gpu_model_runner.py:12041] Profiling CUDA graph memory: PIECEWISE=1 (largest=6), FULL=1 (largest=6)
+INFO 09-20 01:40:44 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=6 route=qpn8-blk split=16 nacc=3
+INFO 09-20 01:40:44 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=6 route=qpn8-blk split=16 nacc=3
+INFO 09-20 01:40:44 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=6 route=qpn8-blk split=16 nacc=3
+INFO 09-20 01:40:44 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=6 route=qpn8-blk split=16 nacc=3
+INFO 09-20 01:40:44 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=6 route=qpn8-blk split=16 nacc=3
+INFO 09-20 01:40:44 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=8192 M=6 route=qpn8-blk split=16 nacc=3
+INFO 09-20 01:40:44 [rocm.py:878] DeepSeek V4 sparse MLA decode: batched-matmul attention on Quadro RTX 8000.
+INFO 09-20 01:40:45 [gpu_model_runner.py:12132] Estimated CUDA graph memory: 0.51 GiB total
+INFO 09-20 01:40:46 [gpu_worker.py:647] Available KV cache memory: 2.31 GiB
+INFO 09-20 01:40:46 [gpu_worker.py:662] CUDA graph memory profiling is enabled (default since v0.21.0). The current --gpu-memory-utilization=0.9500 is equivalent to --gpu-memory-utilization=0.9393 without CUDA graph memory profiling. To maintain the same effective KV cache size as before, increase --gpu-memory-utilization to 0.9607. To disable, set VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0.
+Capturing CUDA graphs (mixed prefill-decode, PIECEWISE):   0%|          | 0/1 [00:00<?, ?it/s]Capturing CUDA graphs (mixed prefill-decode, PIECEWISE): 100%|██████████| 1/1 [00:00<00:00, 11.99it/s]
+Capturing CUDA graphs (decode, FULL):   0%|          | 0/1 [00:00<?, ?it/s]Capturing CUDA graphs (decode, FULL): 100%|██████████| 1/1 [00:00<00:00, 10.05it/s]
+INFO 09-20 01:40:48 [gpu_model_runner.py:12225] Graph capturing finished in 1 secs, took 0.03 GiB
+INFO 09-20 01:40:48 [gpu_worker.py:802] CUDA graph pool memory: 0.03 GiB (actual), 0.51 GiB (estimated), difference: 0.48 GiB (1525.0%).
+INFO 09-20 01:40:48 [jit_monitor.py:54] Kernel JIT monitor activated — Triton JIT compilations during inference will be logged as warnings.
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _compute_slot_mapping_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _build_prefill_chunk_metadata_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _build_c128a_topk_metadata_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _compute_prefill_metadata_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+INFO 09-20 01:41:05 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=26 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:05 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=26 route=qpn8-blk-wmma split=16 nacc=3
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _dequantize_and_gather_k_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _combine_topk_swa_indices_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+INFO 09-20 01:41:05 [rocm.py:1026] DeepSeek V4 sparse MLA prefill: batched-matmul attention on Quadro RTX 8000.
+INFO 09-20 01:41:05 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=26 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:05 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=26 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:05 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=26 route=qpn8-blk-wmma split=16 nacc=3
+/home/mp/Projekte/vllm-research/1Cat-vLLM-work/vllm/distributed/parallel_state.py:1020: UserWarning: The given buffer is not writable, and PyTorch does not support non-writable tensors. This means you can write to the underlying (supposedly non-writable) buffer using the tensor. You may want to copy the buffer to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_new.cpp:1581.)
+  object_tensor = torch.frombuffer(pickle.dumps(obj), dtype=torch.uint8)
+WARNING 09-20 01:41:05 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _compute_slot_mapping_single_req_no_pad_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+INFO 09-20 01:41:06 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=13 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:06 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=13 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:06 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=13 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:06 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=13 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:06 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=13 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:07 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=14 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:07 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=14 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:07 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=14 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:07 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=14 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:07 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=14 route=qpn8-blk-mt2 split=16 nacc=3
+INFO 09-20 01:41:08 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=252 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:08 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=252 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:08 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=252 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:08 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=252 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:08 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=252 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:09 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=8192 M=252 route=qpn8-blk-wmma split=16 nacc=3
+WARNING 09-20 01:41:09 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _dequant_index_k_unscaled_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+WARNING 09-20 01:41:09 [jit_monitor.py:103] Triton kernel JIT compilation during inference: _relu_weight_headsum_kernel. This causes a latency spike; consider extending warmup to cover this shape/config.
+INFO 09-20 01:41:20 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=155 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:20 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=155 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:20 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=155 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:20 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=155 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:20 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=155 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:20 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=8192 M=155 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:21 [wrapper.py:174] Torch profiling enabled. Traces will be saved to: /tmp/claude-1000/-home-mp-Projekte-AIfred-Intelligence/2a505c63-5682-47ea-adae-4ec0211eaa0b/scratchpad/profile
+/home/mp/vllm/venv/lib/python3.12/site-packages/torch/profiler/profiler.py:217: UserWarning: Warning: Profiler clears events at the end of each cycle.Only events from the current cycle will be reported.To keep events across cycles, set acc_events=True.
+  _warn_once(
+INFO 09-20 01:41:21 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=1536 M=143 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:21 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=32768 M=143 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:21 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=8192 N=4096 M=143 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:21 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=4096 N=4096 M=143 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:21 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=2048 N=4096 M=143 route=qpn8-blk-wmma split=16 nacc=3
+INFO 09-20 01:41:21 [qpn8_blk.py:68] QPN8_BLK_CENSUS_RUN K=1024 N=8192 M=143 route=qpn8-blk-wmma split=16 nacc=3
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                                                   Name    Self CPU %      Self CPU   CPU total %     CPU total  CPU time avg     Self CUDA   Self CUDA %    CUDA total  CUDA time avg    # of Calls
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+                   execute_context_0(0)_generation_1(6)         0.00%       0.000us         0.00%       0.000us       0.000us        3.379s       365.30%        3.379s      10.428ms           324
+                 execute_context_1(143)_generation_0(0)         0.00%       0.000us         0.00%       0.000us       0.000us     419.209ms        45.33%     419.209ms     104.802ms             4
+void skinny_nvfp4_moe_qpn<16, 1>(unsigned char const...         0.00%       0.000us         0.00%       0.000us       0.000us     196.141ms        21.21%     196.141ms     481.918us           407
+                        _paged_index_logits_relu_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     163.837ms        17.71%     163.837ms     910.203us           180
+void skinny_nvfp4_moe_qpn<8, 1>(unsigned char const*...         0.00%       0.000us         0.00%       0.000us       0.000us     108.273ms        11.71%     108.273ms     266.028us           407
+void skinny_fp8_qpn8<16, 1, true, true>(unsigned cha...         0.00%       0.000us         0.00%       0.000us       0.000us      83.128ms         8.99%      83.128ms      38.485us          2160
+turing_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_3...         0.00%       0.000us         0.00%       0.000us       0.000us      66.085ms         7.15%      66.085ms      79.049us           836
+                               vllm::moe_forward_shared         1.44%       4.307ms         3.76%      11.270ms       1.025ms      56.047ms         6.06%      67.251ms       6.114ms            11
+                              mhc_fused_tilelang_kernel         0.00%       0.000us         0.00%       0.000us       0.000us      34.321ms         3.71%      34.321ms      45.399us           756
+                              sm70_fp8::qpn8_blk_linear         0.45%       1.337ms         0.61%       1.840ms      30.673us      31.420ms         3.40%      31.420ms     523.674us            60
+void skinny_fp8_wmma_blk<4, 128>(unsigned char const...         0.00%       0.000us         0.00%       0.000us       0.000us      31.420ms         3.40%      31.420ms     523.674us            60
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us      17.823ms         1.93%      17.823ms       8.758us          2035
+void cutlass::Kernel2<cutlass_75_wmma_tensorop_s1616...         0.00%       0.000us         0.00%       0.000us       0.000us      13.429ms         1.45%      13.429ms      26.645us           504
+                            _dequant_gather_rows_kernel         0.00%       0.000us         0.00%       0.000us       0.000us      11.077ms         1.20%      11.077ms      15.385us           720
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us       8.397ms         0.91%       8.397ms       6.877us          1221
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       8.362ms         0.90%       8.362ms       2.924us          2860
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       8.002ms         0.87%       8.002ms      19.143us           418
+turing_fp16_s1688gemm_fp16_128x128_ldg8_f2f_stages_3...         0.00%       0.000us         0.00%       0.000us       0.000us       7.936ms         0.86%       7.936ms      19.499us           407
+             mhc_pre_big_fuse_with_norm_tilelang_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       6.747ms         0.73%       6.747ms       8.683us           777
+void cutlass::Kernel2<cutlass_75_wmma_tensorop_f16_s...         0.00%       0.000us         0.00%       0.000us       0.000us       6.468ms         0.70%       6.468ms      11.229us           576
+void at::native::(anonymous namespace)::CatArrayBatc...         0.00%       0.000us         0.00%       0.000us       0.000us       6.319ms         0.68%       6.319ms       5.176us          1221
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       6.069ms         0.66%       6.069ms       4.971us          1221
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       5.697ms         0.62%       5.697ms       7.794us           731
+void at::native::radixSortKVInPlace<-2, -1, 32, 4, l...         0.00%       0.000us         0.00%       0.000us       0.000us       5.400ms         0.58%       5.400ms      13.637us           396
+                                            aten::copy_         2.92%       8.773ms         8.46%      25.366ms       8.967us       5.383ms         0.58%       5.383ms       1.903us          2829
+                                          memcpy32_post         0.00%       0.000us         0.00%       0.000us       0.000us       5.293ms         0.57%       5.293ms       2.014us          2628
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.256ms         0.46%       4.256ms       3.486us          1221
+                                              aten::bmm         0.14%     410.635us         0.19%     556.437us      16.862us       4.231ms         0.46%       4.231ms     128.207us            33
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       4.213ms         0.46%       4.213ms       2.588us          1628
+                                     record_param_comms         0.86%       2.592ms         1.31%       3.936ms      53.191us       4.100ms         0.44%       4.100ms      55.403us            74
+ncclDevKernel_SendRecv(ncclDevKernelArgsStorage<4096...         0.00%       0.000us         0.00%       0.000us       0.000us       4.100ms         0.44%       4.100ms     110.807us            37
+                                         nccl:send 0->1         0.00%       0.000us         0.00%       0.000us       0.000us       4.100ms         0.44%       4.100ms     110.807us            37
+        _fused_kv_compress_norm_rope_insert_sparse_attn         0.00%       0.000us         0.00%       0.000us       0.000us       4.051ms         0.44%       4.051ms      12.165us           333
+                                     aten::masked_fill_         0.06%     186.671us         0.12%     370.466us       8.420us       3.947ms         0.43%       3.947ms      89.715us            44
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       3.892ms         0.42%       3.892ms       4.782us           814
+void at::native::reduce_kernel<128, 4, at::native::R...         0.00%       0.000us         0.00%       0.000us       0.000us       3.880ms         0.42%       3.880ms       9.534us           407
+void vllm::persistent::persistent_topk_kernel<512, 4...         0.00%       0.000us         0.00%       0.000us       0.000us       3.783ms         0.41%       3.783ms      21.017us           180
+                            _save_partial_states_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       3.760ms         0.41%       3.760ms       7.259us           518
+                              vllm::sparse_attn_indexer         0.32%     962.856us         0.54%       1.625ms     325.008us       3.520ms         0.38%       5.344ms       1.069ms             5
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       3.505ms         0.38%       3.505ms       2.562us          1368
+                            _relu_weight_headsum_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       3.484ms         0.38%       3.484ms     348.372us            10
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       3.274ms         0.35%       3.274ms       7.832us           418
+                           quantize_and_insert_k_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       3.195ms         0.35%       3.195ms       7.851us           407
+void at::native::vectorized_gather_kernel<16, long>(...         0.00%       0.000us         0.00%       0.000us       0.000us       3.137ms         0.34%       3.137ms       2.567us          1222
+                        hc_prenorm_gemm_tilelang_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       3.113ms         0.34%       3.113ms      53.671us            58
+                                               aten::mm         0.25%     749.114us         0.40%       1.193ms      29.833us       2.863ms         0.31%       2.863ms      71.567us            40
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       2.784ms         0.30%       2.784ms       2.280us          1221
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       2.731ms         0.30%       2.731ms       6.534us           418
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       2.720ms         0.29%       2.720ms       6.682us           407
+void (anonymous namespace)::softmax_warp_forward<flo...         0.00%       0.000us         0.00%       0.000us       0.000us       2.710ms         0.29%       2.710ms       8.113us           334
+void vllm::moe::topkGatingSoftplusSqrt<8, 256, 4, 16...         0.00%       0.000us         0.00%       0.000us       0.000us       2.612ms         0.28%       2.612ms       8.825us           296
+void vllm::rms_norm_kernel<c10::Half, 8, 3>(c10::Hal...         0.00%       0.000us         0.00%       0.000us       0.000us       2.537ms         0.27%       2.537ms       6.234us           407
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       2.284ms         0.25%       2.284ms       3.525us           648
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us       2.194ms         0.24%       2.194ms       5.391us           407
+void (anonymous namespace)::elementwise_kernel_with_...         0.00%       0.000us         0.00%       0.000us       0.000us       2.190ms         0.24%       2.190ms       1.794us          1221
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       2.093ms         0.23%       2.093ms       5.007us           418
+void at::native::elementwise_kernel<128, 2, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       2.062ms         0.22%       2.062ms       5.065us           407
+                                          aten::baddbmm         0.13%     387.532us         0.16%     477.144us      21.688us       1.981ms         0.21%       1.981ms      90.067us            22
+       _fused_kv_compress_norm_rope_insert_indexer_attn         0.00%       0.000us         0.00%       0.000us       0.000us       1.945ms         0.21%       1.945ms      10.513us           185
+void cublasLt::splitKreduce_kernel<32, 16, int, __ha...         0.00%       0.000us         0.00%       0.000us       0.000us       1.823ms         0.20%       1.823ms       3.079us           592
+void at::native::_scatter_gather_elementwise_kernel<...         0.00%       0.000us         0.00%       0.000us       0.000us       1.791ms         0.19%       1.791ms       4.401us           407
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.786ms         0.19%       1.786ms       2.444us           731
+void at::native::index_elementwise_kernel<128, 4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.718ms         0.19%       1.718ms       4.221us           407
+                                           aten::gather         0.22%     658.310us         0.35%       1.043ms      17.382us       1.594ms         0.17%       1.594ms      26.568us            60
+void cublasLt::splitKreduce_kernel<32, 16, int, floa...         0.00%       0.000us         0.00%       0.000us       0.000us       1.588ms         0.17%       1.588ms       4.769us           333
+void at::native::elementwise_kernel<128, 4, at::nati...         0.00%       0.000us         0.00%       0.000us       0.000us       1.579ms         0.17%       1.579ms       3.880us           407
+void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.565ms         0.17%       1.565ms       1.692us           925
+turing_fp16_s1688gemm_fp16_256x64_ldg8_f2f_stages_32...         0.00%       0.000us         0.00%       0.000us       0.000us       1.539ms         0.17%       1.539ms     139.913us            11
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us       1.528ms         0.17%       1.528ms       2.090us           731
+void at::native::vectorized_gather_kernel<16, int>(c...         0.00%       0.000us         0.00%       0.000us       0.000us       1.495ms         0.16%       1.495ms      67.936us            22
+                                              aten::mul         0.13%     377.571us         0.20%     614.233us       7.977us       1.468ms         0.16%       1.468ms      19.063us            77
+          triton_poi_fused_clamp_copy__mul_silu_slice_0         0.00%       0.000us         0.00%       0.000us       0.000us       1.467ms         0.16%       1.467ms       3.605us           407
+                                              aten::cat         0.11%     340.436us         0.18%     550.941us       8.348us       1.386ms         0.15%       1.386ms      20.997us            66
+void at::native::_scatter_gather_elementwise_kernel<...         0.00%       0.000us         0.00%       0.000us       0.000us       1.286ms         0.14%       1.286ms       3.159us           407
+                         Memcpy DtoD (Device -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us       1.279ms         0.14%       1.279ms       1.938us           660
+                               cudaEventRecordWithFlags         0.20%     588.885us         0.20%     588.885us       1.091us       1.270ms         0.14%       1.270ms       2.351us           540
+turing_fp16_s1688gemm_fp16_128x256_ldg8_f2f_stages_3...         0.00%       0.000us         0.00%       0.000us       0.000us       1.208ms         0.13%       1.208ms     241.517us             5
+void vllm::act_and_mul_kernel<c10::Half, __half2, &(...         0.00%       0.000us         0.00%       0.000us       0.000us       1.199ms         0.13%       1.199ms       2.945us           407
+void at_cuda_detail::cub::DeviceScanKernel<at_cuda_d...         0.00%       0.000us         0.00%       0.000us       0.000us       1.152ms         0.12%       1.152ms       2.830us           407
+                             _fused_q_kv_rmsnorm_kernel         0.00%       0.000us         0.00%       0.000us       0.000us       1.137ms         0.12%       1.137ms       2.793us           407
+                         Memcpy HtoD (Pinned -> Device)         0.00%       0.000us         0.00%       0.000us       0.000us       1.032ms         0.11%       1.032ms       1.163us           887
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     933.069us         0.10%     933.069us       2.293us           407
+void at::native::vectorized_elementwise_kernel<2, at...         0.00%       0.000us         0.00%       0.000us       0.000us     930.523us         0.10%     930.523us       2.096us           444
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     845.282us         0.09%     845.282us       2.077us           407
+                        _dequantize_and_gather_k_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     767.873us         0.08%     767.873us      38.394us            20
+                                              aten::add         0.44%       1.325ms         0.74%       2.234ms      11.696us     767.588us         0.08%     767.588us       4.019us           191
+void at::native::unrolled_elementwise_kernel<at::nat...         0.00%       0.000us         0.00%       0.000us       0.000us     760.311us         0.08%     760.311us       1.868us           407
+                                            memcpy_post         0.00%       0.000us         0.00%       0.000us       0.000us     731.143us         0.08%     731.143us       1.846us           396
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     713.887us         0.08%     713.887us       1.754us           407
+                            _sm70_indexer_q_rope_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     702.023us         0.08%     702.023us       3.795us           185
+void vllm::moe::topkGatingSoftplusSqrt<8, 256, 4, 16...         0.00%       0.000us         0.00%       0.000us       0.000us     698.781us         0.08%     698.781us       6.295us           111
+                                         aten::_softmax         0.02%      62.926us         0.04%     129.762us       5.898us     696.227us         0.08%     696.227us      31.647us            22
+                                            aten::index         0.93%       2.803ms         1.82%       5.453ms      24.236us     681.541us         0.07%     764.033us       3.396us           225
+void at_cuda_detail::cub::DeviceScanInitKernel<at_cu...         0.00%       0.000us         0.00%       0.000us       0.000us     678.857us         0.07%     678.857us       1.668us           407
+                                            aten::fill_         0.86%       2.590ms         1.77%       5.313ms       4.472us     676.771us         0.07%     676.771us       0.570us          1188
+                               mhc_post_tilelang_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     636.231us         0.07%     636.231us      10.969us            58
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     610.431us         0.07%     610.431us       1.615us           378
+void at::native::vectorized_elementwise_kernel<4, at...         0.00%       0.000us         0.00%       0.000us       0.000us     574.917us         0.06%     574.917us       1.691us           340
+           _compute_global_topk_indices_and_lens_kernel         0.00%       0.000us         0.00%       0.000us       0.000us     571.612us         0.06%     571.612us       3.176us           180
+                                           aten::cumsum         0.58%       1.728ms         1.06%       3.175ms      20.351us     563.504us         0.06%     598.225us       3.835us           156
+-------------------------------------------------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------  ------------
+Self CPU time total: 299.969ms
+Self CUDA time total: 924.871ms
+(Worker_PP0 pid=3369890)
+INFO 09-20 01:41:32 [wrapper.py:66] Profiler stopped successfully.

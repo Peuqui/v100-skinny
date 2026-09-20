@@ -284,6 +284,23 @@ je Anfrage ein Gather + ein GEMM, konstant ~0,13 ms je Schicht statt 0,04–3,3 
 Schritt bei 18k 91 → 81 ms, bis 18k praktisch kontextunabhängig, 62k-Härtetest
 175 → 132 s, kurz +2 ms (Festpreis des GEMM über die Graph-Breite).
 
+Wohin die 81 ms je Decode-Schritt gehen (20.09., `VLLM_SM70_ASYNC_CPU_TRACE=1`, 18k):
+GPU-Pipeline aller fünf Stufen ~52 ms (davon ~30 ms MoE), Entwurf 5,7 ms,
+Eingabevorbereitung auf der CPU ~6,5 ms, Rest (Prozesskommunikation, zwei
+gloo-Broadcasts, Warteschlangen) ~12–16 ms. Die vorderen Stufen warten 66–78 ms auf
+das Ergebnis der letzten — inhärent bei Spec-Decode mit einer Anfrage.
+CPU-Profil (py-spy, 15 s Decode, `benchmarks/pyspy-dsv4-decode-18k-2026-09-20.raw`):
+EngineCore 99,4 % aktives Warten im Shared-Memory-Kanal, Scheduling < 1 %; letzte Stufe
+79 % in der Host-Synchronisation `reference_rows.any()` von `apply_top_k_top_p_triton`
+(Warten auf die GPU, dahinter nur ~0,5 ms CPU-Arbeit bis zur ohnehin nötigen
+Synchronisation → kein Hebel); übrige Stufen je ~4 ms echte CPU-Arbeit je Schritt.
+Der MoE-Decode-Kernel `moe_qpn` ruft die feste 8×8×4-Tensor-Kern-Kachel
+(`mma…m8n8k4`) auf; die 8 Zeilen je Durchgang sind Hardware, nicht einstellbar, und er
+liegt ~1,5–2× über der Bandbreiten-Untergrenze. K: je Zusatzposition ~3 ms je Schritt,
+K=3/4/5 liegen für Prosa gleichauf. Profil-Tabellen: `benchmarks/torchprof-dsv4-*`.
+py-spy: `~/.venv/pyspy`, Anhängen nur mit dem ptrace-Haken unter
+`~/.venv/pyspy/ptrace_hook` (Dienst hat PrivateTmp, Pfade nie unter /tmp übergeben).
+
 
 ### Qwen3.8-Flash-Next (180B, Qwen4Exp) — geprüft 07.09., nachverifiziert 09.09.
 

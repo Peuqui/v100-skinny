@@ -1691,6 +1691,26 @@ Augustwerten (6,5 min Boot).
     INDEXER-RESERVE: `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB` im DSv4-Eintrag von 64
     auf 256 angehoben. Die 64 waren der Grund für den OOM am Mittag; mit dem
     gewonnenen Speicher ist die ehrliche Reserve jetzt bezahlbar.
+    **BETRIEBSPUNKT NACH DEM HERANTASTEN (20.09. 17:28).** Von oben
+    heruntergehangelt (Peuqui: „Auf eine Million, und wenn er abstürzt,
+    hangeln wir uns runter"):
+    | Blöcke | Fenster | Indexer-Reserve | Ergebnis |
+    |---|---|---|---|
+    | 8.700 | 1.048.576 | 512 MB | OOM (Triton-Allokation) |
+    | 5.200 |   524.288 | 512 MB | OOM — es scheitert die RESERVE selbst |
+    | 3.600 |   262.144 | 512 MB | läuft, Pool 592.415, Nadel 125k 4/4 |
+    | 3.600 |   524.288 | 512 MB | **läuft, Pool 721.221, Nadel 497k 4/4** |
+    LEHRE: Der Pool wächst MIT dem Fenster bei gleichen Blöcken (592k → 721k),
+    weil die SWA-Gruppe nicht mitwächst — das Fenster hochzuziehen ist also
+    teilweise gratis. Eine echte Blockgröße liegt bei ~320 KB je V100-Stufe
+    (nicht 191 KB wie aus der CPU-Poolgröße gerechnet; die Blöcke sind
+    aufgefüllt). Und: Reserve, KV-Pool und bmm-Workspace teilen sich denselben
+    Speicher — mehr Reserve heißt weniger Pool, nicht mehr Sicherheit.
+    497.053-Token-Prompt: Prefill ~13 min, Nadeln 4/4, Speicher stabil.
+    OFFEN: CPU-KV-Offload verkleinern. Er rettet verdrängte Präfixe, aber bei
+    721k Pool wird kaum noch verdrängt — 5 GB GEPINNTER Hauptspeicher (nicht
+    auslagerbar!) für einen Dienst, den der Pool selbst erledigt. Host hat
+    31 GB, davon 16 GB im Swap.
     OFFEN: für FREMDE MXFP4-Checkpoints die Bestimmung eines globalen Faktors —
     reine E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
     `weight_scale_2` = 2^-13 daneben. Und der Turing-Teil (siehe unten).

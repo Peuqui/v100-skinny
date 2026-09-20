@@ -1647,6 +1647,35 @@ Augustwerten (6,5 min Boot).
     W13/W2 tensor pair." Für sm75 gibt es bei 1Cat überhaupt nichts; ihre
     beiden Entwurfsdokumente zielen auf TP8 mit acht V100 und TurboMind
     (Marlin ausdrücklich „out of scope").
+    **KERNEL-SEITE FERTIG UND BELEGT (20.09., UNCOMMITTED).** Beide Formate
+    laufen durch DENSELBEN Kernel, der Modus ist ein Template-Argument:
+    `e8m0_to_half2` (MXFP4-Skala ist ein reiner Exponent — fp16-Bitmuster per
+    Shift, kein Multiplizieren), `group_scale<MODE>` kapselt den
+    Indexunterschied (eine Skala je 16 gegen je 32), `skinny_nvfp4_moe_qpn`
+    nimmt `SCALE_MODE`, der Einstiegspunkt einen optionalen Parameter
+    `scale_mode` (Vorgabe 0 = NVFP4, bestehende Aufrufer unverändert).
+    `_qpn_prepack(codes, scales, scale_group=16)` in marlin.py trennt jetzt
+    Code-Gruppen (immer 16) von Skalen-Gruppen (16 oder 32).
+    Rund 25 Zeilen im Kernel, kein zweiter Kernel, keine Verzweigung im heißen
+    Pfad — und **architekturunabhängig**, weil die Änderung vor den
+    Tensorkern-Instruktionen sitzt.
+    BELEGE (scratchpad moe_regression.py, mxfp4_equivalence.py,
+    mxfp4_real_weights.py, je splitk 8/16/32 x nacc 1/2):
+     - NVFP4-Pfad gegen die Fassung VOR dem Umbau: bitgleich, maxdiff 0.
+     - MXFP4 gegen NVFP4 auf gleichwertigen Daten: bitgleich, Skalentabelle
+       8192 -> 4096 Bytes.
+     - MIT ECHTEN GEWICHTEN (layers.0.ffn.experts.0-3.w1, 4 x [2048, 4096]):
+       bitgleich, Skalenspeicher 2,00 -> 1,00 MiB, und das Code-Layout ist
+       für beide Formate IDENTISCH (die 146 GiB Gewichte werden beim
+       Umschalten nicht angefasst).
+    OFFEN: MoE-Anbindung (nvfp4_skinny_moe.py ruft `_qpn_prepack` je Experte
+    und muss den Modus durchreichen), Formaterkennung beim Laden, und für
+    echte MXFP4-Checkpoints die Bestimmung eines globalen Faktors — reine
+    E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
+    `weight_scale_2` = 2^-13 daneben.
+    NEBENBEFUND: Gebaut wird nur `-gencode=arch=compute_70,code=sm_70`; die
+    RTX 8000 läuft mit abwärtskompatiblem Volta-Code. Für den Turing-Teil des
+    Auftrags ist das der eigentliche Hebel, unabhängig von MXFP4.
 
 20. **KV-Auslagerung in den Hauptspeicher, generisch — DANACH** (Auftrag
     Peuqui 20.09.2026, ausdrücklich „nach Möglichkeit generisch, sodass da

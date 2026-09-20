@@ -47,6 +47,29 @@ DEV_INLINE half2 fp8e4m3_to_half2(unsigned char b) {
   return __halves2half2(hs, hs);
 }
 
+// MXFP4 block scale: E8M0 is a bare exponent, value = 2^(b - 127). fp16
+// stores exponent + 15, so the field is b - 112 and the mantissa stays 0 --
+// one shift, no multiply. Callers keep the checkpoint's global factor in
+// gm2, which is what holds b - 112 inside fp16's normal range (1..30).
+DEV_INLINE half2 e8m0_to_half2(unsigned char b) {
+  const unsigned short hb = (unsigned short)(((int)b - 112) << 10);
+  const half hs = __ushort_as_half(hb);
+  return __halves2half2(hs, hs);
+}
+
+// Group-scale layouts a weight tile can carry. NVFP4 ships one fp8-e4m3
+// scale per 16 codes; MXFP4 one E8M0 scale per 32. Everything else -- code
+// packing, fragment order, the decoder, the MMA -- is identical, so the
+// kernels take this as a template argument instead of forking.
+enum ScaleMode { SCALE_NVFP4_FP8_16 = 0, SCALE_MXFP4_E8M0_32 = 1 };
+
+template <int MODE>
+DEV_INLINE half2 group_scale(const uint8_t *sb, int g) {
+  if (MODE == SCALE_MXFP4_E8M0_32)
+    return e8m0_to_half2(__ldg(sb + (size_t)(g >> 1) * 32));
+  return fp8e4m3_to_half2(__ldg(sb + (size_t)g * 32));
+}
+
 // XOR swizzle on the low 3 bits of a k-pair index; conflict-free for the
 // simt read pattern (lane-groups sharing a bank base differ in p>>5).
 DEV_INLINE int swz(int p) { return (p & ~7) | ((p ^ (p >> 5)) & 7); }
@@ -2618,7 +2641,7 @@ void skinny_moe_simt(torch::Tensor x, torch::Tensor codes, torch::Tensor scales,
 // (E=512, top-k 10, T=1) schedule thousands of empty blocks that cost
 // more than the actual work.
 // ---------------------------------------------------------------------------
-template <int SPLITK, int NACC>
+template <int SPLITK, int NACC, int SCALE_MODE = SCALE_NVFP4_FP8_16>
 __global__ void __launch_bounds__(32 * SPLITK)
 skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
                                      const uint8_t *__restrict__ qscales,
@@ -2649,8 +2672,10 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
   const int g0 = warp * Gq;
   const uint2 *cb = reinterpret_cast<const uint2 *>(qcodes) +
                     ((size_t)e * (N >> 5) + tile) * G * 32 + lane;
+  // MXFP4 keeps one scale per 32 codes, so its table is half as long.
+  const int SG = (SCALE_MODE == SCALE_MXFP4_E8M0_32) ? (G >> 1) : G;
   const uint8_t *sb =
-      qscales + ((size_t)e * (N >> 5) + tile) * G * 32 + lane;
+      qscales + ((size_t)e * (N >> 5) + tile) * SG * 32 + lane;
   const half2 gm2 = __float2half2_rn(gscales[e] * 16384.f);
 
   // Same multi-pass as moe_simt: an expert with more than MMAX slots (hash
@@ -2677,8 +2702,7 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
 #pragma unroll 4
     for (int g = g0; g < g0 + Gq; g++) {
       const uint2 q2 = __ldcs(cb + (size_t)g * 32);
-      const half2 sc2 =
-          __hmul2(fp8e4m3_to_half2(__ldg(sb + (size_t)g * 32)), gm2);
+      const half2 sc2 = __hmul2(group_scale<SCALE_MODE>(sb, g), gm2);
       half2 b[8];
       dequant8_tm(q2.x, sc2, b + 0);
       dequant8_tm(q2.y, sc2, b + 4);
@@ -2727,7 +2751,8 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
                     torch::Tensor perm, torch::Tensor gids,
                     torch::Tensor goff, int64_t topk,
                     torch::Tensor y_slots, bool x_slot_major,
-                    int64_t num_tokens, int64_t splitk, int64_t nacc) {
+                    int64_t num_tokens, int64_t splitk, int64_t nacc,
+                    int64_t scale_mode) {
   TORCH_CHECK(x.is_cuda() && x.dtype() == torch::kHalf && x.is_contiguous());
   TORCH_CHECK(qcodes.is_cuda() && qcodes.dtype() == torch::kUInt8 &&
               qcodes.is_contiguous());
@@ -2746,7 +2771,12 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   const int64_t S = T * topk;
   TORCH_CHECK(x.size(0) == (x_slot_major ? S : T), "x rows mismatch");
   TORCH_CHECK(qcodes.numel() == E * N * (K >> 1), "qpn codes size");
-  TORCH_CHECK(qscales.numel() == E * N * (K >> 4), "qpn scales size");
+  TORCH_CHECK(scale_mode == SCALE_NVFP4_FP8_16 ||
+                  scale_mode == SCALE_MXFP4_E8M0_32,
+              "scale_mode 0 (NVFP4 fp8/16) or 1 (MXFP4 e8m0/32)");
+  // One scale per 16 codes for NVFP4, per 32 for MXFP4.
+  const int64_t sh = 4 + scale_mode;
+  TORCH_CHECK(qscales.numel() == E * N * (K >> sh), "qpn scales size");
   TORCH_CHECK(gids.size(0) == S && goff.size(0) == S + 1, "compact routing size");
   TORCH_CHECK(perm.size(0) == S && y_slots.size(0) == S);
   TORCH_CHECK(S <= 65535, "grouped qpn MoE: tokens * topk = ", S,
@@ -2756,8 +2786,8 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   const dim3 grid((unsigned)(N / 32), (unsigned)S);
   auto stream = at::cuda::getCurrentCUDAStream();
 
-#define LAUNCH_MOE_QPN(SPv, NAv)                                            \
-  skinny_nvfp4_moe_qpn<SPv, NAv>                                            \
+#define LAUNCH_MOE_QPN_S(SPv, NAv, SMv)                                     \
+  skinny_nvfp4_moe_qpn<SPv, NAv, SMv>                                       \
       <<<grid, dim3(32 * SPv), 0, stream>>>(                                \
           qcodes.data_ptr<uint8_t>(), qscales.data_ptr<uint8_t>(),          \
           gscales.data_ptr<float>(),                                        \
@@ -2765,6 +2795,14 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
           reinterpret_cast<half *>(y_slots.data_ptr<at::Half>()),           \
           perm.data_ptr<int>(), gids.data_ptr<int>(), goff.data_ptr<int>(), \
           (int)N, (int)K, (int)topk, x_slot_major ? 1 : 0)
+
+#define LAUNCH_MOE_QPN(SPv, NAv)                                            \
+  do {                                                                      \
+    if (scale_mode == SCALE_MXFP4_E8M0_32)                                  \
+      LAUNCH_MOE_QPN_S(SPv, NAv, SCALE_MXFP4_E8M0_32);                      \
+    else                                                                    \
+      LAUNCH_MOE_QPN_S(SPv, NAv, SCALE_NVFP4_FP8_16);                       \
+  } while (0)
 
   const int key = (int)(splitk * 10 + nacc);
   switch (key) {
@@ -2777,6 +2815,7 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
     default: TORCH_CHECK(false, "moe_qpn splitk in {8,16,32}, nacc in {1,2}");
   }
 #undef LAUNCH_MOE_QPN
+#undef LAUNCH_MOE_QPN_S
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
@@ -2784,8 +2823,14 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("moe_simt", &skinny_moe_simt,
         "grouped NVFP4 MoE GEMM (SIMT, device-side routing, tokens<=8)");
   m.def("moe_qpn", &skinny_moe_qpn,
-        "grouped NVFP4 MoE GEMM (mma.m8n8k4 on prepacked fragments, "
-        "compact device-side routing, 8 rows per weight read)");
+        "grouped NVFP4/MXFP4 MoE GEMM (mma.m8n8k4 on prepacked fragments, "
+        "compact device-side routing, 8 rows per weight read); scale_mode "
+        "0 = NVFP4 fp8-e4m3 per 16 codes, 1 = MXFP4 e8m0 per 32",
+        py::arg("x"), py::arg("qcodes"), py::arg("qscales"),
+        py::arg("gscales"), py::arg("perm"), py::arg("gids"),
+        py::arg("goff"), py::arg("topk"), py::arg("y_slots"),
+        py::arg("x_slot_major"), py::arg("num_tokens"), py::arg("splitk"),
+        py::arg("nacc"), py::arg("scale_mode") = 0);
   m.def("gemm_qpn8", &skinny_gemm_qpn8,
         "skinny FP8 E4M3 GEMM (QPN8, M<=8)");
   m.def("qpn8_blk_dequant", &skinny_qpn8_blk_dequant,

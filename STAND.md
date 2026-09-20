@@ -1673,9 +1673,17 @@ Augustwerten (6,5 min Boot).
     echte MXFP4-Checkpoints die Bestimmung eines globalen Faktors — reine
     E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
     `weight_scale_2` = 2^-13 daneben.
-    NEBENBEFUND: Gebaut wird nur `-gencode=arch=compute_70,code=sm_70`; die
-    RTX 8000 läuft mit abwärtskompatiblem Volta-Code. Für den Turing-Teil des
-    Auftrags ist das der eigentliche Hebel, unabhängig von MXFP4.
+    **TURING-HEBEL, nachgemessen (20.09.):** Gebaut wird ausschließlich
+    `-gencode=arch=compute_70,code=sm_70`. `cuobjdump` am fertigen Modul zeigt
+    genau EINE Cubin (sm_70) und **kein PTX**. Auf der RTX 8000 läuft das nur
+    über CUDAs Binärkompatibilität aufwärts innerhalb derselben Hauptversion
+    (7.0 → 7.5) — die Karte bekommt also keine einzige Turing-Instruktion zu
+    sehen. Der Code selbst ruft `mma.m8n8k4` als Inline-PTX, also die
+    Volta-Form; Turing könnte `mma.m16n8k8`. Ein zusätzliches
+    `-gencode=arch=compute_75,code=sm_75` bringt daher zunächst nur besseres
+    Scheduling und Registerverteilung, nicht die breitere MMA-Form. Für „auf
+    Turing optimiert" braucht es beides: den sm75-Build UND einen Kernelpfad
+    mit der Turing-MMA. Unabhängig von MXFP4 und vermutlich der größere Posten.
 
 20. **KV-Auslagerung in den Hauptspeicher, generisch — DANACH** (Auftrag
     Peuqui 20.09.2026, ausdrücklich „nach Möglichkeit generisch, sodass da

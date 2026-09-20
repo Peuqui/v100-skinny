@@ -1606,3 +1606,55 @@ Augustwerten (6,5 min Boot).
     Merge 82301e6b (#586 #587 #589), SHA auf beiden Kartenpaaren gleich,
     76,28 (V100) / 76,65 (RTX) tok/s; auf dem RTX-Pfad neutral, weil die PRs
     SM70-Attention ändern. Getaggt `verified-2026-09-10b`.
+
+19. **MXFP4-Port für Volta und Turing — NÄCHSTER ARBEITSBLOCK** (Auftrag
+    Peuqui 20.09.2026). Ziel: MXFP4-Kernel, jeweils für sm70 und sm75
+    optimiert. Ausgangslage: 1Cat hat `mxfp4_qpn_m1_sm70.cu` und
+    `mxfp4_sm70_moe.py`, aber „m1" deutet auf einen reinen M=1-Kernel —
+    gebraucht werden die breiteren Bänder (6 Zeilen für den DSpark-Verifier,
+    256 für den Prefill-Chunk). Der Unterschied zu NVFP4 liegt im
+    Entpack-Pfad: eine Skala je 32 statt je 16 Werte, E8M0 statt FP8.
+    **Warum es sich doppelt lohnt:** Der MXFP4-Checkpoint ist rund 8 GB
+    kleiner (157,2 GiB gegen 165 GiB), weil MXFP4 laut NVIDIAs
+    `cast_mxfp4_to_nvfp4.log` das native Format ist und NVFP4 nur teurere
+    Skalen darauf packt (lossless=100 %). Auf den V100-Stufen sind das je
+    etwa 1,5 GB mehr freier Speicher — und der entspannt **beide** Posten,
+    die den Kontext begrenzen: KV-Pool und Indexer-Reserve (siehe Punkt 20
+    und den gescheiterten 128k-Versuch vom 20.09.). Checkpoint-Kandidaten:
+    `haanjack/…-MXFP4` (157,2 GB, einziger mit quantisiertem Head, MTP
+    quantisiert, aber kein README und keine Qualitätszahlen) und
+    `amd/…-MXFP4` (159,1 GB, saubere Modelkarte, GSM8K 99,9 %, ROCm-Ziel).
+    Danach erst: Kontextfenster neu ausmessen.
+
+20. **KV-Auslagerung in den Hauptspeicher, generisch — DANACH** (Auftrag
+    Peuqui 20.09.2026, ausdrücklich „nach Möglichkeit generisch, sodass da
+    viele Modelle von profitieren"). Beweggrund: Bei quantisierten Modellen
+    ist der KV-Cache ab etwa 35.000 Token der GRÖSSERE Posten gegenüber den
+    Gewichten (Llama-8B Q4: 4,5 GB Gewichte gegen 128 KiB je Token), er ist
+    also meist der eigentliche Grund, warum überhaupt ausgelagert werden
+    muss. Wer stattdessen Schichten auf die CPU legt, lagert ausgerechnet
+    das aus, was jedes Token vollständig braucht.
+    **Zwei Wege, beide prüfen:**
+    (a) Nachladen nach der Top-k-Auswahl des Indexers — so die vLLM-RFCs
+        #33980 und #48203 (beide OHNE Code, Konzeptphase). Bandbreite bei uns
+        (PCIe Gen3 x4, ~3,5 GB/s): 1M Kontext 132 ms/Token nur für
+        Indexer + Top-2048 gegen 721 ms bei naivem Nachladen; bei 128k nur
+        17 ms, also hinter den 81 ms Rechenzeit versteckbar.
+    (b) Aufmerksamkeit aufteilen statt Daten bewegen — GPU rechnet über die
+        Blöcke im VRAM, CPU über die im Hauptspeicher, zusammengeführt wird
+        über die Flash-Attention-Statistiken (Maximum, Summe, gewichteter
+        Wert). Über den Bus geht nur die Anfrage hin und ein Teilergebnis
+        zurück, kein KV. Die CPU liest ihren eigenen Speicher mit ~50 GB/s
+        statt über einen 3,5-GB/s-Bus. Vorbild: HGCA (arxiv 2507.03153).
+        Das ist derselbe Kniff, mit dem llama.cpp ausgelagerte Schichten
+        erträglich macht — die Rechnung zu den Daten bringen.
+    **Generisch heißt:** Die Speicherverwaltung ist modellunabhängig; was
+    nicht generisch ist, ist die Frage, WELCHE Blöcke gebraucht werden. Bei
+    DSv4 und GLM-5.2 beantwortet sie das Modell selbst, bei dichten Modellen
+    bräuchte es einen Schätzer (ShadowKV, InfiniGen, FreeKV — Forschung,
+    nicht Portierung). Schnittstelle also: „Modell liefert Indizes, Backend
+    besorgt die Blöcke."
+    **Vorarbeit bei uns:** `common/ops/sparse_decode_bmm.py` macht den
+    indizierten Entpack-Gather der ausgewählten Blöcke bereits — dort
+    müssten fehlende Blöcke vorher aus dem Host geholt bzw. dorthin
+    ausgelagert berechnet werden.

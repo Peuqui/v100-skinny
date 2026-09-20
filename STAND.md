@@ -1640,14 +1640,20 @@ Augustwerten (6,5 min Boot).
         (PCIe Gen3 x4, ~3,5 GB/s): 1M Kontext 132 ms/Token nur für
         Indexer + Top-2048 gegen 721 ms bei naivem Nachladen; bei 128k nur
         17 ms, also hinter den 81 ms Rechenzeit versteckbar.
-    (b) Aufmerksamkeit aufteilen statt Daten bewegen — GPU rechnet über die
-        Blöcke im VRAM, CPU über die im Hauptspeicher, zusammengeführt wird
-        über die Flash-Attention-Statistiken (Maximum, Summe, gewichteter
-        Wert). Über den Bus geht nur die Anfrage hin und ein Teilergebnis
-        zurück, kein KV. Die CPU liest ihren eigenen Speicher mit ~50 GB/s
-        statt über einen 3,5-GB/s-Bus. Vorbild: HGCA (arxiv 2507.03153).
-        Das ist derselbe Kniff, mit dem llama.cpp ausgelagerte Schichten
-        erträglich macht — die Rechnung zu den Daten bringen.
+    (b) Aufmerksamkeit aufteilen statt Daten bewegen (HGCA, arxiv 2507.03153)
+        — GPU rechnet über die Blöcke im VRAM, CPU über die im Hauptspeicher,
+        zusammengeführt über die Flash-Attention-Statistiken. **Für Modelle
+        MIT Indexer verworfen** (Peuquis Einwand 20.09., nachgerechnet): Die
+        fünf PCIe-Verbindungen addieren sich auf 17,5 GB/s, die CPU hat ihre
+        ~50 GB/s nur einmal und teilt sie mit Scheduler und fünf Workern. Vor
+        allem aber verschwindet der große Posten, wenn man ihn gar nicht erst
+        auslagert: Der Indexer-Cache ist bei 1M Kontext nur 453 MiB je Stufe
+        und bleibt im VRAM (so auch der vLLM-RFC). Dann bleiben je Schritt
+        24 MiB Auswahl = 1,2 ms Transport — gegen eine Synchronisation über
+        43 Schichten und eine CPU, die Attention ein bis zwei Größenordnungen
+        langsamer rechnet. **HGCA bleibt richtig für DICHTE Modelle**, wo der
+        ganze KV je Token gelesen werden muss und 50 GB/s gegen 17,5 GB/s
+        gewinnen. Dafür ist das Papier geschrieben.
     **Generisch heißt:** Die Speicherverwaltung ist modellunabhängig; was
     nicht generisch ist, ist die Frage, WELCHE Blöcke gebraucht werden. Bei
     DSv4 und GLM-5.2 beantwortet sie das Modell selbst, bei dichten Modellen

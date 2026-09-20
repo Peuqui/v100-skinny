@@ -1668,11 +1668,32 @@ Augustwerten (6,5 min Boot).
        bitgleich, Skalenspeicher 2,00 -> 1,00 MiB, und das Code-Layout ist
        für beide Formate IDENTISCH (die 146 GiB Gewichte werden beim
        Umschalten nicht angefasst).
-    OFFEN: MoE-Anbindung (nvfp4_skinny_moe.py ruft `_qpn_prepack` je Experte
-    und muss den Modus durchreichen), Formaterkennung beim Laden, und für
-    echte MXFP4-Checkpoints die Bestimmung eines globalen Faktors — reine
-    E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
-    `weight_scale_2` = 2^-13 daneben.
+    **LÄUFT IM SYSTEM (20.09. 16:14, Fork b81c503e).** Die Faltung passiert
+    beim Laden: Erkennung per Byte-Arithmetik, Raster auf eine E8M0-Skala je
+    32 Codes gefaltet, die vollen Parameter freigegeben, Kernel liest die
+    kurze Tabelle. Schalter `VLLM_SKINNY_MXFP4_SCALES=0` behält das
+    ausgelieferte Raster.
+    GEMESSEN (2x RTX 8000 + 3x V100, PP5):
+     - 8,7 GiB frei geworden (vorhergesagt 8,62), Modell 164,0 → 155,3 GiB,
+     - Schrittzeit 79 ms gegen 81 ms vorher (2. Lauf; der erste nach dem Boot
+       zeigt 88 ms Aufwärmeffekt — nicht als Regression lesen),
+     - **Fenster 65.536 → 131.072, Pool 71.493 → ~219.000 Token (1,67x)**,
+     - Nadeln 30k/62k/**125.511** je 4 von 4 — der 120k-Prompt hatte mittags
+       noch die Engine getötet.
+    ZWEI FALLEN AUF DEM WEG (beide gemessen, nicht geraten):
+     1. Die Erkennung darf das Raster NICHT nach float wandeln: 256 Experten je
+        Schicht ⇒ 2 GiB Transienten ⇒ OOM mitten im Laden. Byte-Arithmetik:
+        Zweierpotenz = Mantissenbits null (`b & 0x87`), E8M0 = `(b >> 3) + 120`.
+     2. Die eigene Referenz umzubiegen reicht nicht — der Layer hält die
+        Parameter weiter, die gefaltete Kopie liegt dann NEBEN dem Original
+        (gemessen: 1,9 GiB je Stufe VERLOREN statt gewonnen). Freigabe über den
+        Storage-Zeiger, nicht über Attributnamen.
+    INDEXER-RESERVE: `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB` im DSv4-Eintrag von 64
+    auf 256 angehoben. Die 64 waren der Grund für den OOM am Mittag; mit dem
+    gewonnenen Speicher ist die ehrliche Reserve jetzt bezahlbar.
+    OFFEN: für FREMDE MXFP4-Checkpoints die Bestimmung eines globalen Faktors —
+    reine E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
+    `weight_scale_2` = 2^-13 daneben. Und der Turing-Teil (siehe unten).
     **TURING-HEBEL, nachgemessen (20.09.):** Gebaut wird ausschließlich
     `-gencode=arch=compute_70,code=sm_70`. `cuobjdump` am fertigen Modul zeigt
     genau EINE Cubin (sm_70) und **kein PTX**. Auf der RTX 8000 läuft das nur

@@ -245,12 +245,13 @@ DSpark K=5 (gierig), CUDA-Graph-Größe 6. Zweiter llama-swap-Eintrag
 
 | Messpunkt (temp 1.0, top_k 40) | 18.09. | 20.09. früh |
 |---|---|---|
-| kalter 18k-Prefill (TTFT) | 83 s | 18,3 s |
-| 62k-Prefill | — | 49 s |
+| kalter „18k"-Prefill (TTFT; der Prompt hat 21.857 Tokens) | 83 s = 263 tok/s | 16,7–18,3 s = 1.190–1.310 tok/s |
+| 62k-Prefill (61.719 Tokens) | — | 49 s = 1.260 tok/s |
 | TTFT auf gecachtem 18k-Präfix | 1,3 s | 0,8 s |
-| Decode Prosa 18k | 210 ms/Schritt, 14–15 tok/s | 91 ms, 33–36 tok/s |
-| Decode Code 18k | 22–24 tok/s | 94 ms, 50–56 tok/s |
-| Decode kurz | — | 79 ms |
+| Decode Prosa 18k | 210 ms/Schritt, 14–15 tok/s | 81 ms, 35–40 tok/s |
+| Decode Code 18k | 22–24 tok/s | 84 ms, 50–62 tok/s |
+| Decode kurz | — | 81 ms |
+| 61,7k Prompt + 3.000 erzeugte Tokens | — | 132 s |
 
 Woher das kam: Sparse-MLA als Matrixprodukt (Decode 210 → 92 ms), Präfix-Cache-
 Backport vllm#44082, mHC-fp16-Wertebereich (NaN-Absturz), 128er- statt 64er-Häppchen
@@ -275,8 +276,13 @@ Prosa (−8 %, darum der eigene Coding-Eintrag), probabilistisches Entwurfs-Samp
 Decode-Profil (PP0, 17k Kontext): MoE ~0,75 ms je Schicht und Schritt (33 %), der
 Indexer-Kernel `_paged_index_logits_relu_kernel` 0,91 ms je Kompression-4-Schicht
 (18 %, wächst linear mit dem Kontext: ~19 ms von 91 ms bei 18k, bei 62k der
-Hauptposten, Schritt dort ~180 ms). Nächster Hebel: Indexer-Decode als GEMM wie im
-Prefill.
+Hauptposten, Schritt dort ~180 ms). Behoben am 20.09. (Fork f22c87c9,
+`VLLM_SM70_INDEXER_DECODE_CUBLAS=1`): 1Cats cuBLAS-Weg griff bei Spec-Decode mit
+K > 1 nie, weil der Metadaten-Bauer den Decode dann auf eine Blocktabellen-Zeile je
+Token ausflacht und der Weg genau eine Zeile verlangte; dazu ein Gerät-0-Gate. Jetzt
+je Anfrage ein Gather + ein GEMM, konstant ~0,13 ms je Schicht statt 0,04–3,3 ms:
+Schritt bei 18k 91 → 81 ms, bis 18k praktisch kontextunabhängig, 62k-Härtetest
+175 → 132 s, kurz +2 ms (Festpreis des GEMM über die Graph-Breite).
 
 
 ### Qwen3.8-Flash-Next (180B, Qwen4Exp) — geprüft 07.09., nachverifiziert 09.09.

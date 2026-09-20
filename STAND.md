@@ -1628,7 +1628,13 @@ Augustwerten (6,5 min Boot).
 
 20. **KV-Auslagerung in den Hauptspeicher, generisch — DANACH** (Auftrag
     Peuqui 20.09.2026, ausdrücklich „nach Möglichkeit generisch, sodass da
-    viele Modelle von profitieren"). Beweggrund: Bei quantisierten Modellen
+    viele Modelle von profitieren"). **Es ist ein Prefill-Vermeider, kein
+    Decode-Beschleuniger** (Peuqui 20.09.: „Prefill ist genau das, was den
+    User warten lässt, beim Decode kann er sowieso nicht so schnell
+    mitlesen"). Überlebt der KV im Hauptspeicher, wird ein langer Kontext
+    EINMAL gerechnet und nie wieder — das ist der Gewinn, nicht die
+    Millisekunden je Token. Messlatte aus dem Offload-Betrieb: 22k-Prompt
+    nach einer 34k-Zwischenanfrage 1,5 s statt 14,3 s. Beweggrund: Bei quantisierten Modellen
     ist der KV-Cache ab etwa 35.000 Token der GRÖSSERE Posten gegenüber den
     Gewichten (Llama-8B Q4: 4,5 GB Gewichte gegen 128 KiB je Token), er ist
     also meist der eigentliche Grund, warum überhaupt ausgelagert werden

@@ -234,14 +234,14 @@ DFlash2-Tempolücke, siehe offener Punkt 8.
 
 ## Betriebspunkte
 
-### DeepSeek-V4-Flash-NVFP4 + DSpark — Produktion, Stand 20.09. früh
+### DeepSeek-V4-Flash-NVFP4 + DSpark — Produktion, Stand 20.09. nachts
 
 PP5 über alle fünf Karten (`CUDA_VISIBLE_DEVICES=0,1,4,3,2`, Partition 11,8,8,8,8;
 die letzte Stufe trägt zusätzlich die drei MoE-Schichten des Drafters, real also
-11/8/8/8/11 Schicht-Äquivalente), `--dtype half`, fp8-KV, 65k Kontext,
-`--max-num-seqs 1`, `--max-num-batched-tokens 256`, `--num-gpu-blocks-override 900`,
+11/8/8/8/11 Schicht-Äquivalente), `--dtype half`, fp8-KV, **307.200 Kontext**,
+`--max-num-seqs 1`, **`--max-num-batched-tokens 512`**, **`--num-gpu-blocks-override 3000`**,
 DSpark K=5 (gierig), CUDA-Graph-Größe 6. Zweiter llama-swap-Eintrag
-`…-Coding-K7-vllm` mit K=7 und Graph-Größe 8, sonst identisch.
+`…-Coding-K7-vllm` mit K=7, Graph-Größe 8, 65k Kontext, Häppchen 256 und 900 Blöcken.
 
 | Messpunkt (temp 1.0, top_k 40) | 18.09. | 20.09. früh |
 |---|---|---|
@@ -1607,7 +1607,8 @@ Augustwerten (6,5 min Boot).
     76,28 (V100) / 76,65 (RTX) tok/s; auf dem RTX-Pfad neutral, weil die PRs
     SM70-Attention ändern. Getaggt `verified-2026-09-10b`.
 
-19. **MXFP4-Port für Volta und Turing — NÄCHSTER ARBEITSBLOCK** (Auftrag
+19. **MXFP4-Port für Volta und Turing — ERLEDIGT 20.09., läuft im System
+    (Fork b81c503e, Details unten)** (Auftrag
     Peuqui 20.09.2026). Ziel: MXFP4-Kernel, jeweils für sm70 und sm75
     optimiert. Ausgangslage: 1Cat hat `mxfp4_qpn_m1_sm70.cu` und
     `mxfp4_sm70_moe.py`, aber „m1" deutet auf einen reinen M=1-Kernel —
@@ -1731,35 +1732,189 @@ Augustwerten (6,5 min Boot).
     und Metadaten je Decode-Schritt). Für AIfreds Alltag (meist < 30k Kontext)
     ist das ein schlechter Tausch, für Langdokumente der richtige. Die
     Gegenprobe oben zeigt, dass es NICHT am sm75-Build liegt.
-    **HÄPPCHENGRÖSSE 512 GESCHEITERT (20.09. abends).** Peuquis Idee, die
-    2.000 Scheduler-Runden eines langen Prefills zu halbieren. `_GROUPED_MAX_TOKENS`
-    = 512 wäre exakt die Obergrenze des gebündelten MoE-Pfads, darüber fällt er
-    in die Python-Schleife. Scheitert aber am Speicher: Der bmm-Prefill-Workspace
-    wächst mit T, und dann passt die Indexer-Reserve nicht mehr — zweimal
-    „Tried to allocate 512.00 MiB, 502/504 MiB free" auf den V100, auch nach
-    Rücknahme von 200 Blöcken (die brachten nur 2 MiB, der Workspace frisst sie
-    sofort). ⇒ Häppchen 512 und Halbe-Million-Kontext passen nicht gemeinsam auf
-    32-GB-Karten. Erst wieder aufgreifen, wenn beim Kontext zurückgegangen wird.
-    **CPU-KV-OFFLOAD auf 2 GB zurückgenommen** (war 5 GB, gepinnt und damit
-    nicht auslagerbar; Host hatte 16 GB im Swap). Bei 721k Pool wird kaum noch
-    verdrängt. Peuqui: für größere Modelle vormerken, dann kippt die Rechnung
-    zurück.
-    OFFEN: für FREMDE MXFP4-Checkpoints die Bestimmung eines globalen Faktors —
-    reine E8M0-Exponenten überschreiten fp16, unser Checkpoint löst das mit
-    `weight_scale_2` = 2^-13 daneben. Und der Turing-Teil (siehe unten).
-    **TURING-HEBEL, nachgemessen (20.09.):** Gebaut wird ausschließlich
-    `-gencode=arch=compute_70,code=sm_70`. `cuobjdump` am fertigen Modul zeigt
-    genau EINE Cubin (sm_70) und **kein PTX**. Auf der RTX 8000 läuft das nur
-    über CUDAs Binärkompatibilität aufwärts innerhalb derselben Hauptversion
-    (7.0 → 7.5) — die Karte bekommt also keine einzige Turing-Instruktion zu
-    sehen. Der Code selbst ruft `mma.m8n8k4` als Inline-PTX, also die
-    Volta-Form; Turing könnte `mma.m16n8k8`. Ein zusätzliches
-    `-gencode=arch=compute_75,code=sm_75` bringt daher zunächst nur besseres
-    Scheduling und Registerverteilung, nicht die breitere MMA-Form. Für „auf
-    Turing optimiert" braucht es beides: den sm75-Build UND einen Kernelpfad
-    mit der Turing-MMA. Unabhängig von MXFP4 und vermutlich der größere Posten.
+    **HÄPPCHENGRÖSSE 512 — bei halber Million gescheitert, bei 262k der
+    Gewinner (20.09. abends/nachts).** Peuquis Idee, die 2.000 Scheduler-Runden
+    eines langen Prefills zu halbieren. `_GROUPED_MAX_TOKENS` = 512 ist exakt die
+    Obergrenze des gebündelten MoE-Pfads, darüber fällt er in die Python-Schleife.
+    Bei 524.288 Fenster scheitert es am Speicher: Der bmm-Prefill-Workspace wächst
+    mit T, dann passt die Indexer-Reserve nicht mehr — zweimal „Tried to allocate
+    512.00 MiB, 502/504 MiB free" auf den V100, auch nach Rücknahme von 200 Blöcken
+    (die brachten nur 2 MiB, der Workspace frisst sie sofort). Bei kleinerem Fenster
+    trägt es und ist dem 256er überlegen — Vergleich bei 128k Fenster, 1.800 Blöcken,
+    je drei Kaltläufe von verschiedenen Listenanfängen (`--from=N`, weil `--fill`
+    nur die Länge variiert und die Läufe dann nicht kalt sind):
+    | Häppchen | TTFT der drei Kaltläufe | Schrittzeit |
+    |---|---|---|
+    | 256 | 25,8 / 37,1 / 16,3 s | 102 / 95 / 83 ms |
+    | 512 | 14,6 / 14,7 / 14,7 s | 83 / 83 / 83 ms |
+    512 ist im eingeschwungenen Zustand ~10 % schneller (16,3 → 14,7 s) und
+    **sofort stabil**, während 256 drei Läufe zum Einschwingen braucht (Ursache
+    unbelegt; der JIT-Monitor meldet in dieser Zeit nichts).
 
-20. **KV-Auslagerung in den Hauptspeicher, generisch — DANACH** (Auftrag
+    **BETRIEBSPUNKT ENTSCHIEDEN (20.09. nachts): 262.144 Fenster, 2.400 Blöcke,
+    Häppchen 512.** Peuqui: „262 Kilo Tokens haben meistens ausgereicht … so dass
+    ich auch lieber auf Geschwindigkeit setzen würde als auf eine halbe Million
+    Token." Die Blockzahl ist dabei die eigentliche Schranke: **1.800 Blöcke
+    deckeln das Fenster bei 176.896 Token**, und es scheitert nicht der MLA-Pool,
+    sondern die kleine Indexer-Gruppe des hybriden Caches („0.47 GiB KV cache is
+    needed … available 0.4 GiB"). 2.400 Blöcke tragen 262.144.
+    Abnahme: TTFT 14,4 / 14,6 / 14,6 s (drei Kaltläufe), Schritt 88–89 ms,
+    Decode 32–36 tok/s, Nadel 30k 4/4, Nadel 120k 4/4 bei 125.511 Token,
+    V100 31.776 von 32.768 MiB (992 MiB Reserve), Pool 294.958 Token = 1,13×
+    Fenster. **Preis gegenüber 128k: +6,8 % Schrittzeit** (83 → 88,7 ms), rund
+    2 tok/s — der bekannte Zielkonflikt, nur in kleiner Dosis.
+    **CPU-KV-OFFLOAD ganz aus der Produktionszeile** (20.09. nachts; war zuvor
+    5 GB → 2 GB, gepinnt und damit nicht auslagerbar; Host hatte 16 GB im Swap).
+    Peuqui: „nehmen wir den KV Offload zurück, aber halten ihn auf jeden Fall im
+    Hinterkopf." Code bleibt im Fork (Stream-Ordnungs-Fehler behoben, PR #665).
+
+    **VERDRÄNGUNG GEMESSEN (20.09. nachts) — der Pool hält weniger, als er
+    meldet.** Testfolge bei 262k/2.400/512: Prompt A (22k) kalt 14,3 s → A
+    wiederholt 0,8 s (Präfix-Treffer, Faktor 18) → eine 125k-Anfrage dazwischen →
+    **A erneut 14,6 s, also komplett verdrängt**. Und das, obwohl 22k + 125k =
+    147k in einem Pool liegen, der „294.958 tokens" meldet. Auflösung steht in
+    `kv_cache_utils.py`: `num_tokens = int(max_concurrency * max_model_len)` —
+    die Zahl ist die Kapazität hochgerechnet auf Anfragen VOLLER Fensterlänge,
+    weil SWA-/chunked-local-Gruppen pro Anfrage nur fenstergedeckelt viele Blöcke
+    brauchen. ⇒ Die gemeldete Poolgröße NICHT als Präfix-Budget lesen.
+
+    **ES IST KEIN KAPAZITÄTSPROBLEM (nachgemessen, 20.09. nachts).** Gegenprobe
+    mit 3.200 Blöcken (Pool 393.277 Token, 1,50×): A wird GENAUSO verdrängt,
+    14,6 s. Und schon eine 30k-Zwischenanfrage genügt — 22k + 30k = 52k in einem
+    393k-Pool, bei Blockgröße 256 (`Setting kv cache block size to 256 for
+    DEEPSEEK_SPARSE_SWA backend`) also 86 + 120 von ~1.600 Blöcken der Gruppe.
+    Präfix-Cache-Zähler je Anfrage (`vllm:prefix_cache_*`): A im Cache
+    45.839/45.568, A nach einer Fremdanfrage 45.839/22.784. Die 50 % sind KEIN
+    halber Treffer — es gibt ZWEI Lookups je Anfrage (vor dem Prefill und beim
+    Eintragen danach); der zweite trifft immer, der erste ist der maßgebliche.
+
+    **URSACHE GEFUNDEN (21.09. nachts, Sonden TEMP-GROUPS/TEMP-HIT in
+    kv_cache_utils.py und kv_cache_coordinator.py — VOR COMMIT ENTFERNEN).**
+    DSv4 hat SECHS Cache-Gruppen mit sehr verschiedenen Blockgrößen:
+    | Gruppe | Spec | Blockgröße | Blöcke für 22,9k Prompt | davon ECHT |
+    |---|---|---|---|---|
+    | 0 | MLAAttentionSpec | 256 | 89 | 89 |
+    | 1–3 | SlidingWindowMLASpec | 64 | 356 | 2 |
+    | 4 | SlidingWindowMLASpec | 4 | 5.696 | 2 |
+    | 5 | SlidingWindowMLASpec | 8 | 2.848 | 16 |
+    `sliding_window` ist nur **128 Token** (config.json), `compress_ratios`
+    4/128 erklären die Blockgrößen 4 und 8. Die SWA-Gruppen füllen ihre Liste
+    mit `null_block` und halten real nur das Fenster — sie arbeiten KORREKT.
+    Verloren geht der Treffer in der MLA-Gruppe, die nur 89 von 2.400 Blöcken
+    belegt ⇒ Platzmangel ausgeschlossen.
+    MECHANIK: Alle Gruppen teilen EINEN Block-Pool mit gemeinsamen IDs.
+    `get_new_blocks` nimmt per `popleft_n` vom KOPF und ruft
+    `_maybe_evict_cached_block` — wer Blöcke anfordert, löscht also die
+    Cache-Einträge der ältesten. `free_blocks` hängt ALLES per `append_n` ans
+    ENDE. Damit verwendet eine Anfrage die Blöcke, die sie sich während ihres
+    eigenen Prefills freimacht (SWA-Fenster rutscht weiter), NICHT wieder —
+    sie warten hinten, während die Anfrage sich vorne fremde, gecachte Blöcke
+    nimmt. Ihr Bedarf summiert sich dadurch über den ganzen Prefill
+    (~0,43 Blöcke je Token über alle Gruppen) statt bei den ~200 gleichzeitig
+    residenten zu bleiben.
+    SCHWELLE GEMESSEN (A = 22,9k, belegt ~145 Block-IDs, davor ~2.255 nie
+    benutzte): Zwischenanfrage 10 Token ⇒ A überlebt; 2.014 Token (~859
+    Blöcke) ⇒ A überlebt; 5.314 Token (~2.267 Blöcke) ⇒ A WEG; 9k/30k/125k
+    ⇒ weg. Die Grenze liegt also genau dort, wo der Bedarf die unbenutzten
+    Blöcke übersteigt. Mehr Blöcke verschieben sie nur (3.200 half nicht).
+    UPSTREAM hat gegen die Hälfte des Problems bereits einen Mechanismus, den
+    1Cat nicht hat: `free_blocks` trennt dort Blöcke OHNE Hash (LIFO, per
+    `prepend_n` nach vorn) von gecachten (FIFO ans Ende). `prepend_n` fehlt in
+    1Cat vollständig.
+    DREI FIX-VERSUCHE IN DER NACHT, ALLE AN DERSELBEN FEHLANNAHME GESCHEITERT
+    (21.09. 00:30–03:00, je 13-min-Boot): (1) SWA-Freigaben pauschal nach vorn
+    (`reuse_first`) — rettete belegbar die MLA-Gruppe (89 Blöcke überleben eine
+    125k-Anfrage), aber die Fensterblöcke fielen weiter aus ⇒ Schnittmenge 0;
+    (2) Schutzgrenze `num_prompt_tokens - sliding_window`; (3) Fensterblöcke bis
+    Anfrageende halten. Sonde belegte, dass (2)/(3) griffen — und trotzdem 14,4 s.
+    FEHLANNAHME: „freigegebene Fensterblöcke tragen einen Hash". Tun sie zu
+    95 % NICHT, und die 5 % liegen woanders als vermutet.
+
+    **WURZEL (21.09. früh, aus dem Eintragungspfad):** `cache_blocks` cacht für
+    SWA-Gruppen per `reachable_block_mask` NUR die `need` Blöcke am Ende jedes
+    Ausrichtungssegments (256 Token = lcm der Blockgrößen), weil ein Treffer nur
+    an solchen Grenzen enden kann und dort nur die letzten `sliding_window` Token
+    gebraucht werden. `need = cdiv(window-1, bs) + 1 (EAGLE)`:
+    | Gruppe | bs | Blöcke je 256er-Segment | gecacht | hash-los |
+    |---|---|---|---|---|
+    | 4 | 4 | 64 | 3 | **95 %** |
+    | 5 | 8 | 32 | 17 | 47 % |
+    | 1–3 | 64 | 4 | 3 | 25 % |
+    Die gecachten Fensterblöcke von A liegen also bei 22.784 (Segmentgrenze), nicht
+    bei 22.914 (Prompt-Ende) — dort saß mein Schutz in (2)/(3). Und weil 1Cats
+    `free_blocks` ALLES ans Ende hängt, nimmt ein 30k-Prefill 14.261 Blöcke vom
+    Kopf statt seine ~130 eigenen hash-losen wiederzuverwenden ⇒ schreddert
+    fremde Präfixe. Mehr zu hashen wäre SCHÄDLICH (Peuquis Frage): ein Hash
+    markiert einen Block als LRU-wertvoll; die 95 % könnten nie einen Treffer
+    liefern und würden den Pool nur verstopfen.
+    **FIX = GETREUER UPSTREAM-BACKPORT** (Fork, UNCOMMITTED, Patch
+    `scratchpad/prefix-cache-upstream-backport.patch`, 198 Zeilen): vLLM main
+    trennt in `BlockPool.free_blocks` Blöcke OHNE Hash (LIFO, `prepend_n`) von
+    gecachten (FIFO, `append_n`); `prepend_n` in `FreeKVCacheBlockQueue` fehlte in
+    1Cat vollständig. Vier bestehende Tests schrieben die alte FIFO-Reihenfolge
+    fest (test_prefill×2, test_prefill_plp, test_evict) — auf Upstreams
+    Erwartungen umgestellt (identische Listen wie dort, inkl. Kommentar „partial
+    blocks (without hash) at head"). Zwei neue Tests (prepend_n; hash-lose vor
+    gecachten). 134/134 grün, ruff + mypy sauber. Betriebsmessung: siehe unten.
+    **GELÖST 21.09. früh — Präfix überlebt jetzt beliebige Zwischenanfragen**
+    (Fork, UNCOMMITTED, Patch `scratchpad/prefix-cache-v5.patch`, 6 Dateien):
+    | Messpunkt | vorher | nachher |
+    |---|---|---|
+    | A kalt | 14,4 s | 14,4 s |
+    | A wiederholt | 0,8 s | 0,8 s |
+    | A nach 30k-Anfrage | **14,4 s** | **0,8 s** |
+    | A nach 125k-Anfrage | **14,4 s** | **0,7 s** |
+    Schritt 89–90 ms und VRAM unverändert, Nadel 125k 4/4.
+    DREI TEILE: (a) `prepend_n` in `FreeKVCacheBlockQueue` — getreuer Backport,
+    fehlte in 1Cat ganz; (b) `BlockPool.free_blocks` trennt hash-lose Blöcke
+    (LIFO, vorn) von gecachten (FIFO, hinten) wie vLLM main, plus Schalter
+    `reuse_first`; (c) Fenstergruppen geben per `reuse_first` zurück, halten aber
+    den Bereich, den eine Wiederholung nachschlägt: `_cached_window_at_last_
+    boundary` leitet ihn mit DERSELBEN Formel ab wie `reachable_block_mask`
+    (`need`-Lauf, der an der letzten `lcm_block_size`-Grenze endet, EAGLE-Versatz
+    inklusive). Die Ausrichtung setzt der Koordinator am Manager
+    (`alignment_tokens`), analog zu `use_eagle` — sie aus `cache_blocks` zu
+    holen scheitert, weil `remove_skipped_blocks` im Prefill ZUERST läuft und
+    der Wert dann None ist (genau daran starben v2/v4: geschützt wurde das
+    Fenster am Prompt-Ende 22.912 statt an der Segmentgrenze 22.784).
+    BELEG aus den Zählern: B (30k) berührt 1.227 verschiedene Blöcke, gibt
+    13.578 von 13.730 Freigaben nach vorn zurück; A danach nimmt nur noch 203
+    statt 9.983 Blöcke. Attribut heißt `reuse_window`, NICHT `sliding_window` —
+    letzteres würde den int-Typ im Fenstermanager übersteuern (mypy).
+    Tests: 2 neue (prepend_n; hash-lose vor gecachten), 4 bestehende auf
+    Upstreams Erwartungslisten umgestellt; 134/134 in den beiden Kernsuiten,
+    ruff + mypy sauber über alle vier Kerndateien.
+    MESSFALLEN: Sonden im Freigabepfad loggen je Häppchen und reißen die
+    Gesundheitsfrist (Eintrag hat jetzt `healthCheckTimeout: 1800`); die ERSTE
+    TEMP-HIT-Zeile je Anfrage ist maßgeblich, die zweite (+9 Token) ist der
+    Eintragungs-Lookup danach. Der Scratchpad wurde beim Modellwechsel geleert —
+    Werkzeuge aus den Transkript-Heredocs rekonstruiert (dsv4_bench.py,
+    needle_test.py; needle_120k.py = needle_test mit 6.250 Sätzen).
+
+    **KONTEXT AUF 307.200 ERWEITERT (21.09. nachmittags, Peuquis Frage „wie viel
+    VRAM ist frei, ist noch Platz für mehr Kontext?").** Drei Punkte gemessen,
+    je ein Boot mit Abnahme:
+    | | 262k / 2.400 | **300k / 3.000 (gewählt)** | 350k / 3.500 |
+    |---|---|---|---|
+    | Pool | 294.958 (1,13×) | 399.133 (1,30×) | 499.960 (1,39×) |
+    | Schrittzeit | 88–89 ms | 91 ms | 93 ms |
+    | Decode | 32–38 tok/s | 32–33 | 28–32 |
+    | A nach 125k-Anfrage | 0,8 s | 0,7 s | 0,7 s |
+    | V100-Reserve | 988 MiB | 730 MiB | 530 MiB |
+    Der erste Schritt kostet 2 ms für 45k Token mehr Kontext und ein Drittel mehr
+    Pool; der zweite nochmal 3 ms für nur 50k mehr — deshalb 300k. Umgerechnet
+    bei fester Annahmequote 3,0: 33,9 → 33,1 tok/s (−0,8).
+    Abnahme 300k/3.000: drei Kaltläufe 14,4/14,6/14,6 s (also unverändert
+    gegenüber 262k — der einzelne 15,3-s-Lauf davor war Aufwärmen), gecachter
+    Präfix 0,8 s, Nadel 30k 4/4, Nadel 120k 4/4 bei 124.471 Token.
+    FAUSTFORMEL aus den drei Punkten: Pool ≈ 123 Token je Block, tragbares
+    Fenster ≈ 102 Token je Block. Nicht über 350k hochrechnen — bei 5.200
+    Blöcken/524k scheitert die Indexer-Reserve an sich selbst.
+
+20. **KV-Auslagerung in den Hauptspeicher, generisch — GEPARKT 20.09.**
+    (CPU-Offload gebaut und erprobt, Stream-Ordnung behoben PR #665, auf
+    Peuquis Ansage aus der Produktion genommen, „im Hinterkopf behalten“)
+    (Auftrag
     Peuqui 20.09.2026, ausdrücklich „nach Möglichkeit generisch, sodass da
     viele Modelle von profitieren"). **Es ist ein Prefill-Vermeider, kein
     Decode-Beschleuniger** (Peuqui 20.09.: „Prefill ist genau das, was den
@@ -1803,3 +1958,44 @@ Augustwerten (6,5 min Boot).
     indizierten Entpack-Gather der ausgewählten Blöcke bereits — dort
     müssten fehlende Blöcke vorher aus dem Host geholt bzw. dorthin
     ausgelagert berechnet werden.
+21. **Fork präsentationsfähig machen, dann Testbau als Abnahme** (Auftrag
+    Peuqui 21.09. abends, „erstmal warten" — Reihenfolge fest, Start auf
+    Ansage). Heute kann ein Fremder aus dem Fork KEIN laufendes System bauen:
+    der Code ist öffentlich (`Peuqui/1Cat-vLLM`, Branch
+    `qwen4exp-ple-tier-cascade`; `Peuqui/flash-attention`, Branch
+    `sm75-enablement-pr`; Modell unverändert von HF), aber der Bauweg nicht.
+    (a) **tilelang-Overlay in den Fork** — `fork_patches_150/tilelang_target.py`
+        ist in der Produktion aktiv (identisch mit `tilelang/utils/target.py`),
+        liegt aber nur hier; Ort wie `tools/torch_patches/`.
+    (b) **sm75-FA-Bauschritt** — `_vllm_fa2_C_sm75.abi3.so` ist gitignored und
+        eine Kopie des Produktions-Drop-ins; Bau aus dem zweiten Repo und
+        Ablage unter genau diesem Namen dokumentieren.
+    (c) **BUILD-Anleitung** im Fork: Rezept vom 10.09. (nur
+        `TORCH_CUDA_ARCH_LIST=7.0`, CCCL per `CPATH`, editable-Nachhilfen,
+        torch-Patch per `apply.sh`), dazu Beispiel-Startzeilen für DSv4 und
+        Flash-Next (Kartenreihenfolge, Umgebung); README anpassen.
+    (d) **1Cats aktuellen `main` einmergen** (21.09.: 14 neue Commits, #666
+        TP-Verallgemeinerung). Unsere 26 offenen PRs dort ohne Reaktion,
+        letzte Merges #572/#573 am 12.09.
+    (e) **Stand benennen** (sprechender Branch oder Release statt
+        `qwen4exp-ple-tier-cascade`) und im README verweisen.
+    (f) **DANACH Testbau** in frischer venv neben der Produktion, frischer
+        Klon von GitHub, strikt nach (c) — Produktion bleibt unangetastet;
+        abgenommen, wenn ein Modell aus dieser venv antwortet.
+22. **Zwei Tensorizer-TP-Tests hängen** (21.09.):
+    `test_tensorizer_with_tp_path_without_template` und
+    `test_deserialized_encrypted_vllm_model_with_tp_has_same_outputs` bleiben
+    direkt nach der NCCL-Initialisierung stehen, bis das Zeitlimit greift;
+    Worker bleiben verwaist zurück. **Nicht das Kartenpaar**: auch mit dem
+    Produktionspaar RTX+RTX (`CUDA_DEVICE_ORDER=PCI_BUS_ID`,
+    `CUDA_VISIBLE_DEVICES=0,2`, `NCCL_BUFFSIZE`) derselbe Stand, obwohl
+    Flash-Next mit TP2 PP2 produktiv läuft. Unterschied noch ungeklärt
+    (Tensorizer von S3 statt lokaler safetensors? weitere Umgebung aus dem
+    llama-swap-Eintrag?). Nachstellung ohne pytest: `LLM("EleutherAI/pythia-1.4b",
+    load_format="tensorizer", tensor_parallel_size=2,
+    disable_custom_all_reduce=True, model_loader_extra_config=TensorizerConfig(
+    tensorizer_uri="s3://tensorized/EleutherAI/pythia-1.4b/fp16/model.tensors",
+    num_readers=1, s3_endpoint="object.ord1.coreweave.com"))` — erwartet
+    wäre sofort der `ValueError` aus `verify_with_parallel_config`. Die übrigen 13 Tensorizer-Tests sind grün (Fork
+    `30251e6e`, dort auch der Positions-Fix für `_dummy_run`). Tests, die
+    `vllm` als Prozess starten, brauchen `venv/bin` im `PATH`.

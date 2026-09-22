@@ -2059,3 +2059,104 @@ Augustwerten (6,5 min Boot).
     v100-skinny, Kernel nur in dnv2003 PR #8) — der MXFP4-Pfad hat dort keine
     Grundlage; gehört in ein späteres Paket „Skinny-MoE-Backend an 1Cat“ nach
     Punkt 21 (Kernel-Quelle in den Fork).
+24. **1Cat-Merge 22.09. (Worktree `1Cat-vLLM-merge`, Branch
+    `merge-1cat-main-2026-09-22`, 28ff9252, 30 Commits bis 8d5d8233) —
+    ABGENOMMEN UND IN PRODUKTION 22.09. früh** (Fork-Branch per Fast-Forward
+    auf c94f6c77, Bauartefakte aus dem Worktree übernommen, Sicherung
+    ~/.cache/prod-build-backup/1cat-work-artefakte-vor-merge-2026-09-22.tar).
+    Abnahme: DSv4-MXFP4 Greedy bitgleich (Worktree und Produktion), Tempo
+    gleich, Nadeln 30k/124k 4/4; Qwen3.8-27B Greedy bitgleich, Schritte gleich.
+    Fork NOCH NICHT GEPUSHT. Konflikte setup.py (1Cats Fassung = unser #601) und
+    cudagraph_utils.py (beide Funktionen). Neubau per `build_ext --inplace`
+    im Worktree (Rust-Frontend `vllm-rs` optional, fehlt wie in Prod),
+    sm75-FA-Drop-in kopiert; Boot-Tests über llama-swap-Einträge
+    `…-merge-test-vllm` mit `PYTHONPATH` auf den Worktree.
+    BEFUND: 1Cats FA2-Tests liefen im Fork STILL ÜBERSPRUNGEN — sie
+    importieren nur flash_attn_interface, unser Fork lädt die FA2-Bibliothek
+    aber erst beim ersten Aufruf je Gerät (f03a7102); drei Testdateien laden
+    jetzt explizit (`load_fa2_library`), uncommitted im Merge-Worktree.
+    OFFEN: test_sm70_flash_v100_prefix_decode_rows.py (3) und
+    test_sm70_flash_v100_multihead.py (18) scheitern VOR und NACH dem Merge
+    gleich (Kernel-Verträge: E4M3-XQA-Batchgrenzen, partition_size_hint 64
+    nicht zulässig, grouped FP32 braucht Q [2..8,6,256]) — vermutlich erwarten
+    die Tests Schalter aus 1Cats Umgebung (z. B.
+    VLLM_FLASH_V100_E4M3_BATCH_XQA=1); nicht durch den Merge verursacht,
+    Ursache noch klären.
+25. **moe_qpn profiliert (22.09.), Umbauplan — Entscheidung Peuqui ausstehend.**
+    ncu 2022.4.1, echte DSv4-Schicht 5 (MXFP4, 256 Experten, top-6), 512
+    Token, Reports unter ~/.cache/ncu-moe/ (ncu --import). Beide Karten
+    LATENZGEBUNDEN, nicht MMA-gebunden: Speicherdurchsatz 57–66 %, SM 33–48 %,
+    in 50–66 % der Takte kein Warp bereit; Tensorkern-Pipe V100 17,7 %, RTX
+    24,4 %; math_pipe_throttle nur 6–7 %. Stalls w13: V100 long_scoreboard 47 %
+    (warten auf Loads), RTX lg_throttle 34 % + long_scoreboard 28 % (LSU-Queue
+    voll). Occupancy V100 50 % (64 Reg × 512 Threads → 2 Blöcke/SM), RTX 96 %.
+    ⇒ Der Turing-Port auf m16n8k8 (Rohrate 2×, scripts/mma_shape_throughput.py)
+    trifft NICHT den Hauptengpass und kommt nach hinten.
+    URSACHEN im Code (kernels/skinny_kernels.cu, skinny_nvfp4_moe_qpn):
+    (a) MMAX = 8 (M der m8n8k4): ein Experte mit mehr Zeilen läuft in
+        mehreren Durchläufen, die JEDES MAL seine Gewichte neu laden und neu
+        entpacken — bei 512 Token ~12 Zeilen/Experte = 2 Durchläufe, bei 4096
+        Token ~96 = 12 Durchläufe (daher 31/44 GB/s effektiv bei 4096).
+    (b) je 16er-Gruppe vier kleine Loads: Codes 8 B (uint2), Aktivierungen
+        2 × 16 B direkt aus Global in jedem Warp neu, Skala 1 B.
+    (c) V100-Occupancy durch Register begrenzt.
+    UMBAUPLAN (jeder Schritt einzeln: Bitgleichheit gegen die heutige Fassung
+    auf festen Eingaben, Zeit auf RTX UND V100 bei 6/64/512/4096 Token, nur
+    behalten, was auf beiden Karten schneller ist; Harness =
+    scripts/mxfp4_moe_qpn_roofline.py + Bitvergleich):
+    1. Mehrere 8-Zeilen-Blöcke je Gewichtsladung: Gruppe einmal laden und
+       entpacken, MMAs für P Zeilenblöcke in Registern (P = 2..4, getunt),
+       danach ggf. weiterer Durchlauf. Reihenfolge der Akkumulation je Zeile
+       bleibt → bitgleich erwartet. Größter Hebel im Prefill; Decode (≤ 8
+       Zeilen) unverändert.
+    2. Breitere Loads: Codes zweier Gruppen als 16 B, Skalen mehrerer Gruppen
+       in einem 4-B-Load.
+    3. Aktivierungen je Block einmal in Shared Memory statt je Warp aus
+       Global.
+    4. Loads der nächsten Gruppe vorziehen (Register-Doppelpuffer).
+    5. V100-Occupancy: Blockgröße/Register, danach splitk/nacc je Karte neu
+       tunen (_MOE_QPN_CFG).
+    Erst danach neu bewerten, ob der m16n8k8-Port für Turing noch lohnt.
+    Gewinn nicht vorab bezifferbar; Spielraum: 57–66 % Bandbreite, ~20 %
+    Tensorkern, 2–12-faches Neuladen der Gewichte im Prefill.
+    STAND 22.09. vormittags (Worktree `v100-skinny-moe-rework`, Branch
+    `moe-qpn-rowblocks`, UNCOMMITTED; Harness scripts/moe_qpn_bitcheck.py,
+    Referenz ~/.cache/moe-rework/baseline_gpu{0,1}.pt, eigener
+    TORCH_EXTENSIONS_DIR): Schritt 1 (RB Zeilenblöcke je Gewichtsladung, RB=2
+    ab > 8 Zeilen/Experte) + Schritt 3 (Aktivierungen je Warp in Shared, nur
+    RB ≥ 2; Decode bleibt direkter Weg) — auf BEIDEN Karten bitgleich, Decode
+    unverändert, 512 Tok V100 11,11 → 9,37 ms (−16 %), RTX 14,85 → 12,37
+    (−17 %), 4096 Tok V100 −22 %, RTX −27 %. Einschränkung: SPLITK 32 entfällt
+    (48-KiB-Shared-Grenze), RB 4 entfällt (82 Register → 1 Block/SM).
+    BETRIEB Schritt 1+3 (llama-swap-Test-Eintrag …-moe-rb-test-vllm, PP5):
+    kalter 18k-Prefill 14,4/14,6/14,6 → 12,9/13,1/13,1 s (−1,5 s, −10 %),
+    Greedy bitgleich, Decode-Schritte unverändert.
+    UNION (Stage und Reduktionspuffer überlagert, +1 Block-Barriere je Durchlauf):
+    ncu RTX nach Schritt 1+3 zeigte Occupancy 96 → 49 % (36 KB Shared/Block,
+    Turing 64 KB/SM → 1 Block); mit Union 20 KB → 2 Blöcke. Kernel 512 Tok RTX
+    12,37 → 10,71 ms (gesamt −28 % ggü. Basis), 4096 −36 %; V100 +3 % durch die
+    Barriere (V100 ist registerbegrenzt), im Prefill irrelevant, weil PP0 (RTX)
+    die langsamste Stufe bleibt. BETRIEB: kalter 18k-Prefill 12,1/12,3/12,3 s
+    (−2,3 s, −16 % ggü. Produktion), Greedy bitgleich, Decode unverändert.
+    FLASH-NEXT mit neuem Kernel: Greedy bitgleich (323e7f30…), kalter Prefill
+    33,4/28,0 s wie Produktion, Decode 53/54 ms — kein Gewinn, kein Verlust
+    (Prefill-Häppchen > 512 Token laufen über die Einzel-Experten-Schleife).
+    27B ist dicht, nutzt den MoE-Kernel nicht. ÜBERNOMMEN 22.09. mittags.
+    Nebenbefund: direkter Wechsel zwischen zwei Flash-Next-Einträgen kann an
+    der PLE-Pinning-Prüfung scheitern („may pin at most 0.76 GiB: 9.19 GiB
+    available“), weil der vorige Prozess den Hauptspeicher noch freigibt;
+    zweiter Start sauber (26 GiB verfügbar).
+    Betriebsbefund Schritt 1 allein: kalter 18k-Prefill nur −0,2 s, weil im
+    pipelinegen Prefill die LANGSAMSTE Stufe zählt = PP0 auf RTX mit 11
+    Schichten; V100-Gewinne verpuffen dort. ⇒ Für den Prefill zählt die RTX.
+    NATIVES TURING-POTENTIAL (nur Prefill; Decode ist auf der RTX mit 87 %
+    Bandbreite am Anschlag): `mma.m16n8k8` (2× Rohrate, M = 16 passt zu RB = 2)
+    und `ldmatrix` (sm_75+, Fragmente direkt aus dem Shared-Stage). Erst
+    angehen, wenn ein NEUES ncu-Profil des umgebauten Kernels auf der RTX
+    zeigt, dass der Tensorkern zum Engpass wird (math_pipe_throttle /
+    Tensor-Pipe deutlich über den 6 % / 24 % von vorher); sonst zuerst
+    Schritt 2 und 4 (beide Karten). Ein Turing-Zweig wäre eigener Codepfad mit
+    eigener Umsortierung und NICHT mehr zwingend bitgleich zur V100 → nur mit
+    Qualitätstests (Nadeln, Greedy-Vergleich über Qualität statt Hash).
+    Denkbar später auch: Schichtaufteilung 11/8/8/8/8 zugunsten der RTX-Stufe
+    PP0 verschieben (Prefill-Engpass), Zielkonflikt Kontext/Pool beachten.

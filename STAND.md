@@ -1999,3 +1999,37 @@ Augustwerten (6,5 min Boot).
     wäre sofort der `ValueError` aus `verify_with_parallel_config`. Die übrigen 13 Tensorizer-Tests sind grün (Fork
     `30251e6e`, dort auch der Positions-Fix für `_dummy_run`). Tests, die
     `vllm` als Prozess starten, brauchen `venv/bin` im `PATH`.
+23. **DSv4 im DeepSeek-Original (MXFP4) über den Skinny-Kernel — GEBAUT UND
+    ABGENOMMEN 22.09. nachts, UNCOMMITTED, Umstellung wartet auf Peuqui.**
+    Modell: `deepseek-ai/DeepSeek-V4-Flash-DSpark` (Rev. 62af8fffb2) unter
+    `~/models/DeepSeek-V4-Flash-284B-A13B-MXFP4-FP8-DSpark` (156 GiB statt
+    165). Byte-Vergleich gegen NVIDIAs Fassung (Skript scratchpad
+    compare_mxfp4_nvfp4.py): gerouteten Experten Codes+Skalen identisch;
+    FP8-Linears anders aufgeteilt (Skala/Gewicht), dequantisiert aber 0 %
+    Abweichung; DSpark-Experten unterscheiden sich nur im Vorzeichen von
+    Nullen (FP4 +0/-0), Werte identisch. ⇒ numerisch dasselbe Modell.
+    Code (Fork, Arbeitsbaum): `Mxfp4SkinnySm70Experts` + gemeinsames
+    `_scale_rasters` in nvfp4_skinny_moe.py; `rebase_e8m0_for_fp16` schiebt
+    E8M0-Skalen je Experte IN PLACE ins fp16-Dekodierfenster 113..142 und gibt
+    2^-d als Globalfaktor zurück (Prüfungen: NaN, Spanne, fp16-Produkt
+    Skala·2^14 in 2^-24..2^15, Globalfaktor·2^14 ≤ 2^15); neues MXFP4-Backend
+    `SM70_SKINNY` im Oracle (generisch für MXFP4-MoE ohne Bias, SM70/SM75);
+    DSv4-Weiche nutzt es mit `--moe-backend sm70_skinny` statt 1Cats
+    TP4-gebundenem TurboMind. Tests: tests/kernels/moe/test_skinny_mxfp4_moe.py
+    9/9 (Kernel gegen torch-Referenz auf V100 UND RTX 8000).
+    ABNAHME (PP5, gleiche Zeile wie Produktion + `--moe-backend sm70_skinny`,
+    llama-swap-Eintrag `DeepSeek-V4-Flash-284B-A13B-MXFP4-FP8-DSpark-vllm`):
+    Greedy 3 Prompte × 200 Token BITGLEICH zu NVFP4 (Hashes 50cf4d2e…,
+    fa7a315a…, 196bad1e…); Tempo gleich (Prosa 32,0/34,9, Code 53,0/52,6
+    tok/s, Schritt 90/93 ms, kalter 18k-Prefill 14,5 s); Nadeln 30k 4/4,
+    124k 4/4; Gewichte lesen 224 s statt 264–286 s; V100 belegt 31.616 statt
+    31.776 MiB bei gleichem Pool (399.133 Token).
+    Nebenbei: Produktion (NVFP4) mit dem umgebauten Skinny-Code nachgebootet,
+    Greedy bitgleich zum alten Code. Ungetestet: test_ocp_mx_moe.py /
+    test_gfx950_moe.py (brauchen amd-quark bzw. ROCm).
+    Befund für Punkt 21: `skinny_kernels.cu` liegt nicht im Fork; der
+    Standardpfad in marlin.py zeigt ins Leere, Produktion setzt
+    `VLLM_SKINNY_NVFP4_SRC`.
+    OFFEN (Peuqui): Produktion umstellen (Eintrag umbenennen/ersetzen, AIfred
+    neu starten), NVIDIA-Checkpoint löschen (vorher readlink -f), Commit,
+    PR an 1Cat/upstream.

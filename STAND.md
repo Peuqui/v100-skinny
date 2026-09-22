@@ -2215,3 +2215,76 @@ Augustwerten (6,5 min Boot).
     (s. a) oder größere Stage (XCH 4 = 37 KB Shared → 1 Block bei 64 KB/SM)
     angreifbar, beides kostet Occupancy. Tensor-Pipe-Stall jetzt 8–10 % ⇒
     Turing-Zweig m16n8k8 lohnt nur noch wenig.
+
+28. **Flash-Next-Prefill seziert (22.09. abends): die V100-Stufe ist 2,4× langsamer,
+    Ursache sind die DICHTEN NVFP4-Schichten über TurboMind.** Torch-Profiler
+    (`--profiler-config`, Traces `~/.cache/fn-profile`, Auswertung per Stream-Parser
+    `scratchpad/trace_steps.py` / `trace_kernels.py`, weil die Traces zu groß zum
+    Einlesen sind).
+    ABLAUF: Häppchen 1616 Tok (12 × 1616 + 411 ≈ 19,8k). PP0 (RTX-Paar) rechnet
+    0,86–0,96 s je Häppchen, neue Häppchen starten aber nur alle 2,17 s ⇒ die
+    Pipeline läuft, PP1 (V100-Paar) ist der Engpass mit ~2,2 s je Häppchen bei
+    gleicher Schichtzahl (24/24). Leistungsaufnahme dazu: RTX 72–180 W, V100
+    55–117 W, also keine Karte am Limit (DSv4 dagegen: RTX durchgehend 250 W).
+    KERNELZEITEN im Prefill-Fenster: PP0 11,8 s von 25 s (Attention 2,9 s, TP-AllReduce
+    2,5 s, MoE-Marlin 2,3 s, GDN 1,1 s, dichte GEMMs 0,7 s) — PP1 27,1 s von 28 s,
+    davon `turbomind::gemm::gemm_kernel` 20,6 s = 73 %.
+    ZUORDNUNG: nicht das MoE. Der Skinny-MoE-Test (--moe-backend sm70_skinny,
+    GROUPED_MAX_TOKENS 2048, splitk 10 für K=320) lief bitgleich im Ergebnis
+    (Hashes 323e7f30…/727bccba…/018b693f…), Nadeln 4/4, Prefill unverändert
+    28,1 s, kostete aber Pool (592k → 383k Tok) und Boot (7 → 13 min) ⇒ VERWORFEN.
+    Bleibt der dichte NVFP4-Pfad: RTX über Marlin/Turing-Tensorkerne, V100 über
+    TurboMind.
+    SACKGASSE MIT DEN VORHANDENEN SCHALTERN: `VLLM_SM70_QUANT_BACKEND=marlin`
+    schaltet über `envs.use_sm70_turbomind()` TurboMind GLOBAL ab, und
+    `modelopt.py` verlangt für ModelOpt-NVFP4-MoE auf SM70 zwingend TurboMind
+    (`NotImplementedError: ModelOpt NVFP4 MoE on SM70 requires the TurboMind
+    backend`) — dicht=Marlin + MoE=TurboMind ist derzeit NICHT kombinierbar.
+    AUFGELÖST in Punkt 29: nicht die dichten Schichten, sondern das MoE.
+    NEBENBEFUND (Kosten): der Profiler-Lauf über einen ganzen Prefill + 500 Tok
+    Decode in 4 Workern sprengte den 30-GiB-Host-RAM (Swap-Sturm, ein Worker
+    wurde nie fertig, Reboot nötig). Nur eng begrenzt profilieren.
+    splitk 10 (K/16 = 20, für TP2-w2 von Flash-Next) liegt uncommittet im Worktree
+    `v100-skinny-moe-rework`, Branch `moe-qpn-splitk10`: bitgleich zu nichts, aber
+    gegen den Einzel-Experten-Pfad auf V100 geprüft (max. rel. Fehler 6e-4,
+    1–2048 Tok), DSv4 bleibt bitgleich. NICHT gemergt, weil ungenutzt.
+
+29. **Flash-Next-MoE auf der V100: TurboMind-Gate war der Engpass — GELÖST,
+    Prefill −28 % (22.09. abends).**
+    MESSUNGEN, die den Verdacht aus 28 widerlegt haben (freie V100, GPU 4):
+    dichter NVFP4-GEMM (`nvfp4_gemm_sm70_out`, Flash-Next-TP2-Formen) bei
+    M=1616 nur 1,4–1,9× über fp16-cuBLAS (qkv 1,067 vs 0,554 ms) und im Decode
+    schneller als cuBLAS ⇒ dicht kostet über den ganzen Prefill nur ~0,6 s.
+    Damit blieb das MoE: 512 Experten × 24 Schichten × 12 Häppchen ≈ 147.000
+    Einzelaufrufe mit im Mittel 31 Zeilen ⇒ 20,6 s, ~1 TFLOP/s. Unser
+    gruppierter Kernel an derselben Form: 9,6 ms je Schicht (8,3 TFLOP/s),
+    hochgerechnet 2,8 s.
+    URSACHE: `modelopt.py` bindet ModelOpt-NVFP4-MoE auf exakt SM70
+    bedingungslos an `ModelOptNvFp4SM70MoEMethod` (TurboMind), die laut eigenem
+    Kommentar Routing und Experten-GEMMs selbst besitzt und `--moe-backend`
+    NICHT auswertet. Deshalb blieb der frühere Skinny-Test wirkungslos: er
+    stellte nur die RTX-Stufe um (Turing fällt nicht unter das Gate), die
+    ohnehin nicht der Engpass ist.
+    1CATS EIGENE SCHNELLPFADE HELFEN NICHT: indexed prefill, fused SwiGLU,
+    Batch-/M1-/MTP5-Decode sind auf TP4 gegated UND in C++ auf die TP4-Formen
+    festgenagelt (`num_experts == 512 && k == 2560 && n == 320`, n = 2×160).
+    Gate-Lockern allein würde den Abbruch nur verschieben. Ihr Design-Dokument
+    (docs/design/sm70_qwen38_flash_next_nvfp4.md) nennt TP4/PP1 als Vertrag,
+    PLE dauerhaft im Host (11,92 GiB/Rang), 21,3 GiB Gewichte/Rang.
+    FIX (Fork, `modelopt.py`): das SM70-Gate tritt zurück, wenn der Lauf per
+    `--moe-backend` ausdrücklich ein Backend wählt (`_sm70_moe_backend_
+    requested_explicitly`). Ohne das Flag ändert sich nichts.
+    MESSREIHE (gleiche Prompts, Nadeln 30k/124k überall 4/4):
+      TurboMind (bisher): Prefill 26,6–27,2 s, Schritt 53–56 ms, Code 70–73,
+        Pool 592.612
+      Skinny-MoE (uns):   Prefill 19,3–19,4 s, Schritt 52–55 ms, Code 77–78,
+        Pool 550.781, ein Greedy-Hash weicht ab (anderer Kernel)
+      Marlin-MoE (1Cat Volta, `--moe-backend marlin`): Prefill 17,7–17,8 s,
+        Schritt 56–59 ms, Code 58–70, Pool 446.202, alle drei Hashes gleich
+    ⇒ ÜBERNOMMEN: Skinny (Decode und Pool zählen für AIfred mehr als 1,6 s
+    Prefill). Marlin bleibt als Alternative dokumentiert.
+    Nötig dafür: splitk 10 im Kernel (K/16 = 20 der w2-Matrix bei TP2),
+    v100-skinny 89547d2, gemergt 1dd8b43.
+    OFFEN: TP4-Versuch (2 RTX + 2 V100, PLE-Kaskade auf die fünfte Karte) —
+    dort greifen 1Cats getunte Pfade; Referenz 1Cat: 80,7 tok/s reiner Decode
+    auf 4× V100, wir liegen bei 43–45.

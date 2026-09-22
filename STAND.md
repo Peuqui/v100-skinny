@@ -2146,6 +2146,13 @@ Augustwerten (6,5 min Boot).
     der PLE-Pinning-Prüfung scheitern („may pin at most 0.76 GiB: 9.19 GiB
     available“), weil der vorige Prozess den Hauptspeicher noch freigibt;
     zweiter Start sauber (26 GiB verfügbar).
+    DECODE (ncu 6 Token, 22.09. mittags): RTX DRAM 91–92 % = am Anschlag;
+    V100 DRAM 75 %, Occupancy 49 % (60 Reg × 512 Thr → 2 Blöcke/SM),
+    long_scoreboard 34–42 %. Versuche, beide bitgleich, beide VERWORFEN:
+    manuelles Vorladen der nächsten Gruppe (V100 0,663 → 0,807 ms, RTX +8 %) —
+    stört das Vorziehen, das `#pragma unroll 4` schon leistet; unroll 2/8
+    (V100 0,734/0,693 ms) — 4 bleibt bestes. Mehr Decode nur mit < ~42
+    Registern (3 Blöcke/SM), tiefer Umbau, Obergrenze ~15 % MoE-Zeit auf V100.
     Betriebsbefund Schritt 1 allein: kalter 18k-Prefill nur −0,2 s, weil im
     pipelinegen Prefill die LANGSAMSTE Stufe zählt = PP0 auf RTX mit 11
     Schichten; V100-Gewinne verpuffen dort. ⇒ Für den Prefill zählt die RTX.
@@ -2160,3 +2167,27 @@ Augustwerten (6,5 min Boot).
     Qualitätstests (Nadeln, Greedy-Vergleich über Qualität statt Hash).
     Denkbar später auch: Schichtaufteilung 11/8/8/8/8 zugunsten der RTX-Stufe
     PP0 verschieben (Prefill-Engpass), Zielkonflikt Kontext/Pool beachten.
+
+26. **DSv4-Schichtaufteilung 10,8,8,8,9 (22.09. nachmittags) — ÜBERNOMMEN.**
+    MESSMETHODE: `nvidia-smi dmon -s u` (SM %) taugt unter PP NICHT — alle fünf
+    Karten zeigen im Prefill 95–98 %, weil der NCCL-Empfangskernel beim Warten
+    auf die Vorstufe spinnt und als Last zählt. Aussagekräftig ist die
+    Leistungsaufnahme (`dmon -s pc`): beide RTX im kalten 18k-Prefill
+    durchgehend am 250-W-Limit (= auch Max Power Limit, nicht anhebbar) bei
+    vollem Takt 1605–1620 MHz; V100 bei 1380 MHz (Max), aber mit Einbrüchen auf
+    47–76 W, am stärksten PP1 direkt hinter PP0 ⇒ PP0 (RTX, 11 Schichten) ist
+    die Engpassstufe. Grund: MoE je Schicht RTX 10,7 ms, V100 9,6 ms (512 Tok),
+    PP0 11×10,7 ≈ 118 ms gegen 8×9,6 ≈ 77 ms je V100-Stufe.
+    SPIELRAUM: eine Schicht = 3,32 GiB (Checkpoint), V100 nur ~0,75 GiB frei ⇒
+    keine Schicht auf V100 möglich; einzig RTX↔RTX. PP4 nach +1 Schicht noch
+    1,6 GB frei ⇒ 9,8,8,8,10 passt NICHT.
+    ERGEBNIS 10,8,8,8,9 gegen 11,8,8,8,8: kalter 18k-Prefill 12,1–12,3 → 11,3–
+    11,5 s (−7 %), Decode 90–91 ms unverändert, Pool 399.133 Tok unverändert,
+    Nadeln 30k/124k 4/4. Greedy-Hash 2 weicht ab (8dad9dc9… statt fa7a315a…),
+    weil Schicht 10 jetzt auf V100 und Schicht 34 auf RTX rechnet (andere
+    Attention-Kernel) — erwartet, Qualität per Nadeln belegt. Neue Referenz-
+    Hashes Produktion: 50cf4d2e…, 8dad9dc9fd500481, 196bad1e…. Beide Einträge
+    (Produktion + Coding-K7) umgestellt. Coding-K7 A/B (256er-Häppchen, K=7):
+    kalter 18k-Prefill 16,0–16,2 → 15,2 s (−6 %), Schritt 86–90 ms gleich,
+    Nadel 30k 4/4, PP4 noch 3,1 GB frei, Pool 71.493 Tok. Weiterer Prefill-Gewinn nur noch über
+    den RTX-Kernel (Turing-Zweig, Punkt 25).

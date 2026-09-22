@@ -2030,6 +2030,14 @@ Augustwerten (6,5 min Boot).
     Befund für Punkt 21: `skinny_kernels.cu` liegt nicht im Fork; der
     Standardpfad in marlin.py zeigt ins Leere, Produktion setzt
     `VLLM_SKINNY_NVFP4_SRC`.
-    OFFEN (Peuqui): Produktion umstellen (Eintrag umbenennen/ersetzen, AIfred
-    neu starten), NVIDIA-Checkpoint löschen (vorher readlink -f), Commit,
-    PR an 1Cat/upstream.
+    PRODUKTION UMGESTELLT 22.09. früh (Peuqui „1-3“): Fork e1dca640; llama-swap
+    führt nur noch `DeepSeek-V4-Flash-284B-A13B-MXFP4-FP8-DSpark-vllm` und
+    `…-Coding-K7-vllm` (je + `--moe-backend sm70_skinny`); AIfred `vllm.aifred`
+    zeigt darauf; NVIDIA-Checkpoint gelöscht (165 GB), llama-swap-restart
+    räumte die zwei NVFP4-Einträge samt VRAM-Cache auf. Sicherungen:
+    ~/.config/llama-swap/backups/config.yaml.vor-mxfp4-umstellung-2026-09-22,
+    aifred-settings.json.vor-mxfp4-2026-09-22.
+    KEIN PR: `Nvfp4SkinnySm70Experts` existiert bei 1Cat nicht (Fork-Zusatz aus
+    v100-skinny, Kernel nur in dnv2003 PR #8) — der MXFP4-Pfad hat dort keine
+    Grundlage; gehört in ein späteres Paket „Skinny-MoE-Backend an 1Cat“ nach
+    Punkt 21 (Kernel-Quelle in den Fork).

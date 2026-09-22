@@ -2641,7 +2641,11 @@ void skinny_moe_simt(torch::Tensor x, torch::Tensor codes, torch::Tensor scales,
 // (E=512, top-k 10, T=1) schedule thousands of empty blocks that cost
 // more than the actual work.
 // ---------------------------------------------------------------------------
-template <int SPLITK, int NACC, int SCALE_MODE = SCALE_NVFP4_FP8_16>
+// RB row blocks share one weight load: each group's codes are fetched and
+// dequantized once and feed the MMAs of up to RB x 8 rows, instead of one
+// re-read per 8-row pass. Every row keeps its own accumulators and the same
+// K order, so the result does not depend on RB.
+template <int SPLITK, int NACC, int SCALE_MODE = SCALE_NVFP4_FP8_16, int RB = 1>
 __global__ void __launch_bounds__(32 * SPLITK)
 skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
                                      const uint8_t *__restrict__ qscales,
@@ -2654,9 +2658,24 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
                                      int N, int K, int topk,
                                      int x_slot_major) {
   constexpr int MMAX = 8;
-  __shared__ float cs[SPLITK][256];
-  __shared__ const half *xrows[MMAX];
-  __shared__ int slots[MMAX];
+  constexpr int ROWS = RB * MMAX;
+  // Activations are staged per warp, XCH groups at a time: the four
+  // quadpairs of a warp read the same A rows, so loading them straight from
+  // global memory issued every load four times. Rows are padded to 40 halves
+  // (80 B) so the eight rows of a fragment fall into distinct banks.
+  constexpr int XCH = 2;
+  constexpr int XROW = XCH * 16 + 8;
+  __shared__ const half *xrows[ROWS];
+  __shared__ int slots[ROWS];
+  // The activation stage (used while computing; decode, RB = 1, reads A
+  // directly and needs none) and the split-K reduction buffer (used after)
+  // share one allocation, which keeps two 512-thread blocks resident on a
+  // 64 KiB-shared Turing SM.
+  constexpr int XS_BYTES = (RB == 1 ? 1 : SPLITK) * RB * MMAX * XROW * 2;
+  constexpr int CS_BYTES = SPLITK * 256 * 4;
+  __shared__ __align__(16) unsigned char smem[XS_BYTES > CS_BYTES ? XS_BYTES : CS_BYTES];
+  auto xs = reinterpret_cast<half (*)[RB][MMAX][XROW]>(smem);
+  auto cs = reinterpret_cast<float (*)[256]>(smem);
 
   const int grp = blockIdx.y;
   const int beg = goff[grp];
@@ -2678,68 +2697,123 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
       qscales + ((size_t)e * (N >> 5) + tile) * SG * 32 + lane;
   const half2 gm2 = __float2half2_rn(gscales[e] * 16384.f);
 
-  // Same multi-pass as moe_simt: an expert with more than MMAX slots (hash
-  // routing at decode, any prefill chunk) takes one pass per MMAX rows, each
-  // re-reading this tile's weights.
-  for (int base = 0; base < cnt; base += MMAX) {
-    const int rows = min(MMAX, cnt - base);
+  // An expert with more than ROWS slots (hash routing at decode, large
+  // prefill chunks) takes one pass per ROWS rows, each re-reading this
+  // tile's weights; within a pass the weights are read once.
+  for (int base = 0; base < cnt; base += ROWS) {
+    const int rows = min(ROWS, cnt - base);
+    const int blocks = (rows + MMAX - 1) / MMAX;
     __syncthreads();  // previous pass done with slots/xrows/cs
-    if (threadIdx.x < MMAX) {
+    if (threadIdx.x < ROWS) {
       const int m = threadIdx.x;
       const int slot = m < rows ? perm[beg + base + m] : 0;
       slots[m] = slot;
       xrows[m] = x + (size_t)(x_slot_major ? slot : slot / topk) * K;
     }
     __syncthreads();
-    const half *xr = r < rows ? xrows[r] : nullptr;
-
-    float c[NACC][8];
+    float c[RB][NACC][8];
 #pragma unroll
-    for (int a = 0; a < NACC; a++)
+    for (int bl = 0; bl < RB; bl++)
 #pragma unroll
-      for (int i = 0; i < 8; i++) c[a][i] = 0.f;
+      for (int a = 0; a < NACC; a++)
+#pragma unroll
+        for (int i = 0; i < 8; i++) c[bl][a][i] = 0.f;
 
+    if constexpr (RB == 1) {
+      // Decode (at most 8 rows per expert): staging costs more than the
+      // repeated loads it saves, so A comes straight from global memory.
+      const half *xr = r < rows ? xrows[r] : nullptr;
 #pragma unroll 4
-    for (int g = g0; g < g0 + Gq; g++) {
-      const uint2 q2 = __ldcs(cb + (size_t)g * 32);
-      const half2 sc2 = __hmul2(group_scale<SCALE_MODE>(sb, g), gm2);
-      half2 b[8];
-      dequant8_tm(q2.x, sc2, b + 0);
-      dequant8_tm(q2.y, sc2, b + 4);
-      const unsigned *B = reinterpret_cast<const unsigned *>(b);
-      uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
-      if (xr) {
-        a01 = *reinterpret_cast<const uint4 *>(xr + g * 16);
-        a23 = *reinterpret_cast<const uint4 *>(xr + g * 16 + 8);
+      for (int g = g0; g < g0 + Gq; g++) {
+        const uint2 q2 = __ldcs(cb + (size_t)g * 32);
+        const half2 sc2 = __hmul2(group_scale<SCALE_MODE>(sb, g), gm2);
+        half2 bq[8];
+        dequant8_tm(q2.x, sc2, bq + 0);
+        dequant8_tm(q2.y, sc2, bq + 4);
+        const unsigned *B = reinterpret_cast<const unsigned *>(bq);
+        uint4 a01 = make_uint4(0, 0, 0, 0), a23 = make_uint4(0, 0, 0, 0);
+        if (xr) {
+          a01 = *reinterpret_cast<const uint4 *>(xr + g * 16);
+          a23 = *reinterpret_cast<const uint4 *>(xr + g * 16 + 8);
+        }
+        const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+        const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+        MMA_8N8K4(c[0][0], A0[0], A0[1], B[0], B[1]);
+        MMA_8N8K4(c[0][1 % NACC], A0[2], A0[3], B[2], B[3]);
+        MMA_8N8K4(c[0][2 % NACC], A1[0], A1[1], B[4], B[5]);
+        MMA_8N8K4(c[0][3 % NACC], A1[2], A1[3], B[6], B[7]);
       }
-      const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
-      const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
-      MMA_8N8K4(c[0], A0[0], A0[1], B[0], B[1]);
-      MMA_8N8K4(c[1 % NACC], A0[2], A0[3], B[2], B[3]);
-      MMA_8N8K4(c[2 % NACC], A1[0], A1[1], B[4], B[5]);
-      MMA_8N8K4(c[3 % NACC], A1[2], A1[3], B[6], B[7]);
+    } else {
+      // Lane l stages 16 B of row (l >> 2) of each row block per chunk.
+      const int srow = lane >> 2, scol = (lane & 3) * 8;
+      for (int gc = g0; gc < g0 + Gq; gc += XCH) {
+  #pragma unroll
+        for (int bl = 0; bl < RB; bl++) {
+          if (bl > 0 && bl >= blocks) break;  // block-uniform
+          const int row = bl * MMAX + srow;
+          uint4 v = make_uint4(0, 0, 0, 0);
+          if (row < rows)
+            v = *reinterpret_cast<const uint4 *>(xrows[row] + gc * 16 + scol);
+          *reinterpret_cast<uint4 *>(&xs[warp][bl][srow][scol]) = v;
+        }
+        __syncwarp();
+  #pragma unroll
+        for (int gi = 0; gi < XCH; gi++) {
+          const int g = gc + gi;
+          const uint2 q2 = __ldcs(cb + (size_t)g * 32);
+          const half2 sc2 = __hmul2(group_scale<SCALE_MODE>(sb, g), gm2);
+          half2 bq[8];
+          dequant8_tm(q2.x, sc2, bq + 0);
+          dequant8_tm(q2.y, sc2, bq + 4);
+          const unsigned *B = reinterpret_cast<const unsigned *>(bq);
+  #pragma unroll
+          for (int bl = 0; bl < RB; bl++) {
+            // Block 0 always has rows; only later blocks can be empty (block-
+            // uniform), and keeping block 0 unguarded leaves RB = 1 branch-free.
+            if (bl > 0 && bl >= blocks) break;
+            const uint4 a01 =
+                *reinterpret_cast<const uint4 *>(&xs[warp][bl][r][gi * 16]);
+            const uint4 a23 =
+                *reinterpret_cast<const uint4 *>(&xs[warp][bl][r][gi * 16 + 8]);
+            const unsigned *A0 = reinterpret_cast<const unsigned *>(&a01);
+            const unsigned *A1 = reinterpret_cast<const unsigned *>(&a23);
+            MMA_8N8K4(c[bl][0], A0[0], A0[1], B[0], B[1]);
+            MMA_8N8K4(c[bl][1 % NACC], A0[2], A0[3], B[2], B[3]);
+            MMA_8N8K4(c[bl][2 % NACC], A1[0], A1[1], B[4], B[5]);
+            MMA_8N8K4(c[bl][3 % NACC], A1[2], A1[3], B[6], B[7]);
+          }
+        }
+        __syncwarp();  // chunk consumed before the next one overwrites xs
+      }
     }
 
+    // Other warps may still read their stage, which the reduction buffer
+    // overlaps.
+    if constexpr (RB > 1) __syncthreads();
 #pragma unroll
-    for (int a = 1; a < NACC; a++)
+    for (int bl = 0; bl < RB; bl++) {
+      if (bl > 0 && bl >= blocks) break;  // block-uniform: barriers match
 #pragma unroll
-      for (int i = 0; i < 8; i++) c[0][i] += c[a][i];
-
+      for (int a = 1; a < NACC; a++)
 #pragma unroll
-    for (int i = 0; i < 8; i++) {
-      const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
-      const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
-      cs[warp][row * 32 + qp * 8 + col] = c[0][i];
-    }
-    __syncthreads();
-    for (int t = threadIdx.x; t < 256; t += blockDim.x) {
-      float v = 0.f;
+        for (int i = 0; i < 8; i++) c[bl][0][i] += c[bl][a][i];
+      if (bl > 0) __syncthreads();  // previous block done reading cs
 #pragma unroll
-      for (int w = 0; w < SPLITK; w++) v += cs[w][t];
-      const int row = t >> 5, col = t & 31;
-      if (row < rows)
-        y_slots[(size_t)slots[row] * N + (size_t)tile * 32 + col] =
-            __float2half(v);
+      for (int i = 0; i < 8; i++) {
+        const int row = (i & 2) | ((lane & 16) ? 4 : 0) | (lane & 1);
+        const int col = (i & 1) | (((lane >> 1) & 1) << 1) | ((i >> 2) << 2);
+        cs[warp][row * 32 + qp * 8 + col] = c[bl][0][i];
+      }
+      __syncthreads();
+      for (int t = threadIdx.x; t < 256; t += blockDim.x) {
+        float v = 0.f;
+#pragma unroll
+        for (int w = 0; w < SPLITK; w++) v += cs[w][t];
+        const int row = bl * MMAX + (t >> 5), col = t & 31;
+        if (row < rows)
+          y_slots[(size_t)slots[row] * N + (size_t)tile * 32 + col] =
+              __float2half(v);
+      }
     }
   }
 }
@@ -2781,13 +2855,20 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   TORCH_CHECK(perm.size(0) == S && y_slots.size(0) == S);
   TORCH_CHECK(S <= 65535, "grouped qpn MoE: tokens * topk = ", S,
               " exceeds the CUDA grid y limit");
-  TORCH_CHECK(K % 64 == 0 && (K / 16) % splitk == 0, "K/SPLITK");
+  TORCH_CHECK(K % 64 == 0 && (K / 16) % (splitk * 2) == 0,
+              "K/16 must split into splitk slices of whole 2-group chunks");
   TORCH_CHECK(N % 32 == 0, "N % 32");
   const dim3 grid((unsigned)(N / 32), (unsigned)S);
   auto stream = at::cuda::getCurrentCUDAStream();
+  // Row blocks per weight load, from the mean rows per expert: one block
+  // while experts see at most 8 rows (decode), two for prefill chunks. Four
+  // need ~80 registers (halving the resident blocks per SM) and more shared
+  // memory than the static 48 KiB for SPLITK 16.
+  const int64_t mean_rows = (S + E - 1) / E;
+  const int rb = mean_rows > 8 ? 2 : 1;
 
-#define LAUNCH_MOE_QPN_S(SPv, NAv, SMv)                                     \
-  skinny_nvfp4_moe_qpn<SPv, NAv, SMv>                                       \
+#define LAUNCH_MOE_QPN_R(SPv, NAv, SMv, RBv)                                \
+  skinny_nvfp4_moe_qpn<SPv, NAv, SMv, RBv>                                  \
       <<<grid, dim3(32 * SPv), 0, stream>>>(                                \
           qcodes.data_ptr<uint8_t>(), qscales.data_ptr<uint8_t>(),          \
           gscales.data_ptr<float>(),                                        \
@@ -2795,6 +2876,14 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
           reinterpret_cast<half *>(y_slots.data_ptr<at::Half>()),           \
           perm.data_ptr<int>(), gids.data_ptr<int>(), goff.data_ptr<int>(), \
           (int)N, (int)K, (int)topk, x_slot_major ? 1 : 0)
+
+#define LAUNCH_MOE_QPN_S(SPv, NAv, SMv)                                     \
+  do {                                                                      \
+    if (rb == 2)                                                            \
+      LAUNCH_MOE_QPN_R(SPv, NAv, SMv, 2);                                   \
+    else                                                                    \
+      LAUNCH_MOE_QPN_R(SPv, NAv, SMv, 1);                                   \
+  } while (0)
 
 #define LAUNCH_MOE_QPN(SPv, NAv)                                            \
   do {                                                                      \
@@ -2810,12 +2899,13 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
     case 82: LAUNCH_MOE_QPN(8, 2); break;
     case 161: LAUNCH_MOE_QPN(16, 1); break;
     case 162: LAUNCH_MOE_QPN(16, 2); break;
-    case 321: LAUNCH_MOE_QPN(32, 1); break;
-    case 322: LAUNCH_MOE_QPN(32, 2); break;
-    default: TORCH_CHECK(false, "moe_qpn splitk in {8,16,32}, nacc in {1,2}");
+    // SPLITK 32 would need more than the 48 KiB of static shared memory for
+    // the per-warp activation stage plus the split-K reduction.
+    default: TORCH_CHECK(false, "moe_qpn splitk in {8,16}, nacc in {1,2}");
   }
 #undef LAUNCH_MOE_QPN
 #undef LAUNCH_MOE_QPN_S
+#undef LAUNCH_MOE_QPN_R
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 

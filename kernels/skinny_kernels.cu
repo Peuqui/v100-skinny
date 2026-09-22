@@ -2931,11 +2931,15 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   switch (key) {
     case 81: LAUNCH_MOE_QPN(8, 1); break;
     case 82: LAUNCH_MOE_QPN(8, 2); break;
+    // SPLITK 10 serves K = 320 (K/16 = 20 = 10 slices of one 2-group chunk),
+    // e.g. a 640-wide expert intermediate split over TP2, which 8 and 16
+    // cannot divide.
+    case 101: LAUNCH_MOE_QPN(10, 1); break;
     case 161: LAUNCH_MOE_QPN(16, 1); break;
     case 162: LAUNCH_MOE_QPN(16, 2); break;
     // SPLITK 32 would need more than the 48 KiB of static shared memory for
     // the per-warp activation stage plus the split-K reduction.
-    default: TORCH_CHECK(false, "moe_qpn splitk in {8,16}, nacc in {1,2}");
+    default: TORCH_CHECK(false, "moe_qpn (splitk, nacc) in {(8,1), (8,2), (10,1), (16,1), (16,2)}");
   }
 #undef LAUNCH_MOE_QPN
 #undef LAUNCH_MOE_QPN_S

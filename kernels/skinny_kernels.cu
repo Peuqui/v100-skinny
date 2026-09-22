@@ -63,11 +63,23 @@ DEV_INLINE half2 e8m0_to_half2(unsigned char b) {
 // kernels take this as a template argument instead of forking.
 enum ScaleMode { SCALE_NVFP4_FP8_16 = 0, SCALE_MXFP4_E8M0_32 = 1 };
 
+// Raw scale byte of group g and its decode, split so a caller can issue the
+// load ahead of its use.
+template <int MODE>
+DEV_INLINE uint8_t group_scale_byte(const uint8_t *sb, int g) {
+  if (MODE == SCALE_MXFP4_E8M0_32) return __ldg(sb + (size_t)(g >> 1) * 32);
+  return __ldg(sb + (size_t)g * 32);
+}
+
+template <int MODE>
+DEV_INLINE half2 decode_scale(uint8_t b) {
+  if (MODE == SCALE_MXFP4_E8M0_32) return e8m0_to_half2(b);
+  return fp8e4m3_to_half2(b);
+}
+
 template <int MODE>
 DEV_INLINE half2 group_scale(const uint8_t *sb, int g) {
-  if (MODE == SCALE_MXFP4_E8M0_32)
-    return e8m0_to_half2(__ldg(sb + (size_t)(g >> 1) * 32));
-  return fp8e4m3_to_half2(__ldg(sb + (size_t)g * 32));
+  return decode_scale<MODE>(group_scale_byte<MODE>(sb, g));
 }
 
 // XOR swizzle on the low 3 bits of a k-pair index; conflict-free for the
@@ -2744,9 +2756,24 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
         MMA_8N8K4(c[0][3 % NACC], A1[2], A1[3], B[6], B[7]);
       }
     } else {
-      // Lane l stages 16 B of row (l >> 2) of each row block per chunk.
+      // Lane l stages 16 B of row (l >> 2) of each row block per chunk. The
+      // next chunk's codes and scales -- streamed from DRAM, unlike the
+      // activation rows every tile shares through L2 -- are loaded while the
+      // current one computes, hiding the latency that dominated the prefill
+      // stalls.
       const int srow = lane >> 2, scol = (lane & 3) * 8;
-      for (int gc = g0; gc < g0 + Gq; gc += XCH) {
+      const int gend = g0 + Gq;
+      uint2 qv[XCH];
+      uint8_t sv[XCH];
+      auto load_weights = [&](int gc) {
+  #pragma unroll
+        for (int gi = 0; gi < XCH; gi++) {
+          qv[gi] = __ldcs(cb + (size_t)(gc + gi) * 32);
+          sv[gi] = group_scale_byte<SCALE_MODE>(sb, gc + gi);
+        }
+      };
+      load_weights(g0);
+      for (int gc = g0; gc < gend; gc += XCH) {
   #pragma unroll
         for (int bl = 0; bl < RB; bl++) {
           if (bl > 0 && bl >= blocks) break;  // block-uniform
@@ -2756,12 +2783,19 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
             v = *reinterpret_cast<const uint4 *>(xrows[row] + gc * 16 + scol);
           *reinterpret_cast<uint4 *>(&xs[warp][bl][srow][scol]) = v;
         }
-        __syncwarp();
+        uint2 q[XCH];
+        uint8_t s[XCH];
   #pragma unroll
         for (int gi = 0; gi < XCH; gi++) {
-          const int g = gc + gi;
-          const uint2 q2 = __ldcs(cb + (size_t)g * 32);
-          const half2 sc2 = __hmul2(group_scale<SCALE_MODE>(sb, g), gm2);
+          q[gi] = qv[gi];
+          s[gi] = sv[gi];
+        }
+        __syncwarp();
+        if (gc + XCH < gend) load_weights(gc + XCH);
+  #pragma unroll
+        for (int gi = 0; gi < XCH; gi++) {
+          const uint2 q2 = q[gi];
+          const half2 sc2 = __hmul2(decode_scale<SCALE_MODE>(s[gi]), gm2);
           half2 bq[8];
           dequant8_tm(q2.x, sc2, bq + 0);
           dequant8_tm(q2.y, sc2, bq + 4);

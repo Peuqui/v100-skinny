@@ -8,8 +8,10 @@ path as serving: rebase_e8m0_for_fp16 + _qpn_prepack(sg=32), scale_mode 1.
 Run per card:
   CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=<i> CUDA_HOME=/home/mp/vllm/cuda \\
   VLLM_SKINNY_NVFP4_SRC=kernels/skinny_kernels.cu \\
-  python scripts/mxfp4_moe_qpn_roofline.py
+  python scripts/mxfp4_moe_qpn_roofline.py [tokens ...]
 """
+import sys
+
 import torch
 from safetensors import safe_open
 
@@ -22,7 +24,7 @@ from vllm.model_executor.layers.fused_moe.experts.nvfp4_skinny_moe import (
 SHARD = ("/home/mp/models/DeepSeek-V4-Flash-284B-A13B-MXFP4-FP8-DSpark/"
          "model-00007-of-00048.safetensors")
 LAYER, EXPERTS, TOP_K = 5, 256, 6
-TOKENS = (6, 64, 512, 4096)
+TOKENS = tuple(int(t) for t in sys.argv[1:]) or (6, 64, 512, 4096)
 
 with safe_open(SHARD, framework="pt", device="cuda") as f:
     def get(e, name):

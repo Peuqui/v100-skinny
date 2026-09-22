@@ -1982,6 +1982,24 @@ Augustwerten (6,5 min Boot).
     (f) **DANACH Testbau** in frischer venv neben der Produktion, frischer
         Klon von GitHub, strikt nach (c) — Produktion bleibt unangetastet;
         abgenommen, wenn ein Modell aus dieser venv antwortet.
+    (g) **Paket A an 1Cat (Peuqui 22.09.): Skinny-MoE-Backend komplett** —
+        `Nvfp4SkinnySm70Experts`/`Mxfp4SkinnySm70Experts`, Oracle-Backends
+        NVFP4+MXFP4 `SM70_SKINNY`, Kernel-Quelle `skinny_kernels.cu` im Build
+        statt JIT aus v100-skinny. 1Cat hat nur eigene QPN-Ableitungen
+        (csrc/sm70_turbomind/ops, TurboMind-Pfad, MXFP4 nur TP4, nur SM70).
+        `sm70_skinny` deckt SM75 schon ab (Gerätecheck 7.0/7.5, Test auf RTX
+        grün, PP0/PP4 der Produktion sind RTX); Namenswahl für den PR prüfen
+        (`skinny` statt `sm70_skinny`?).
+        Messung 22.09. (scripts/mxfp4_moe_qpn_roofline.py, echte Schicht 5, 256
+        Experten, top-6; ms RTX/V100): 6 Tok 0,80/0,66 (582/706 GB/s = 87 %/78 %
+        der Bandbreite), 64 Tok 4,63/3,86, 512 Tok 14,7/11,1 (10,5/14,0 TFLOP/s),
+        4096 Tok 110,9/76,9. scripts/mma_shape_throughput.py: m8n8k4 auf RTX
+        43,8 TFLOP/s, m16n8k8 85,8, V100 m8n8k4 97,3 — die Volta-Form läuft auf
+        Turing mit halber Rate. Decode ist auf der RTX schon am Speicher-
+        Anschlag (kein Gewinn); Prefill fällt auf der RTX zurück (1,33–1,44×),
+        beide Karten nutzen aber nur 15–25 % der MMA-Obergrenze ⇒ Hauptengpass
+        ist nicht die MMA. Nächster Schritt: ncu bei 512 Tok auf beiden Karten,
+        dann entscheiden (Turing-Port m16n8k8 vs. allgemeine Kernel-Optimierung).
 22. **Zwei Tensorizer-TP-Tests hängen** (21.09.):
     `test_tensorizer_with_tp_path_without_template` und
     `test_deserialized_encrypted_vllm_model_with_tp_has_same_outputs` bleiben

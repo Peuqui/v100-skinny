@@ -2191,3 +2191,27 @@ Augustwerten (6,5 min Boot).
     kalter 18k-Prefill 16,0–16,2 → 15,2 s (−6 %), Schritt 86–90 ms gleich,
     Nadel 30k 4/4, PP4 noch 3,1 GB frei, Pool 71.493 Tok. Weiterer Prefill-Gewinn nur noch über
     den RTX-Kernel (Turing-Zweig, Punkt 25).
+
+27. **moe_qpn Schritt 4: Codes/Skalen vorladen (22.09. nachmittags) — ÜBERNOMMEN,
+    Schritt 2 VERWORFEN.** Ausgangsprofil RTX nach Schritt 1+3 (512 Tok, ncu
+    `~/.cache/ncu-moe/moe_qpn_512_gpu0_union`): lg_throttle weg, Tensor-Pipe
+    27 → 40 %, Stalls long_scoreboard 31–34 %, math_pipe_throttle 13–17 %.
+    UMSETZUNG (Zweig moe-qpn-loads, 3422dd4, gemergt 0912c85): im Prefill-Pfad
+    (RB ≥ 2) Codes und Skalenbytes des nächsten Zweiergruppen-Chunks laden,
+    während der aktuelle rechnet (`group_scale_byte`/`decode_scale` getrennt).
+    Bitgleich V100 + RTX, 1–4096 Tok. Echte Schicht 512 Tok: V100 9,65 → 8,22 ms
+    (−15 %), 4096 −10 %; RTX 10,77 → 10,43 ms (−3 %), 4096 −1,7 %; Decode
+    (RB = 1) unverändert. Register MXFP4/RB2 bei 64, keine Auslagerung.
+    Betrieb PP5: kalter 18k-Prefill 11,3/11,5/11,5 → 11,1/11,3/11,3 s, Greedy
+    bitgleich (50cf4d2e…, 8dad9dc9…, 196bad1e…), Decode unverändert.
+    VERWORFEN: (a) zusätzlich Aktivierungen vorladen → 73 Register, 1 Block/SM
+    auf RTX, 10,52 ms (schlechter als schlank); (b) dazu `__launch_bounds__(…, 2)`
+    → 24 B Stack, 10,63 ms, 4096 langsamer als Produktion.
+    RESTPROFIL (ncu `…_prefetch`, SASS-Quellansicht `--page source --print-source
+    sass`): 80 % der long_scoreboard-Stalls an den beiden STS.128 der
+    Aktivierungs-Stage (warten auf deren globalen Load), Codes-Loads nicht mehr
+    sichtbar. ⇒ Schritt 2 (breitere Code-Loads, neuer Prepack) trifft nichts
+    mehr und entfällt. Aktivierungs-Latenz ist auf der RTX nur über Register
+    (s. a) oder größere Stage (XCH 4 = 37 KB Shared → 1 Block bei 64 KB/SM)
+    angreifbar, beides kostet Occupancy. Tensor-Pipe-Stall jetzt 8–10 % ⇒
+    Turing-Zweig m16n8k8 lohnt nur noch wenig.

@@ -2361,3 +2361,22 @@ Augustwerten (6,5 min Boot).
     OFFEN bleibt der Attention-Block: `test_sm70_flash_v100_multihead.py` +
     `..._prefix_decode_rows.py` melden jetzt 42 Fehler / 52 bestanden (STAND 24
     zählte 21) — noch nicht untersucht, ob die Zunahme vom 1Cat-Merge stammt.
+
+33. **Attention-Testfehler aus STAND 24 ERKLÄRT: die FA2-V100-Bibliothek ist
+    veraltet gebaut (23.09. nachts).**
+    Fehlerbild: `RuntimeError: XQA decode tmp_out must be fp16`
+    (`flash_attn_interface.py:1375`, aus der kompilierten Erweiterung).
+    Die Python-Seite fordert seit dem Merge für die E4M3-Route fp32-Teilergebnisse
+    (`partial_dtype=torch.float32 if e4m3_fp32 else torch.float16`, Zeile 1052);
+    die aktuelle C++-Quelle erlaubt das auch
+    (`flash_decode_paged.cu:4915`: „tmp_out must be fp16, or fp32 for E4M3
+    scalar decode“), die INSTALLIERTE `.so` kennt nur fp16.
+    BELEG: `flash_attn_v100_cuda.cpython-312-x86_64-linux-gnu.so` gebaut
+    2026-09-14 14:59; `flash_attn_interface.py` zuletzt geändert 2026-09-21
+    (1Cat-Merge, Commits 5810c3c8 / 8a10215d / 3fcb1d1b berühren die Bibliothek).
+    Das erklärt auch die Zunahme von 21 auf 42 Fehler: der Merge hat weitere
+    Aufrufe auf die neue Route gestellt.
+    ⇒ KEIN Kernel-Vertragsproblem, sondern ein fehlender Neubau. Nicht
+    unbeaufsichtigt nachholen: die Produktion (DSv4 und Flash-Next) benutzt
+    genau diese `.so`; Neubau nur mit Sicherung und Abnahme, Bauparallelität
+    auf dem Mini cappen, sm75-Drop-in beachten (Namensraumkollision).

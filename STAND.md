@@ -2611,3 +2611,39 @@ Augustwerten (6,5 min Boot).
     Vertrag angleichen, Ursache der übrigen 1,47 GiB KV-Zuwachs, Messung ob
     `STORE_DEVICES=4,1,2,3` (leere Karte zuerst) beides verbindet — dann aber
     ohne VLM/TTS.
+
+41. **Erste ECHTE Plattenmessung der PLE-Stufe: kalt kostet nur Prefill,
+    +0,3 bis +2,5 s bei 15–17k Tokens, Decode unverändert (23.09. spät).**
+    Frühere Aussagen „SSD deutlich langsamer" waren nie gemessen: die Abnahme
+    vom 16.09. wurde aus dem Seitencache bedient (18 Major-Faults, Entwurf
+    Abschnitt 12), „Millisekunden je Zeile" war eine Schätzung, und die 545 s
+    aus Punkt 37 betrafen das Massenladen mit `MADV_RANDOM`, nicht den Zugriff.
+    AUFBAU: Eintrag `…-pp4-alldisk-test` (PP4, `PLE_VRAM_RESERVE_GIB=40`,
+    `HOST_GIB=0.01`, `DISK=1`): 47,67 GiB auf der Platte, 67.108 Zeilen im
+    Host. Seitencache der PLE-Datei per `posix_fadvise(DONTNEED)` geräumt
+    (ohne root; gemappte Seiten bleiben) und je Anfrage per `mincore`
+    gemessen (Scratchpad `pagecache.py`), Major-Faults des Workers aus
+    `/proc/<pid>/stat` (`cold_probe.py`). Prompts: sechs verschiedene
+    45.000-Zeichen-Abschnitte aus den Journalen — die 22-Wörter-Prompts von
+    `prefill_probe.py` teilen fast alle N-Gramme und treffen den Cache
+    unrealistisch oft.
+    ERGEBNIS (erste Anfrage je Text, Cache 0,5–2,9 %):
+
+    | Text | Produktion Prefill / Decode | Platte kalt Prefill / Decode | Plattenzugriffe |
+    |---|---|---|---|
+    | QWEN4EXP@0 | 12,5 s / 53,2 | 12,8 s / 52,9 | 201.580 (787 MiB) |
+    | QWEN4EXP@45000 | 9,5 / 46,4 | 10,8 / 44,3 | 190.787 |
+    | TURING@0 | 8,2 / 39,8 | 10,7 / 40,8 | 171.278 |
+    | TURING@45000 | 8,4 / 42,8 | 10,7 / 36,7 | 169.846 |
+    | DEEPSEEK@0 | 7,7 / 44,8 | 10,0 / 46,0 | 155.919 |
+    | STAND@0 | 8,2 / 40,3 | 10,5 / 43,8 | 161.041 |
+
+    ~15.000 zufällige 4-KiB-Zugriffe/s über USB (32 Leser-Threads);
+    vermutlich versteckt PP4 einen Teil der Wartezeit hinter den anderen
+    Stufen (nicht gemessen). Swap beim Laden 5 MiB (Host-Anteil ~0).
+    MESSFEHLER: der zweite Durchlauf mit denselben Texten traf vLLMs
+    Präfix-Cache (Prefill 2,3–2,7 s) und sagt nichts über die Platte.
+    Warm-gegen-kalt braucht NEUE Texte bei gefülltem Seitencache.
+    ⇒ Die Platte taugt als letzte Stufe (Zwei-Karten-Rechner, wenig RAM);
+    für den Mini bleiben die Pipeline-Karten besser (kein Prefill-Aufschlag,
+    kein Plattenverkehr).

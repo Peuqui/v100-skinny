@@ -2675,6 +2675,11 @@ Augustwerten (6,5 min Boot).
     | Prefill / Decode | 8,8–9,5 s / 37–53 | 8,6–9,4 s / 37–54 |
 
     Tests: 144 bestanden (zwei V100), Mutationsprobe schlägt an.
+    ZWEITER FUND, PRODUKTION: das Laden der Store-Tabelle (25,8 GiB) las über
+    dieselben Mappings; danach hielt der Worker 11,2 GB RssFile. Fix
+    `ddc146b2` (Freigabe nach dem Laden, gemeinsame Methode
+    `_release_mapped_pages`): 402 MB RssFile, Greedy 3/3 bitgleich, Prefill
+    13,7 s, KV 564.725. Tag `verified-2026-09-24`.
     OFFEN, Entscheidung Peuqui: UNTERGRENZE für freien Host-RAM. Die Prüfung
     garantiert nur „Rest ≥ 0" nach Engine-Reserve; für VS Code/Chrome/AIfred
     bleibt dann nichts. Vorschlag: `VLLM_QWEN4EXP_PLE_HOST_MIN_FREE_GIB`

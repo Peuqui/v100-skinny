@@ -2647,3 +2647,37 @@ Augustwerten (6,5 min Boot).
     ⇒ Die Platte taugt als letzte Stufe (Zwei-Karten-Rechner, wenig RAM);
     für den Mini bleiben die Pipeline-Karten besser (kein Prefill-Aufschlag,
     kein Plattenverkehr).
+
+42. **„Host-Deckel zu weich" (Punkt 39) aufgeklärt: die Prüfung rechnet
+    richtig, das Auslagern kam vom gemappten Platten-Bestand — BEHOBEN,
+    Fork `2a54e90a` (23./24.09. nachts).**
+    PRÜFUNG: `check_ple_host_share` sah am 23.09. 23:21 23,05 GiB verfügbar,
+    rechnete 23,05 − 12 (Host) − 7,67 (Reserve) = 3,38 GiB Rest; tatsächlich
+    blieben nach dem Laden 3,31 GiB. Die Engine (API-Server, EngineCore, vier
+    Stufen, PLE-Worker, ~4,5 GiB Shared Memory) braucht 7,75 GiB — genau die
+    Reserve. Die „16,47 GiB" aus Punkt 39 stammten aus einer Info-Zeile des
+    Workers, nicht aus der Prüfung. Swap WÄHREND DES LADENS (2,2 GiB bei 23 GiB
+    verfügbar) ist normales Auslagern kalter Seiten beim Streamen der 53-GB-
+    Datei (Swappiness 60), kein Mangel.
+    URSACHE des Auslagerns im Betrieb: die Platten-Stufe liest über private
+    Datei-Mappings; jede berührte Seite blieb im Worker gemappt, der Kernel
+    behält gemappte Seiten und lagert stattdessen andere Prozesse aus.
+    FIX: nach dem Lesen `madvise(MADV_DONTNEED)` je Shard (Seiten bleiben im
+    Seitencache, nur entmappt), nur für dateigestützte Shards (sonst
+    zerstört es anonymen Speicher — ein 1Cat-Test täuschte das Mapping per
+    Stub vor und stürzte ab; jetzt echte safetensors-Datei).
+    A/B, PP4, Host 12 GiB, 16,8 GiB Platte, 12 echte Texte, 3 GiB verfügbar:
+
+    | | ohne Fix | mit Fix |
+    |---|---|---|
+    | Worker RssFile nach 12 Anfragen | 112 → 1.939 MiB | 105–109 MiB flach |
+    | Swap-Out gesamt | ~2.100 MiB | ~96 MiB (ab Anfrage 4 ≤ 1,3 MiB) |
+    | Prefill / Decode | 8,8–9,5 s / 37–53 | 8,6–9,4 s / 37–54 |
+
+    Tests: 144 bestanden (zwei V100), Mutationsprobe schlägt an.
+    OFFEN, Entscheidung Peuqui: UNTERGRENZE für freien Host-RAM. Die Prüfung
+    garantiert nur „Rest ≥ 0" nach Engine-Reserve; für VS Code/Chrome/AIfred
+    bleibt dann nichts. Vorschlag: `VLLM_QWEN4EXP_PLE_HOST_MIN_FREE_GIB`
+    (Vorgabe z. B. 4 GiB) in der Startprüfung einrechnen UND nach dem Capture
+    (späte Stelle aus Punkt 40) messen; unterschritten → Startabbruch mit
+    empfohlenem `HOST_GIB`. Verhaltensänderung, daher nicht eigenmächtig.

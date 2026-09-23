@@ -2763,23 +2763,30 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
       // stalls.
       const int srow = lane >> 2, scol = (lane & 3) * 8;
       const int gend = g0 + Gq;
+      // A warp's slice may end on an odd group (K/16 = splitk, for instance),
+      // so every read of a chunk's second group is bounded by gend. The guards
+      // are uniform across the warp and fall away when Gq is even.
       uint2 qv[XCH];
       uint8_t sv[XCH];
       auto load_weights = [&](int gc) {
   #pragma unroll
         for (int gi = 0; gi < XCH; gi++) {
+          if (gi > 0 && gc + gi >= gend) break;
           qv[gi] = __ldcs(cb + (size_t)(gc + gi) * 32);
           sv[gi] = group_scale_byte<SCALE_MODE>(sb, gc + gi);
         }
       };
       load_weights(g0);
       for (int gc = g0; gc < gend; gc += XCH) {
+        const int gcnt = min(XCH, gend - gc);
   #pragma unroll
         for (int bl = 0; bl < RB; bl++) {
           if (bl > 0 && bl >= blocks) break;  // block-uniform
           const int row = bl * MMAX + srow;
           uint4 v = make_uint4(0, 0, 0, 0);
-          if (row < rows)
+          // scol spans 8 halves inside the chunk, so it belongs to group
+          // gc + scol / 16; skip it when that group is past the slice.
+          if (row < rows && scol / 16 < gcnt)
             v = *reinterpret_cast<const uint4 *>(xrows[row] + gc * 16 + scol);
           *reinterpret_cast<uint4 *>(&xs[warp][bl][srow][scol]) = v;
         }
@@ -2787,6 +2794,7 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
         uint8_t s[XCH];
   #pragma unroll
         for (int gi = 0; gi < XCH; gi++) {
+          if (gi > 0 && gi >= gcnt) break;
           q[gi] = qv[gi];
           s[gi] = sv[gi];
         }
@@ -2794,6 +2802,7 @@ skinny_nvfp4_moe_qpn(const uint8_t *__restrict__ qcodes,
         if (gc + XCH < gend) load_weights(gc + XCH);
   #pragma unroll
         for (int gi = 0; gi < XCH; gi++) {
+          if (gi > 0 && gi >= gcnt) break;
           const uint2 q2 = q[gi];
           const half2 sc2 = __hmul2(decode_scale<SCALE_MODE>(s[gi]), gm2);
           half2 bq[8];
@@ -2889,8 +2898,8 @@ void skinny_moe_qpn(torch::Tensor x, torch::Tensor qcodes,
   TORCH_CHECK(perm.size(0) == S && y_slots.size(0) == S);
   TORCH_CHECK(S <= 65535, "grouped qpn MoE: tokens * topk = ", S,
               " exceeds the CUDA grid y limit");
-  TORCH_CHECK(K % 64 == 0 && (K / 16) % (splitk * 2) == 0,
-              "K/16 must split into splitk slices of whole 2-group chunks");
+  TORCH_CHECK(K % 64 == 0 && (K / 16) % splitk == 0,
+              "K/16 must split into splitk equal slices");
   TORCH_CHECK(N % 32 == 0, "N % 32");
   const dim3 grid((unsigned)(N / 32), (unsigned)S);
   auto stream = at::cuda::getCurrentCUDAStream();

@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-11 abends, Punkt 6 aktualisiert 2026-09-15 spät.** Dieses Dokument beschreibt, WIE der Stack heute
+**Stand 2026-09-11 abends, Punkt 6 aktualisiert 2026-09-15 spät, Flash-Next-Betriebspunkt 2026-09-23 spät (PP4, Punkt 40).** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -302,7 +302,30 @@ py-spy: `~/.venv/pyspy`, Anhängen nur mit dem ptrace-Haken unter
 `~/.venv/pyspy/ptrace_hook` (Dienst hat PrivateTmp, Pfade nie unter /tmp übergeben).
 
 
-### Qwen3.8-Flash-Next (180B, Qwen4Exp) — geprüft 07.09., nachverifiziert 09.09.
+### Qwen3.8-Flash-Next — Produktion seit 23.09. spät: PP4, PLE auf den Pipeline-Karten
+
+llama-swap-Einträge `Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-vllm` samt den
+Varianten `-tts-qwen3local`, `-vlm-qwen3vl4b`, `-tts-qwen3local-vlm-qwen3vl4b`
+(alle vier gleich, rechnen nur auf GPU 0–3, GPU 4 bleibt den Seitenkanälen).
+Gegenüber dem Vorgänger (TP2×PP2, `24,24`) geändert:
+
+```
+--tensor-parallel-size 1 --pipeline-parallel-size 4
+CUDA_VISIBLE_DEVICES=0,2,1,3          # Stufen: RTX, RTX, V100, V100
+VLLM_PP_LAYER_PARTITION=12,12,12,12
+VLLM_QWEN4EXP_PLE_HOST_GIB=3
+VLLM_QWEN4EXP_PLE_STORE_DEVICES=1,2,3 # sichtbare Indizes = physisch GPU 2, 1, 3
+VLLM_QWEN4EXP_PLE_DISK=1              # letzte Stufe, planmäßig leer
+```
+
+PLE-Tabelle 47,7 GiB: 18,9 GiB VRAM GPU 0, 3 GiB Host, 21,5 GiB GPU 2 +
+4,3 GiB GPU 1 (Store-Stufe, geladen nach dem Graph-Capture aller Stufen),
+Platte 0. Gemessen (Punkt 40): Prefill 29k 13,5 s, Decode 36,9 tok/s
+(32,0–43,3), 13,7–14 GiB Host frei, kein Swap, KV-Pool 564.725 Tokens,
+Nadeln 4/4 bei 24k und 101k, Greedy bitgleich zur PP4-Platte.
+Erste Anfrage nach dem Start ist wertlos (Punkt 38).
+
+### Qwen3.8-Flash-Next — Skript-Weg, geprüft 07.09., nachverifiziert 09.09. (historisch, NICHT Produktion)
 
 ```bash
 cd /home/mp/Projekte/vllm-research/v100-skinny
@@ -2487,10 +2510,12 @@ Augustwerten (6,5 min Boot).
     WARUM ES GEWINNT: das TP2-All-Reduce stand im Profil bei 21 % der GPU-Zeit
     (Punkt 33 folgend), PP kennt es nicht. Die zusätzliche Pipeline-Blase wiegt
     das nicht auf. Meine Gegenvorhersage war falsch, zweimal.
+    → Produktionswechsel am 23.09. spät auf Peuquis Ansage vollzogen, in der
+      Variante aus Punkt 40 (Karten statt Platte, Host 3 GiB).
     OFFEN vor einem Produktionswechsel: Wiederholung an einem anderen Tag,
     Startzeit (PP4 lädt länger), und die Geräteliste aus Punkt 39.
 
-39. **Die Kaskade kennt nur EINE Store-Karte — deshalb geht Flash-Next bei PP4
+39. **ERLEDIGT → Punkt 40.** **Die Kaskade kennt nur EINE Store-Karte — deshalb geht Flash-Next bei PP4
     auf die SSD, obwohl 45 GB VRAM brachliegen (23.09. abends, OFFEN).**
     `VLLM_QWEN4EXP_PLE_STORE_DEVICE: int | None` — ein Wert. Ist das Budget
     voll, fällt der Rest auf die Platte. Bei PP4 sind das 16,8 GB, während
@@ -2523,3 +2548,66 @@ Augustwerten (6,5 min Boot).
     `HOST_GIB=12` meldete er „fits (16.47 GiB available)", das Laden drückte
     dann 9 GiB zusätzlich in den Swap. Der Deckel müsste den erwarteten
     Ladedruck einrechnen oder schlicht hart sein.
+
+40. **Store-Stufe als Kartenliste, spät geladen — PP4 mit Host 3 GiB ist die
+    neue Produktion (23.09. spät). Punkt 39 erledigt, mit anderem Gewinn als
+    erwartet: kein Decode-Gewinn, aber 9–11 GiB Host frei.**
+    UMBAU (Fork, Branch `qwen4exp-ple-tier-cascade`):
+    `VLLM_QWEN4EXP_PLE_STORE_DEVICES` (Liste, Füllreihenfolge) und
+    `VLLM_QWEN4EXP_PLE_STORE_RESERVE_GIB` (Freihalte-Wert je Karte, Vorgabe
+    0,5) ersetzen `STORE_DEVICE`/`STORE_GIB`, ohne Alias. Der Rang plant nur
+    noch VRAM → Host → Rest an den Worker. Der Worker bindet beim Registrieren,
+    lädt aber erst nach `capture_model` und VOR `warmup_kernels` (das ist der
+    erste Schritt, der den Worker echt fragt — V2-Runner, `dummy_run=False`).
+    Dafür melden alle Ränge über `all_gather_object` den Restbedarf ihrer Stufe
+    `max(0, allocated + peak_activation − reserved)` (Capture ruft
+    `empty_cache`), der Spawn-Rang schickt ihn über den Steuerkanal (Ready-Pipe
+    jetzt duplex), der Worker misst `mem_get_info` je Karte, füllt der Reihe
+    nach, teilt Rangspannen an Kartengrenzen und quittiert. Store-Karten mit
+    `data_parallel_size > 1` werden abgelehnt.
+    MESSUNG PP4, heute, 12 Keime (7102–7107, 8201–8206), ~29.200 Tokens, nach
+    Wegwerf-Anfrage 7101:
+
+    | Host | Rest auf | Decode Mittel (Spanne) | Host frei | Swap raus |
+    |---|---|---|---|---|
+    | 12 GiB | Platte 16,8 | 36,0 (32,5–38,0) | 2,7–3,3 GiB | jede Anfrage |
+    | 12 GiB | GPU 2 16,8 | 35,3 (32,8–37,6) | 4,7–5,3 GiB | 0 |
+    | 3 GiB | GPU 4 25,8 | 39,5 (32,7–45,8) | 12 GiB | 0 |
+    | 3 GiB | GPU 2 21,5 + GPU 1 4,3 | 36,9 (32,0–43,3) | 13,7–14 GiB | 0 |
+
+    Prefill überall 13,5–14,0 s. Decode streut ±3 tok/s (Temperatur 1, MTP).
+    ⇒ Store auf einer Pipeline-Karte ist ~7 % langsamer als auf der leeren
+    GPU 4 (Hypothese: zwei Prozesse teilen sich die Karte zeitlich, kein MPS;
+    ~2 Standardfehler, nicht hart belegt). Der Gewinn ist der Host-Anteil 3
+    statt 12 GiB, und GPU 4 bleibt für VLM/TTS frei. Die Platte hält den
+    Seitencache voll und lagert bei JEDER Anfrage aus.
+    Greedy bitgleich zur PP4-Platte (`323e7f30…`, `727bccba…`, `018b693f…`),
+    Nadeln 4/4 bei 24.488 und 101.605 Tokens.
+    DREI FEHLER ERST IM ECHTEN BOOT GEFUNDEN:
+    - `logger.info_once` mit Liste → „unhashable type: list" beim Start.
+    - `copy_ple_embedding_shard_` kopierte über `.to(device)`: der Allokator
+      behielt je Karte einen 0,37-GiB-Zwischenblock (ein Checkpoint-Shard,
+      128 Shards à 2,5 Mio. Zeilen à 160 B) → OOM auf der bis zum Puffer
+      gefüllten Karte. Jetzt `target.copy_(source)`, gemessen 382 → 0 MiB.
+      Nebenwirkung: Stufe 0 behält beim Laden nichts mehr, KV 2,97 → 4,81 GiB,
+      Pool 433.653 → 564.725 Tokens (nur 0,37 der 1,84 GiB Zuwachs erklärt).
+    - Steuerkanal: EOF beim regulären Stopp warf einen Traceback.
+    PUFFER: die Stufen wuchsen mit den ersten echten Anfragen 148/189/251 MiB
+    über ihren gemeldeten Bedarf (NCCL, JIT) — Vorgabe darum 0,5 statt 0,25.
+    Die Karten 1–3 haben nach dem Aufbau nur ~31 GiB frei (22,0 / 7,0 / 1,9),
+    nicht die 45 GB aus Punkt 39.
+    AIFRED: `scripts/llama-swap-autoscan.py` `enforce_ple_store_reserves`
+    (ersetzt `enforce_ple_store_budgets`) setzt auf Karten AUSSERHALB der
+    Pipeline (Ordinal ≥ TP×PP) den Freihalte-Wert = gemessene TTS-/VLM-Spitze
+    der Variante + 1 GiB Sicherheit; Pipeline-Karten bleiben auf der Vorgabe.
+    Ebenso `ple_cascade.py` und die Menüanzeige (`PLE→Host→GPU 2+1+3→SSD`).
+    PRODUKTIONSABNAHME 23.09. 22:31–22:50 (Eintrag `…-MTP-vllm`): Boot
+    9,5 min, Greedy 3/3 bitgleich, Prefill 13,5 s, Decode 40,0–43,4 tok/s
+    (7102, 7103, 8201), kein Swap, KV 564.725. Fork `7a906544` = work-main,
+    Tag `verified-2026-09-23`; Kopier-Korrektur als eigener Commit `2727bb3c`
+    (Vorlage für einen Bugfix-PR an 1Cat).
+    OFFEN: Wiederholung an einem anderen Tag (Punkt 38), Test-Einträge in
+    llama-swap aufräumen (`k0`, `prof2`, `pp4-*`), PR #646 an den neuen
+    Vertrag angleichen, Ursache der übrigen 1,47 GiB KV-Zuwachs, Messung ob
+    `STORE_DEVICES=4,1,2,3` (leere Karte zuerst) beides verbindet — dann aber
+    ohne VLM/TTS.

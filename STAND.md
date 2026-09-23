@@ -2614,10 +2614,14 @@ Augustwerten (6,5 min Boot).
 
 41. **Erste ECHTE Plattenmessung der PLE-Stufe: kalt kostet nur Prefill,
     +0,3 bis +2,5 s bei 15–17k Tokens, Decode unverändert (23.09. spät).**
-    Frühere Aussagen „SSD deutlich langsamer" waren nie gemessen: die Abnahme
-    vom 16.09. wurde aus dem Seitencache bedient (18 Major-Faults, Entwurf
-    Abschnitt 12), „Millisekunden je Zeile" war eine Schätzung, und die 545 s
+    Frühere Aussagen „SSD deutlich langsamer" waren so nie gemessen: die
+    Abnahme vom 16.09. wurde aus dem Seitencache bedient (18 Major-Faults,
+    Entwurf Abschnitt 12); eine spätere Kaltmessung mit `drop_caches` (im
+    Design-Dokument und im PR-Text von #646) las nur 10–56 MiB Plattenzeilen
+    je Anfrage bei 3,3 GiB Plattenanteil und maß den Decode (±0,5 %), nicht
+    den Prefill. „Millisekunden je Zeile" war eine Schätzung, und die 545 s
     aus Punkt 37 betrafen das Massenladen mit `MADV_RANDOM`, nicht den Zugriff.
+    (Korrektur 24.09.: in der Nacht zuerst fälschlich „nie gemessen" berichtet.)
     AUFBAU: Eintrag `…-pp4-alldisk-test` (PP4, `PLE_VRAM_RESERVE_GIB=40`,
     `HOST_GIB=0.01`, `DISK=1`): 47,67 GiB auf der Platte, 67.108 Zeilen im
     Host. Seitencache der PLE-Datei per `posix_fadvise(DONTNEED)` geräumt

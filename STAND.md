@@ -2589,8 +2589,11 @@ Augustwerten (6,5 min Boot).
       behielt je Karte einen 0,37-GiB-Zwischenblock (ein Checkpoint-Shard,
       128 Shards à 2,5 Mio. Zeilen à 160 B) → OOM auf der bis zum Puffer
       gefüllten Karte. Jetzt `target.copy_(source)`, gemessen 382 → 0 MiB.
-      Nebenwirkung: Stufe 0 behält beim Laden nichts mehr, KV 2,97 → 4,81 GiB,
-      Pool 433.653 → 564.725 Tokens (nur 0,37 der 1,84 GiB Zuwachs erklärt).
+      [ZURÜCKGENOMMEN 24.09.: der angebliche KV-Gewinn (Stufe 0 2,97 → 4,81 GiB,
+      Pool 433.653 → 564.725) ist nicht der Korrektur zuzuschreiben. Ein
+      TP2×PP2-Boot mit Korrektur zeigte 2,70 GiB / 383.455 Tokens gegen
+      3,89 GiB / 550.781 am Mittag ohne — die KV-Messung schwankt mit dem
+      Zustand des Compile-Caches (Profil-Lauf), die Boots sind kein A/B.]
     - Steuerkanal: EOF beim regulären Stopp warf einen Traceback.
     PUFFER: die Stufen wuchsen mit den ersten echten Anfragen 148/189/251 MiB
     über ihren gemeldeten Bedarf (NCCL, JIT) — Vorgabe darum 0,5 statt 0,25.
@@ -2690,3 +2693,15 @@ Augustwerten (6,5 min Boot).
     (Vorgabe z. B. 4 GiB) in der Startprüfung einrechnen UND nach dem Capture
     (späte Stelle aus Punkt 40) messen; unterschritten → Startabbruch mit
     empfohlenem `HOST_GIB`. Verhaltensänderung, daher nicht eigenmächtig.
+
+43. **KV-Budget taugt nicht als A/B zwischen Boots (24.09. nachts).**
+    TP2×PP2 mit `HOST_GIB=3`, gleicher Aufbau: 13:08 Stufe 0 3,89 GiB, Pool
+    550.781; 00:58 (mit Kopier-Korrektur) 2,70 GiB, Pool 383.455 — der Wert
+    der alten Produktion (Punkt 31). Greedy 3/3 identisch. vLLM misst das
+    KV-Budget über einen Profil-Lauf, dessen Spitze vom Compile-Cache
+    abhängt (Kommentar in `determine_available_memory`). Wirkung von Code auf
+    KV nur mit mehreren Boots je Seite und gleichem Cache-Zustand behaupten.
+    Folge: die Kopier-Korrektur (`2727bb3c`) ist belegt für den
+    Allokator (382 MiB isoliert) und den OOM auf der gefüllten Store-Karte,
+    NICHT als KV-Gewinn ohne Kaskade → kein eigener PR, sie geht mit #646.
+    Test-Eintrag `…-tp2pp2-copyfix-test` in llama-swap zum Aufräumen.

@@ -1,37 +1,49 @@
-# Übergabe — Stand 23.09.2026 spät
+# Übergabe — Stand 24.09.2026 früh (nach der Nachtschicht)
 
-**Kein offener Bauauftrag.** Flash-Next läuft seit heute spät als PP4 mit der
-PLE-Store-Stufe auf den Pipeline-Karten (STAND.md Betriebspunkt und Punkt 40).
-Fork und `work-main` sind gepusht.
+**Drei Entscheidungen von Peuqui stehen aus, dann ist das Paket rund.**
+Produktion läuft (PP4, PLE auf den Pipeline-Karten, Tag `verified-2026-09-24`),
+Fork `ddc146b2` = work-main, alles gepusht.
 
 ## Womit anfangen
 
-`STAND.md` lesen, Punkte 38–40 sind von gestern und heute. Nicht mit den
-Logbüchern anfangen.
+`STAND.md` Punkte 40–43 (Kartenliste, echte Plattenmessung, Mappings
+freigegeben, KV kein A/B). Nicht mit den Logbüchern anfangen.
 
-## Was als Nächstes ansteht (Reihenfolge nach Nutzen)
+## Offene Entscheidungen
 
-1. **Produktion an einem anderen Tag nachmessen** (Punkt 38): dieselben
-   12 Keime mit `prefill_probe_swap.py` gegen den Produktionseintrag, dazu
-   ein AIfred-Alltagsgespräch. Weicht der Decode von 36,9 tok/s deutlich ab,
-   erst Host-Speicher und Swap prüfen.
-2. **PR #646 an den neuen Vertrag angleichen** (Kartenliste, Freihalte-Werte,
-   spätes Laden, Kopier-Korrektur). Das ist Außenwirkung: Text zuerst
-   Peuqui zeigen, AGENTS.md-Regeln beachten.
-3. **llama-swap aufräumen:** `…-k0-test`, `…-prof2-test`, `…-pp4-test`,
-   `…-pp4-disk-test`, `…-pp4-cards-test`, `…-pp4-cards-host3-test`. Von Hand,
-   Sicherung vorher, Gruppenliste mitpflegen.
+1. **Untergrenze für freien Host-RAM** (STAND 42): Die Startprüfung garantiert
+   nur „Rest ≥ 0" nach der Engine-Reserve (die Engine braucht ~7,75 GiB,
+   genau die Reserve). Vorschlag: `VLLM_QWEN4EXP_PLE_HOST_MIN_FREE_GIB`
+   (z. B. 4 GiB) in der Startprüfung einrechnen und nach dem Capture messen;
+   unterschritten → Startabbruch mit empfohlenem `HOST_GIB`. Verhaltensänderung.
+2. **PR #646 aktualisieren**: Entwurf
+   `upstream-contrib/03-1cat-issues/pr-646-update-2026-09-24.md`, Code im
+   PR-Worktree auf Branch `ple-cardlist-try` (141 Tests grün auf zwei V100,
+   Signed-off-by gesetzt, nicht gepusht). Fragen dort: später Auslöser in
+   `gpu_worker.py` mitnehmen?; Kopier-Korrektur kommt mit (eigener PR
+   verworfen, STAND 43). `pre-commit` fehlt in der venv — vor dem Push nötig.
+3. **llama-swap aufräumen** (Bulk-Edit an deiner Config, daher nicht nachts):
+   `…-k0-test`, `…-prof2-test` (auch in der Gruppe `main`), `…-pp4-test`,
+   `…-pp4-disk-test`, `…-pp4-cards-test`, `…-pp4-cards-host3-test`,
+   `…-pp4-alldisk-test`, `…-tp2pp2-copyfix-test`. Sicherungen in
+   `~/.config/llama-swap/backups/`.
 
-## Dauerhafte Regeln, die heute teuer waren
+## Weiter offen (ohne Eile)
 
-- **Messreihen nur mit gleichem Host-Anteil vergleichen.** GPU 4 gegen
-  Pipeline-Karten sah erst nach 15 % Unterschied aus; die Hälfte davon war
-  `HOST_GIB` 3 gegen 12.
-- **Startzeiten nur beim ersten Boot eines Eintrags vergleichen.** Der zweite
-  Boot trifft den warmen Compile-Cache (8 statt 14 min).
-- **Karten bis zum Puffer füllen ist der eigentliche Test.** Solange eine
-  Karte halb leer bleibt, fällt jeder Speicherfehler in der Rechnung nicht auf.
-- **Parallele Sitzungen öffnen Chrome** (2,6 GB). Messskripte schreiben je
-  Lauf `MemAvailable` und Swap mit — gestörte Läufe erkennen, nicht mitteln.
-- **Test-Boots belegen GPU 0–3**, Varianten mit Store auf GPU 4 zusätzlich
-  AIfreds Seitenkanal — vorher fragen.
+- Produktion an einem anderen Tag nachmessen (Punkt 38).
+- Messwerkzeuge der Nacht liegen im Claude-Scratchpad (`pagecache.py`,
+  `cold_probe.py`, `probe_run.sh`); bei Bedarf nach `~/.cache/bench-scripts/`
+  übernehmen.
+
+## Dauerhafte Regeln, die heute Nacht teuer waren
+
+- **Speichertests brauchen eine Mutationsprobe.** Zwei neue Tests waren
+  zunächst zu klein (640 KB, 16-Byte-Zeilen) und hätten den Fehler nie gesehen.
+- **Tests dürfen Invarianten nicht vortäuschen.** Ein 1Cat-Test ersetzte die
+  Mapping-Prüfung durch einen Stub; mit `MADV_DONTNEED` stürzte er ab.
+- **KV-Budget ist kein A/B zwischen Einzelboots** (Compile-Cache, STAND 43).
+- **Echte Texte für PLE-Messungen**, nicht die 22-Wörter-Prompts; derselbe
+  Text zweimal misst vLLMs Präfix-Cache, nicht die Platte.
+- **Lange Messungen als `systemd-run --user`-Unit** starten
+  (`XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS` setzen) — ein VS-Code-Neustart
+  beendet sonst alle Hintergrundskripte.

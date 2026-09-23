@@ -2288,3 +2288,58 @@ Augustwerten (6,5 min Boot).
     OFFEN: TP4-Versuch (2 RTX + 2 V100, PLE-Kaskade auf die fünfte Karte) —
     dort greifen 1Cats getunte Pfade; Referenz 1Cat: 80,7 tok/s reiner Decode
     auf 4× V100, wir liegen bei 43–45.
+
+30. **TP4 auf gemischter Hardware GEMESSEN und VERWORFEN (22./23.09. nachts).**
+    Aufbau: Flash-Next TP4/PP1 über 2 RTX + 2 V100 (`CUDA_VISIBLE_DEVICES=0,2,1,3,4`),
+    PLE-Kaskade mit der fünften Karte als Store, ohne `--moe-backend` (damit
+    1Cats getunte TurboMind-Pfade greifen, die TP4 verlangen).
+    ERGEBNIS: kalter 18k-Prefill 36,1 s (erster Lauf 58 s) gegen 19,3–19,4 s bei
+    TP2 PP2; Decode 30,1 tok/s ohne MTP gegen 43–45 mit MTP; Pool 369.519 bei
+    nur 131k Fenster; Nadeln 4/4. ⇒ TP4 ist bei uns fast doppelt so langsam.
+    GRUND: je Schicht ein AllReduce über vier Karten, bei uns über PCIe ohne
+    P2P durch den Host; keine Stufen-Überlappung mehr; PLE-Zugriffe zusätzlich
+    über PCIe. 1Cats Zahlen gelten für vier gleiche V100 auf eigenen SXM2-Boards.
+    FÜNF HÜRDEN AUF DEM WEG (alle dokumentiert, keine davon technisch unlösbar):
+    (a) llama-swap bricht nach 15 min ab; `healthCheckTimeout` wirkt NUR global,
+        der Schlüssel im Modell-Eintrag wird ignoriert.
+    (b) PyTorchs Herzschlag-Wächter beendet nach 480 s ohne Fortschritt, während
+        ein Rang kompiliert: `TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=3600` (nicht zu
+        verwechseln mit `--distributed-timeout-seconds`, das die Kollektive
+        selbst betrifft).
+    (c) MTP-Drafter: seine FP8-Experten haben nur einen exakt-SM70-Pfad
+        (`qwen4_exp/nvidia/mtp.py`, `is_exact_sm70_cuda_platform()`). Bei TP4
+        liegt der Drafter auch auf den RTX → generischer Triton-`fused_moe` →
+        `ValueError: type fp8e4nv not supported in this architecture`.
+        ⇒ UNSER PP2-AUFBAU FUNKTIONIERT, WEIL DER DRAFTER AUF DER LETZTEN STUFE
+        (V100) LIEGT. Test daher ohne MTP gefahren.
+    (d) KV-Cache: V100-Ränge hatten 2,89 GiB frei, 262k Fenster braucht 3,28 GiB;
+        die RTX-Ränge hatten je 12,0–12,7 GiB frei, die TP aber nicht nutzen kann
+        (gleiche Blockzahl für alle Ränge).
+    (e) PLE frisst den V100-Rest: Abhilfe `VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB=6`
+        (Vorgabe ist min(8 % der Karte, 4 GiB) — auf einer V100 nur 2,56 GiB).
+    ⇒ Für gemischte Karten bleibt TP nur innerhalb gleicher Paare, ungleiche
+    Verteilung über PP.
+
+31. **PLE-Kaskade + Schichtverschiebung für Flash-Next: VERWORFEN (23.09. nachts).**
+    Idee: Die PLE-Tabelle (23,84 GiB je TP-Rang) blockiert die RTX-Stufe; per
+    Kaskade auf die fünfte Karte ausgelagert, wäre dort Platz für mehr Schichten
+    (RTX rechnet je Schicht schneller als V100).
+    GRENZEN DER KASKADE (gemessen): PLE gesamt bei TP2 = 47,7 GiB. Tiers: Store
+    (fünfte Karte) 29,9 GiB, Host 2–3 GiB je Rang, Rest muss im VRAM bleiben.
+    `VLLM_QWEN4EXP_PLE_VRAM_RESERVE_GIB=24` → Startabbruch „The PLE table does
+    not fit“ (46,3 Mio. Zeilen übrig); 12 GiB + Host 2 GiB → knapp zu wenig
+    (0,8–2,0 Mio. Zeilen); 12 GiB + Host 3 GiB → passt. Die fünfte Karte ist im
+    Betrieb NICHT frei (TTS + VLM), also nicht weiter belegen.
+    MESSUNG (Kaskade, Vorbehalt 12 GiB, Aufteilung 30/18, Nadeln 30k/124k 4/4):
+    kalter 18k-Prefill 23,3–23,4 s gegen 19,3–19,4 s der Produktion, Decode
+    54–57 ms gegen 52–55, Code 62–74 gegen 77–78 tok/s. KV-Pool 1.567.458 statt
+    383.455 Tokens — NUTZLOS, weil `--max-model-len` 262.144 ist und der alte
+    Pool schon darüber lag.
+    URSACHE des Verlusts: Leistungskurve zeigt RTX 128–183 W durchgehend, also
+    NICHT am 250-W-Limit, V100 springen 43 ↔ 120 W: die RTX-Stufe wartet auf
+    PLE-Zeilen über PCIe. PLE im VRAM ist mehr wert als der größere Pool.
+    BALANCE DER PRODUKTION (24/24, PLE im VRAM, Skinny-MoE): RTX 117–176 W,
+    V100 86–130 W, beide durchgehend, keine Karte am Limit ⇒ die Pipeline ist
+    ausgeglichen, Verschieben bringt nichts mehr. Weitere Gewinne nur noch über
+    die Kernel (Attention, GDN, TP-AllReduce), nicht über die Verteilung.
+    ⇒ Produktion bleibt: TP2 PP2, 24/24, PLE im VRAM, `--moe-backend sm70_skinny`.

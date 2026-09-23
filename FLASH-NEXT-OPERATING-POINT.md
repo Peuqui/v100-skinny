@@ -74,6 +74,45 @@ Alternativer Betriebspunkt für vollen Kontext (MML 262144, k=0, ohne
 MTP): vertauschte Anordnung `1,4,0,2`, Split 6/42 → 34,0 tok/s.
 MTP und Vertausch schließen sich derzeit aus (Handover, „Abend II").
 
+## Topologie-Vergleich (23.09.2026, aktueller Stand)
+
+Alle Werte mit demselben Skript (`~/.cache/bench-scripts/prefill_probe.py`),
+denselben Keimen und demselben Betriebspunkt; Prompt 1800 Sätze = 29.159–29.247
+Tokens (Tokenzahl je Lauf mitgeschrieben, nicht geschätzt), Präfix-Cache kalt.
+
+| Topologie | Decode ohne Spekulation | Decode mit MTP k=4 | kalter Prefill 29k |
+|---|---:|---:|---:|
+| **TP2×PP2** (Produktion) | 28,9–31,2 tok/s | 32,5–40,4 tok/s | **18,6–19,1 s** |
+| TP4 / PP1 (22./23.09.) | 30,1 tok/s | — (siehe unten) | 36,1 s |
+
+**Im Decode ist TP4 gleichauf**, es liegt mitten im Streuband von TP2×PP2. Der
+gesamte Nachteil steckt im Prefill: 36,1 gegen 19,1 s, weil TP4 je Schicht ein
+AllReduce über vier Karten fährt, bei uns über PCIe Gen3 x4 ohne P2P durch den
+Host. 1Cats Referenz (80,7 tok/s reiner Decode auf 4× V100) gilt für vier
+gleiche Karten auf SXM2-Boards mit NVLink.
+
+**KORREKTUR zu STAND 30:** dort steht „Decode 30,1 tok/s ohne MTP gegen 43–45
+mit MTP ⇒ TP4 ist bei uns fast doppelt so langsam". Das vergleicht den Drafter,
+nicht die Topologie — Spekulation betrifft nur den Decode. Die Aussage gilt für
+den Prefill und ist für den Decode falsch. Der hier ergänzte k=0-Wert für
+TP2×PP2 ist der fehlende Partner; die älteren k=0-Zahlen (31,4 aus
+QWEN4EXP-PORT-HANDOVER, 32,2 in der Referenztabelle unten) stammen vom
+28.08./davor, auf dem MTPQ-Checkpoint und vor `moe_qpn` — als Vergleich
+untauglich.
+
+**MTP läuft unter TP4 nicht** (STAND 30 (c)): der Drafter liegt dann auch auf
+den RTX, seine FP8-Experten haben nur einen exakt-SM70-Pfad
+(`qwen4_exp/nvidia/mtp.py`, `is_exact_sm70_cuda_platform()`), und der generische
+Triton-`fused_moe` stirbt mit `ValueError: type fp8e4nv not supported in this
+architecture`. Unser PP2-Aufbau funktioniert, weil der Drafter auf der letzten
+Stufe und damit auf einer V100 landet. Selbst gelöst bliebe TP4 die schlechtere
+Wahl: gleicher Decode, doppelter Prefill.
+
+**PP4 / TP1** ist an der Speichergeometrie gescheitert, nicht am Tempo: die
+PLE-Tabelle ist TP-geteilt, bei TP1 müsste ein Rang die vollen 44,7 GiB halten.
+Mit der Kaskade (Store-Karte GPU 4, 26,36 GiB, Platte aus) bootet es, siehe
+STAND.
+
 ## llama-swap-Einbettung (UMGESETZT 2026-08-28)
 
 Eintrag `Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTPQ-vllm` in

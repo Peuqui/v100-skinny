@@ -1,56 +1,37 @@
-# Übergabe — Stand 23.09.2026 abends
+# Übergabe — Stand 23.09.2026 spät
 
-**Auftrag für die neue Instanz: die Geräteliste der PLE-Kaskade bauen
-(STAND.md Punkt 39).** Alles andere von heute ist abgeschlossen und gepusht.
-
-## Was zu tun ist
-
-Die Überlaufkaskade kennt genau eine Store-Karte. Deshalb schiebt Flash-Next
-unter PP4 16,8 GB der PLE-Tabelle auf die SSD, obwohl auf den anderen
-Pipeline-Karten zusammen rund 45 GB VRAM brachliegen. Das kostet gemessen
-12 % Decode.
-
-Reihenfolge der Stufen bleibt wie heute — **eigenes VRAM → Host (gedeckelt) →
-Karten → Platte**; es fehlt nur die Mehrzahl bei der dritten Stufe. Peuqui hat
-das so festgelegt, nachdem die Messung zeigte, dass der Host pro Zugriff
-schneller ist als eine Nachbarkarte (3200 gegen 1766 MiB/s), der Host-Anteil
-aber wegen Swap-Gefahr bei 12 GiB gedeckelt bleiben muss.
-
-Schnitt und Fallstricke stehen in STAND.md Punkt 39, einschließlich der
-kniffligen Stelle (`_remote_lookup` macht heute einen Gather über eine
-Tabelle) und der Begründung, warum `plan_ple_placement` unberührt bleibt.
+**Kein offener Bauauftrag.** Flash-Next läuft seit heute spät als PP4 mit der
+PLE-Store-Stufe auf den Pipeline-Karten (STAND.md Betriebspunkt und Punkt 40).
+Fork und `work-main` sind gepusht.
 
 ## Womit anfangen
 
-`STAND.md` lesen, Punkte 37–39 sind von heute. Nicht mit den Logbüchern
-anfangen (siehe Dokumentstruktur weiter unten in STAND).
+`STAND.md` lesen, Punkte 38–40 sind von gestern und heute. Nicht mit den
+Logbüchern anfangen.
 
-## Was heute fertig wurde (nicht neu aufrollen)
+## Was als Nächstes ansteht (Reihenfolge nach Nutzen)
 
-- **FA2-V100-Bibliothek neu gebaut**, 42 Attention-Testfehler → 0, beide
-  Produktionsmodelle bitgleich abgenommen (Punkt 35).
-- **PLE-Store-Transfer 10× beschleunigt** (`MADV_SEQUENTIAL` statt
-  `MADV_RANDOM` auf dem Massenpfad), Fork `6ca3e981`, PR #646 aktualisiert
-  mit `93dac284` (Punkt 37).
-- **PP4 schlägt die Produktion** — Prefill 13,5 gegen 18,6 s, Decode
-  gleichauf bis besser, Nadeln 4/4 und 4/4 (Punkt 38). Noch KEIN
-  Produktionswechsel: Wiederholung an einem anderen Tag steht aus.
-- **qsa.py an 1Cat PR #664 angeglichen** (`4abea4ab`), **Testfassung aus
-  #618 nachgezogen** (`5c98dac5`).
-- Messfehler im Werkzeug gefunden und behoben: `dsv4_bench.py --lang` maß
-  35.812 statt 18.000 Tokens (Punkt 34). Jede Ausgabezeile druckt jetzt die
-  echte Promptlänge mit.
-
-## Offene Test-Einträge in llama-swap
-
-`…-pp4-test-vllm`, `…-pp4-disk-test-vllm`, `…-k0-test-vllm`,
-`…-prof2-test-vllm`. Aufräumen, sobald die Geräteliste gemessen ist — der
-pp4-disk-Eintrag ist die Vorlage für den Produktionskandidaten.
+1. **Produktion an einem anderen Tag nachmessen** (Punkt 38): dieselben
+   12 Keime mit `prefill_probe_swap.py` gegen den Produktionseintrag, dazu
+   ein AIfred-Alltagsgespräch. Weicht der Decode von 36,9 tok/s deutlich ab,
+   erst Host-Speicher und Swap prüfen.
+2. **PR #646 an den neuen Vertrag angleichen** (Kartenliste, Freihalte-Werte,
+   spätes Laden, Kopier-Korrektur). Das ist Außenwirkung: Text zuerst
+   Peuqui zeigen, AGENTS.md-Regeln beachten.
+3. **llama-swap aufräumen:** `…-k0-test`, `…-prof2-test`, `…-pp4-test`,
+   `…-pp4-disk-test`, `…-pp4-cards-test`, `…-pp4-cards-host3-test`. Von Hand,
+   Sicherung vorher, Gruppenliste mitpflegen.
 
 ## Dauerhafte Regeln, die heute teuer waren
 
-- **Erste Anfrage nach einem Modellstart ist wertlos** (Triton-JIT, kalte
-  Graphen): 18 gegen 36 tok/s. Nie in eine Tabelle übernehmen.
-- **Tokenzahl je Messung mitschreiben, nie aus der Beschriftung schließen.**
-- **Test-Boots belegen GPU 4** und damit AIfreds Seitenkanal (Vision/TTS).
-  Vorher fragen, sonst fällt dem Nutzer mitten im Betrieb das Bild aus.
+- **Messreihen nur mit gleichem Host-Anteil vergleichen.** GPU 4 gegen
+  Pipeline-Karten sah erst nach 15 % Unterschied aus; die Hälfte davon war
+  `HOST_GIB` 3 gegen 12.
+- **Startzeiten nur beim ersten Boot eines Eintrags vergleichen.** Der zweite
+  Boot trifft den warmen Compile-Cache (8 statt 14 min).
+- **Karten bis zum Puffer füllen ist der eigentliche Test.** Solange eine
+  Karte halb leer bleibt, fällt jeder Speicherfehler in der Rechnung nicht auf.
+- **Parallele Sitzungen öffnen Chrome** (2,6 GB). Messskripte schreiben je
+  Lauf `MemAvailable` und Swap mit — gestörte Läufe erkennen, nicht mitteln.
+- **Test-Boots belegen GPU 0–3**, Varianten mit Store auf GPU 4 zusätzlich
+  AIfreds Seitenkanal — vorher fragen.

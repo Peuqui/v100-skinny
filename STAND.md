@@ -2380,3 +2380,146 @@ Augustwerten (6,5 min Boot).
     unbeaufsichtigt nachholen: die Produktion (DSv4 und Flash-Next) benutzt
     genau diese `.so`; Neubau nur mit Sicherung und Abnahme, Bauparallelität
     auf dem Mini cappen, sm75-Drop-in beachten (Namensraumkollision).
+
+34. **MESSFEHLER: `dsv4_bench.py --lang` misst 35.812 statt 18.000 Tokens
+    (23.09. vormittags). Jeder Absolutwert „18k" aus dieser Sitzung ist falsch
+    beschriftet; die A/B-Verhältnisse bleiben gültig.**
+    Herkunft: nach dem Reboot am 22.09. abends war `/tmp` leer, das Skript wurde
+    aus den Gesprächsprotokollen rekonstruiert. Die rekonstruierte `filler()`
+    stand auf `sentences=1800`; über den Server nachgezählt ergibt das 35.812
+    Prompt-Tokens (25.207 Wörter) mit DSv4s Tokenizer. Die Referenzwerte
+    „11,1/11,3/11,3 s" aus Punkt 27 stammen vom 22.09. 14:52, also aus dem
+    ORIGINAL-Skript — der Vergleich 17 s gegen 11,1 s war doppelter Text gegen
+    halbe Zahl.
+    NACHGEMESSEN bei echter Länge (905 Sätze, fünf frische Keime, Präfix-Cache
+    kalt, Tokenzahl je Lauf mitgeschrieben): 17.785–18.064 Tok → ttft
+    8,3 / 8,6 / 8,4 / 8,7 / 8,6 s. Decode-Schritt 91–92 ms, unverändert.
+    GÜLTIG BLEIBT: alles, was in dieser Sitzung A gegen B mit demselben Skript
+    gemessen wurde — TP4 (36,1 gegen 19,3–19,4 s, Punkt 30), PLE-Kaskade
+    (23,3–23,4 s, Punkt 31), Flash-Next-Gate (27 → 19,4 s). Nur die Beschriftung
+    „18k" und jeder Bezug auf Werte von vor dem Reboot sind hinfällig.
+    BEHOBEN im Skript: Vorgabe auf 905 Sätze, und jede Ausgabezeile druckt jetzt
+    `prompt_tokens` mit — die Beschriftung kann nicht mehr unbemerkt abdriften.
+
+35. **FA2-V100-Bibliothek neu gebaut und abgenommen (23.09. vormittags) —
+    Punkt 33 erledigt.**
+    Bau: `setup.py build_ext --inplace`, `MAX_JOBS=3`,
+    `CUDA_HOME=/home/mp/vllm/cuda`, CCCL per `CPATH`, 3:14 min, Objekte vom
+    10.09. vorher entfernt (stammten von einer älteren Quellenliste).
+    Sicherung: alt (14.09.) md5 `0e765d13…`, neu (23.09.) md5 `8f52518f…`, beide
+    unter `~/.cache/fa2-so-backup/`. `cuobjdump`: weiterhin 6 Cubins, alle
+    `sm_70`, kein `sm_75`.
+    BELEG, dass es die richtige Bibliothek ist: der Vertragstext „tmp_out must
+    be fp32 for E4M3 KV and fp16 otherwise" steht im neuen Binärcode und kommt
+    im alten kein einziges Mal vor.
+    VORHER NÖTIG: `_qsa_xqa_page4_workspace` legte den Puffer unbedingt als fp16
+    an (1Cat-Issue #648) — ohne Fix wäre DSv4 nach dem Neubau an dieser Stelle
+    gestorben. Übernommen wurde die Formulierung aus 1Cat PR #664 wortgleich
+    (bool-Schlüssel, `torch.full` statt `torch.tensor([...], device=cuda)`),
+    Commit `4abea4ab`. KEIN eigener PR: #664 enthält denselben Fix, AGENTS.md
+    verbietet den zweiten. Hinweis auf #648 geschrieben.
+    ABNAHME: Attention-Tests 42 Fehler → 0 (94 bestanden, 31 s). Flash-Next drei
+    Greedy-Hashes bitgleich zur Produktionsreferenz. DSv4 drei Hashes bitgleich
+    zu Punkt 27 (`50cf4d2e…`, `8dad9dc9…`, `196bad1e…`), Decode-Schritt
+    91–92 ms gegen 90–91 ms.
+    A/B alte gegen neue `.so`, gleiche Keime, gleiche Länge: 8,5 / 8,6 s gegen
+    8,4 / 8,7 / 8,6 s. ⇒ **Der Neubau ändert die Prefill-Leistung nicht.** Die
+    Kernel-Commits vom 21.09. bringen hier nichts; der Unterschied zu den 11,1 s
+    steckt vollständig im Messfehler aus Punkt 34.
+
+36. **Fork war hinter seinem eigenen PR #618 (23.09. vormittags).**
+    `test_sm70_long_attention_graphs.py` fiel in einer Parametrisierung
+    (`assert cg_mode == NONE`, geliefert `FULL`). Ursache: der Fork trug den
+    Overlay `cc6a79a6`, aber nie die Testhälfte. Der Test setzte monkeypatch auf
+    `current_platform.is_device_capability`, der Code fragt längst
+    `get_device_capability(device_id=current_device_index())` — der Patch ging
+    ins Leere, das echte Gerät antwortete (7, 0).
+    Quelldatei war zwischen `cc6a79a6` und `dcd6be03` bitgleich, nur die drei
+    Testdateien fehlten. Übernommen aus dem PR-Zweig, Commit `5c98dac5`.
+    Attention-/FA2-/QSA-Stapel danach 234 bestanden statt 225.
+    LEHRE: Ein Dateivergleich Fork gegen PR-Zweig findet so etwas NICHT —
+    Abweichung ist der Normalfall, weil der Fork in denselben Dateien mehr
+    trägt. Gefunden hat es nur der rote Test.
+
+37. **PLE-Store-Transfer war 10× zu langsam: `MADV_RANDOM` auf dem Massenpfad
+    (23.09. nachmittags) — BEHOBEN, Fork `6ca3e981`, PR-Zweig `93dac284`.**
+    `_advise_random_file_access` setzt `MADV_RANDOM` auf jede dateigestützte
+    Shard-Abbildung. Für den Laufzeit-Gather richtig (verstreute Zeilen), für
+    `_load_store_table` falsch: 26 GiB wurden als ~6,9 Mio. einzelne
+    4-KiB-Seitenfehler über USB geholt.
+    FIX: `_sequential_shard_reads`-Kontextmanager setzt `MADV_SEQUENTIAL` um den
+    Massentransfer und danach `MADV_RANDOM` zurück.
+    GEMESSEN auf der PLE-Datei, gleiche 2 GiB, nur das Flag verschieden:
+    `MADV_RANDOM` 56 MiB/s · `MADV_NORMAL` 790 · `MADV_SEQUENTIAL` 856.
+    **`MADV_WILLNEED` hilft NICHT (56 MiB/s)** — es liest einmal voraus, lässt
+    die Abbildung aber zufällig; das war meine erste Annahme und sie war falsch.
+    BETRIEB: Store-Transfer 544,7 s → **50,8 s** (50 → 520 MiB/s), damit fällt
+    der PP4-Start wieder unter llama-swaps 15-Minuten-Schranke.
+    VORHER AUSGESCHLOSSEN (nicht geraten): USB4-Tunnel (3168 gegen 3173 MiB/s
+    H2D), Plattenkonkurrenz (vier Leser 968 MiB/s zusammen gegen 760 für einen),
+    Speicherdruck.
+
+38. **PP4 SCHLÄGT DIE PRODUKTION (23.09. abends) — TP2×PP2 ist nicht mehr der
+    beste Betriebspunkt für Flash-Next.**
+    Alles mit `prefill_probe.py`, 1800 Sätze, identische Keime, Tokenzahl je
+    Lauf mitgeschrieben, Präfix-Cache kalt, Modell warm.
+
+    | Topologie | Prefill 29k | Decode | Karten | GPU 4 |
+    |---|---|---|---|---|
+    | TP2×PP2 (Produktion) | 18,6–19,1 s | 32,5–40,4 tok/s | 4 | frei |
+    | PP4 + Store-Karte | 13,5–13,6 s | 40,5–41,0 | 5 | belegt |
+    | PP4 + SSD-Stufe (16,8 GB) | 13,5–14,0 s | 35,5–43,7 | 4 | frei |
+
+    Aufbau PP4: `--tensor-parallel-size 1 --pipeline-parallel-size 4`,
+    `VLLM_PP_LAYER_PARTITION=12,12,12,12`, `CUDA_VISIBLE_DEVICES=0,2,1,3`,
+    `VLLM_QWEN4EXP_PLE_HOST_GIB=12`, `VLLM_QWEN4EXP_PLE_DISK=1`.
+    QUALITÄT: Nadeln 4/4 bei 24.488 Tok und 4/4 bei 101.605 Tok. Greedy gegen
+    die Produktionsreferenz: **2 von 3 bitgleich** (`323e7f30…`, `727bccba…`),
+    die dritte (Schritt-für-Schritt-Rechnung) weicht ab — erwartet, weil PP4
+    Schichten zwischen Kartentypen verschiebt, vgl. Punkt 26.
+    SWAP WÄHREND DER INFERENZ: **0,0 MiB raus** in drei Läufen, 3,7–8,3 MiB
+    rein (~10 ms). Der 12-GiB-Host-Deckel hält.
+    PREFILL IST VÖLLIG UNBERÜHRT von der SSD-Stufe (13,5 s mit und ohne
+    Store-Karte); der Decode kostet rund 12 %, weil dort je Schritt ein
+    Nachschlagesatz anfällt statt einer amortisierten Menge.
+    ERSTE ANFRAGE NACH DEM START ist wertlos (18 tok/s, ttft 745 s inkl. Laden)
+    — Triton-JIT und kalte Graphen. NICHT in Tabellen übernehmen.
+    WARUM ES GEWINNT: das TP2-All-Reduce stand im Profil bei 21 % der GPU-Zeit
+    (Punkt 33 folgend), PP kennt es nicht. Die zusätzliche Pipeline-Blase wiegt
+    das nicht auf. Meine Gegenvorhersage war falsch, zweimal.
+    OFFEN vor einem Produktionswechsel: Wiederholung an einem anderen Tag,
+    Startzeit (PP4 lädt länger), und die Geräteliste aus Punkt 39.
+
+39. **Die Kaskade kennt nur EINE Store-Karte — deshalb geht Flash-Next bei PP4
+    auf die SSD, obwohl 45 GB VRAM brachliegen (23.09. abends, OFFEN).**
+    `VLLM_QWEN4EXP_PLE_STORE_DEVICE: int | None` — ein Wert. Ist das Budget
+    voll, fällt der Rest auf die Platte. Bei PP4 sind das 16,8 GB, während
+    GPU 1/2/3 zusammen rund 45 GB frei haben (die KV-Blockzahl richtet sich
+    nach der knappsten Stufe, der Rest bleibt liegen: `Available KV cache
+    memory` 8,66 GiB auf Stufe 2 gegen 5,15 auf Stufe 3).
+    GEPLANTE REIHENFOLGE (mit Peuqui festgelegt): eigenes VRAM → Host
+    (gedeckelt) → genannte Karten der Reihe nach → Platte. Das ist die heutige
+    Reihenfolge; es fehlt nur die Mehrzahl bei der dritten Stufe.
+    SCHNITT: `envs.py` zwei Parser auf Listen · `common/ple.py`
+    `ple_store_devices()`, Budget als Summe, `PLEStoreSegment` bekommt ein
+    Zielgerät · `nvidia/ple_layer.py` eine Tabelle je Karte, Prüfung je Karte,
+    segmentweises Nachschlagen. **`plan_ple_placement` bleibt unberührt** — es
+    verteilt nur Zeilen auf Stufen, die Summe der Budgets genügt ihm.
+    KNIFFLIG: `_remote_lookup` macht heute EINEN Gather über EINE Tabelle
+    (`ple_store_indices`); mit mehreren Karten wird daraus ein Gather je Karte
+    plus Zusammenführen — im Pfad, der je Decode-Schritt aus einem CUDA-Graph
+    über Prozessgrenzen läuft.
+    **P2P/IPC lohnt hier NICHT (gemessen):** Karte→Karte direkt 1766 MiB/s,
+    über den Host 1605, Host→Karte allein **3200**. Alle Karten hängen als
+    `PHB` am selben Root-Complex, ein Peer-Kopiervorgang belegt zwei x4-Strecken
+    in Reihe. P2P gibt es ohnehin nur innerhalb einer Generation
+    (GPU0↔GPU2 RTX, GPU1/3/4 V100; über die Grenze `NS`). Der Connector tauscht
+    heute über gemeinsamen Host-Speicher (`cuMemHostRegister`, D2H-Events), ein
+    IPC-Umbau wäre erheblich und brächte ~10 % auf einem Teilstück. ZURÜCKGE-
+    STELLT, nicht verworfen: gemessen wurde ein großer Block, bei vielen kleinen
+    Zeilen zählt Latenz mehr.
+    **HOST-DECKEL IST ZU WEICH:** der Planer segnet `HOST_GIB` anhand von
+    „verfügbar" ab, und diese Zahl rechnet den Seitencache mit. Bei
+    `HOST_GIB=12` meldete er „fits (16.47 GiB available)", das Laden drückte
+    dann 9 GiB zusätzlich in den Swap. Der Deckel müsste den erwarteten
+    Ladedruck einrechnen oder schlicht hart sein.

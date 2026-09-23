@@ -31,9 +31,10 @@ freigegeben, KV kein A/B). Nicht mit den Logbüchern anfangen.
 ## Weiter offen (ohne Eile)
 
 - Produktion an einem anderen Tag nachmessen (Punkt 38).
-- Messwerkzeuge der Nacht liegen im Claude-Scratchpad (`pagecache.py`,
-  `cold_probe.py`, `probe_run.sh`); bei Bedarf nach `~/.cache/bench-scripts/`
-  übernehmen.
+- Messwerkzeuge der Nacht: `~/.cache/bench-scripts/pagecache.py`
+  (Seitencache messen/räumen ohne root) und `cold_probe.py` (echte Texte,
+  Major-Faults, Swap, RssFile je Anfrage); Rohdaten in
+  `~/.cache/bench-scripts/logs-2026-09-24/`.
 
 ## Dauerhafte Regeln, die heute Nacht teuer waren
 

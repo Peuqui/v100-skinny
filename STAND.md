@@ -2343,3 +2343,21 @@ Augustwerten (6,5 min Boot).
     ausgeglichen, Verschieben bringt nichts mehr. Weitere Gewinne nur noch über
     die Kernel (Attention, GDN, TP-AllReduce), nicht über die Verteilung.
     ⇒ Produktion bleibt: TP2 PP2, 24/24, PLE im VRAM, `--moe-backend sm70_skinny`.
+
+32. **RÜCKSCHRITT AUS PUNKT 25 GEFUNDEN UND BEHOBEN (23.09. nachts).**
+    `tests/kernels/moe/test_skinny_mxfp4_moe.py::test_moe_qpn_mxfp4_mode_
+    matches_the_checkpoint_scales` scheiterte mit „K/16 must split into splitk
+    slices of whole 2-group chunks“: der Zeilenblock-Umbau hatte den Vertrag
+    still von `(K/16) % splitk` auf `(K/16) % (splitk*2)` verschärft. Die
+    Testform K = 256 mit splitk 16 hat genau eine Gruppe je Warp.
+    FIX (26c26a9, gemergt 9b7d083): Die zweite Gruppe eines Chunks wird überall
+    gegen das Slice-Ende geprüft — in der Aktivierungs-Stage wie bei den
+    vorgeladenen Codes und Skalen. Die Abfragen sind warp-uniform und
+    verschwinden bei gerader Slice-Länge. Host-Prüfung wieder auf `% splitk`.
+    ABNAHME: DSv4 bitgleich auf V100 UND RTX, Test grün (8 bestanden),
+    Kernelzeit unverändert (RTX 512 Tok 10,42 ms, 4096 Tok 70,9 ms).
+    LEHRE: Nach Kernel-Umbauten die Kernel-Tests des Forks mitlaufen lassen,
+    nicht nur Bitgleichheit und Betrieb.
+    OFFEN bleibt der Attention-Block: `test_sm70_flash_v100_multihead.py` +
+    `..._prefix_decode_rows.py` melden jetzt 42 Fehler / 52 bestanden (STAND 24
+    zählte 21) — noch nicht untersucht, ob die Zunahme vom 1Cat-Merge stammt.

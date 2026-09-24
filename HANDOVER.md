@@ -15,11 +15,10 @@ nur als Hintergrund. Nicht mit den Logbüchern anfangen.
    `upstream-contrib/03-1cat-issues/pr-646-update-2026-09-24.md`, Code im
    PR-Worktree `1Cat-vLLM-pr-plecascade` auf dem lokalen Branch
    `ple-disk-only` (PR-Stand + Kopier-Korrektur + Rückbau, Signed-off-by,
-   Tests grün, nicht gepusht). Vor dem Push: `pre-commit` fehlt in der venv
-   (AGENTS.md-Pflicht, Installation absprechen). Frage im Entwurf: reicht PP4
-   als End-to-End-Beleg?
-2. **Untergrenze für freien Host-RAM** (STAND 42): durch Host 0 und die
-   Seitenfreigabe kaum noch dringend (18 GiB frei). Vermutlich verwerfen.
+   Tests und pre-commit grün, nicht gepusht). TP2×PP2-Nachmessung (Host 0 /
+   Host 2 + Platte gegen den Pfad vorher) lief am 24.09. ab 08:25 — Zahlen in
+   STAND 45 bzw. im Entwurf.
+2. ~~Untergrenze für freien Host-RAM~~ — verworfen (Peuqui 24.09.).
 
 ## Weiter offen (ohne Eile)
 

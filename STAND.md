@@ -2754,7 +2754,7 @@ Augustwerten (6,5 min Boot).
       `DISK=1`; 14 Test-Einträge entfernt (Sicherungen
       `config.yaml.20260924-*`).
     - PR #646: lokaler Branch `ple-disk-only` im PR-Worktree =
-      `93dac284` + Kopier-Korrektur `42ef7c90` + Rückbau `b9810d8d`
+      `93dac284` + Kopier-Korrektur `88684bfd` + Rückbau `e2e50dd0`
       (Endbaum = Fork-Rückbau per Cherry-Pick, Signed-off-by). Entwurf
       `upstream-contrib/03-1cat-issues/pr-646-update-2026-09-24.md`
       neu geschrieben. Nicht gepusht.
@@ -2768,7 +2768,56 @@ Augustwerten (6,5 min Boot).
     `work-main`, gepusht, Tag `verified-2026-09-24-rollback`.
     PR-Branch `ple-disk-only`: test_ple 79, offload_worker 31,
     sm70_decode_graph 24, release_cleanup 4, executor 11 grün;
-    weight_loading 27 + 1 bekannter Fehler (wie Eltern); ruff/format sauber,
-    mypy 0 wie Eltern. `test_executor` braucht Netz: die neue
+    weight_loading 27 + 1 bekannter Fehler (wie Eltern); pre-commit
+    (`~/.venv/precommit/`) alle Hooks grün inkl. mypy-3.10, nach Umstellung
+    auf `torch.accelerator.memory_reserved` im Kopier-Test (auch Fork
+    `9de097de`, Mutationsprobe schlägt an). `test_executor` braucht Netz: die neue
     `huggingface_hub` lehnt mit `HF_HUB_OFFLINE=1` unvollständige Snapshots
     ab (Qwen3-0.6B ohne `.gitattributes`/`LICENSE`/`README.md`).
+    UNTERGRENZE für freien Host-RAM (Punkt 42): verworfen (Peuqui 24.09.).
+    TP2×PP2-NACHMESSUNG für #646 (24.09. 08:25–09:25, Fork `9de097de`,
+    Testeinträge danach entfernt): 12 echte Texte kalt, Greedy 3/3 identisch
+    zu `greedy_fn_tp2pp2_copyfix.json` in ALLEN drei Varianten.
+
+    | TP2×PP2 | Prefill Σ12 | Decode Mittel | verfügbar | Swap je Anfrage |
+    |---|---|---|---|---|
+    | vorher `HOST_GIB=6`, ohne Kaskade | 124,8 s | 29,4 (17,7–63,3) | 2,7–3,3 GiB | 0–306 MiB |
+    | Kaskade Host 0 + Platte 8,3 GiB | 118,8 s | 49,0 (44–65) | 16 GiB | 0 |
+    | Kaskade Host 2 + Platte 4,3 GiB | 117,3 s | 49,6 (43–63) | 11,5 GiB | 0 |
+
+    „Vorher“ lief mit aktivem AIfred-Dienst: 12 GiB gepinnt → 2,7 GiB frei →
+    Swap bei fast jeder Anfrage → Decode halbiert. Kein Code-Nachteil des alten
+    Pfads (im alten PR-Text gleichauf), sondern RAM-Druck. Erster Boot von
+    „vorher“ scheiterte korrekt an der Startprüfung (12,42 GiB verfügbar,
+    Vormodell noch im Speicher); die nächste Anfrage bootete sauber.
+
+46. **MTP-Drafter-FP8-Experten laufen nur auf V100 (24.09., nicht bauen).**
+    1Cats FP8-Expertenpfad (`csrc/sm70_turbomind/`, Software-Entpackung +
+    Volta-`m8n8k4`) ist hart an `is_exact_sm70_cuda_platform()` gebunden; auf
+    der RTX 8000 fällt vLLM auf Triton-`fused_moe`, das `fp8e4nv` erst ab
+    SM89 kennt (Hürde c in Punkt 30). Wege, falls je nötig: Kernel für sm_75
+    mitbauen + Gate lockern, oder MTP-Experten auf der RTX beim Laden nach
+    FP16 entpacken (~1,3 GB). Peuqui: festhalten, nicht bauen — der Drafter
+    liegt auf der letzten PP-Stufe, in Produktion eine V100.
+
+47. **Seitenfreigabe als Schalter `VLLM_PLE_DISK_RELEASE_PAGES` (24.09.).**
+    Anlass: 1Cat-Draft #684 (yangzhuxinyzx) beschleunigt kurze Gathers der
+    Platten-Lane und setzt darauf, dass die Seiten eingeblendet bleiben;
+    unsere Freigabe (Punkt 42) griff auch dort (gemeinsamer Leser
+    `_gather_mapped_rows`). Peuqui: Schalter statt Beschränkung auf die
+    Kaskade. Voreinstellung AUS (ohne Schalter ändert sich nichts), gilt für
+    Kaskade UND Platten-Lane. Fork `03b8cb99`; Tests 139 grün, zwei
+    Mutationsproben (immer an / immer aus) schlagen je beim richtigen Test an;
+    pre-commit grün. llama-swap: alle acht Flash-Next-Einträge mit
+    `VLLM_PLE_DISK_RELEASE_PAGES=1` (Sicherung `…-vor-release-pages`).
+    ABNAHME 10:35: Schalter in der Worker-Umgebung, Greedy 3/3 bitgleich zu
+    beiden Referenzen, Nadeln 4/4 (24.488 / 101.605), Worker RssFile 119 MB
+    flach. Fork = work-main, Tag `verified-2026-09-24-release`.
+    Probe-Merge #684 auf work-main: 10 von 11 Dateien automatisch, Konflikt
+    nur in `_disk_embedding_lookup` (sein Schnellweg ≤128 Zeilen gegen unseren
+    gemeinsamen Leser). Übernahme erst nach Merge bei 1Cat, dann Schnellweg in
+    `_gather_mapped_rows` ziehen und messen.
+    PR-Branch `ple-disk-only` = `93dac284` + `88684bfd` (Kopier-Korrektur) +
+    `a0f93cf7` (Rückbau + optionale Freigabe); Text
+    `upstream-contrib/03-1cat-issues/pr-646-body-new.md` (TP2×PP2 mit
+    „vorher“, PP4, Elternspalte, #684-Hinweis). Push wartet auf Peuquis OK.

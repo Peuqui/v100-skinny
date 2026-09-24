@@ -2820,4 +2820,5 @@ Augustwerten (6,5 min Boot).
     PR-Branch `ple-disk-only` = `93dac284` + `88684bfd` (Kopier-Korrektur) +
     `a0f93cf7` (Rückbau + optionale Freigabe); Text
     `upstream-contrib/03-1cat-issues/pr-646-body-new.md` (TP2×PP2 mit
-    „vorher“, PP4, Elternspalte, #684-Hinweis). Push wartet auf Peuquis OK.
+    „vorher“, PP4, Elternspalte, #684-Hinweis). GESENDET 24.09. ~11:00
+    (Force-Push a0f93cf7, neuer Titel/Text, Kommentar).

@@ -2705,3 +2705,19 @@ Augustwerten (6,5 min Boot).
     Allokator (382 MiB isoliert) und den OOM auf der gefüllten Store-Karte,
     NICHT als KV-Gewinn ohne Kaskade → kein eigener PR, sie geht mit #646.
     Test-Eintrag `…-tp2pp2-copyfix-test` in llama-swap zum Aufräumen.
+
+44. **Store-Stufe archiviert, bevor sie zurückgebaut wird (24.09. morgens).**
+    Peuqui: Rückbau auf VRAM → Host → Platte (KISS, Messung Punkt 44a unten
+    folgt), aber die Arbeit bleibt abrufbar:
+    - Fork: Branch `archive/ple-store-cardlist` + Tag
+      `archive-ple-store-cardlist-2026-09-24` → `ddc146b2` (Kartenliste,
+      spätes Laden, Steuerkanal, beide Freigabe-Korrekturen, Stand der
+      Produktion bis 24.09. morgens).
+    - Fork: Branch `archive/ple-cardlist-pr646` → PR-Stand für #646 mit
+      Signed-off-by (Worktree-Branch `ple-cardlist-try`).
+    - AIfred: Tag `archive-ple-store-cardlist-2026-09-24` → `11cf1a63`
+      (Autoscan-Freihalte-Werte, Kaskaden-Plan, Menüanzeige).
+    - llama-swap: Sicherungen `config.yaml.20260924-*` in
+      `~/.config/llama-swap/backups/` (Produktion mit Karten).
+    Wiederbeleben: Branch auschecken bzw. Tag cherry-picken; Messwerte in
+    Punkt 40–42.

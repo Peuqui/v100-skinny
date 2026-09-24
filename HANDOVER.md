@@ -1,40 +1,41 @@
-# Übergabe — Stand 24.09.2026 morgens (nach dem Rückbau)
+# Übergabe — Stand 24.09.2026 mittags
 
-Produktion läuft mit PP4, `HOST_GIB=0` und dem PLE-Rest auf der Platte. Die
-Store-Stufe ist zurückgebaut und archiviert. Fork `83324b0e` = work-main, Tag
-`verified-2026-09-24-rollback`, alles gepusht.
+Produktion: Flash-Next PP4, `HOST_GIB=0`, PLE-Rest auf der Platte,
+`VLLM_PLE_DISK_RELEASE_PAGES=1` (in allen acht Flash-Next-Einträgen von
+llama-swap). Fork `03b8cb99` = work-main, Tag `verified-2026-09-24-release`.
+Alles committet und gepusht (Fork, v100-skinny, AIfred).
 
 ## Womit anfangen
 
-`STAND.md` Punkte 44 (Archiv) und 45 (Messung, Rückbau, Abnahme). Punkte 40–43
-nur als Hintergrund. Nicht mit den Logbüchern anfangen.
+`STAND.md` Punkte 44–47 (Archiv, Rückbau + Messungen, FP8-Drafter,
+Freigabe-Schalter). Punkte 40–43 nur als Hintergrund.
 
-## Offen, Entscheidung Peuqui
+## Wartet auf andere
 
-1. **PR #646 aktualisieren**: Entwurf
-   `upstream-contrib/03-1cat-issues/pr-646-update-2026-09-24.md`, Code im
-   PR-Worktree `1Cat-vLLM-pr-plecascade` auf dem lokalen Branch
-   `ple-disk-only` (PR-Stand + Kopier-Korrektur + Rückbau, Signed-off-by,
-   Tests und pre-commit grün, nicht gepusht). TP2×PP2-Nachmessung (Host 0 /
-   Host 2 + Platte gegen den Pfad vorher) lief am 24.09. ab 08:25 — Zahlen in
-   STAND 45 bzw. im Entwurf.
-2. ~~Untergrenze für freien Host-RAM~~ — verworfen (Peuqui 24.09.).
+1. **PR #646** am 24.09. aktualisiert (Branch a0f93cf7: VRAM → Host → Platte,
+   Kopier-Korrektur, Schalter `VLLM_PLE_DISK_RELEASE_PAGES`). Hängt an
+   #622/#640/#639; noch keine Reaktion der Maintainer. Lokaler Branch
+   `ple-disk-only` im Worktree `1Cat-vLLM-pr-plecascade`.
+2. **1Cat-Draft #684** (yangzhuxinyzx): gleiche Dateien, Schnellweg für kurze
+   Plattenlesevorgänge. Wenn gemergt: #646 darauf rebasen, Schnellweg in
+   `_gather_mapped_rows` ziehen, im Fork messen (STAND 47, Probe-Merge:
+   ein Konflikt in `_disk_embedding_lookup`).
+3. **Issue #679** (chenmacnica, MiMo): geschlossen, MiMo läuft bei ihm über
+   unsere Skinny-Kernel. Er bietet sich als Tester für einen MXFP4-PR an;
+   Maintainer-Entscheidung zur PR-Form (Variante 2 oder 3) steht aus.
 
-## Weiter offen (ohne Eile)
+## Entschieden, nicht neu aufrollen
 
-- Produktion an einem anderen Tag nachmessen (Punkt 38).
-- Messwerkzeuge: `~/.cache/bench-scripts/pagecache.py` (Seitencache
-  messen/räumen ohne root), `cold_probe.py` (echte Texte, Major-Faults, Swap,
-  RssFile je Anfrage); Rohdaten in `~/.cache/bench-scripts/logs-2026-09-24/`.
+- Store-Stufe/Kartenliste zurückgebaut (Archiv-Branch, STAND 44).
+- Untergrenze für freien Host-RAM verworfen.
+- `HOST_GIB` bleibt (bei 1Cat gemergt, nützt Systemen mit viel RAM).
+- TP4 bei uns verworfen (STAND 30); FP8-Drafter auf RTX nicht bauen (STAND 46).
 
 ## Dauerhafte Regeln
 
-- **Vor jedem Rückbau Archiv-Branch + Tag pushen** (Punkt 44).
-- **Speichertests brauchen eine Mutationsprobe.**
-- **Tests dürfen Invarianten nicht vortäuschen** (Stub + `MADV_DONTNEED` =
-  Absturz).
-- **KV-Budget ist kein A/B zwischen Einzelboots** (Punkt 43).
-- **Echte Texte für PLE-Messungen**; derselbe Text zweimal misst den
-  Präfix-Cache.
-- **Lange Messungen als `systemd-run --user`-Unit** (`XDG_RUNTIME_DIR`,
-  `DBUS_SESSION_BUS_ADDRESS` setzen).
+- Vor jedem Rückbau Archiv-Branch + Tag pushen.
+- Speichertests brauchen eine Mutationsprobe; Tests dürfen Invarianten nicht
+  vortäuschen.
+- KV-Budget ist kein A/B zwischen Einzelboots.
+- Echte Texte für PLE-Messungen; lange Messungen als `systemd-run --user`.
+- pre-commit liegt in `~/.venv/precommit/`.

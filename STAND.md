@@ -2707,8 +2707,8 @@ Augustwerten (6,5 min Boot).
     Test-Eintrag `…-tp2pp2-copyfix-test` in llama-swap zum Aufräumen.
 
 44. **Store-Stufe archiviert, bevor sie zurückgebaut wird (24.09. morgens).**
-    Peuqui: Rückbau auf VRAM → Host → Platte (KISS, Messung Punkt 44a unten
-    folgt), aber die Arbeit bleibt abrufbar:
+    Peuqui: Rückbau auf VRAM → Host → Platte (KISS, Messung und Rückbau in
+    Punkt 45), aber die Arbeit bleibt abrufbar:
     - Fork: Branch `archive/ple-store-cardlist` + Tag
       `archive-ple-store-cardlist-2026-09-24` → `ddc146b2` (Kartenliste,
       spätes Laden, Steuerkanal, beide Freigabe-Korrekturen, Stand der
@@ -2721,3 +2721,54 @@ Augustwerten (6,5 min Boot).
       `~/.config/llama-swap/backups/` (Produktion mit Karten).
     Wiederbeleben: Branch auschecken bzw. Tag cherry-picken; Messwerte in
     Punkt 40–42.
+
+45. **Store-Stufe zurückgebaut: VRAM → Host → Platte, Produktion Host 0
+    (24.09. morgens).** Peuqui: „Haufen Code-Komplexität für kaum Gewinn".
+    MESSUNG vor dem Rückbau, PP4, kalter Seitencache, 12 echte Texte
+    (8–17k Tokens), Stufe 0 hält 18,89 GiB PLE im VRAM:
+
+    | | Host 0, Platte 28,8 GiB | Host 3, Platte 25,8 GiB |
+    |---|---|---|
+    | Prefill, Summe über 12 | 105,1 s | 102,9 s |
+    | Decode Mittel (Spanne) | 40,8 (35,6–50,9) | 41,1 (34,9–45,4) |
+    | verfügbar | 17,6–17,8 GiB | 13,2–13,6 GiB |
+    | Swap-Out | 0 | 0 |
+    | Major Faults/Anfrage | 37k–118k (143–459 MiB) | 34k–108k |
+
+    Gegen die Kartenliste (Punkt 41): kalt +0,3–2,5 s Prefill, Decode gleich.
+    Die Kartenlauf-Zeile dieser Reihe ist wertlos (AIfred-Anfrage um 06:50,
+    Warm-up 793 s). KV-Pool 437.836 (Platte) gegen 564.725 (Karten) — nach
+    Punkt 43 kein A/B, und bei Single-User kein Kriterium.
+    RÜCKBAU:
+    - Fork `b7e07eb4`: Store-Stufe, Kartenliste, Steuerkanal, später
+      Auslöser weg; `VLLM_QWEN4EXP_PLE_DISK=1` startet die Kaskade; der
+      Worker liest den Checkpoint in place. Behalten: `MADV_DONTNEED` nach
+      jedem Platten-Gather (Punkt 42), `copy_` ohne Zwischenkopie
+      (Punkt 43). `worker.py`, `gpu_worker.py`, `ple_offload_layer.py` und
+      deren Test wieder auf dem Stand vor Punkt 40. 138 Tests grün (zwei V100),
+      Mutationsprobe schlägt an.
+    - AIfred `eb14e57e` + `4359e9aa`: Autoscan-Freihalte-Werte, Kaskaden-Plan,
+      Config-Werte weg; Menü zeigt `PLE→Host`, `PLE→Host→SSD`, `PLE→SSD`.
+      1001 Tests grün. Autoscan nach `llama-swap-restart`: keine Änderungen.
+    - llama-swap: vier Produktions-Einträge PP4 `12,12,12,12`, `HOST_GIB=0`,
+      `DISK=1`; 14 Test-Einträge entfernt (Sicherungen
+      `config.yaml.20260924-*`).
+    - PR #646: lokaler Branch `ple-disk-only` im PR-Worktree =
+      `93dac284` + Kopier-Korrektur `42ef7c90` + Rückbau `b9810d8d`
+      (Endbaum = Fork-Rückbau per Cherry-Pick, Signed-off-by). Entwurf
+      `upstream-contrib/03-1cat-issues/pr-646-update-2026-09-24.md`
+      neu geschrieben. Nicht gepusht.
+    ABNAHME Produktion (24.09. 07:36, Fork `b7e07eb4`, Eintrag
+    `…-MTP-vllm`): Verteilung 18,89 GiB VRAM / 0 Host / 28,79 GiB Platte,
+    ein Plattensegment; Greedy 3/3 bitgleich zu `greedy_fn_prod_pp4.json`
+    UND `greedy_fn_pp4_disk.json`; Nadeln 4/4 bei 24.488 und 101.605;
+    Worker RssFile 113 MB nach Laden und nach allen Anfragen; 18 GiB
+    verfügbar, Swap-Belegung unverändert (16,3 GiB Altbestand, kein Zuwachs).
+    Fork `83324b0e` (nur Testkommentar dazu) = `qwen4exp-ple-tier-cascade` =
+    `work-main`, gepusht, Tag `verified-2026-09-24-rollback`.
+    PR-Branch `ple-disk-only`: test_ple 79, offload_worker 31,
+    sm70_decode_graph 24, release_cleanup 4, executor 11 grün;
+    weight_loading 27 + 1 bekannter Fehler (wie Eltern); ruff/format sauber,
+    mypy 0 wie Eltern. `test_executor` braucht Netz: die neue
+    `huggingface_hub` lehnt mit `HF_HUB_OFFLINE=1` unvollständige Snapshots
+    ab (Qwen3-0.6B ohne `.gitattributes`/`LICENSE`/`README.md`).

@@ -139,3 +139,5 @@ together.
 
 ---
 Status: gesendet 2026-09-30 als https://github.com/1CatAI/1Cat-vLLM/pull/740 (Zweig pr-safetensors-direct-io, 65ec7ad9)
+
+Korrektur 30.09. nachmittags: erster Push (65ec7ad9) setzte #675 in 6 Dateien zurück; force-push 68b06155 (nur 15 Direct-IO-Dateien) + Kommentar https://github.com/1CatAI/1Cat-vLLM/pull/740#issuecomment-5913395026

@@ -13,6 +13,14 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 30.09. nachts:** Block-FP8 (DSv4 dicht) läuft über 1Cats nativen QPN8
+(`fp8_qpn8_gemm` M ≤ 8, `fp8_qpn8_prefill` mit Puffer je Aufruf) statt Skinny-QPN8-blk;
+DSv4-Prefill 35k 16,8 → 15,8 s, Decode 90 ms gleich, neue Greedy-Referenz
+`pressure-acc9-ds`. Vor dem Rückbau toter Fork-Pfade gesichert: Branch
+`archive/skinny-dense-und-overrides` + Tag `archive-skinny-dense-und-overrides-2026-09-30`
+(d9b689f2, gepusht; Inhalt und Messwerte in der Tag-Nachricht). Inventar:
+`upstream-contrib/03-1cat-issues/rest-inventar-2026-09-30.md`.
+
 **Nachtrag 14.09.:** work-main `ebc5dc52` (Tag `verified-2026-09-14b`) = 1Cat main
 `80c88e8d` (Merge `1d3439f2`, Tag `verified-2026-09-14`) + Overlay (77 Dateien,
 +4.771/−375 gegen main) inkl. #636-Fassung von `qwen3_5_mtp.py`; PP5-

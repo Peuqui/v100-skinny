@@ -128,10 +128,24 @@ End to end, PP5 as above:
 
 The answers were read in full; a greedy diff against our fork's output is
 not meaningful here, because the V100 stages run other FP8 kernels. The
-#716 column needs the prefill fix pushed to #716 today. The first request
+#716 column needs its prefill fix (9e6e1200 on #716). The first request
 at a new prompt length waits 17-24 s while TurboMind tunes the FP8 GEMMs of
 the three V100 stages for that M. The time is spent on the V100s only, in
 TurboMind's dispatch, and it is unrelated to this PR.
+
+Until now our fork ran its own pre-Hopper path for this model: all stages
+on the Triton impl that ROCm uses, with batched-matmul attention added
+there. We replaced it with this PR plus #716 after an A/B on the same
+build, same dense FP8 path and the same PP5 rig, fresh prompts per run:
+
+| | our fork's path | this PR + #716 |
+|---|---|---|
+| DSpark k=5: 35.8k cold prefill | 15.8 / 16.0 s | 15.2 / 15.3 s |
+| DSpark k=5: decode step at 35.8k | 91 ms | 84-86 ms |
+| DSpark k=7: 35.8k cold prefill | 21.0 / 21.2 s | 20.3 / 20.4 s |
+| DSpark k=7: decode step at 35.8k | 85-86 ms | 80-81 ms |
+
+All eight reference prompts were answered correctly in every run.
 
 pre-commit clean.
 

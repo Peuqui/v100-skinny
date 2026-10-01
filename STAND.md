@@ -13,6 +13,21 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 01.10. vormittags:** DSv4-Attention vor Hopper läuft nicht mehr über den
+eigenen Triton-Umweg (ROCm-Impl auf V100 und RTX), sondern über 1Cats SM70-Weg auf
+Volta UND Turing (S3, `is_device_capability_family(70)`) plus #716 (Sparse-MLA als
+Gather + BMM, mit Prefill-Fix für Index-Restplätze). Schalter in beiden DSv4-Einträgen:
+`VLLM_SM70_DSV4_SPARSE_MLA_BMM=1`, `VLLM_SM70_DSV4_SPARSE_MLA_BMM_PREFILL=1`. `wo_a`:
+`Fp8LinearMethod` dequantisiert `is_bmm`-Gewichte bei Marlin oder QPN8 einmal nach fp16
+und rechnet pro Gruppe. A/B (gleicher Build, PP5): DSpark Prefill 35,8k 15,8 → 15,2 s,
+Schritt 91 → 85 ms; Coding-K7 21,0 → 20,3 s, 85 → 80 ms; Qualität 8/8, P(Satzende) 0.
+Vorher gesichert: Branch `archive/dsv4-triton-route` + Tag
+`archive-dsv4-triton-route-2026-10-01` (4029533b, gepusht, Messwerte in der Tag-Nachricht).
+`amd/rocm.py` = 1Cat + #720, `rocm_aiter_mla_sparse.py` = 1Cat. Fork `3de109e4`, Tag
+`verified-2026-10-01-sm70route`: Abnahme auf den Produktionseinträgen Greedy 3/3 und
+Qualitätstexte identisch zum A/B-Lauf, DSpark 15,2 s / 86 ms, K7 20,2 s / 80 ms. Neue
+Greedy-Referenzen: `ab-B-ds-090505`, `ab-B-k7-092013` (quality_2026-09-27).
+
 **Nachtrag 30.09. nachts:** Block-FP8 (DSv4 dicht) läuft über 1Cats nativen QPN8
 (`fp8_qpn8_gemm` M ≤ 8, `fp8_qpn8_prefill` mit Puffer je Aufruf) statt Skinny-QPN8-blk;
 DSv4-Prefill 35k 16,8 → 15,8 s, Decode 90 ms gleich, neue Greedy-Referenz

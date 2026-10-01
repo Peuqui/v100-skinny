@@ -13,6 +13,20 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 01.10. abends:** Der Fork ist jetzt 1Cat main (d3046986) + alle 25 offenen PRs +
+`pr-spec-draft-rows` (#749-Nachbar, draft_len-Assert) + QSA-Kopie aus 1Cat #664, Zweig
+`fork-union` (9499f9ab) im Produktionsbaum `1Cat-vLLM-work`, neu gebaut (sm_70, Skinny-MoE
+als #742-Kompilat, `VLLM_SKINNY_NVFP4_SRC` überall entfernt). Abnahme aller fünf
+Produktionseinträge: Greedy identisch, Tempo gleich (A/B gegen alten Stand bei FN-PP4 und
+27B). Tag `verified-2026-10-01-union`. Alter Stand: `archive-fork-overlay-2026-10-01`
+(92d164e5), Config-Sicherungen `~/.cache/prod-switch-2026-09-29/*vor-union-2026-10-01`.
+Danach auf `fork-union`: setup.py liest die Version nur aus `vX.Y.Z`-Tags (20618af1, sonst
+brechen die `verified-*`-Tags setuptools-scm) und die Bauanleitung
+`docs/mixed-volta-turing.md` (368e74fd). **Praxistest mit sauberem Klon von GitHub:** frische
+venv, Anleitung Schritt für Schritt, kalte Caches; vier Bau-Läufe, zwei Lücken behoben
+(Versions-Tags, fehlender `nvidia-cuda-cccl-cu12==12.9.27`). Testboot 27B auf beiden RTX 8000:
+Greedy 3/3 und alle 8 Qualitätsantworten wortgleich zur Produktion, alle 13 `.so` vorhanden.
+
 **Nachtrag 01.10. vormittags:** DSv4-Attention vor Hopper läuft nicht mehr über den
 eigenen Triton-Umweg (ROCm-Impl auf V100 und RTX), sondern über 1Cats SM70-Weg auf
 Volta UND Turing (S3, `is_device_capability_family(70)`) plus #716 (Sparse-MLA als

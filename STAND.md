@@ -13,6 +13,33 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 02.10. abends:** 1Cat hat sechs unserer PRs angenommen: #621 und #723 direkt gemergt;
+#725 (zusammen mit 1Cats #733) als #757, #741 als #758, #752 als #762 und #667 als #765 in eigene
+PRs übernommen (#765: unsere fünf Dateien unverändert). Vier weitere stecken in 1Cats offenen
+Integrations-PRs: #743 → #767 und #710 → #768 (beide unverändert, nur Testgerüste), #726 → #770,
+#749 → #771 (dort erweitert: prüft alle angenommenen Token und die Entwürfe schon vor dem Senden;
+unsere Fassung fällt bei 5 seiner 17 neuen Testfälle durch). Sein Merge-Gate (`tools/merge_gate.sh`)
+läuft nur auf der CPU; GPU-Gegenprobe auf #767/#768 von uns: V100 33/71, RTX 28 (+5 nur-V100
+übersprungen)/71 bestanden, Kommentarentwurf
+`upstream-contrib/03-1cat-issues/kommentar-767-768-gpu-entwurf-2026-10-02.md`. Die Produktion
+(`fork-union` 368e74fd auf main d3046986) hat all das schon in unserer Fassung.
+Entwicklungsstand `fork-next` (Worktree `1Cat-vLLM-next`, gepusht, c6423149) = fork-union +
+FLA-Gerätefix (841656ec, Plan Punkt 8) + Entwurfsvokabular (2ccdc953, Punkt 2) + Fix des
+Beschleunigungsberichts für Configs ohne Modell (c51e3132, Fehler aus 1Cats #748, PR-Kandidat) +
+1Cat main bis b5f36b66 (drei Merges: 25e1df52 mit drei Konflikt-Hunks in `config/vllm.py`
+zugunsten von main = #757; c9d5bd2d mit #763 XML-Tool-Parser und #764 compressed-tensors-NVFP4,
+beide treffen unsere Einträge nicht; c6423149 mit #760 und #765). **#760 ändert die Numerik:**
+jeder GPU-Worker schaltet FP16/BF16-Reduktion mit reduzierter Genauigkeit und FP16-Akkumulation
+ab (`set_high_precision_cuda_matmul_defaults`), das trifft die cuBLAS-Projektionen von Flash-Next
+→ Greedy-Referenzen neu erstellen, Tempo messen. Keine Doppelung der übernommenen PRs (Restdiff
+gegen main = nur offene PRs), kein csrc-Unterschied zur Produktion (die .so passen ohne Neubau).
+Tests dateiweise gleich oder besser als reines main (`test_ple.py` 98 grün, main 10 rot).
+`tests/compile/test_config.py` braucht Hub-Zugriff: online 6 rot (main 10), mit
+`HF_HUB_OFFLINE=1` 23 (main 30), weil Modell-Configs nicht im lokalen Cache liegen.
+Produktionsumstellung erst nach A/B auf allen Produktionseinträgen (Greedy, Langprompt,
+Qualität; Flash-Next mit Entwurfsliste `tools/draft_vocab/qwen38-flash-next-de-en-code-98304.json`),
+sinnvollerweise wenn 1Cats Integrationswelle abgeebbt ist.
+
 **Nachtrag 01.10. abends:** Der Fork ist jetzt 1Cat main (d3046986) + alle 25 offenen PRs +
 `pr-spec-draft-rows` (#749-Nachbar, draft_len-Assert) + QSA-Kopie aus 1Cat #664, Zweig
 `fork-union` (9499f9ab) im Produktionsbaum `1Cat-vLLM-work`, neu gebaut (sm_70, Skinny-MoE
@@ -953,6 +980,10 @@ kommt nicht in den Fork, auch nicht für ein paar Prozent.
    systematisch — passt zu PLE-Zeilen, die kalt von der SSD kommen (203 Mio. Zeilen = 30 GiB
    auf SSD-mmap). Eigener Ansatzpunkt; A/B-Vergleiche immer „kalt gegen kalt, warm gegen warm“. Upstream +23,7 % Decode bei Batch 1 (GB10). Der Fork hat
    `static_draft_vocab` nur im V1-Runner (Qwen3.6-27B), Flash-Next läuft auf V2.
+   **Stand 02.10. abends:** im Fork als `fork-next` 2ccdc953 (Schalter
+   `speculative_config.draft_token_map`, nur MTP auf V2); endgültige Liste mit Code-Stufe
+   `tools/draft_vocab/qwen38-flash-next-de-en-code-98304.json` (fremder Quelltext C++, Rust, CUDA,
+   JS, SQL, YAML, Shell 99,44–99,86 %). Produktion folgt mit der Umstellung auf fork-next.
 3. **Spekulationstiefe anpassen/abschalten** bei schlechter Annahme (Halogen `SPEC_ADAPT`,
    llama.cpp #27210, ExLlamaV3-Konfidenzschnitt); bei Prosa geschätzt +5–10 %.
    **Messung 02.10.** (Flash-Next PP4, feste K, je 4 Läufe, Produktions-Sampling,
@@ -963,6 +994,11 @@ kommt nicht in den Fork, auch nicht für ein paar Prozent.
    Online-Schätzer auf logit(max q) des Drafters) holt bei Prosa ~8 % ohne Code-Verlust.
    Upstream-Port hängt an V2-Basisklassen und variabler Prüflänge; einfachere Variante für
    den Fork-`EagleSpeculator` prüfen. Greedy K=4/K=3 bitgleich, K=2 1/3 anders (Prüfbreite).
+   **DSv4 02.10.** (`ab_dsparkconf_2026-10-02.log`): `dspark_confidence_threshold` 0,3/0,6 bootet
+   nicht — die Schwelle verlangt synchrones Scheduling („DSpark confidence prefix scheduling
+   currently requires synchronous scheduling“). Neuer Lauf mit `--no-async-scheduling`, dabei
+   synchron OHNE Schwelle als eigene Variante, damit der Preis des synchronen Schedulings
+   getrennt sichtbar wird.
 4. **Prompt-Lookup zusammen mit MTP und DSpark.** 1Cat hat dafür `ngram_assist`
    (c689e0602, 0f99c1c51, Ende August), aber nur für DFlash2 — wir haben es nie getestet und
    fahren DFlash2 nicht produktiv. Muster: syv-ai `dflash2-lookup-drafting.patch` (lange
@@ -1006,6 +1042,10 @@ kommt nicht in den Fork, auch nicht für ein paar Prozent.
    Shared Memory von Index 0 der sichtbaren Karten; `chunk_o.py` (BKV_LIST) und `cumsum.py`
    (BS_LIST) wählen damit ihre Kacheln für alle Karten des Prozesses — verstößt gegen „Gates
    pro Gerät“ (V100 96 KB, RTX 8000 64 KB). Danach ggf. PR an 1Cat.
+   **ERLEDIGT 02.10.:** `fork-next` 841656ec (`check_shared_mem(tensor_idx=None)` fragt das
+   aktuelle Gerät; Test `tests/kernels/test_fla_shared_mem_per_device.py`). Auf unserem Rig ohne
+   Wirkung — V100 und RTX 8000 liegen beide unter der 100-KiB-Schwelle —, greift erst bei
+   Ampere neben Volta. PR-Kandidat.
 
 **Bewusst NICHT umsetzen (verlustbehaftet):**
 

@@ -1,53 +1,45 @@
 # Upstream-Beiträge
 
-**Stand 2026-09-07.** Entwürfe und Diffs liegen in den Unterordnern; der
-laufende Status der 1Cat-Einreichungen steht unten. Regeln für neue Beiträge:
+Entwürfe und Diffs liegen in den Unterordnern. Regeln für neue Beiträge:
 `AGENTS.md` im 1Cat-Repo (Duplikatsprüfung, Testkommandos samt Ergebnis im
 PR-Text, KI-Einsatz deklarieren) — Verstoß kann eine Sperre nach sich ziehen.
-**Nichts senden ohne Freigabe von Peuqui.**
+Jede Behauptung vor dem Senden gegen frisch gefetchtes Upstream-main prüfen
+(Lehre aus #455, das nur auf dem eigenen Fork verifiziert war und
+zurückgezogen wurde). **Nichts senden ohne Freigabe von Peuqui.**
 
-## 1Cat-vLLM: gemergte PRs (Stand 2026-09-07, per `gh pr list` geprüft)
+## 1Cat-vLLM: wo der Stand steht
 
-| PR | Titel |
-|---|---|
-| #469 | [Bugfix][Perf][SM70/SM75] Widen QSA sparse launch profile to pre-Ampere |
-| #485 | [Bugfix][SM70] Skip final mixer weights on non-last PP ranks |
-| #511 | [Bugfix][Spec Decode] Bind self.drafter on non-last PP ranks (#439) |
-| #512 | [Bugfix][Spec Decode] Report SM70 MTP profiles from the last PP stage (#414) |
-| #514 | [Bugfix][SM70] Gate SM70 config defaults on any visible device (#412) |
-| #516 | [Core][Qwen4Exp] Gate PLE under PP on the partition, not the PP size (#479) |
-| #518 | [Core] Profile the KV budget on a warm forward, not the cold torch.compile |
-| #528 | [Model][Qwen4Exp] Split the pinned-host PLE table between device and host (#479) |
-| #536 | [Bugfix] Hash unregistered VLLM_ env vars into the compile cache key |
+Der laufende Stand wird hier nicht als Liste geführt (die alte Liste war
+binnen Tagen veraltet), sondern an zwei Stellen, die nach jeder Merge-Welle
+stimmen:
 
-Geschlossen ohne Merge: #455 (Pre-Ampere-Tile-Profile) — auf dem eigenen Fork
-statt gegen Upstream-main verifiziert, mit Eingeständnis zurückgezogen. Daraus
-die Regel, jede Behauptung vor dem Senden gegen frisch gefetchten Upstream zu
-prüfen.
+- GitHub selbst: `gh pr list --repo 1CatAI/1Cat-vLLM --author Peuqui --state all`
+- die öffentliche Übersicht [1Cat #674](https://github.com/1CatAI/1Cat-vLLM/issues/674)
+  (offene PRs mit Abhängigkeiten, gemergte PRs); gesendete Fassungen und
+  Entwürfe als `03-1cat-issues/issue-674-*` und `overview-674-*`.
 
-Damit sind neun PRs gemergt; die Repo-Regel „Autor braucht ≥4 gemergte PRs"
-(roter `pre-run-check`) ist erfüllt.
+**Momentaufnahme 2026-10-02 abends** (per API gezählt): 35 PRs gemergt.
+Fünf weitere hat 1Cat in eigene PRs übernommen; GitHub führt sie deshalb als
+„closed“: #727 → #733, #725 → #757 (mit #733), #741 → #758, #752 → #762,
+#667 → #765. #601 haben wir selbst geschlossen (main deckt es ab), #455
+zurückgezogen. 20 offen, alle mergen sauber auf main `b5f36b66`
+(`git merge-tree`); davon stecken vier in 1Cats offenen Integrations-PRs:
+#743 → #767, #710 → #768, #726 → #770, #749 → #771.
 
-## 1Cat-vLLM: offene PRs (Stand 2026-09-11 abends)
+1Cats Integrationen laufen über Branches `codex/pr-<thema>-<datum>` und ein
+Merge-Gate nur auf der CPU (`tools/merge_gate.sh`: keine GPU, keine
+Modellgewichte). GPU-Nachweise auf seinem exakten Branch sind deshalb das,
+was wir beitragen können.
 
-| PR | Titel | Entwurf |
-|---|---|---|
-| #572 | [Bugfix][Perf][SM70] Make Turing (sm75) boot, compute correctly and keep its Inductor fusions | `03-1cat-issues/pr-turing-four-fixes.md` |
-| #573 | [Bugfix][Qwen4Exp] Keep the MTP drafter stage-local under pipeline parallelism | `pr-qwen4exp-mtp-pp.md` |
-| #574 | [Bugfix][Spec Decode] Trim the optimistic spec-decode tokens on every pipeline rank | — |
-| #576 | [Bugfix][SM70] Read the quantization SM70 gate from the worker's own device | — |
-| #592 | [Bugfix] DFlash: fuse context K/V through quant_method so a quantized draft head loads | `pr-dflash-quantized-draft-context-kv.md` |
-| #599 | [Bugfix][Spec Decode][SM70] Gate DFlash2's BF16 emulation and FlashInfer top-k on the worker's own device | `pr-dflash2-pre-sm80-worker-device.md` |
-| #600 | [Bugfix][Platform] Resolve an unspecified device_id to the worker's own device | `pr-platform-default-device-id.md` |
-| #601 | [Bugfix][Build][SM70] Declare the pybind11 SM70 extensions non-limited-API | `pr-editable-soabi-modules.md` |
-| #603 | [Bugfix][DeepSeek-V4] Align the SWA decode threshold with the sparse MLA builder | `pr-sparse-swa-spec-threshold.md` |
-| #604 | [Feature][SM75] Run ModelOpt NVFP4 and FP8 linears on Turing through the SM70 QPN kernels | `pr-turing-nvfp4-fp8-linear.md` (Paket E-1) |
-| #611 | [Perf][SM70] Block-pack the activations of the NVFP4 QPN2 kernels | `pr-qpn2-block-pack.md` (Paket E-2) |
+Übernommene Commits tragen „Peuqui <peuqui@github.com>“ als Autor oder
+Co-Autor. Diese Adresse gehört zu keinem GitHub-Konto, die Commits erscheinen
+deshalb nicht im Profil. Seit 02.10. ist die Commit-Adresse
+`43776522+Peuqui@users.noreply.github.com`.
 
-#599–#601 eröffnet 2026-09-11 abends (Freigabe Peuqui). #603 eröffnet 2026-09-12 früh (Freigabe Peuqui); #572 und #573 am 2026-09-12 03:30 GEMERGT — Overlay-Teile beim nächsten main-Hereinholen entfernen. #600 ist der
-Wurzelfix für die Gerät-0-Fehlerklasse aus #412 und macht die Einzelfixes
-#514/#576/#599 überflüssig, nicht falsch. Nach dem Merge eines eigenen PRs
-den zugehörigen Overlay-Teil im Produktions-Worktree ENTFERNEN (STAND.md).
+Sobald 1Cat einen PR von uns merged oder übernimmt, fällt unsere Fassung beim
+nächsten Hereinholen von main aus dem Fork heraus; nach dem Merge prüfen, dass
+keine Doppelung bleibt („konfliktfrei“ heißt nicht „sauber“, Methode in
+`OVERLAY-INVENTUR.md`).
 
 ---
 

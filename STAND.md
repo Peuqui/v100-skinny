@@ -1,6 +1,6 @@
 # Betriebsstand v100-skinny
 
-**Stand 2026-09-11 abends, Punkt 6 aktualisiert 2026-09-15 spät, Flash-Next-Betriebspunkt 2026-09-23 spät (PP4, Punkt 40).** Dieses Dokument beschreibt, WIE der Stack heute
+**Arbeitsplan Oktober 2026 (Recherche 02.10.) vor „Offene Punkte“. Stand 2026-09-11 abends, Punkt 6 aktualisiert 2026-09-15 spät, Flash-Next-Betriebspunkt 2026-09-23 spät (PP4, Punkt 40).** Dieses Dokument beschreibt, WIE der Stack heute
 läuft. Warum er so läuft, steht in `docs/journal/` — jede Zeile hier trägt einen
 Verweis. Übergabeaufträge stehen in `HANDOVER.md`, Upstream-Beiträge in
 `upstream-contrib/`.
@@ -903,6 +903,157 @@ Augustwerten (6,5 min Boot).
   dabei: AIfred las bei vLLM das Denkfeld `reasoning` nicht — Flash-Next
   lief seit 07.09. ohne sichtbaren Denkblock. **Ein neues Profil ist erst
   abgenommen, wenn es einmal ein Werkzeug aufgerufen hat.**
+
+---
+
+## Arbeitsplan Oktober 2026 (Recherche 02.10.)
+
+Grundlage: drei Recherchen am 02.10. (Upstream-vLLM Mai–Okt., andere Engines, Forschung
+2025/26), jede Aussage gegen `fork-union` 368e74fd geprüft. Leitlinie von Peuqui:
+**Qualität geht vor Tempo.** Bei 4-Bit-Gewichten ist Qualität knapp; was verlustbehaftet ist,
+kommt nicht in den Fork, auch nicht für ein paar Prozent.
+
+**Umsetzen, in dieser Reihenfolge (alle verlustfrei):**
+
+1. **Prefill-Häppchengröße Flash-Next** (`--max-num-batched-tokens`, heute 2048) auf 4096/8192
+   messen. sglang-V100 (gleiche Kartengeneration, aber NVLink/TP4) kam mit 8k-Häppchen auf
+   ~4.900 tok/s, mit 4k auf ~3.000: Bei 512 Experten bekommt jeder Experte mehr Tokens je
+   Aufruf. Nur Konfiguration; messen: Zeit bis zum ersten Token, VRAM, Greedy.
+   **ERLEDIGT 02.10., Ergebnis: kein belastbarer Vorteil, bleibt bei 2048.** Zwei Runden mit
+   je drei frischen ~29k-Prompts (`~/.cache/bench-scripts/chunk_sweep*.log`): Runde 1
+   2048 → 17,7/17,8 s, 4096 → 18,4/18,3 s, 8192 → 15,3/13,6 s; Runde 2 (gleiche Seeds je
+   Runde) 2048 → 13,6/13,5 s, 8192 → 18,4/18,3 s. Decode unverändert (70–74 ms/Schritt),
+   KV-Pool 477k (2048) → 449k (4096) → 320k (8192). **Neuer Befund:** Innerhalb eines Boots
+   ist die Prefill-Zeit stabil, zwischen Boots springt sie bei gleicher Einstellung zwischen
+   ~13,5 und ~18,4 s. PLE-Verteilung je Boot praktisch gleich (117 Mio. Zeilen VRAM,
+   203 Mio. = 30,3 GiB SSD-mmap, kein Host-Anteil); Swap wuchs über die fünf Boots von 0,04
+   auf 5,3 GiB. Verdacht: Seitencache-Zustand des SSD-Teils der PLE-Tabelle bzw.
+   Laufzeit-Autotuning der GDN-Kernel je Boot — eigener Untersuchungspunkt, A/B-Vergleiche
+   von Prefill brauchen bis dahin mehrere Boots je Variante.
+2. **Reduziertes Entwurfsvokabular für das MTP von Flash-Next** (vLLM #59740, offen seit
+   02.10.): Der MTP-Kopf schlägt nur aus 32k statt 248k Tokens vor, geprüft wird mit vollem
+   Vokabular → Ausgabe unverändert. Eigene Messung 02.10.: voller Kopf 1,88 ms je
+   Entwurfstoken auf V100 (2,11 ms RTX 8000), 64k-Liste 0,53 ms, 32k 0,28 ms → bei vier
+   Entwurfstoken ~5,4 ms von ~71 ms je Schritt; netto erwartet **~+5 %** (nicht +24 % wie auf
+   GB10 mit 273 GB/s). Liste muss aus eigenem DE/EN-Text kommen: „IDs < 64k“ deckt AIfreds
+   deutsche Antworten nur zu 81 % ab (Code 96,5 %). Port im Worktree `1Cat-vLLM-next`
+   (Branch `fork-next`), Fork-Kopf bekam dafür `self.tp_rank`. **Token-Liste 02.10.:**
+   `~/.cache/bench-scripts/build_draft_vocab.py`, Rangfolge (1) Häufigkeit in 158 von Flash-Next
+   erzeugten Antworten (`draftvocab_corpus.py`, ¾ deutsch, 95.785 Token), (2) deutscher
+   Fließtext (AIfred docs/de + prompts/de, 244k Token), (3) `/usr/share/dict/ngerman`, (4) BPE-
+   Reihenfolge; Sondertokens immer drin. Abdeckung auf den nie verwendeten AIfred-Sitzungen:
+   32k 98,1 %, 64k 99,4 %, 96k 99,8 % (nur Korpus + BPE-Auffüllung: 93,3/95,5/96,6 %).
+   **A/B 02.10.** (`ab_draftvocab*_2026-10-02.log`): Mit Sampling (temp 1,0) ging der Effekt
+   im Rauschen unter; 32k-Liste senkt die Annahme bei Bearbeitung 5,00 → 4,08 (seltene
+   Bezeichner fehlen). Greedy, Produktion/96k abwechselnd je zweimal, Takte konstant (RTX 1620,
+   V100 1380 MHz, ≤ 53 °C): Schritt warm Prosa 58 → 53 ms, Code 60 → 54 ms; Decode Prosa
+   +5/+6 %, Code +3/+6 % (kalt/warm), Bearbeitung 83,6 → 90,4 tok/s; Greedy bitgleich zur
+   Referenz. Annahme Code 4,39 → 4,21 → Liste um Code-Stufe ergänzen. **Nebenbefund:** Jeder
+   Text läuft beim ersten Durchgang ~10 ms/Schritt (~15 %) langsamer als beim zweiten,
+   systematisch — passt zu PLE-Zeilen, die kalt von der SSD kommen (203 Mio. Zeilen = 30 GiB
+   auf SSD-mmap). Eigener Ansatzpunkt; A/B-Vergleiche immer „kalt gegen kalt, warm gegen warm“. Upstream +23,7 % Decode bei Batch 1 (GB10). Der Fork hat
+   `static_draft_vocab` nur im V1-Runner (Qwen3.6-27B), Flash-Next läuft auf V2.
+3. **Spekulationstiefe anpassen/abschalten** bei schlechter Annahme (Halogen `SPEC_ADAPT`,
+   llama.cpp #27210, ExLlamaV3-Konfidenzschnitt); bei Prosa geschätzt +5–10 %.
+   **Messung 02.10.** (Flash-Next PP4, feste K, je 4 Läufe, Produktions-Sampling,
+   `k_sweep_2026-10-02.log`, Testlast `lookup_bench.py` mit Prosa/Code/Bearbeitung):
+   K=4: Prosa 33,6 / Code 57,0 / Bearbeitung 83,5 tok/s, Schritt ~66 ms;
+   K=3: 34,1 / 54,5 / 71,3, ~60 ms; K=2: **36,2** / 50,5 / 59,9, ~54 ms. Jede Entwurfsposition
+   kostet ~6 ms. Keine feste Tiefe ist überall beste → adaptiv abschneiden (Upstream #52228:
+   Online-Schätzer auf logit(max q) des Drafters) holt bei Prosa ~8 % ohne Code-Verlust.
+   Upstream-Port hängt an V2-Basisklassen und variabler Prüflänge; einfachere Variante für
+   den Fork-`EagleSpeculator` prüfen. Greedy K=4/K=3 bitgleich, K=2 1/3 anders (Prüfbreite).
+4. **Prompt-Lookup zusammen mit MTP und DSpark.** 1Cat hat dafür `ngram_assist`
+   (c689e0602, 0f99c1c51, Ende August), aber nur für DFlash2 — wir haben es nie getestet und
+   fahren DFlash2 nicht produktiv. Muster: syv-ai `dflash2-lookup-drafting.patch` (lange
+   Treffer ≥ 8 allein, kurze nur bei Zustimmung des Drafters; 159→381 tok/s bei wörtlicher
+   Wiederholung, +10 % beim Umschreiben, +2–3 % bei Prosa), TensorRT-LLM `sa_spec_threshold`,
+   Halogen `PLD=3,3`. Eigene Offline-Messung (`~/.cache/bench-scripts/prompt_lookup_sim.py`,
+   Qwen-Tokenizer): AIfred-Sitzungen (Prosa) 1,13 Token/Schritt nur mit Lookup, 3,5 % in
+   Ketten ≥ 4; Code-Korrektur 1,56 und 34,9 %. Gewinn also bei Code-Bearbeitung, kaum bei Prosa.
+   Eigener Ableger-Branch von `fork-union`.
+   **Befund 02.10. (K-Messung):** Bei der Bearbeitung (Datei mit Umbenennung zurückgeben)
+   nimmt das Modell 100 % aller MTP-Entwürfe an jeder Position an (Annahme/Runde 5,00 bei
+   K=4) — MTP sagt Kopien schon perfekt voraus, Grenze ist allein K. Lookup bringt bei uns
+   also nicht bessere, sondern LÄNGERE Entwürfe (10–15 Token aus dem Kontext statt 4); bei
+   ~60 ms je Schritt grob das 2–3-Fache bei Bearbeitungen. 1Cat hat den syv-ai-Kernel für
+   DFlash2 schon portiert (`spec_decode/dflash2/lookup.py`, GPU `suffix_lookup`).
+5. **Batch-1-Rechenkerne aus sglang-V100** (Apache, gleiche V100-Generation): FP16-GEMVs für
+   1/2/4 Zeilen statt cuBLAS (QKV 32,6→27,0 µs), paralleles QSA-Split-Merge (34→5,8 µs je
+   Schicht), parallele QSA-Graph-Metadaten (23→2 µs), Fusionen Shared-Expert/GDN-Projektion,
+   Entwurfsschritt in CUDA-Graphen + GDN-Verify-Kachel 8 (MTP-Runde 38,9→21,6 ms). Erwartet
+   +10–20 % Decode Flash-Next. Rechenreihenfolge ändert sich → nicht bitgleich zur heutigen
+   Referenz, inhaltlich prüfen.
+   **Bestandsaufnahme 02.10.:** Der Fork HAT die meisten dieser Wege schon
+   (`qwen4_exp/nvidia/sm70_fp16_gemv.py`: Row-GEMV M=1, Batch-GEMV M=2–8, GDN-Input-Fusion,
+   Shared-/Router-Batch; `sm70_fp16_hc.py`; QSA-Sonderwege) — aber `_exact_runtime_contract()`
+   verlangt `tp_size == 4` (und feste Formen). Unsere PP4-Produktion rechnet deshalb jede dichte
+   FP16-Projektion (linear_attn, self_attn, shared_expert, gate, HC, lm_head; ~8 GB je Forward;
+   nur die Experten sind NVFP4) über cuBLAS `F.linear`. sglang-V100 ist ebenfalls fest auf
+   (7,0) und TP4-Formen, M=2/4 (wir verifizieren M=5). Draft-Extend-Graph und
+   QSA-Metadaten hat der Fork schon bzw. betrifft uns nicht; QSA-Merge ist bei uns schon
+   parallel. Reihenfolge: (a) GDN-Verify-Kachel per `VLLM_SM70_FLA_BV=8` probieren (nur
+   V100-Stufen, kein Code); (b) erst eine Stufe profilieren, wie viel Zeit cuBLAS für die
+   dichten Projektionen braucht; (c) die vorhandenen Fork-Wege für TP1/PP-Formen (M=1, M=5,
+   inkl. HC und lm_head, RTX-Stufen eigens) freischalten statt sglang zu portieren.
+6. **Top-k-Auswahl der Indexer** (QSA, DSv4) beim Decode beschleunigen: exakt (Radix-Select
+   wie SGLang „Lightning TopK“, Bisektion wie Halogen 0.12.0, dort 30→35 tok/s bei 262k). Bei
+   30k eher wenige Prozent. Unser sm70-Top-k ist auf topk=512 und sm70 begrenzt, die RTX läuft
+   anders — erst profilieren.
+7. **Nicht-blockierendes Senden der Metadaten zwischen den Stufen** (vLLM #49274, gemergt
+   30.08.): +5,2 % Prefill bei 16k mit PP2×TP2, V1 und V2, kleiner Port.
+8. **Fehler im Fork beheben:** `fla/ops/utils.py:check_shared_mem()` liest beim Import den
+   Shared Memory von Index 0 der sichtbaren Karten; `chunk_o.py` (BKV_LIST) und `cumsum.py`
+   (BS_LIST) wählen damit ihre Kacheln für alle Karten des Prozesses — verstößt gegen „Gates
+   pro Gerät“ (V100 96 KB, RTX 8000 64 KB). Danach ggf. PR an 1Cat.
+
+**Bewusst NICHT umsetzen (verlustbehaftet):**
+
+- **IndexCache** (vLLM #51209 für DSv4, IndexCache arXiv 2603.12201, vllm-ascend gemergt):
+  Schichten übernehmen die Top-k-Auswahl einer Nachbarschicht, statt sie selbst zu berechnen
+  — eine Näherung. Upstream −3,8 % (freq 2) bis −6,5 % (freq 6) Latenz, AIME25 94,2→90,0 bei
+  jeder vierten Schicht. Gilt nur für Modelle mit gelerntem Indexer (DSv3.2/V4, GLM-5,
+  sinngemäß QSA), nicht fürs 27B; verlustfrei machen lässt es sich nicht.
+- **PLE-Tabelle als NVFP4/MXFP4** (vLLM #56273): 26,8 statt ~51 GiB, aber die Einbettungen
+  selbst würden 4-bittig — zusätzlicher Verlust zur Gewichtsquantisierung, anderer Checkpoint
+  nötig. Die Kaskade VRAM→Host→SSD kostet heute ~1,5 % Decode; das ist der günstigere Preis.
+  Nur neu aufrollen, wenn Host-RAM wirklich zum Engpass wird, dann mit Qualitätsmessung.
+- **HISA, FlashPrefill, AcceptMoE, KV-Quantisierung**: verlustbehaftet bzw. ohne Nutzen
+  (KV-Quantisierung bringt bei sparse Attention nur Platz, kein Tempo; KV-Pool ist kein
+  Kriterium).
+
+**Geprüft und nicht lohnend:**
+
+- **Experten über PCIe vorladen/auslagern** (vLLM #51710, #56177, #57943; KTransformers):
+  Alle Experten passen in den VRAM; WiSP (arXiv 2606.21868) zeigt, dass Vorladen bei Batch 1
+  die nötigen Ladevorgänge auf derselben Leitung verdrängt. KTransformers braucht > 200 GB RAM.
+- **Prefill-Häppchen über die PP-Stufen verzahnen** (SGLang „Chunked Pipeline Parallelism“):
+  hat der Fork schon (vLLM #38726/#42187, `PPHandler`); für DSv4 auf dem V1-Runner noch per
+  Auslastungsmessung bestätigen. Offen bleibt nur die dynamische Häppchengröße (+8–17 %).
+- **Inkrementeller QSA-Schlüssel-Cache** (llama.cpp #28699): hat 1Cat-vLLM schon
+  (`qsa_cache.py`, gepagter komprimierter Schlüsselcache).
+- **Halogen** (peonist-ai): eigene ROCm-Engine für Strix Halo, Code nicht offen, RDNA-Kernel.
+  Unser Flash-Next-Prefill ist schneller (PP4 ~1.900 tok/s bei 29k gegen ~1.570).
+- **Speculative Pipeline Decoding / FlowSpec**: bräuchte je Modell einen neu trainierten Drafter.
+- **Experten-Vorhersage, EPLB, Strata-Expertencache, LMDeploy, mistral.rs, MLC-LLM**: kein
+  Expert Parallelism, alles im VRAM bzw. schon portiert (TurboMind) bzw. nichts Neues.
+- **Int4-/FP8-quantisiertes All-Reduce ohne P2P** (vLLM #56551, #39783): verlustbehaftet.
+
+**Später, größer:**
+
+- **DSv4 auf den V2-Model-Runner.** DSv4 steht im Fork nicht in
+  `DEFAULT_V2_MODEL_RUNNER_ARCHITECTURES` (Flash-Next schon). Upstream entfernt V1 mit v0.32,
+  neue Spec-Decode-Funktionen (Block-Verifikation #46781, adaptive Verifikation #47808/#52228)
+  gibt es nur unter V2; Upstream hat DSv4+DSpark unter PP2–4 auf V2 validiert (#50514). Der
+  SM70-Pfad von DSv4 ist 1Cats Code — Umzug mit 1Cat abstimmen, nicht im Alleingang.
+- **Präfix-KV auf NVMe** (Tutti arXiv 2605.03375, LMCache): lange Prompts nach Modellwechsel
+  sofort zurück; offen, ob die Connectoren die KV-Formate von DSv4 und QSA können.
+- **Prüfaufwand nach aktivierten Experten bemessen** (EVICT 2605.00342, EcoSpec 2607.12696):
+  bei MoE kostet jedes weitere Prüftoken Experten-Gewichte; Erweiterung des DSpark-Planers.
+
+**Upstream-Lage Volta:** vLLM verlangt offiziell Compute Capability ≥ 7.5, baut sm_70 nur mit
+CUDA < 12.8, Standard-Wheels sind CUDA 13.0. Turing bleibt unterstützt. Für die V100 bleibt
+1Cat-vLLM die Basis; Upstream-Verbesserungen werden rückportiert.
 
 ---
 

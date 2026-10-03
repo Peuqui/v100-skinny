@@ -1,9 +1,68 @@
-# Fortschritt v100-skinny / 1Cat-vLLM — 20.08. bis 13.09.2026
+# Fortschritt v100-skinny / 1Cat-vLLM — 20.08. bis 03.10.2026
 
 Kurzbilanz für Peuqui. Zahlen sind Decode-Tokens pro Sekunde, greedy, aus den
 jeweils genannten Messungen; Details und Belege in STAND.md, Memory und
 `handover/`. Vergleiche gelten nur innerhalb einer Zeile: kurzer Prompt,
 langer Kontext und vorhersagbarer Text sind verschiedene Maßstäbe.
+
+## Bilanz 03.10.: vom Ausgangspunkt bis zur Produktion vom 03.10.
+
+Produktion seit 03.10. vormittags: `fork-union` 138059c8 (fork-next + PLE-Plattenstufe +
+Entwurfsliste + Zeilen-Cache 0,5 GiB). Vollständige, belegte Historie mit Datum, Messart und
+Quelle je Wert: `docs/journal/LEISTUNGSHISTORIE.md`. Zeiten: weniger ist besser; tok/s: mehr ist
+besser. Die Messart hat gewechselt (temp 0 → temp 1,0 → greedy, „18k“ war nicht immer derselbe
+Prompt, Fülltext schmeichelt dem Prefill) — die Faktoren sind Größenordnungen, am robustesten ist
+die Schrittzeit in ms.
+
+**DeepSeek-V4-Flash 284B, PP5 über alle fünf Karten, DSpark k=5**
+
+| Kennzahl | Ausgangspunkt | Stand 02./03.10. | Faktor |
+|---|---|---|---|
+| Prefill-Durchsatz (tok/s) | 119 (11.09., 64k in 9:01 min) | ~2.010 bei 61,6k (27.09., 30,6 s); 2.340 bei 35,9k (02.10., 15,3 s) | ~17–20× |
+| Decode-Schritt (ms) | 210 bei 18k (19.09.) | 85–86 bei 35,9k | ~2,5× bei doppeltem Kontext |
+| Folgefrage mit gleichem Präfix (s) | 99 (19.09.) | 0,7–1,4 | ~100× |
+| Boot bis bereit (min:s) | 8:07–8:39 (12./13.09.) | 4:02 | ~2× |
+| Kontext (Token) | 65.536 (11.09.) | 307.200 | 4,7× |
+
+**Qwen3.8-Flash-Next 180B, NVFP4, MTP k=4**
+
+| Kennzahl | Ausgangspunkt | Stand 03.10. | Faktor |
+|---|---|---|---|
+| Prefill 29k-Prompt (s) | 27 (22.09., TP2×PP2, TurboMind-MoE) | 13,5–13,8 (PP4), unabhängig vom Speicherdruck | 2× |
+| Decode-Schritt kurz, greedy (ms) | 66–69 (02.10., PP4 vor der Umstellung) | 52–56 (PP4) | ~1,25× |
+| Decode-Schritt bei 29k, temp 1,0 (ms) | PP4 70–82, TP2×PP2 59–61 (02.10.) | PP4 61–69, TP2×PP2 56–57 | ~1,1× |
+| Boot warm (min:s) | 5:16 (10.09.) | 3:27–4:18 | ~1,4× |
+| Kontext (Token) | 16.384 (28.08.) | 262.144 | 16× |
+
+**Qwen3.8-27B, NVFP4, TP2 auf den RTX 8000, MTP k=3**
+
+| Kennzahl | Ausgangspunkt | Stand 02.10. | Faktor |
+|---|---|---|---|
+| Prefill 14,7k (s) | 27,4–27,8 (26.09.) | 19,8–20,2 (fork-next, jetzt Produktion; 02.10., Nebenlast nicht ausgeschlossen) | ~1,4× |
+| Decode-Schritt bei 14,6k, temp 1,0 (ms) | 48 (26.09.) | 48 (02.10.) | gleich |
+| Boot (min:s) | 6:30 (07.09.) | 2:43 | ~2,4× |
+
+**Meilensteine mit Datum:**
+- 28.08.: Flash-Next mit NVFP4-MTP-Kopf, 14 → 49 tok/s.
+- 02./03.09.: DSv4-MoE über moe_qpn, Schritt ~290 → 113 ms.
+- 19.09.: DSv4 Präfix-Cache-Backport (Folgefrage 1:39 min → 3 s) und Sparse-MLA als Gather + BMM
+  (Schritt bei 18k 210 → 92 ms).
+- 19./20.09.: DSv4 gebündelte MoE-Kernel und größere Prefill-Häppchen (21,9k: 1:41 min → 18 s),
+  Indexer über cuBLAS.
+- 22.09.: Flash-Next SM70-Gate beachtet `--moe-backend` (29k: 27 → 19,4 s).
+- 23.09.: Flash-Next PP4 statt TP2×PP2 (29k: 19 → 13,5 s).
+- 26.09.: #667, Präfix überlebt Fremdanfragen (10,6 → 0,7 s).
+- 27.09.: #604, 27B auf Turing über QPN (Prefill 27,5 → 22,7 s).
+- 28./29.09.: MemoryHigh 16 GiB und Direct-IO-Lader (DSv4-Boot 9:16 → 4:22 min).
+- 30.09./01.10.: 1Cats nativer QPN8 und der SM70-Weg auf Turing (DSv4-Prefill 16,8 → 15,2 s).
+- 02.10.: Entwurfsliste für Flash-Next (Decode-Schritt −5 bis −10 ms).
+- 03.10.: PLE-Plattenstufe mit Zeilen-Cache (Flash-Next PP4 unter Speicherdruck 18,3 → 13,7 s
+  Prefill, 68 → 52–56 ms Schritt, ein Fünftel der Plattenlesezugriffe).
+
+**Determinismus:** Mit gleichen Daten kippen Fast-Gleichstände von Prozess zu Prozess je nach
+Timing und Compile-Artefakt (siehe „Compile-Münze“ unten). Am 03.10. belegt: Der Zeilen-Cache
+lieferte in drei Prüfläufen 3,28 Mio. Zeilen bytegenau (0 Abweichungen); die wechselnden
+Formulierungen kommen nicht von falschen Daten.
 
 ## Ausgangslage (24.08.)
 
@@ -19,7 +78,7 @@ langer Kontext und vorhersagbarer Text sind verschiedene Maßstäbe.
 Das Kriterium „vLLM muss llama.cpp mit MTP schlagen" war beim 27B am ersten
 Tag erfüllt und ist es seitdem geblieben.
 
-## Tempo heute (13.09., Produktionsstand work-main auf 1Cat main dfef3342)
+## Tempo am 13.09. (Produktionsstand work-main auf 1Cat main dfef3342)
 
 | Modell, Betriebspunkt | Wert | Weg dorthin |
 |---|---|---|
@@ -60,7 +119,14 @@ Text-SHA ist deshalb nur bei gleichem Artefakt ein Korrektheitskriterium.
 
 ## Beiträge an 1Cat
 
-11 PRs gemergt, 12 offen (#574 #576 #592 #599 #600 #601 #603 #604 #611 #613
+**Stand 03.10.:** 47 PRs übernommen — 25 direkt gemergt, 22 über 1Cats eigene Integrations-PRs
+(seit 02./03.10. teils angepasst: Auswahl über KernelConfig statt Env-Schalter, ohne
+Vollmodell-Lauf auf 1Cat-Seite). Offen: #742 (Skinny-MoE), #715 (hc_head in FP16), #611
+(Aktivierungs-Packing, wird als #822 übernommen); Bug-Report #739. Im Fork, aber ohne PR: die
+PLE-Plattenstufe (für einen PR auf 1Cats Kaskade aus #806 zu portieren), das reduzierte
+Entwurfsvokabular (Backport vllm#59740) und die FLA-Shared-Memory-Prüfung je Gerät.
+
+**Stand 13.09.:** 11 PRs gemergt, 12 offen (#574 #576 #592 #599 #600 #601 #603 #604 #611 #613
 #618 #619, dazu der Compile-Cache-PR in Anlage), Issues #441 #479 #612 #620.
 Alle mit Messbeleg, Duplikatsuche und KI-Erklärung nach AGENTS.md.
 

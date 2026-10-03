@@ -13,6 +13,64 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 03.10.: Produktion umgestellt auf fork-union 138059c8** (Tag
+`verified-2026-10-03-pledisk`; vorher 368e74fd, Tag `archive-fork-union-2026-10-03`). Reiner
+Fast-Forward: 368e74fd ist Vorfahre, fork-union = fork-next = ple-disk-fast-path = 138059c8, alles
+gepusht, keine nativen Änderungen, kein Neubau. Config: alle 8 Flash-Next-Einträge (PP4, TP2 und die
+TTS/VLM-Kombis) mit `draft_token_map` (98.304 Token) und `VLLM_PLE_DISK_ROW_CACHE_GIB=0.5`; Backup
+`~/.cache/prod-switch-2026-09-29/config.yaml.vor-prod-pledisk-2026-10-03`. **Abnahme:**
+`ab_final.sh` + `ab_final_tp2.sh` (A/B/A/B, PLE-Datei vor jedem Boot kalt) — PP4 Endstand Prefill
+29k 13,5–13,8 s, Schritt kurz 52–56 ms, Platte ~750 MiB, unabhängig vom Speicherdruck (Produktion
+13,5 s / 58–60 ms bei wenig, 18,3 s / 68 ms / 4.055 MiB bei viel Druck); TP2 +3–6 %. Greedy PP4
+4/4 identisch. Der Zeilen-Cache ist bytegenau: `ab_verify.sh` (Debug-Branch `ple-disk-verify-debug`,
+nie gepusht) verglich 3,28 Mio. ausgelieferte Zeilen (2,89 Mio. Cache-Treffer) mit frischem
+Direktlesen, 0 Abweichungen; die von Lauf zu Lauf wechselnden Formulierungen an Fast-Gleichständen
+kommen vom Timing bzw. Compile-Artefakt (FORTSCHRITT „Compile-Münze“), nicht von falschen Daten.
+Rauchtest aller vier Produktionsmodelle (`smoke_prod_2026-10-03.log`): PP4 7:40 / TP2 8:43 / 27B
+7:49 (je einmal neu kompiliert), DSv4 4:22; Greedy 3/3 (TP2: 2/3 + bekannte Kippfassung
+018b693f), keine Fehler. Cache 0,5 GiB reicht (1–4 GiB ohne Mehrwert), MemoryHigh bleibt 16 GiB.
+Schritt 4 (Prefetch) nicht gebaut — lohnt kaum noch (erste Anfrage nach dem Boot ~2,7 s). Störung:
+AIfreds Scheduler lädt täglich 06:45 DSv4 („tägliches Gebet“) und unterbrach den ersten TP2-Lauf,
+der wiederholt wurde. Belegte Historie aller Modelle: `docs/journal/LEISTUNGSHISTORIE.md`.
+**Fork-Strategie ab jetzt (Peuqui):** Basis = komplettes 1Cat main mit KernelConfig-Mechanik und
+1Cats angepassten Fassungen unserer PRs, unsere Zusätze obendrauf, ebenfalls als KernelConfig-Felder,
+und als PR anbieten; alte Fassungen erst nach nativer Gegenprobe aufgeben (`ab_main.sh` läuft).
+
+**Nachtrag 02.10. spät:** `fork-next` (gepusht, 46220f58) = 1Cat main 24994ba9 + unsere offenen
+PRs + FLA-Gerätefix + Entwurfsvokabular + zwei neue Fixes, beide als PR an 1Cat: DFlash/DSpark
+starten wieder (`dflash.py` kopiert die Config mit vLLMs `replace`; seit 1Cats #748 brach jeder
+DFlash/DSpark-Start ab; 3a74a277, PR #791) und die Hybrid-Blockgröße wird vor der PLE-KV-Schätzung
+festgelegt (#760s Schätzung las die vorläufige Blockgröße 16, Flash-Next mit Kaskade starb mit
+„CSA+linear layer 3 violates cache geometry“; 46220f58, PR #793). c51e3132 zurückgenommen
+(f5bf7975), main löst das selbst. #646/#717 auf main 6ffba351 (übernehmen #786s Hybrid-Zweig,
+Env-Registrierung nach #782), #674 aktuell (14 offen). **Abnahme fork-next gegen Produktion,
+sauber wiederholt** (`ab_next_clean_2026-10-02.log`): DSv4 PP5 gleich schnell (Prefill 35,9k
+15,3 s beide, Decode 85–90 ms), Greedy 2/3 und Qualität 7/8 abweichend, von Hand gelesen
+gleichwertig (Zug-Aufgabe exakt mit 41/12 h statt 3,4167 h); Flash-Next PP4 Greedy 3/3,
+Decode 5–10 ms je Schritt schneller (Entwurfsliste), Prefill innerhalb der Boot-Streuung gleich;
+TP2 (Nachmittag, sauber) etwa gleich; 27B bestanden. **Produktionsumstellung wartet auf
+Peuquis Okay.** Vor dem nächsten main-Merge in fork-next: #786 (Hybrid-PLE), #789 (AWQ-Policy),
+#790 (FP8-MoE-Voreinstellungen entfernt → DSv4 neu prüfen).
+**#760 (Präzisions-Policy) bleibt:** GEMM-Mikrotest mit Flash-Next-Formen (`gemm_policy_bench.py`)
+— Decode gleich (V100 bei M=5 sogar −3,4 %), Prefill-Häppchen +3–5 % GEMM-Zeit, unter 1 % des
+Prefills; Fehler gegen FP32 sinkt in Split-K-Fällen von 2,5–3,6·10⁻⁴ auf 2,1·10⁻⁴
+(FP16-Rundungsgrenze), in den Antworten nicht sichtbar (Greedy 3/3 gleich, 2/8 Kippstellen).
+**Messfallen:** Die Nachmittags-Abnahme war durch meine eigene Nebenlast (pytest, pre-commit,
+mypy während der Messung) bis +50 % verfälscht; dieselbe Software streut zwischen Boots um
+±20 %, gesteuert vom Seiten-Cache der PLE-Plattenstufe (PP4: 165.000 statt ~950.000
+Major-Faults → Prefill 13,6 statt 18,5 s). **PLE-Plattenstufe ist der Tempo-Hebel:** Der
+Offload-Worker liest ~50 Seiten je Decode-Schritt von der USB-NVMe (600–730 Major-Faults/s,
+GPU-Worker fast keine), 4 KiB je 160-Byte-Zeile (25-fache Leseverstärkung), weil die cgroup an
+`MemoryHigh` 16 GiB steht und der Kernel die freigegebenen Seiten sofort verwirft. Umbau auf
+Branch `ple-disk-fast-path` (Worktree `1Cat-vLLM-pledisk`): c84aaaee Messschalter auch für die
+Kaskade, d0cb9bce Seiten gebündelt anfordern (`MADV_WILLNEED`) und nur die Seitentabellen der
+Zeilen freigeben (Kernel 7.0 blendet je Zugriff bis 2 MiB ein — seitengenaue Freigabe hätte
+fault-around-Seiten liegen lassen), 138059c8 Zeilen-Cache `VLLM_PLE_DISK_ROW_CACHE_GIB`
+(satzassoziativ mit Nutzungszählern, zählt in der Host-Prüfung mit). Messreihe v0/v1/Cache
+0,5–4 GiB: `ab_pledisk_2026-10-02.log`. Schritt 4 (nächstes Prefill-Häppchen vorab holen) folgt.
+Verwaiste PLE-Offload-Worker nach Fehlstarts (ppid 1, ignorieren SIGTERM) legten den nächsten
+Start mit Xid 31 lahm; die Messskripte brechen jetzt ab, statt in Waisen zu booten.
+
 **Nachtrag 02.10. abends:** 1Cat hat sechs unserer PRs angenommen: #621 und #723 direkt gemergt;
 #725 (zusammen mit 1Cats #733) als #757, #741 als #758, #752 als #762 und #667 als #765 in eigene
 PRs übernommen (#765: unsere fünf Dateien unverändert). Vier weitere stecken in 1Cats offenen

@@ -13,6 +13,33 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 03.10. nachmittags: #742 bei 1Cat gemergt (über #837), native Gegenprobe, zwei main-Fehler
+behoben.** Produktion unverändert fork-union 138059c8. Bau von #837 (035be3644) aus Quelle,
+`1Cat-vLLM-pr837`, Branch `test-837-pleadmit` (cef0a2e4b = #837 + beide Fixes), nur sm_70, `_C` 46
+Cubins wie die Produktion; Log `build-pr837-2026-10-03.log` (~42 min, MAX_JOBS=4). Skinny-Kernel rechnet
+identisch zu fork-union (nur Guards), Skinny-Dateien bis main 8002bc107 unverändert (#847 nur
+Hash-Buchführung). **Kerneltests:** 91 bestanden, 1 übersprungen; alle 13 SM75-Fälle auf der RTX 8000
+grün (`quality_2026-09-27/pr837-kerneltests-2026-10-03.log`). **main-Fehler 1 → PR #856:**
+`_qwen4exp_ple_cascade_requested` fragt `model.layers.{id}` ab (1-basierte ID statt Schicht ID−1,
+vLLM-Name statt Checkpoint-Name) → ModelOpt-Checkpoints nie zugelassen, PP4 will 47,69 GiB auf GPU 0;
+plus Testkorrektur (scheitert auf jedem SM70-Rechner). **main-Fehler 2 → PR #857:** `sm70/sparse.py`
+`_bmm_blocker` und `sm70/indexer.py` lesen `sm70_sparse` per `get_current_vllm_config()` im Forward →
+DSv4 stirbt im `profile_run`. Messläufe `ab_837*.sh` (A/B/A/B, Logs `ab_837{,b,c}_2026-10-03.log`):
+- Flash-Next auf #837: Greedy stabil 1/3 gleich + 2/3 gleichwertig, Qualität 8/8 gleichwertig. TP2×PP2
+  = Produktion (Prefill 29k 18,7–18,8 gegen 18,5–18,6 s; Decode +2–3 ms). PP4 langsamer (Prefill 13,9–16,0
+  gegen 13,6–13,8 s, Decode kurz 58–66 gegen 52–57 ms): keine Entwurfsliste, **1Cats Kaskade legt 30,34 GiB
+  auf die Platte und nutzt die VRAM-Reste der Pipeline-Karten nicht** (392k gegen 13k Major Faults), kein
+  Zeilen-Cache.
+- **Skinny an/aus gepaart (TP2×PP2):** Prefill 18,7–18,8 gegen 25,6–26,3 s, Decode 59–60 gegen 60–61 ms,
+  KV 804.558 gegen 698.585 Token. PP4 ohne Skinny startet nicht (3/3): OOM 1,56 GiB beim FP8-MTP-Stack
+  `fp8_sm70_moe.py:272 torch.stack(w13_tm_weights)` auf der letzten V100 (PR-Kandidat, doppelte Spitze).
+- **DSv4 PP5 auf #837+Fix: Decode 125–127 gegen 85–86 ms, Prefill 35,7k 17,1 gegen 15,3 s.** Belegt: main
+  nimmt den Indexer-Decode unter vollen Graphen auf Paged-Triton („cuBLAS route needs a live key bound“),
+  wir auf cuBLAS. Weitere Kandidaten: QPN8 nur M=1..8, Skinny-Split-K MXFP4, Compile-Weg. Ungeklärt → vor
+  `fork-main` zerlegen.
+Gesendet: #856, #857, Kommentar #837 (issuecomment-5970301676), #674 aktualisiert; Texte in
+`upstream-contrib/03-1cat-issues/gesendet-2026-10-03-nachmittag.md`.
+
 **Nachtrag 03.10.: Produktion umgestellt auf fork-union 138059c8** (Tag
 `verified-2026-10-03-pledisk`; vorher 368e74fd, Tag `archive-fork-union-2026-10-03`). Reiner
 Fast-Forward: 368e74fd ist Vorfahre, fork-union = fork-next = ple-disk-fast-path = 138059c8, alles

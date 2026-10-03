@@ -34,7 +34,11 @@ AIfreds Scheduler lädt täglich 06:45 DSv4 („tägliches Gebet“) und unterbr
 der wiederholt wurde. Belegte Historie aller Modelle: `docs/journal/LEISTUNGSHISTORIE.md`.
 **Fork-Strategie ab jetzt (Peuqui):** Basis = komplettes 1Cat main mit KernelConfig-Mechanik und
 1Cats angepassten Fassungen unserer PRs, unsere Zusätze obendrauf, ebenfalls als KernelConfig-Felder,
-und als PR anbieten; alte Fassungen erst nach nativer Gegenprobe aufgeben (`ab_main.sh` läuft).
+und als PR anbieten; alte Fassungen erst nach nativer Gegenprobe aufgeben. **Gegenprobe 1Cat main
+a692497bc** (`ab_main.sh`, unsere .so, main-Voreinstellungen ohne Fork-Schalter): 27B auf den RTX =
+Produktion (Greedy 3/3, 41,5 gegen 41,4 s bei 29k) — Beleg für #804; Flash-Next PP4/TP2×PP2 und DSv4
+starten auf main nicht (PLE-Tabelle komplett auf GPU 0 bzw. Marlin für MXFP4 auf SM70 gesperrt) —
+Ursachen offen, siehe HANDOVER.md.
 
 **Nachtrag 02.10. spät:** `fork-next` (gepusht, 46220f58) = 1Cat main 24994ba9 + unsere offenen
 PRs + FLA-Gerätefix + Entwurfsvokabular + zwei neue Fixes, beide als PR an 1Cat: DFlash/DSpark

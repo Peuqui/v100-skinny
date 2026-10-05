@@ -1,0 +1,7 @@
+== PR A GPU 1 (Tesla V100-PCIE-32GB)
+      1 145 passed, 14 warnings in 52.36s
+== PR A GPU 0 (Quadro RTX 8000)
+      1 135 passed, 10 skipped, 14 warnings in 42.42s
+      1 SKIPPED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:126: Volta retains the TurboMind fallback layout
+      1 SKIPPED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:171: the coordinated dense warmup runs on Volta only
+      1 SKIPPED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:209: only Volta holds the TurboMind copy

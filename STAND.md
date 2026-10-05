@@ -13,6 +13,103 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 05.10. spätabends: Produktion = fork-main 65a3bf176.** fork-main force-gepusht (6576724ad → 65a3bf176,
+`--force-with-lease`; altes Archiv `archive-fork-main-2026-10-05b`), Tag `verified-2026-10-05-forkmain-2164365` gepusht.
+Alte Produktion fork-union 138059c82 als Tag `archive-prod-fork-union-2026-10-05` gepusht. Worktree `1Cat-vLLM-work` auf
+Branch `prod-fork-main` (65a3bf176), 64 native Dateien aus dem fork-main-Bau übernommen (bytegleich geprüft), editable
+venv unverändert; Import geprüft (Setter-Op da, Tuning standardmäßig aus). llama-swap: Backup
+`~/.cache/prod-switch-2026-09-29/config.yaml.vor-prod-forkmain-2026-10-05`; alle 13 vLLM-Einträge wie in der Abnahme
+umgeformt (alte `VLLM_SM70_*`/PLE-Env raus, `--moe-backend sm70_skinny` raus, PLE als `--kernel-config`), Restart.
+Kontroll-Boot DSv4 aus dem Produktionseintrag: Greedy 3/3 wortgleich mit fork-main (`prod_smoke_ds_2026-10-05.txt`).
+Neue Greedy-Referenzen zentral in `~/.cache/bench-scripts/greedy_refs.sh` (von `ab_forkmain2_ds.sh` und `ab_async.sh`
+gelesen). Erster Boot je Modell kompiliert neu (Compile-Hash gewechselt).
+
+**Nachtrag 05.10. abends: fork-main neu auf 1Cat main 2164365ab, abgenommen (Tag `verified-2026-10-05-forkmain-2164365`
+auf 65a3bf176).** fork-main = main 2164365ab (u. a. #885 PLE-WILLNEED nativ, #821 Flash-Next-MTP4-Standards, #926) + PR C
+in der #885-Fassung (3) + #715 + Entwurfsvokabular (#821 übernahm nur das volle Vokabular, kein Duplikat) + FLA-Fix + Doku
++ sync-PP-Korrekturen (mit Scheduler-Test, auf main ohne Fix rot `{'0': 3}`) + FP8-Tuning-Feld
+`kernel_config.sm70_fp8.small_shape_tuning` (Standard aus, native Setter-Op, Worker setzt es immer, auch bei
+`deepseek_v4_fp8`). Alter Stand: Archiv `archive-fork-main-2026-10-05b` (gepusht). Revert-Check: geänderte Zeilen aller
+Commits identisch. Nativer Bau 17:20–17:41 (GDN-Baustein vom 04.10. gültig). Tests V100 1348 / RTX 1259 grün; je 21 rot,
+alle ebenso auf reinem main (`upstream-contrib/04-1cat-prs-2026-10-04/tests-main-2164365ab-failing-2026-10-05.txt`).
+Abnahme `ab_forkmain_nm_2026-10-05.log` (A/B/A/B gegen 138059c82; Kaltboots 474–559 s = Compile): PP4 Prefill 13,9–14,0 s
+(Prod 13,6–13,7), Schritt lang 60–63 ms (62–65), kurz 52–54 (52–56); TP2 18,7–18,8 s (18,5–18,6), 56–59 (56–66),
+47–48 (48–49); 27B gleichauf und 3/3 + 8/8 wortgleich; DSv4 Schritt 74–75 ms gegen 85–86 (−13 %), edit 77 gegen 91.
+DSv4-Setter-Lücke gefunden (Policy bei `deepseek_v4_fp8` nie aufgelöst) und behoben; Nachtest
+`ttftgreedy_fix_2026-10-05.log`: TTFT kurz 0,41–0,57 s, zwei Boots wortgleich. Qualität von Hand: alle bestanden.
+Offen: Prefill-Rückstand PP4 ~0,3 s / TP2 ~0,2 s; Push von fork-main (Force) und Umstellung der Produktion.
+
+**Nachtrag 05.10. spätnachmittags: sync unter PP lauffähig gemacht und gemessen (Issue #852).** Zwei Fehler in 1Cats
+PP-Spekulation, deren sync-Pfad nie lief (alle `_pp_broadcast_*`-Pfade nur async): (a) der Scheduler plant eine Anfrage
+mit Entwürfen erneut ein, während ihr Schritt noch in der PP-Pipeline steckt → Assertion `gpu_model_runner.py:5257`
+(Logging: `num_tokens=9 computed=9`, 5 Entwürfe ohne echtes Token); (b) Stufe 0 bekommt nur Token ab
+`num_computed_tokens`, die im Vorschritt angenommenen Entwürfe fehlen → Positionen verschoben, Ausgabe zerfasert. Beide
+Fixes (35 Zeilen, Baum `1Cat-vLLM-syncpp`, Branch `debug-sync-pp-draft-order` 926a0f590 auf fork-main) → sync läuft und
+ist **bitgleich mit async** (alle drei Greedy-Hashes = fork-main async ohne Tuning, Qualität 8/8, gleiche Tokenzahlen).
+A/B `ab_sync_fix_2026-10-05.log` (DSv4 PP5, fork-main sync ohne Tuning gegen Prod async; fork-main async aus
+`ab_fm_notune` daneben, Prod in beiden Reihen gleich): Prefill 36k kalt **61,2 s** (async 15,5; Prod 15,3), edit-TTFT
+3,2 s (1,7) — weniger ist besser; Schritt lang 83–85 ms (async 74–76), kurz 72–75 (70–73), edit 80 (78); code 64,1 tok/s
+(65,6–65,9), edit 70,7 (72,8), prosa 41,8 (43,0) — mehr ist besser; TTFT kurze Prompts 0,2 s (async 0,4). **sync ist bei
+uns nicht schneller**; der #852-Gewinn (TP4×PP2, 8× V100) reproduziert auf PP5 nicht. Offen: warum sync den Prefill
+4× verlangsamt (Häppchen-Pipelining fehlt?), warum async bei kurzen Prompts 0,2 s mehr TTFT braucht.
+
+**Nachtrag 05.10. nachmittags: Ursache TTFT-Aufschlag und Boot-Instabilität fork-main DSv4 gefunden.** py-spy
+(`pyspy_ttft_2026-10-05/`, langsame gegen schnelle Anfrage): 493 Samples ≈ 2,5 s in `_C::fp8_gemm_sm70_out` aus der
+gruppierten Ausgabeprojektion (`sm70_fp8.py:1005`, Schleife über die Gruppen). TurboMind misst bei jeder neuen kleinen
+FP8-Form alle Varianten durch und nimmt die schnellste (`kMeasure`, `select_dense_dispatch_policy_impl` in
+`csrc/sm70_turbomind/ops/awq_sm70_gemm.cu`, Standard an über `VLLM_SM70_FP8_TUNE_SMALL_SHAPES`); die zeitbasierte Wahl
+schwankt von Boot zu Boot (andere Split-K-Reihenfolge, Token kippt). Gegenprobe mit `VLLM_SM70_FP8_TUNE_SMALL_SHAPES=0`
+nur im fork-main-Eintrag (`ab_fm_notune_2026-10-05.log`, RUN_TAG dsnt, A/B/A/B, erste lange Anfrage nicht gezählt):
+TTFT kurze Prompts 0,39–0,57 s (vorher 2,3–2,9), alle drei fm-Boots wortgleich untereinander (je 1/3 = Prod-Referenz,
+deterministisch), Tempo voll erhalten: Schritt lang 74–76 ms (Prod 85–88), kurz 70–73 (84–87), edit 78 (91) — weniger
+ist besser; code 65,6–65,9 tok/s (54,7–54,9), edit 72,8–72,9 (62,1), prosa 43,0 (37,5) — mehr ist besser; Prefill 36k
+15,5 s (15,3). Qualität von Hand 8/8. Prod ohne `VLLM_SM70_QUANT_BACKEND=marlin` und ohne Tuning bleibt 3/3 = Referenz
+(`pvgreedy_2026-10-05.log`): Prod trifft den Pfad nicht, der Rest-Unterschied fork-main ↔ Prod liegt im main-Code und
+ist deterministisch. Fix im Fork noch nicht gebaut (Entscheidung: Schalter als KernelConfig-Feld oder Standard aus).
+
+**Nachtrag 05.10. mittags: async gegen sync unter PP (Issue #852) und TTFT-Ausreißer fork-main.** Produktion unverändert
+138059c82. **sync (`--no-async-scheduling`) funktioniert in unserer Fassung unter PP nicht:** DSv4 + DSpark auf PP5 wirft
+bei der ersten Anfrage `AssertionError` bei `assert num_scheduled_tokens[req_idx] >= draft_len + 1`
+(`gpu_model_runner.py:5257`, `_prepare_inputs`, Worker PP0), die übrigen Worker hängen 30 min in `gloo recv` bis zum
+Timeout (zwei Boots, 09:49 und 10:31); Flash-Next PP4 stirbt in allen drei Boots an `device-side assert triggered` im
+Watchdog der Gruppe `pp_sampled_draft_broadcast`. Die Frage aus #852 (sync +55 %) ist damit für unsere Modelle nicht
+messbar; Bericht an 1Cat bei Bedarf (noch nicht gepostet). Brauchbar bleiben die async-Läufe der Produktion: DSv4 prod-a
+Greedy 3/3 wortgleich, Prefill 15,1–15,3 s, Schritt 85–86 ms; PP4 prod-a/b Greedy 3/3, Prefill 13,6–13,7 s,
+Schritt lang 61–64 ms (Logs `ab_async_2026-10-05.log`, Fehlstarts unter `fehlstart_2026-10-05/`). Fehlstart 1 (09:25,
+alle 10 Boots): `whisper-stt` hielt 3,7 GiB auf GPU 0 (Gedächtnis `reference_whisper_stt_blocks_gpu0_boots`).
+`ab_async.sh` hat ein zweites Argument (`ds` oder `pp4`).
+**TTFT-Ausreißer fork-main (DSv4, kurze Prompts) `ttft_probe.py`, Modus `ttft` in `ab_forkmain2_ds.sh`:** die erste Anfrage
+mit einer neuen kurzen Prompt-Länge kostet auf fork-main 2,3–2,9 s statt 0,5 s (22 Token 2,4 s; 23 Token 2,3 s; 32 Token
+2,9 s; 28 Token ohne Aufschlag; Wiederholung 0,45–0,5 s), zweimal reproduziert (fm-a, fm-b); Prod bei denselben Prompts
+0,43–0,61 s. Erster Chunk = erster Inhalt, also kein Parser-Puffer; JIT-Monitor zeigt bei beiden dieselben Kernel, also
+auch kein Triton-JIT. Bei langen Prompts kein Unterschied (36k: 15,5 gegen 15,3 s; 1867 Token: 1,7 s gleich). Ursache
+offen: fork-main zeigt zusätzlich `paged Triton kernel … cuBLAS route needs a context-bucket` und `FULL=6` Graphen statt
+`FULL=1` beim Profiling; schmal begrenzter Profiler auf PP0 wäre der nächste Schritt.
+
+**Nachtrag 05.10. morgens: fork-main neu auf 1Cat main fb52756f4, Abnahme (DSv4-A/B am selben Morgen nachgeholt).** #873 (Block-QPN8
+Volta-Start) und #874 (DSv4-Kontext-Buckets) sind seit 04.10. upstream gemergt; fork-main = main fb52756f4 + PR C
+(PLE-Plattenstufe, 3 Commits) + #715 + Entwurfsvokabular + FLA-Fix + Doku = 6576724ad (alter Stand: Tag
+`archive-fork-main-2026-10-05`). Patches zeilengleich mit vorher, kein Revert. Tests V100 302 grün, RTX 289 + 13
+Volta-Skips (`upstream-contrib/04-1cat-prs-2026-10-04/tests-fork-main-2026-10-05.txt`). Abnahme `ab_forkmain2.sh`
+(Log `~/.cache/bench-scripts/ab_forkmain2_2026-10-05.log`), A/B/A/B gegen Produktion 138059c82, erste lange Anfrage
+nach Boot nicht gezählt (Zeiten: weniger ist besser):
+Flash-Next PP4 Prefill 29k 13,8–14,0 s (Prod 13,5–13,7), Schritt lang 61–62 ms (60–63), kurz 53–55 (52–55);
+TP2 18,7 s (18,5–18,6), 56–59 ms (55–57), 48–49 (48–52); 27B 41,3–41,4 s (gleich), 56–57 ms, 37 ms (gleich).
+Qualität von Hand: alle 8/8, 27B wortgleich mit Prod. Der Auto-Reboot Mo 04:30 brach die DSv4-Reihe ab; nach dem
+Reboot startet AIfred selbst und lädt 06:45 DSv4.
+**DSv4-Nachholung 05.10., 07:10–07:49** (`ab_forkmain2_ds.sh 6576724ad`, Log `ab_forkmain2ds_2026-10-05.log`, Antworten
+`quality_2026-09-27/fm2-ds-*`; PP5, DSpark K=5, 307.200 Kontext; Reihe kalt, prod-a, fm-a, prod-b, fm-b; AIfred lief
+nur im ersten Lauf (kalt) bis 07:17:47 und blieb danach aus, ohne messbaren Unterschied zu fm-a/fm-b):
+Prefill 36k kalt 15,5 s (Prod 15,3), Boot 249–251 s (241–242); Decode-Schritt lang 73–75 ms (Prod 85–86), kurz
+69–72 (84–87), edit 77 (91) — weniger ist besser; edit 1822 Token gleich lang: 73,8–74,0 tok/s gegen 62,1–62,5
+(+18 %), code 63,6 gegen 55,0–55,2, prosa 42–44 gegen 37,6 (mehr ist besser). Ursache des schnelleren Schritts nicht
+untersucht. Qualität von Hand: beide 8/8 (Kuanda zurückgewiesen, Zug 84 km/h, Logik, Primzahl, Photosynthese,
+Rayleigh richtig; fm nur anders formuliert). **Greedy gegen Referenz: Prod 3/3 wortgleich in beiden Läufen, fm 0/3
+(kalt, a) und 1/3 (b)** — fm ist über Boots hinweg nicht bitstabil (Prompt 2 und 3 wechseln zwischen fm-a und fm-b),
+Inhalt gleichwertig (Formulierungsvarianten, Rechnung und Code richtig). Ursache offen. Auffällig: erste kurze
+Code-Anfrage auf fm TTFT 2,9 s statt 0,5 s (Prod). Verified-Tag auf fork-main bis zur Klärung nicht gesetzt.
+Die MTP4-GDN-Merges (#924–#936) bringen bei uns keinen sichtbaren Gewinn; der Prefill-Rückstand PP4 ~0,3 s bleibt offen.
+
 **Nachtrag 03.10. nachmittags: #742 bei 1Cat gemergt (über #837), native Gegenprobe, zwei main-Fehler
 behoben.** Produktion unverändert fork-union 138059c8. Bau von #837 (035be3644) aus Quelle,
 `1Cat-vLLM-pr837`, Branch `test-837-pleadmit` (cef0a2e4b = #837 + beide Fixes), nur sm_70, `_C` 46

@@ -1,0 +1,4 @@
+== PR B GPU 1 (Tesla V100-PCIE-32GB)
+      1 104 passed, 14 warnings in 53.82s
+== PR B GPU 0 (Quadro RTX 8000)
+      1 104 passed, 14 warnings in 51.94s

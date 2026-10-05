@@ -1,0 +1,17 @@
+== neue Tests PR A auf main f551e0afe, V100
+        # QPN8 layers never carry and failed the engine start.
+        # QPN8 layers never carry and failed the engine start.
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_without_turbomind_copy_keeps_one_layout[9]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_without_turbomind_copy_keeps_one_layout[64]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_without_turbomind_copy_keeps_one_layout[512]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_warmup_follows_the_held_layout[True]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_warmup_follows_the_held_layout[False]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_turbomind_copy_follows_decode_rows[1-5-None-False]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_turbomind_copy_follows_decode_rows[8-0-None-False]
+FAILED tests/kernels/quantization/test_sm70_qpn8_block_fp8.py::test_volta_turbomind_copy_follows_decode_rows[4-5-False-False]
+8 failed, 3 passed, 85 deselected, 14 warnings in 4.87s
+== neue Tests PR B auf main f551e0afe, V100
+FAILED tests/models/test_deepseek_v4_sm70_routes.py::test_indexer_takes_cublas_only_under_a_bounded_key_length[True-None-True]
+FAILED tests/models/test_deepseek_v4_sm70_routes.py::test_indexer_takes_cublas_only_under_a_bounded_key_length[True-65536-False]
+FAILED tests/v1/cudagraph/test_cudagraph_dispatch.py::TestCudagraphDispatcher::test_dsv4_context_buckets_are_derived_for_mtp_on_sm70
+3 failed, 1 passed, 72 deselected, 14 warnings in 3.21s

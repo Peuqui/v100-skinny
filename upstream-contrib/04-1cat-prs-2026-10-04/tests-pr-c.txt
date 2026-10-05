@@ -1,0 +1,29 @@
+== PR C GPU 1 (Tesla V100-PCIE-32GB)
+........................................................................ [ 40%]
+........................................................................ [ 80%]
+....................................                                     [100%]
+=============================== warnings summary ===============================
+../../../vllm/venv/lib/python3.12/site-packages/torch/jit/_script.py:362: 14 warnings
+  /home/mp/vllm/venv/lib/python3.12/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+180 passed, 14 warnings in 60.36s (0:01:00)
+== PR C GPU 0 (Quadro RTX 8000)
+...sss.................................................................. [ 40%]
+........................................................................ [ 80%]
+....................................                                     [100%]
+=============================== warnings summary ===============================
+../../../vllm/venv/lib/python3.12/site-packages/torch/jit/_script.py:362: 14 warnings
+  /home/mp/vllm/venv/lib/python3.12/site-packages/torch/jit/_script.py:362: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+177 passed, 3 skipped, 14 warnings in 57.43s
+SKIPPED [3] tests/models/qwen4_exp/test_ple.py:168: requires an exact SM70 CUDA device
+== Tests von PR C auf fork-main ohne PR C (PLE-Dateien = main f551e0afe), V100
+ERROR tests/models/qwen4_exp/test_ple.py
+ERROR tests/models/qwen4_exp/test_ple_row_cache.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 2 errors during collection !!!!!!!!!!!!!!!!!!!!
+14 warnings, 2 errors in 1.99s
+neue Testfunktionen: 15; auf Code ohne PR C: beide Dateien scheitern beim Sammeln (ImportError PLERowCache)

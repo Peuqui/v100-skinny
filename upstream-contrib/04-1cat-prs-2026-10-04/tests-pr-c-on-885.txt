@@ -1,0 +1,23 @@
+== PR C auf #885 (a78618460), GPU 1 (Tesla V100-PCIE-32GB)
+10 failed, 183 passed, 14 warnings in 71.94s (0:01:11)
+== PR C auf #885 (a78618460), GPU 0 (Quadro RTX 8000)
+SKIPPED [3] tests/models/qwen4_exp/test_ple.py:169: requires an exact SM70 CUDA device
+10 failed, 180 passed, 3 skipped, 14 warnings in 70.55s (0:01:10)
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_retains_and_gathers_disk_shards
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_decode_short_gather_matches_prefill[0]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_decode_short_gather_matches_prefill[1]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_decode_short_gather_matches_prefill[80]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_decode_short_gather_matches_prefill[128]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_decode_short_gather_matches_prefill[129]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_decode_short_gather_matches_prefill[256]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_gather_rejects_invalid_ids[1--1]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_gather_rejects_invalid_ids[80-8]
+FAILED tests/models/qwen4_exp/test_ple.py::test_ngram_embedding_disk_gather_rejects_invalid_ids[129-8]
+PASSED tests/models/qwen4_exp/test_ple.py::test_disk_row_cache_counts_against_the_host_share
+PASSED tests/models/qwen4_exp/test_ple.py::test_disk_gather_unmaps_what_fault_around_mapped[False]
+PASSED tests/models/qwen4_exp/test_ple.py::test_disk_gather_unmaps_what_fault_around_mapped[True]
+PASSED tests/models/qwen4_exp/test_ple.py::test_disk_gather_releases_page_tables_not_whole_shards[False]
+PASSED tests/models/qwen4_exp/test_ple.py::test_disk_gather_releases_page_tables_not_whole_shards[True]
+PASSED tests/models/qwen4_exp/test_ple.py::test_cascade_worker_keeps_a_row_cache_only_when_configured
+PASSED tests/models/qwen4_exp/test_ple.py::test_disk_gather_serves_repeated_rows_from_the_row_cache
+================ 7 passed, 100 deselected, 14 warnings in 4.18s ================

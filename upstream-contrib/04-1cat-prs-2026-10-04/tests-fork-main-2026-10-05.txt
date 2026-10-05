@@ -1,0 +1,8 @@
+== fork-main 6576724ad GPU 1 (V100)
+302 passed, 18 warnings in 114.34s (0:01:54)
+== fork-main 6576724ad GPU 0 (RTX8000)
+SKIPPED [3] tests/models/qwen4_exp/test_ple.py:168: requires an exact SM70 CUDA device
+SKIPPED [2] tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:126: Volta retains the TurboMind fallback layout
+SKIPPED [2] tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:171: the coordinated dense warmup runs on Volta only
+SKIPPED [6] tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:209: only Volta holds the TurboMind copy
+289 passed, 13 skipped, 22 warnings in 102.53s (0:01:42)

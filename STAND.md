@@ -13,6 +13,57 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 06.10. mittags: Produktion = fork-main ee5813de2 mit PP4-Aufteilung 11,11,14,12 (Freigabe Peuqui).**
+fork-main = 65a3bf176 + Host-Allreduce (mzen17, `kernel_config.sm70_host_reduce`, Standard an) + PLE-Policy-Fix +
+Warmup folgt `sm70_fp8.small_shape_tuning` + Test-Reparaturen; Fork-Tests V100 1390 / RTX 1301 grün. Abnahme
+`ab_acc_2026-10-06.log` (A/B/A/B gegen 65a3bf176, weniger ist besser): 27B TP2 Prefill 41,4 s gleich, Schritt kurz
+33–34 statt 37 ms, lang 53–54 statt 56–57; Flash-Next TP2 Prefill 18,7–18,8 gleich, kurz 45–47 statt 47–48;
+PP4 Prefill 13,1–13,3 statt 13,8–14,0 s, Decode gleich; DSv4 (`ab_accds_2026-10-06.log`) Greedy 3/3, 15,5 s /
+75–76 / 70–73 / 78 ms. Qualität von Hand gelesen; 27B zeichengleich mit Prod, Flash-Next in seiner bekannten Streuung.
+Smoke der Produktionseinträge `prod_smoke_2026-10-06.log`: 27B 3/3, PP4 2/3. Tag `verified-2026-10-06-forkmain-hostreduce`,
+Config-Backup `config.yaml.vor-prod-ee5813de2-2026-10-06`, Referenzen in `greedy_refs.sh`.
+**sync-PP mit MTP noch fehlerhaft:** Flash-Next PP4 `--no-async-scheduling` (`ab_syncpp4_2026-10-06.log`) läuft, aber
+direkt nach dem Prefill landet ein falsches Token in der Ausgabe („EinEin…“, „Umpython…“); DSv4/DSpark sauber.
+sync-PR deshalb zurückgehalten. PRs #1004/#1005/#1006 an 1Cat gesendet (`upstream-contrib/06-1cat-prs-2026-10-06/`).
+
+**Nachtrag 06.10. vormittags: 27B PP2 gegen TP2 (RTX, Produktion 65a3bf176, A/B/A/B).** Logs
+`~/.cache/bench-scripts/ab_pp2_2026-10-06.log` (36k) und `ab_pp2_long_2026-10-06.log` (81k Prompt-Token). Greedy 3/3
+gleich Referenz, alle acht Qualitätsantworten PP2 und TP2 zeichengleich (Kuanda zurückgewiesen = bestanden).
+Prefill 36k: PP2 24,7–24,9 s gegen TP2 41,4–41,5 s (−40 %); 81k: 86,0–86,3 s gegen 134,2–134,6 s (−36 %).
+Decode-Schritt kurz: PP2 52 ms gegen TP2 37 ms (+40 %); nach 81k: 141–142 ms gegen 87–88 ms (+62 %). Präfix-Treffer
+81k: TTFT 3,1–3,6 s gegen 2,3–2,7 s. Folge: PP2 gewinnt nur bei kaltem Langprompt mit kurzer Antwort; mit Präfix-Cache
+(Systemprompt) und langen Antworten bleibt TP2 klar vorn. Weg: TP2 behalten, Allreduce mit Rechnung überlappen.
+vLLMs DBO (`--enable-dbo`, `gpu_ubatch_wrapper`) ist an DeepEP-all2all gebunden (Assert in `config/vllm.py`) und
+nicht direkt nutzbar; die Ubatch-Aufteilung könnte Grundlage sein. Schätzung: 48 % NCCL-Anteil → TP2-Prefill im
+Idealfall ~22–25 s bei unverändertem Decode.
+
+**Nachtrag 06.10. früh: Prefill-Profile (nsys) und PP4-Schichtaufteilung.** `profile_prefill_nsys.sh` (nsys nur
+zwischen /start_profile und /stop_profile, vLLM `--profiler-config '{"profiler":"cuda"}'`, Auswertung je GPU aus der
+SQLite-Ausgabe). **27B TP2 auf den RTX, 9,7k Prompt:** 47,8 % der Kernelzeit NCCL-Allreduce (6,2 s von 13,0 s je GPU);
+die großen GEMMs laufen schon mit cuBLAS-Turing-Kerneln (`turing_fp16_s1688gemm`, ~20 %), unsere Volta-Entpacker ~7 %.
+NCCL-Mikrobenchmark RTX↔RTX: alle Protokolle/Puffer ~2,1 GB/s bei großen Nachrichten (LL128 1,25) — Grenze ist die
+Leitung ohne P2P; Turing-Doppelbau hilft hier kaum, Hebel wären PP2 oder Overlap (Peuqui: PP2 gegen TP2 messen, dann
+Overlap bewerten). **Flash-Next PP4 (Stufen 0/1 RTX, 2/3 V100):** RTX-Stufen ~3,9 s Rechenzeit gegen 2,3–2,7 s auf V100;
+Triton-Attention `_qsa_sparse_paged_gqa_splitk` auf RTX 1,7× langsamer (1,37 s gegen 0,80 s für 18 Aufrufe), unsere
+Skinny-MoE nur +17 %. **Aufteilung 11,11,14,12** statt 12,12,12,12 (11,11,13,13: OOM auf GPU 3, letzte Stufe mit
+lm_head+MTP): Prefill 36k 13,1–13,2 s gegen 13,8–14,0 (−5 %), Schritt lang 60–62 gegen 60–61 ms, kurz 53–54 gegen 52–54,
+edit 54 gegen 53 — weniger ist besser; Qualität bestanden (`ab_partition_2026-10-06.log`). Vorschlag für Produktion,
+nicht umgestellt (Peuquis Okay).
+
+**Nachtrag 06.10. nachts: Host-Allreduce für TP2 ohne P2P (mzen17, fork-main 81e95a1cd, nicht in Produktion).**
+2-Rang-FP16-Allreduce über gepinnten Host-Speicher, Kernel aus mzen17/v100-skinny-unify `kernels/skinny_ar.cu` (MIT,
+Vermerk im Quelltext, Co-authored-by Mike Zeng), umgebaut auf Kanäle mit Handle; `csrc/sm70_host_reduce.cu`,
+`Sm70HostReduceCommunicator` hinter dem SM70-Ring in der Allreduce-Kette, nur 2 Ränge ohne NCCL-P2P, FP16, ≤256 KiB;
+`kernel_config.sm70_host_reduce` (enabled, max_bytes). Test `tests/distributed/test_sm70_host_reduce.py` (bitgleich mit
+NCCL eager und im CUDA-Graph) auf V100- und RTX-Paar grün. Boot meldet `['SM70_HOST_REDUCE', 'PYNCCL']` für `tp:0`.
+A/B `ab_hostreduce_2026-10-05.log` gegen Produktion 65a3bf176 (ms/Schritt, weniger ist besser): 27B TP2 kurz 37 → 33,
+lang 56–57 → 53–54, edit 39 → 35, Prefill 41,4 s gleich, Greedy 3/3 und Qualität 8/8 wortgleich mit Prod; Flash-Next
+TP2×PP2 kurz 47–48 → 45–46, lang 56–59 → 53–54, code 86 → 90 tok/s, edit 104,6 → 109 tok/s, Qualität bestanden.
+Produktion bleibt bis Peuquis Okay unverändert; PR an 1Cat erst nach Rücksprache (und Hinweis an mzen17).
+Außerdem: vier überflüssige Env-Zeilen aus den Produktionseinträgen entfernt (`VLLM_SM70_E5_CACHE` tot,
+`VLLM_SM70_INDEXER_DECODE_CUBLAS=1`, `VLLM_SM70_ASYNC_CPU_TRACE=0`, `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=512` = Standard),
+Backup `config.yaml.vor-env-aufraeumen-2026-10-05`.
+
 **Nachtrag 05.10. spätabends: Produktion = fork-main 65a3bf176.** fork-main force-gepusht (6576724ad → 65a3bf176,
 `--force-with-lease`; altes Archiv `archive-fork-main-2026-10-05b`), Tag `verified-2026-10-05-forkmain-2164365` gepusht.
 Alte Produktion fork-union 138059c82 als Tag `archive-prod-fork-union-2026-10-05` gepusht. Worktree `1Cat-vLLM-work` auf

@@ -27,6 +27,53 @@ Betriebsstand (SSOT): `STAND.md`, Nachträge 05.10. ganz oben.
   bei uns nicht schneller (Prefill 4× langsamer, Decode etwas langsamer).
 - `Alfinaa9442/v100-skinny` = Schadsoftware-Köder (Kopie von dnv2003 + ZIP). Nicht anfassen.
 
+## Nacht 05./06.10. (autonom)
+
+- **Host-Allreduce** (mzen17, fork-main 81e95a1cd + fixup 06cd400bc: Feld aus dem Compile-Hash): 27B TP2 Decode −10 %,
+  Flash-Next TP2×PP2 −4 %, bitgleich; nicht in Produktion (Peuquis Okay), PR erst nach Rücksprache + Hinweis an mzen17.
+- **21 rote Tests auf 1Cat main geklärt:** 10 = Fehler aus #885 (PLE-Policy im Ladepfad + falscher Fehlertyp nativ) →
+  Branch `pr-ple-row-gather-policy` (23e8b97bb, mit C++); 11 = veraltete Test-Attrappen/Erwartungen → Branch
+  `pr-main-test-repairs` (43cce7ded). Beide auch in fork-main (d12c663b8, fae938623). Entwürfe in
+  `upstream-contrib/05-1cat-prs-2026-10-05/` (dazu sync-PP und FP8-Tuning von gestern). Fingerprint-Test: Bisect →
+  a096d6d28; mehrere ungenutzte Felder gehen in den Compile-Hash (im Entwurf als Beobachtung).
+- Prüfbaum `1Cat-vLLM-mainchk` (main 17310de95) wurde einmal voll gebaut, um die PRs auf reinem main zu belegen.
+
+## 06.10. vormittags
+
+- 27B PP2 gegen TP2 gemessen (STAND-Nachtrag 06.10. vormittags): PP2 Prefill −40 %, Decode +40–62 %. TP2 bleibt;
+  Overlap von Allreduce und Rechnung im TP2-Prefill wartet auf Peuquis Entscheidung.
+
+## 06.10. mittags — ERLEDIGT bis auf sync-MTP (Stand 13:25)
+
+- **Produktionsumstieg erledigt** 13:00: ee5813de2 + PP4 11,11,14,12, Smoke ok, Tag `verified-2026-10-06-forkmain-hostreduce`,
+  Referenzen in `greedy_refs.sh` (STAND-Nachtrag 06.10. mittags). Messfenster bei den Peers beendet.
+- **Offen:** sync unter PP mit MTP (Flash-Next) liefert kaputte erste Token → sync-PR bleibt zurück, erst Ursache.
+  Danach Qwen3.6-27B-FP8-Vergleich für #1006 (Download läuft) und Overlap-Bewertung.
+
+### Verlauf (historisch)
+
+- **PRs an 1Cat eingereicht:** #1004 (PLE-Policy), #1005 (zwölf Test-Reparaturen), #1006 (FP8-Tuning-Feld, Standard
+  aus). Texte: `upstream-contrib/06-1cat-prs-2026-10-06/`. **sync-PP-PR noch zurückgehalten** (Branch
+  `pr-sync-pp-spec-decode` 3c0cdb4fe, Text dort): braucht den Flash-Next-PP4-sync-Nachweis aus Schritt 3 der Kette,
+  dann Platzhalter `FLASHNEXT_SYNC_RESULT` füllen und senden.
+- **fork-main ee5813de2 gepusht** (65a3bf176 + Host-Allreduce + PLE-Fix + Warmup folgt FP8-Feld + Test-Reparaturen),
+  Fork-Tests V100 1390 / RTX 1301 grün.
+- **Messkette `chain-acc-2026-10-06`** (systemd-User-Unit, Skript `~/.cache/bench-scripts/chain_acc_2026-10-06.sh`):
+  1) A/B q27/tp2/pp4 (PP4 mit 11,11,14,12) → `ab_acc_2026-10-06.log`; 2) DSv4 once → `ab_accds_2026-10-06.log`;
+  3) Flash-Next PP4 `--no-async-scheduling` once → `ab_syncpp4_2026-10-06.log`. 27B und TP2 ausgewertet: Decode −10 %
+  bzw. −4 %, Qualität ok. Steht die Unit auf SIGSTOP (Agent-Orc-Slot), mit `systemctl --user kill --signal=SIGCONT
+  chain-acc-2026-10-06` fortsetzen.
+- **Danach Produktionsumstieg** (Peuqui hat Host-Allreduce und PP4-Aufteilung freigegeben): `1Cat-vLLM-work` Branch
+  `prod-fork-main` auf ee5813de2, native Dateien aus `1Cat-vLLM-fork-main` kopieren (rsync + cmp, Muster in STAND),
+  PP4-Einträge (4 Stück, alle `VLLM_PP_LAYER_PARTITION=12,12,12,12`) auf 11,11,14,12, Config-Backup vorher; neue
+  Greedy-Referenzen in `greedy_refs.sh`; Verified-Tag; Messfenster-Ende bei allen Peers melden.
+- **Download Qwen/Qwen3.6-27B-FP8** (Unit `dl-qwen36-27b-fp8`, startet nach der Kette) nach
+  `/home/mp/models/Qwen3.6-27B-FP8-Dense-GDN`: für den direkten Vergleich zu #1006 (1Cats Modell) auf 2× V100 TP2,
+  Tuning an/aus.
+- **Slot-Regel:** Agent-Orc fragt Slots an → nach dem laufenden Lauf anhalten, „jetzt“, nach „fertig“ weiter
+  (Gedächtnis `feedback_slots_for_other_agents`).
+- Danach: Overlap-Bewertung (Vorstudie im Gedächtnis `project_todo_2026-10-05_sync_bitstable_ttft`).
+
 ## Nächste Schritte
 
 1. PR-Entwürfe an 1Cat: sync-PP-Korrektur (Commit 17024e531) und FP8-Tuning-Feld (65a3bf176) — Peuqui vorher zeigen.

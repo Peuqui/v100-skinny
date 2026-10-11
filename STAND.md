@@ -13,6 +13,33 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 11.10. nachts: Oktober-Plan 3 (adaptive Prüflänge) für DSv4 nicht lohnend; sync-PP-Schutz korrigiert.**
+
+1Cat kürzt die Prüflänge nur über `dspark_confidence_threshold`, und das verlangt `--no-async-scheduling`. Upstream
+#52228 bringt einen Schätzer für Drafter ohne Konfidenzkopf; 1Cat hat ihn nicht.
+
+Absturz: Mit Schwelle brachen alle Stufen ab 1 mit `assert total_num_scheduled_tokens > 0` ab
+(`dsv4_av_2026-10-11.log`). Ursache war unser sync-PP-Schutz 80355b854, der eine Anfrage nur zurückhielt, solange sie
+Entwürfe hatte. Liefert der Konfidenzschnitt keine Entwürfe, plante der Scheduler −3 Token. Korrektur 7d5483a6e
+(`fork-sync-pp-confidence`, Worktree `1Cat-vLLM-ppisend`) hält jede Anfrage im Decode zurück, solange ihr Schritt
+unterwegs ist (`num_computed_tokens >= num_tokens`); Prefill-Häppchen verzahnen weiter. Neuer Scheduler-Test
+reproduziert −3. `tests/v1/core` 637 grün, 1 rot (`test_abort_request_when_structured_output_fsm_cannot_advance`, auch
+auf 1Cat main rot).
+
+Messung je ein Boot (`dsv4_av_2026-10-11.log` async, `dsv4_av2_2026-10-11.log` mit Korrektur):
+
+| DSv4 PP5 | Prosa / Code / Edit (tok/s, mehr ist besser) | Schritt Prosa (ms, weniger ist besser) | erstes Token 11,9k-Prompt (s, weniger ist besser) |
+|---|---|---|---|
+| async (Produktion) | 42,9–43,0 / 65,7–65,8 / 72,4–72,9 | 70 | 5,2–5,4 |
+| sync | 41,7 / 63,8–63,9 / 69,9–70,0 | 72 | 19,1–19,2 |
+| sync, Schwelle 0,3 | 36,1–36,8 / 62,9 / 62,9–65,5 | 82–83 | 19,1–19,2 |
+| sync, Schwelle 0,6 | 25,6–29,7 / 55,5–56,9 / 49,3–68,8 | 109–126 | 19,0–19,2 |
+
+Die Schwelle senkt die Annahme pro Runde kaum (Prosa 3,02 → 3,01/2,92), macht aber jeden Schritt teurer.
+Wechselnde Prüflängen kosten auf SM70 mehr, als die gesparten Positionen bringen. Bei 0,6 war 1 von 3 Greedy-Texten
+anders. sync-Prefill unter PP ist 3,6-mal langsamer (die Häppchen verzahnen nicht). Ergebnis: nicht weiterverfolgen,
+auch kein Port für Flash-Next.
+
 **Nachtrag 11.10. spätabends: PP4-Prefill Flash-Next — PLE-Abruf auf Stufe 0 nicht überlappt (nur Befund, kein Umbau).**
 nsys-Profil der Produktion (`profile_prefill_nsys.sh`, Log `profile_pp4_fmn_2026-10-11.log`, `nsys/pp4-fmn/`, 9697 Token in
 5,66 s), ausgewertet mit `tools/nsys_stage_overlap.py` (NCCL-Kernel herausgerechnet, sie warten aktiv):

@@ -13,6 +13,24 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 11.10. abends: Produktion = fork-main-next 2991fbfdc (Freigabe Peuqui, prosa-Rest akzeptiert).**
+fork-main-next = 1Cat main be3722bc0 (~570 Upstream-Commits seit 2164365ab) + unsere 12 Commits (PLE-Plattenstufe,
+Zeilen-Cache, hc_head fp16, Entwurfsvokabular, FLA pro Gerät, sync-PP-Fix, Host-Allreduce, FP8-Tuning aus, Doku) + drei
+Korrekturen an 1Cats Policy-Migration: (1) `eager_break_during_capture` las die Breakable-Graph-Policy beim Import
+(#1137) → DSpark-Annahme 1,0 statt 3,0, ~14 statt ~40 tok/s, auf main be3722bc0 auch andere Greedy-Ausgabe; (2) der
+Spec-Target-Profile-Scope baute pro Schritt zweimal eine `RuntimeTraceConfig` (≈2 ms/Schritt auf PP0); (3) der
+DSpark-Drafter baute pro Schicht und Schritt eine `Sm70SparseConfig` (≈0,4 ms/Schritt). Gefunden per Bisect
+(`bisect_dspark_2026-10-11.log`), Worker-Env-Vergleich, nsys-Lückenanalyse (`tools/nsys_gap_diff.py`) und py-spy
+(`tools/pyspy_raw_diff.py`). Abnahme (A/B/A/B gegen ee5813de2, `ab_fmnext_2026-10-11.log`, `ab_fmnext_ds5_2026-10-11.log`):
+Flash-Next PP4 und TP2×PP2 sowie 27B in Tempo und Qualität gleich (27B bitgleich, Flash-Next-Abweichungen händisch
+gelesen); DSv4 zeichengleich 8/8, Greedy 3/3, Tempo gleich bis auf prosa −0,7 % (42,5–42,7 vs. 42,9–43,0 tok/s) —
+Peuqui: vorerst akzeptiert, bei der nächsten Messreihe mitmessen. Umstellung: Tags `archive-prod-fork-main-2026-10-11`
+(ee5813de2) und `verified-2026-10-11-forkmainnext` gepusht, `prod-fork-main` auf 2991fbfdc, 67 Build-Produkte aus
+`1Cat-vLLM-fork-main` per rsync (cmp 67/67 gleich), llama-swap-Einträge unverändert (hatten schon die Abnahmeform),
+Kontroll-Boot DSv4 Greedy 3/3 identisch. Greedy-Referenzen in `greedy_refs.sh` erneuert (Backup `.vor-2026-10-11`).
+PR an 1Cat in Vorbereitung: `pr-dspark-policy-regressions` (drei Commits auf be3722bc0, Entwurf
+`upstream-contrib/07-1cat-prs-2026-10-11/`).
+
 **Nachtrag 06.10. mittags: Produktion = fork-main ee5813de2 mit PP4-Aufteilung 11,11,14,12 (Freigabe Peuqui).**
 fork-main = 65a3bf176 + Host-Allreduce (mzen17, `kernel_config.sm70_host_reduce`, Standard an) + PLE-Policy-Fix +
 Warmup folgt `sm70_fp8.small_shape_tuning` + Test-Reparaturen; Fork-Tests V100 1390 / RTX 1301 grün. Abnahme

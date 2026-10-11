@@ -13,6 +13,24 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 11.10. spätabends: PP4-Prefill Flash-Next — PLE-Abruf auf Stufe 0 nicht überlappt (nur Befund, kein Umbau).**
+nsys-Profil der Produktion (`profile_prefill_nsys.sh`, Log `profile_pp4_fmn_2026-10-11.log`, `nsys/pp4-fmn/`, 9697 Token in
+5,66 s), ausgewertet mit `tools/nsys_stage_overlap.py` (NCCL-Kernel herausgerechnet, sie warten aktiv):
+- Die Stufen überlappen (2–4 Karten gleichzeitig 73 % der Zeit), die Pipeline taktet alle ~650 ms ein Häppchen ein.
+- Je Häppchen rechnet GPU 1 600–620 ms, GPU 0 547 ms und GPU 2/3 ~470/~450 ms.
+- GPU 0 wartet vor jedem Häppchen ~108 ms auf die PLE-Zeilen. Der V2-Runner kopiert die Token-IDs im Modell-Stream zurück
+  (`ple_offload.wait_d2h` ~280 ms bis zum Ende des vorigen Häppchens), erst dann geht `send_request` an den Plattenleser.
+- Der Worker sammelt eine Schicht erst nach `wait_reset`, also nach dem Forward des vorigen Häppchens. Bei „mapped“
+  sammelt er direkt in den Puffer, aus dem die GPU liest.
+
+Das Profil vom 06.10. (alte Aufteilung) hatte ~810 ms Takt bei ~160 ms PLE-Lücke.
+
+Hebel: Prefill-Anfragen mit CPU-bekannten Prompt-Token sofort senden, Eingaben im Worker übernehmen und dann freigeben,
+vorab in einen zweiten Puffer sammeln. Erwartung nur bis zum Takt von GPU 1, also ~5–7 % Prefill bei langen Prompts,
+mit neuer Aufteilung vielleicht ~10 %. Nicht umgesetzt; nebenläufiger Umbau an Connector, Worker und Runner. Upstream
+#49274 (nicht-blockierende PP-Metadaten, Oktober-Plan 7) bringt hier wenig: Upstream maß mit zwei gleichzeitigen
+Anfragen, unser Decode sendet schon metadatenfrei.
+
 **Nachtrag 11.10. abends: Produktion = fork-main-next 2991fbfdc (Freigabe Peuqui, prosa-Rest akzeptiert).**
 fork-main-next = 1Cat main be3722bc0 (~570 Upstream-Commits seit 2164365ab) + unsere 12 Commits (PLE-Plattenstufe,
 Zeilen-Cache, hc_head fp16, Entwurfsvokabular, FLA pro Gerät, sync-PP-Fix, Host-Allreduce, FP8-Tuning aus, Doku) + drei

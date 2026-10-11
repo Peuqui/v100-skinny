@@ -1,8 +1,31 @@
-# Übergabe — Stand 05.10.2026 spätabends (Projekt vllm-research)
+# Übergabe — Stand 11.10.2026 abends (Projekt vllm-research)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln in `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
-Betriebsstand (SSOT): `STAND.md`, Nachträge 05.10. ganz oben.
+Betriebsstand (SSOT): `STAND.md`, Nachtrag 11.10. abends unter „Laufzeitumgebung“.
+
+## Stand 11.10.2026 abends
+
+- **Produktion:** fork-main-next 2991fbfdc (1Cat main be3722bc0 + unsere Commits + 3 DSpark-Policy-Fixes), Tag
+  `verified-2026-10-11-forkmainnext`. DSv4 prosa −0,7 % akzeptiert, bei der nächsten DSv4-Reihe mitmessen.
+- **Upstream-Runde abgeschlossen:**
+  - #1183 DSpark-Policy-Regressionen offen.
+  - #1187 FP8-Small-Shape-Tuning standardmäßig aus, mit Test, offen; Branch `pr-sm70-fp8-tune-default-off` 739083e52.
+  - #1006 geschlossen mit Verweis auf #1187.
+  - #715 offen und auf main weiter nötig (konfliktfrei).
+  - Texte in `upstream-contrib/07-1cat-prs-2026-10-11/`.
+- **Kaputte Tests auf 1Cat main:**
+  - `test_sm70_warmup.py` hat 14 Fehlschläge (`warmup.envs`, `native_policy`-Fakes); #903 (areslp) schreibt sie um,
+    deshalb kein eigener PR (Duplikat).
+  - `test_legacy_dispatch_snapshot` schlägt ebenfalls fehl.
+- **Nächstes:** Warteschlange nach Sinnfälligkeit — PP-Aufteilung, Oktober-Plan 1/3/4/5/6/7, sync-PP+MTP,
+  Turing-Doppelbau.
+- **Vorhandene Messzweige im Worktree `1Cat-vLLM-bisect`** (lokal):
+  - `meas-fp8default-plus-1183`
+  - `pr-fp8-default-backup-e9732e9e0`
+  - `pr-fp8-with-testrepair-23ee7c9fa`
+
+## Stand 05.10.2026 spätabends (historisch)
 
 ## Läuft gerade
 

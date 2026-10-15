@@ -10,9 +10,8 @@ Betriebsstand (SSOT): `STAND.md`, Nachtrag 11.10. abends unter „Laufzeitumgebu
   `verified-2026-10-15-forkmain1013`; alte Produktion Tag `archive-prod-fork-main-2026-10-15` (2991fbfdc), als Worktree
   `1Cat-vLLM-oldprod` für Vergleiche. Details STAND-Nachtrag 15.10. früh.
 - **Fork-Branch `fork-main-1013`** steht eine Teständerung weiter (9fad9aaa0, PLE-Tests); Produktion braucht sie nicht.
-- **PR-Branches fertig, nicht gesendet** (PRs bei 1Cat nur auf Peuquis Freigabe): `pr-gdn-traced-prefill-norm`
-  (bdaa680b1, Absturz jedes Flash-Next/GDN-Boots auf main), `pr-ple-test-policy-env` (0ec27825d, vier rote Tests).
-  Texte in `upstream-contrib/08-1cat-prs-2026-10-15/`. Offen von uns weiter #715, #1183, #1187 (keiner gemergt).
+- **PRs gesendet 15.10.:** #1213 (GDN-Prefill-Norm, Absturz auf Turing-Stufen ohne opake Grenze) und #1214 (vier rote
+  PLE-Tests). Texte `upstream-contrib/08-1cat-prs-2026-10-15/body-*.md`. Offen von uns weiter #715, #1183, #1187.
 - **Mitmessen bei der nächsten Reihe:** PP4 langer Kontext ~1 % (im Rauschen, GPU-Arbeit identisch).
 - **Nächstes laut Peuqui:** Kernel-Optimierung (Warteschlange nach Sinnfälligkeit: PP4-Prefill-PLE-Überlappung auf
   Stufe 0, Oktober-Plan 4/5c/6, Turing-Doppelbau).

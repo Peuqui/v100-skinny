@@ -13,6 +13,28 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 15.10. vormittags: PP4-Aufteilungs-Sweep Flash-Next (Produktion unverändert 11,11,14,12).**
+Logs `partsweep_2026-10-15.log`, `partsweep2_…`, `partsweep3_…` (je Variante Kaltstart ungezählt + Messlauf, Basis
+vorher und nachher). Kalter 29k-Prefill (Prompts 2–4, s) / Schritt 29k (ms) / KV-Pool (Token):
+- 11,11,14,12 (Produktion, 2×): 13,1–14,1 / 61–63 / 446.955
+- 10,10,16,12: 12,5 / 62 / 281.061 (Prefill −5 %, KV −37 %, voller Kontext 262.144 passt noch)
+- 9,11,16,12: 13,1–13,2 / 61–63 / 281.061 (Stufe 1 bremst)
+- 10,11,15,12: 13,1–13,7 / 61–63 / 436.456
+- 10,10,15,13: Stufe 3 OOM (V100 32 GiB mit lm_head + MTP verträgt keine 13 Schichten); 9,10,17,12: kein voller
+  Kontext mehr (KV < 262.144).
+Nicht umgestellt: Erst das PLE-Überlappen (Branch `ple-prefill-overlap`, `docs/entwurf-ple-prefill-overlap-2026-10-15.md`)
+messen; danach verschiebt sich die beste Aufteilung (Stufe 0 ohne 0,65 s PLE-Warten).
+
+PLE-Überlappen gemessen (Branch `ple-prefill-overlap` fb0d4eced, Feld `kernel_config.ple_prefill_early_request`, Logs
+`earlyple_2026-10-15.log`, `earlyparts_…`, `part1110off_…`, Profil `nsys/pp4-prefill-earlyon/`): Der frühe Pfad greift
+(NVTX `wait_previous_request`/`write_cpu_inputs` statt `wait_d2h`), die PLE-Lücke vor `_dequantize_ple_fp8_bytes_kernel`
+verschwindet ab dem zweiten Häppchen, Greedy mit/ohne identisch. Danach bremst Stufe 1 (V100, durchgehend belegt).
+Kalter 29k-Prefill Prompt 2 / 3 / 4 (s): 11,11,14,12 aus 14,1/13,1/13,2, an 13,5/13,1/13,2; 11,10,15,12 aus
+14,0/12,5/12,6, an 12,9/12,5/12,5–12,6 (KV 423.362); 12,10,14,12 an 13,7–14,1 (Stufe 0 zu voll, KV 460.778). Das
+Überlappen hilft beim ersten kalten Prompt (PLE-Zeilen von der Platte), die Aufteilung 11,10,15,12 im eingeschwungenen
+Prefill (−4 %); Decode gleich. Profil der Produktion vor dem
+Sweep: `nsys/pp4-prefill-1015/` (PLE-Lücke 107,8 ms je Häppchen, `wait_d2h` 276 ms, unverändert seit 11.10.).
+
 **Nachtrag 15.10. früh: Produktion = fork-main-1013 aa7087485 (1Cat main 6f3557c97 + unsere Commits + GDN-Fix).**
 
 1Cat main kam von be3722bc0 auf 6f3557c97 (104 Commits, im Kern Merge #1203: Flash-Next-16-GB-Profil, Expert-Cache,

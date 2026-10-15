@@ -13,6 +13,32 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 15.10. abends: Richtungsentscheid V2-Runner; 27B produktiv auf V2 (Freigabe Peuqui).**
+- **Regel (Peuqui):** neue Arbeit nur noch für den V2-Runner (`vllm/v1/worker/gpu/`); V1 nur Fehlerpflege, solange
+  DSv4/DSpark ihn braucht. sync-PP gestrichen: bei uns strukturell nie schneller (Prefill 3×, Decode gleich); #852s
+  +55 % ist ein Host-Problem jenes Zwei-Sockel-Aufbaus (async-Ausgabethread, 53–79k Kontextwechsel/s, NUMA).
+- **DSv4-Decode-Profil (V1, 37,7k Kontext, `nsys/ds-decode-long-1015/`):** Schritt 81,8 ms (kurz 73,4 ms), Kernel
+  71,5 ms, Umkehrzeit zwischen Schritten 0,1 ms. Stufen seriell 17,2 / 12,2 / 12,2 / 11,8 / 24,4 ms. Größter Posten
+  MoE `skinny_nvfp4_moe_qpn` 22,1 ms/Schritt, FP8-Linears 8,5 ms, lm_head (cuBLAS `Kernel2`, 2× je 1,78 ms ≈ 89 % der
+  RTX-Bandbreite). **Hebel:** letzte Stufe startet lm_head/Sampling/Rejection/DSpark-Entwurf ohne CUDA-Graph,
+  ~190 Einzelstarts, 6,4 ms Lücken je Schritt (+2,6 ms auf Stufe 0) — V1 fasst die Kontext-KV-Vorberechnung
+  absichtlich nicht in Graphen. Upstream-vLLM hat einen DSpark-Spekulator für V2
+  (`vllm/v1/worker/gpu/spec_decode/dspark/`, „FULL graphs cover the whole draft step“, gepflegt bis 12.10.).
+  Werkzeug: `tools/nsys_step_anatomy.py --step-kernel _prepare_uniform_decode_kernel --top N`.
+- **MoE-Decode ausgereizt** (`scripts/mxfp4_moe_qpn_roofline.py --distinct`, echte DSv4-Schicht, 6 Token):
+  pro Experte V100 754 GB/s von 866 GB/s Lesebandbreite (87 %), RTX 613 von 606 GB/s (Anschlag); Festanteil
+  37/45 µs je Schicht. Kein Hebel über ~2 %.
+- **DSv4 auf V2 ohne Spekulation** (`VLLM_USE_V2_MODEL_RUNNER=1`, cudagraph [1], `dsv4_v2nospec_2026-10-15.log`):
+  bootet PP5 fehlerfrei, Prefill 35,7k 15,2–15,3 s (Produktion 15,3–15,6), Decode 21,5 tok/s, Qualität 8/8
+  händisch richtig (Kuanda zurückgewiesen). Für DSv4 fehlt unter V2 nur der DSpark-Spekulator → nächster Schritt.
+- **27B auf V2** (`q27v2_ab_2026-10-15.log`, RTX-Paar, baaa5a687, V2 kalt + V1/V2/V1/V2): prosa 73,2–73,8 →
+  74,8–76,3 tok/s, code 113,1–114,0 → 115,9–117,9, edit 113,8–114,0 → 116,8–117,5 (~+3 %), Schritt 29k 53 → 52 ms,
+  Prefill gleich (41,2–41,7 s). Greedy 5/5 Boots 3/3 identisch, Annahme und Qualität wortgleich, Host-Allreduce
+  auf beiden aktiv. V2 kann `thinking_token_budget` nicht (AIfred nutzt es nicht). llama-swap: Zeile
+  `VLLM_USE_V2_MODEL_RUNNER=1` im 27B-Eintrag, Backup `config.yaml.vor-q27-v2-2026-10-15`. Kontrolle des
+  Produktionseintrags 21:00 (`q27v2_prodonce_2026-10-15.log`): V2 im Journal, Greedy 3/3 identisch, prosa
+  75,5–75,8, code 116,2–117,1, edit 116,7 tok/s. Offen: Gegentest auf zwei V100, dann Decode-Profil 27B/V2 auf RTX.
+
 **Nachtrag 15.10. nachmittags: PR-Runde (Freigabe Peuqui: auch Zurückgehaltenes anbieten, vorher prüfen).**
 - #1214 um die Testreparatur erweitert (Titel „Repair stale fakes in PLE offload and SM70 decode-graph tests“).
 - #1216 Host-Allreduce (`pr-sm70-host-reduce` 130ff00e6, Kernel nach mzen17/skinny_ar.cu, MIT, Co-authored-by).

@@ -32,7 +32,14 @@ verschwindet ab dem zweiten Häppchen, Greedy mit/ohne identisch. Danach bremst 
 Kalter 29k-Prefill Prompt 2 / 3 / 4 (s): 11,11,14,12 aus 14,1/13,1/13,2, an 13,5/13,1/13,2; 11,10,15,12 aus
 14,0/12,5/12,6, an 12,9/12,5/12,5–12,6 (KV 423.362); 12,10,14,12 an 13,7–14,1 (Stufe 0 zu voll, KV 460.778). Das
 Überlappen hilft beim ersten kalten Prompt (PLE-Zeilen von der Platte), die Aufteilung 11,10,15,12 im eingeschwungenen
-Prefill (−4 %); Decode gleich. Profil der Produktion vor dem
+Prefill (−4 %); Decode gleich.
+Testreparatur (15.10. vormittags): 20 weitere rote Tests auf main 6f3557c97 (veraltete Attrappen: capture_context aus
+629063e7d, `module.envs` statt `ple_policy`, fehlende `kernel_config`/`fast_lane`) in `pr-test-repairs-1015` 32ab30d10
+und `fork-main-1013` 0882ddf44 repariert (4 Dateien 125/125 grün, beide GPU-Reihenfolgen; main 20 rot). Achtung beim
+Testen: mit nur einer sichtbaren Karte (`CUDA_VISIBLE_DEVICES=1`) scheitern zwei Offload-Distributed-Tests künstlich
+(DP-Rang 1 simuliert). Überlappen jetzt auf `ple-prefill-overlap-v2` baaa5a687 (Rebase, Code = fb0d4eced). Vorschlag:
+als zweiten Commit in #1214 aufnehmen (lokal vorbereitet: Branch-Kopf 684a4ed95, Text `08-…/body-ple-tests-v2.md`),
+wartet auf Peuquis Freigabe. Profil der Produktion vor dem
 Sweep: `nsys/pp4-prefill-1015/` (PLE-Lücke 107,8 ms je Häppchen, `wait_d2h` 276 ms, unverändert seit 11.10.).
 
 **Nachtrag 15.10. früh: Produktion = fork-main-1013 aa7087485 (1Cat main 6f3557c97 + unsere Commits + GDN-Fix).**

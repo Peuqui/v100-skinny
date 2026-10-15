@@ -1,8 +1,21 @@
-# Übergabe — Stand 11.10.2026 abends (Projekt vllm-research)
+# Übergabe — Stand 15.10.2026 früh (Projekt vllm-research)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln in `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
 Betriebsstand (SSOT): `STAND.md`, Nachtrag 11.10. abends unter „Laufzeitumgebung“.
+
+## Stand 15.10.2026 früh
+
+- **Produktion:** fork-main-1013 aa7087485 (1Cat main 6f3557c97 + unsere Commits + GDN-Prefill-Norm-Fix), Tag
+  `verified-2026-10-15-forkmain1013`; alte Produktion Tag `archive-prod-fork-main-2026-10-15` (2991fbfdc), als Worktree
+  `1Cat-vLLM-oldprod` für Vergleiche. Details STAND-Nachtrag 15.10. früh.
+- **Fork-Branch `fork-main-1013`** steht eine Teständerung weiter (9fad9aaa0, PLE-Tests); Produktion braucht sie nicht.
+- **PR-Branches fertig, nicht gesendet** (PRs bei 1Cat nur auf Peuquis Freigabe): `pr-gdn-traced-prefill-norm`
+  (bdaa680b1, Absturz jedes Flash-Next/GDN-Boots auf main), `pr-ple-test-policy-env` (0ec27825d, vier rote Tests).
+  Texte in `upstream-contrib/08-1cat-prs-2026-10-15/`. Offen von uns weiter #715, #1183, #1187 (keiner gemergt).
+- **Mitmessen bei der nächsten Reihe:** PP4 langer Kontext ~1 % (im Rauschen, GPU-Arbeit identisch).
+- **Nächstes laut Peuqui:** Kernel-Optimierung (Warteschlange nach Sinnfälligkeit: PP4-Prefill-PLE-Überlappung auf
+  Stufe 0, Oktober-Plan 4/5c/6, Turing-Doppelbau).
 
 ## Stand 11.10.2026 abends
 

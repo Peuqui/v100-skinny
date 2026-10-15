@@ -45,9 +45,9 @@ Diff-Umfang 36 Dateien +2204/−152 wie vorher). Nativer Bau inkrementell (`buil
   unter `~/.cache/prod-build-backup-2026-10-15/` (mit `FILELIST.txt`), llama-swap unverändert. Neue Greedy-Referenzen in
   `greedy_refs.sh` (Backup `.vor-2026-10-15`). Alter Stand zum Vergleichen: Worktree `1Cat-vLLM-oldprod` (detached
   2991fbfdc + gesicherte Build-Produkte).
-- Unsere PRs: #715, #1183, #1187 weiter offen, konfliktfrei auf 6f3557c97. Neue PR-Branches (nicht gesendet):
-  `pr-gdn-traced-prefill-norm` bdaa680b1, `pr-ple-test-policy-env` 0ec27825d; Entwürfe in
-  `upstream-contrib/08-1cat-prs-2026-10-15/`.
+- Unsere PRs: #715, #1183, #1187 weiter offen, konfliktfrei auf 6f3557c97. Neu gesendet 15.10. (Freigabe Peuqui):
+  #1213 `pr-gdn-traced-prefill-norm` bdaa680b1, #1214 `pr-ple-test-policy-env` 0ec27825d; Sendefassungen
+  `upstream-contrib/08-1cat-prs-2026-10-15/body-*.md`, Live-Text = Entwurf geprüft.
 
 **Nachtrag 11.10. nachts: Oktober-Plan 3 (adaptive Prüflänge) für DSv4 nicht lohnend; sync-PP-Schutz korrigiert.**
 

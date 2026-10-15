@@ -13,6 +13,42 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 15.10. früh: Produktion = fork-main-1013 aa7087485 (1Cat main 6f3557c97 + unsere Commits + GDN-Fix).**
+
+1Cat main kam von be3722bc0 auf 6f3557c97 (104 Commits, im Kern Merge #1203: Flash-Next-16-GB-Profil, Expert-Cache,
+QSA-Host-Historie, HCX, PLE-Fast-Lane und Draft-Prefetch, GGUF). Unsere 16 Commits per Cherry-Pick auf `fork-main-1013`
+(Konflikte nur `kernel.py`, beide Felder behalten, und die generierte Architektur-Referenz; `range-diff` sonst identisch,
+Diff-Umfang 36 Dateien +2204/−152 wie vorher). Nativer Bau inkrementell (`build-fork-main-1013.log`, 23:24–23:29).
+
+- **Upstream-Fehler behoben (aa7087485):** 011a8ce1e ruft im Prefill (`num_tokens > 64`) `RMSNormGated.forward_cuda`
+  direkt auf; ohne opake Ausgabeprojektion (Standard) tract Dynamo dabei `torch.accelerator.device_index` aus dem
+  FLA-Guard → jeder Flash-Next-/GDN-Boot bricht im Profillauf ab. Direkter Weg jetzt nur außerhalb des Tracings;
+  Test `tests/kernels/test_gdn_prefill_norm_trace.py` (ohne Fix rot mit genau diesem Fehler, V100 und RTX).
+- **Testreparatur (9fad9aaa0, nur im Fork-Branch, nicht in Produktion):** vier rote Tests in `test_ple.py` (schon auf
+  be3722bc0): Env-Attribut statt Umgebung, fehlendes `layer_name`.
+- **Abnahme** (`ab_fm1013_2026-10-14.log` DSv4, `ab_fm1013b_2026-10-15.log` PP4/TP2/27B, `ab_fm1013c_…` PP4 ohne
+  Draft-Prefetch, `ab_oldnew_2026-10-15.log` PP4 alt gegen neu, `prodcheck_2026-10-15.log` Produktionseinträge):
+  DSv4 Greedy 3/3 identisch, Tempo gleich (prosa 42,9–43,0 tok/s, der −0,7-%-Rest vom 11.10. ist weg). TP2×PP2 und 27B
+  gleich, 27B Greedy 5/5 identisch. PP4 bei 29k Kontext: Median 63 (neu) gegen 62 ms (alt) je Schritt; derselbe alte
+  Stand lag in einer früheren Serie derselben Nacht bei 61,1 ms → im Rahmen der Streuung, nsys (`nsys/pp4-fm1013`, echte
+  Schrittgrenzen über `_combine_sampled_and_draft_tokens_kernel`) zeigt identische GPU-Arbeit je Schritt. Rest-Verdacht
+  ~1 % PP4 langer Kontext bei der nächsten Messreihe mitmessen. Qualitätsfragen händisch gelesen, bestanden.
+- **Messfehler aufgedeckt:** fm-Einträge (PYTHONPATH auf Bau-Worktree) luden seit 05.10. ein veraltetes, ungetracktes
+  `flash_attn_v100/` im Worktree-Wurzelverzeichnis (Python mit Env-Policies und .so vom 05.10.); die Produktion lädt
+  `flash-attention-v100/flash_attn_v100`. Jetzt Symlinks auf die getrackten Dateien (Bau-Worktree und
+  `1Cat-vLLM-oldprod`), alte Kopien unter `~/.cache/stale-flash_attn_v100-py-2026-10-15/`. Betrifft auch die Abnahme
+  vom 11.10. (fm-Arme); die Produktionsläufe waren richtig.
+- **Werkzeug-Falle:** `tools/nsys_step_anatomy.py` schneidet Schritte an Blöcken ≥ 4 ms auf Gerät 0 und zählte bei PP4
+  60 statt 44 Schritte — für PP4-Decode an `_combine_sampled_and_draft_tokens_kernel` schneiden.
+- Umstellung 03:40: Tags `archive-prod-fork-main-2026-10-15` (2991fbfdc) und `verified-2026-10-15-forkmain1013`
+  gepusht, `prod-fork-main` per `reset --keep` auf aa7087485, 60 Build-Produkte rsync + cmp 60/60, Backup der alten
+  unter `~/.cache/prod-build-backup-2026-10-15/` (mit `FILELIST.txt`), llama-swap unverändert. Neue Greedy-Referenzen in
+  `greedy_refs.sh` (Backup `.vor-2026-10-15`). Alter Stand zum Vergleichen: Worktree `1Cat-vLLM-oldprod` (detached
+  2991fbfdc + gesicherte Build-Produkte).
+- Unsere PRs: #715, #1183, #1187 weiter offen, konfliktfrei auf 6f3557c97. Neue PR-Branches (nicht gesendet):
+  `pr-gdn-traced-prefill-norm` bdaa680b1, `pr-ple-test-policy-env` 0ec27825d; Entwürfe in
+  `upstream-contrib/08-1cat-prs-2026-10-15/`.
+
 **Nachtrag 11.10. nachts: Oktober-Plan 3 (adaptive Prüflänge) für DSv4 nicht lohnend; sync-PP-Schutz korrigiert.**
 
 1Cat kürzt die Prüflänge nur über `dspark_confidence_threshold`, und das verlangt `--no-async-scheduling`. Upstream

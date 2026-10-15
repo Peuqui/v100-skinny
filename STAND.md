@@ -13,6 +13,15 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 15.10. mittags: Produktion = ple-prefill-overlap-v2 baaa5a687, PP4 11,10,15,12 mit PLE-Überlappen (Freigabe Peuqui).**
+`prod-fork-main` per `reset --keep` auf baaa5a687 (reiner Python-Stand, Build-Produkte unverändert); Tags
+`archive-prod-fork-main-2026-10-15b` (aa7087485) und `verified-2026-10-15-ple-overlap`. llama-swap: 4 PP4-Einträge auf
+`VLLM_PP_LAYER_PARTITION=11,10,15,12` und `"ple_prefill_early_request":true` in `--kernel-config` (Backup
+`config.yaml.vor-pp4-11101512-earlyple-2026-10-15`). Kontrolle `prodcheck2_2026-10-15.log`: PP4 kalter 29k-Prefill
+12,5–12,8 s (vorher 13,1–14,1), Schritt 62–64 ms, KV 423.362; DSv4 15,3–15,6 s / 75 ms, Greedy 3/3; TP2×PP2 18,7 s /
+55 ms; 27B 41,4–41,7 s / 53 ms, Greedy 3/3. PP4-Referenz in `greedy_refs.sh` erneuert. Korrektur: Stufenreihenfolge ist
+`CUDA_VISIBLE_DEVICES=0,2,1,3`, Stufe 1 = RTX 8000, Stufe 2 = V100 (32 GiB).
+
 **Nachtrag 15.10. vormittags: PP4-Aufteilungs-Sweep Flash-Next (Produktion unverändert 11,11,14,12).**
 Logs `partsweep_2026-10-15.log`, `partsweep2_…`, `partsweep3_…` (je Variante Kaltstart ungezählt + Messlauf, Basis
 vorher und nachher). Kalter 29k-Prefill (Prompts 2–4, s) / Schritt 29k (ms) / KV-Pool (Token):

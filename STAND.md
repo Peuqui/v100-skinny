@@ -13,6 +13,17 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 15.10. nachmittags: PR-Runde (Freigabe Peuqui: auch Zurückgehaltenes anbieten, vorher prüfen).**
+- #1214 um die Testreparatur erweitert (Titel „Repair stale fakes in PLE offload and SM70 decode-graph tests“).
+- #1216 Host-Allreduce (`pr-sm70-host-reduce` 130ff00e6, Kernel nach mzen17/skinny_ar.cu, MIT, Co-authored-by).
+  Beleg `prproof_2026-10-15.log`: 27B TP2 aus 37 ms / 66,3 tok/s → an 33 ms / 73,8 tok/s (prosa), code/edit
+  102,5 → 113,9 tok/s, Schritt 29k 56–57 → 53 ms, Greedy überall identisch; Test auf RTX-, V100- und Mischpaar.
+- #1217 PLE-Überlappen (`pr-ple-prefill-overlap` 71235a35a, baut auf #1214), Zahlen aus earlyple/earlyparts/part1110off.
+- Nicht gesendet: PLE-Plattenstufe (Zeilen-Cache + Seitenfreigabe) — `prproof` zeigt an/aus ohne Unterschied
+  (12,5–12,6 s, 61–63 ms, ~750–830 MiB gelesen), kein Speicherdruck mehr; FLA-Gerätewahl — auf V100+RTX nicht
+  belegbar (beide unter 100 KiB), check_shared_mem wird beim Import ausgewertet; nur gebündelt anbieten.
+- Offen: Entwurfsvokabular-Backport (vllm#59740 upstream offen; #922 betrifft nur DFlash2), sync-PP (MTP-Prüfung läuft).
+
 **Nachtrag 15.10. mittags: Produktion = ple-prefill-overlap-v2 baaa5a687, PP4 11,10,15,12 mit PLE-Überlappen (Freigabe Peuqui).**
 `prod-fork-main` per `reset --keep` auf baaa5a687 (reiner Python-Stand, Build-Produkte unverändert); Tags
 `archive-prod-fork-main-2026-10-15b` (aa7087485) und `verified-2026-10-15-ple-overlap`. llama-swap: 4 PP4-Einträge auf

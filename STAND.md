@@ -30,7 +30,11 @@ so", nicht „wie ist es".
   P2P-Fix). `prod-fork-main` per `reset --keep`; Archiv-Tag `archive-prod-fork-main-2026-10-16` (baaa5a687), Tag
   `verified-2026-10-16-v2-dspark` (62b127eab), beide gepusht. llama-swap: DSv4-Eintrag (K=5) mit
   `VLLM_USE_V2_MODEL_RUNNER=1` und `cudagraph_capture_sizes` [5,6]; Backup `config.yaml.vor-dsv4-v2-2026-10-16`.
-  Coding-Eintrag (K=7) bleibt auf V1 (auf V2 nicht gemessen; bräuchte [7,8]).
+  **Coding-Eintrag (K=7) seit 16.10. ~03:10 ebenfalls auf V2** (`cudagraph_capture_sizes` [7,8], Backup
+  `config.yaml.vor-dsv4k7-v2-2026-10-16`). A/B K=7 (`dsv4k7_v2_ab_2026-10-16.log`, V2 kalt + V1/V2/V1/V2, Greedy in allen
+  5 Boots untereinander wortgleich): prosa 47,1–47,2 gegen 42,1 tok/s (+12 %), code 70,3–70,4 gegen 63,0–63,2 (+11 %),
+  edit 85,5–87,3 gegen 77,9–78,8 (+10 %), Schritt 68 / 71 / 77 statt 76 / 79 / 85 ms, bei 35,7k 76–79 statt 81–82 ms,
+  Annahme identisch. Produktionseintrag einmal angebootet (Compile-Cache warm, 200 Token in 3,2 s).
 - **Kontrolle aller Produktionsmodelle** (`prodcheck_v2_2026-10-16.log`, `prodcheck_v2b_2026-10-16.log`): DSv4 wie A/B
   (Greedy 3/3); 27B unverändert (prosa 76,4, code 118,1, edit 117,6 tok/s); Flash-Next PP4 Prefill 29k 12,5–12,9 s,
   Schritt 62–63 ms, edit 92,5–92,8 tok/s; TP2×PP2 Prefill 18,7 s, Schritt 55–56 ms, edit 109,6–109,7 tok/s — Tempo wie

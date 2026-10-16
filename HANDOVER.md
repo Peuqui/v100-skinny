@@ -1,8 +1,30 @@
-# Übergabe — Stand 16.10.2026 nachts (Projekt vllm-research)
+# Übergabe — Stand 16.10.2026 mittags (Projekt vllm-research)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln in `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
 Betriebsstand (SSOT): `STAND.md`, Nachträge 15.10. abends und 16.10. nachts unter „Laufzeitumgebung“.
+
+## Stand 16.10.2026 mittags
+
+- **Produktion seit ~11:40 = `fork-main-v2b` df0941355** (Tag `verified-2026-10-16-longctx-indexer`): DSv4-Indexer
+  für Kontext über 131.072 Token behoben (Score-Kacheln im cuBLAS-Dekodierpfad, letzter Bucket bei der Modelllänge).
+  287k: 242 → 93 ms je Schritt (13 → 34 tok/s), kurz unverändert. Alle Produktionsmodelle kontrolliert (STAND 16.10.
+  vormittags). Archiv `archive-prod-fork-main-2026-10-16b` (62b127eab).
+- **AIfred-Endloslauf 04:51–08:05 war KEIN V2-Fehler:** V1/V2 bei langem Kontext gleich, Kopiertest gleich. Auslöser
+  im AIfred-Auftrag (Sandbox `documents` nur lesend → Codine schrieb base64 in den Kontext, keine Längengrenze). Für
+  `Mini:AIfred-Intelligence` noch nicht gemeldet — Peuqui fragen.
+- **Neue Regel (Peuqui):** jede Messreihe auch mit Prompts bis nahe Max-Kontext (`longctx_decode_probe.py`); in die
+  Standard-A/B-Skripte (`run_ab_q27v2v100_2026-10-15.sh` Modus `run`) noch einbauen, auch für Flash-Next/27B.
+- **Nächste Schritte:**
+  1. PR an 1Cat: DSpark auf V2 + Context-Buckets (Zweig `pr-mrv2-dspark`, pre-commit grün, GPU-Tests im PR-Worktree
+     noch laufen lassen, Text schreiben) und als zweiter PR der Indexer-Fix (48825d5c0, df0941355).
+  2. #1219 umbauen (P2P-Prüfung in der TP-Gruppe auf deren Geräten, Ergebnis über die Gruppe abstimmen).
+  3. Drei rote Wrapper-Tests (`test_cudagraph_dispatch.py`: `'<' not supported between float and MagicMock`, auch
+     auf alter Produktion) und die alten Attrappen aus der Liste unten reparieren.
+  4. Turing: ptxas-64-Register-Deckel für Triton auf sm_75 (Gedächtnis `project_turing_triton_register_cap`) —
+     GDN-Prefill auf den RTX.
+  5. Greedy bei langem Kontext über Boots nicht wortgleich (alle Arme) — Ursache suchen.
+  6. 27B DFlash2 gegen MTP auf V2 (RTX), 27B-V2-OOM auf V100 (verwandt mit 1Cat-Issue #1220?).
 
 ## Stand 16.10.2026 nachts (vor dem Auto-Reboot 04:30)
 

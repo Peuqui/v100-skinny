@@ -13,6 +13,58 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 16.10. vormittags: DSv4-Einbruch über 131.072 Token Kontext behoben (Produktion df0941355, Freigabe Peuqui).**
+- **Anlass:** AIfred-Auftrag (Heizöl-Morgenbericht, Sub-Agent Codine) lief ab 04:51 bis zum Stopp ~08:05 mit einer
+  DSv4-Anfrage: Prompt 84.477 Token (Codine hatte ein PNG als base64 nach stdout geschrieben, 92.881 Byte, weil die
+  Sandbox `documents` nur lesend einhängt), dann 198.101 erzeugte Token ohne Ende, zuletzt 12 tok/s. Die Schrittzeit
+  sprang genau beim Überschreiten von 131.072 Token von 80 auf 154 ms und stieg danach linear bis 250 ms (283k).
+- **V1 gegen V2 bei langem Kontext** (`longctx_v1v2_2026-10-16.log`, je 2 Boots, Produktionsbaum 62b127eab,
+  `longctx_decode_probe.py`): 32.668 Token 77,8/78,2 (V1) gegen 67,6/68,0 ms (V2); 178.479 Token 180,7/180,9 gegen
+  175,1/174,8 ms; 287.077 Token 241,1/241,2 gegen 242,4/241,4 ms. Die Umstellung auf V2 war nicht die Ursache.
+- **Kopiertest** (`copytest_probe.py`, 10.000 Zeichen base64 in `write_file`, Codines Sampling temperature 1.0, top_k
+  40, min_p 0.1): V1 7/9 exakt, V2 7/9 exakt, alle 18 Läufe enden sauber mit 7.075 Token; Einzelfehler an Wackelstellen
+  (V1 zweimal Stelle 8.264 „2“ statt „6“). Greedy je Arm exakt. Kein Hinweis auf einen V2-Sampling-Fehler.
+- **Ursache** (nsys `nsys/ds-threshold-1016`, 124.029 gegen 140.029 Token; Diagnose-Boot mit Sperrgrund je Graph):
+  über 131.072 Token läuft der Indexer statt cuBLAS-GEMM (~0,11 ms je Aufruf auf V100) den Triton-Kernel
+  `_paged_index_logits_relu_kernel`, 1,27 ms auf V100 und 6,9 ms auf RTX 8000 (ptxas deckelt ihn auf sm_75 auf 64
+  Register, 2,6 KB Auslagerung je Thread) — zusammen ~73 ms je Schritt. Zwei Sperren: (a) die automatischen
+  Compressed-Index-Buckets endeten bei 131.072, darüber spielt der volle Graph und der Indexer bleibt absichtlich
+  paged; (b) unser `VLLM_SM70_INDEXER_PREFILL_TILE_MB=64` (seit 11.09. gegen Prefill-OOM auf den V100) begrenzt auch
+  den Dekodier-Workspace (Schlüssel + [Zeilen×Köpfe, Schlüssel]-FP32-Scores): bei 64 MiB nur bis 32.768 Schlüssel.
+  Fehlversuche: Buckets 262144/307200 allein ohne Wirkung (174,0 / 243,1 ms); Budget 512 MiB → OOM im Prefill (GPU 1).
+- **Fix im Fork** (`fork-main-v2b`, gepusht): 48825d5c0 Score-Kacheln im cuBLAS-Dekodierpfad (Schlüssel bleiben ganz,
+  Scores in Kacheln, die ins Budget passen; passt eine Kachel, unverändert), df0941355 letzter automatischer Bucket bei
+  der maximalen Modelllänge; a3ae1faf3 pre-commit für DSpark-V2. Tests V100 und RTX: 153 grün (Indexer, Dispatcher,
+  MRV2-Buckets, Long-Attention, DSv4-Routen); 3 rot auch auf der alten Produktion (CUDA-Graph-Wrapper-Attrappe,
+  `'<' not supported between float and MagicMock`) → reparieren.
+- **A/B Fix gegen Produktion** (`longctx_fix_2026-10-16.log`, Fix kalt/a/b gegen Produktion v2-a/v2-b/c, ms je Schritt):
+  32.668 Token 67,9/68,2/68,1 gegen 67,6/68,0/67,6; 178.479 Token 87,3/86,7/87,2 gegen 175,1/174,8/175,4 (−50 %,
+  38–43 statt 19–20 tok/s); 287.077 Token 93,1/93,1/93,5 gegen 242,4/241,4/241,9 (−61 %, 33–34 statt 13 tok/s).
+  Leistung beim Dekodieren (`gpu_power_fix_2026-10-16.csv`): V100 +8–10 W, RTX gleich, je Token ~⅓ der Energie.
+  Antworten händisch gelesen: gleichwertig. Greedy bei langem Kontext ist über Boots in ALLEN Armen nicht wortgleich
+  (Produktion gegen Produktion trennt sich nach 0–334 Zeichen, V1 ebenso) — bestehende Eigenschaft, eigene Ursache.
+- **Produktion seit 16.10. ~11:40 = df0941355** (`prod-fork-main` per `reset --keep`, reines Python, keine
+  Config-Änderung; Buckets kommen automatisch bis 307.200). Archiv-Tag `archive-prod-fork-main-2026-10-16b` (62b127eab).
+- **Kontrolle aller Produktionsmodelle** (`prodcheck_fix_2026-10-16.log`, prodonce): DSv4 K=5 Greedy 3/3 identisch,
+  prosa 48,3–48,4 / code 73,5–73,6 / edit 80,7–81,0 tok/s, Prefill 35,7k 15,3 s, Schritt 35,7k 70–74 ms, 8/8 Fragen
+  richtig (Kuanda zurückgewiesen); Flash-Next PP4 Greedy 3/3 (Compile-Cache 53047dc8ec wie nachts), Prefill 29k
+  12,5–12,9 s, Schritt 62–64 ms, edit 92,7 tok/s; 27B Greedy 3/3, prosa 75,8–76,0 / code 116,3–117,5 / edit
+  117,2–117,3 tok/s, Prefill 29k 41,2–41,4 s; DSv4-Coding K=7 (Lang-Kontext-Sonde) 32.668 / 178.479 / 287.077 Token:
+  74,5 / 97,1 / 103,6 ms je Schritt (32,4 tok/s bei 287k). Flash-Next TP2×PP2: Tempo wie nachts (Prefill 29k 18,7 s,
+  Schritt 54–58 ms, edit 109,3–109,7 tok/s), Fragen richtig, aber Greedy 1/3 gegen die Referenz von 02:10 bei
+  GLEICHEM Compile-Cache (31fd415d80); Abweichungen sind Formulierungsvarianten (Zeichen 377 und 252) — der Fix
+  berührt diesen Pfad nicht (leere Bucket-Liste, kein Indexer). Geklärt: Die Referenz von 02:10 stammt aus dem
+  Kaltkompilier-Boot („Compiling a graph … Cache the graph“), die heutigen Boots laden aus dem Cache; zwei davon
+  (11:57, 12:26) sind untereinander 3/3 wortgleich → `REF_TP2` auf `fm2-pc16c-tp2-prodneu-115756.greedy.json`
+  (Backup `greedy_refs.sh.vor-2026-10-16b`). Tag `verified-2026-10-16-longctx-indexer` (df0941355), gepusht.
+- **Ausreißer Host-Allreduce:** ein TP2×PP2-Boot um 12:23 brach beim Start ab, `host_reduce_open` →
+  `cudaHostRegister` „invalid argument“ (`csrc/host_reduce.cu` `open_channel`); erster Fall seit 06.10., der
+  nächste Boot lief sauber. Zurückgeblieben: `/dev/shm/vllm_host_reduce_84bdd8…` (Rang 0 starb vor dem unlink) und
+  ein verwaistes `psm_de80f162` (160 MiB, 11:55) — beide ohne Halter. Beobachten; bei Wiederholung Ursache suchen.
+- **Nebenbefund Turing:** 31 von 171 Triton-Kernelvarianten für sm_75 lagern Register aus (64-Register-Deckel bei
+  `.reqntid`), am stärksten die GDN-Prefill-Kernel (bis 12 KB Stack) → später, Gedächtnis
+  `project_turing_triton_register_cap`.
+
 **Nachtrag 16.10. nachts: DSv4 + DSpark auf V2 in Produktion (+11–12 %); P2P-Fix #1219 fehlerhaft (Entwurf); 27B-V2 auf V100 nur mit Workaround.**
 - **DSpark auf V2** (Fork-Branch `v2-dspark`, gepusht; Stand 5c04f68c9 = baaa5a687 + 6 Commits): Port des
   Upstream-MRV2-`DSparkSpeculator` auf 1Cats V2-DFlash (Anker-Modus, Markov-Schleife im Entwurfsgraphen, Kontext-Slots

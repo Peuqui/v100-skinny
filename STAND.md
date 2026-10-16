@@ -13,6 +13,46 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 16.10. nachts: DSv4 + DSpark auf V2 in Produktion (+11–12 %); P2P-Fix #1219 fehlerhaft (Entwurf); 27B-V2 auf V100 nur mit Workaround.**
+- **DSpark auf V2** (Fork-Branch `v2-dspark`, gepusht; Stand 5c04f68c9 = baaa5a687 + 6 Commits): Port des
+  Upstream-MRV2-`DSparkSpeculator` auf 1Cats V2-DFlash (Anker-Modus, Markov-Schleife im Entwurfsgraphen, Kontext-Slots
+  je Cache-Schicht, eigener Embedding-Vertrag unter PP wie V1, Puffer in Entwurfsbreite statt hc_mult-breit,
+  `_speculator_hidden_states` statt zweier ungeprüfter `get_mtp_target_hidden_states`-Stellen) plus
+  **Context-Buckets für Compressed-Index-Decode-Graphen in V2** (wie V1-Dispatcher: (2048, 4096, 16384, 65536, 131072),
+  Capture-Metadaten auf den Bucket begrenzt, kleinster passender Bucket beim Abspielen). Ohne Buckets war V2 bei 35,7k
+  Kontext 91–92 statt 75 ms je Schritt (Graph auf volle Modelllänge eingefangen).
+- **A/B DSv4 V2 gegen V1** (`dsv4_v2dspark_ab_2026-10-16.log`, V2 kalt + V1/V2/V1/V2, Greedy 5/5 Boots 3/3 identisch,
+  Qualität händisch richtig und zwischen den Armen tokengleich): prosa 48,2–48,3 gegen 42,9–43,0 tok/s (+12 %), code
+  73,5–73,6 gegen 65,7–65,8 (+12 %), edit 80,5–81,0 gegen 72,6–72,8 (+11 %), Schritt kurz 63 / 65 / 70 statt
+  70 / 73 / 78 ms, bei 35,7k 69–72 statt 75 ms, Prefill 35,7k 15,2–15,3 statt 15,3–15,6 s, Annahme identisch.
+  Die ~8 ms je Schritt entsprechen der ungraphten Entwurfs-/Sampling-Arbeit aus dem V1-Profil.
+- **Produktion seit 16.10. ~02:10 = `fork-main-v2b` 62b127eab** (baaa5a687 + DSpark auf V2 + Context-Buckets, OHNE
+  P2P-Fix). `prod-fork-main` per `reset --keep`; Archiv-Tag `archive-prod-fork-main-2026-10-16` (baaa5a687), Tag
+  `verified-2026-10-16-v2-dspark` (62b127eab), beide gepusht. llama-swap: DSv4-Eintrag (K=5) mit
+  `VLLM_USE_V2_MODEL_RUNNER=1` und `cudagraph_capture_sizes` [5,6]; Backup `config.yaml.vor-dsv4-v2-2026-10-16`.
+  Coding-Eintrag (K=7) bleibt auf V1 (auf V2 nicht gemessen; bräuchte [7,8]).
+- **Kontrolle aller Produktionsmodelle** (`prodcheck_v2_2026-10-16.log`, `prodcheck_v2b_2026-10-16.log`): DSv4 wie A/B
+  (Greedy 3/3); 27B unverändert (prosa 76,4, code 118,1, edit 117,6 tok/s); Flash-Next PP4 Prefill 29k 12,5–12,9 s,
+  Schritt 62–63 ms, edit 92,5–92,8 tok/s; TP2×PP2 Prefill 18,7 s, Schritt 55–56 ms, edit 109,6–109,7 tok/s — Tempo wie
+  bisher. Flash-Next-Greedy 1/3 gegen alte Referenz: neuer Compile-Cache-Schlüssel (0c03f174b7 → 53047dc8ec), zwei Boots
+  des neuen Stands untereinander 3/3 wortgleich, Abweichungen sind Formulierungsvarianten (händisch gelesen);
+  `greedy_refs.sh` für PP4/TP2 erneuert (Backup `.vor-2026-10-16`). Qualität händisch: gleichwertig zu vorher.
+- **P2P-Fix (#1219) aus der Produktion genommen:** mit ihm hing Flash-Next TP2×PP2 beim Start. `gpu_p2p_access_check`
+  erzeugt den Cache nur auf Welt-`local_rank 0` und wartet an einer Welt-Barriere; bei gemischter PP erreichen nur die
+  SM70-TP-Ränge die erzwungene Prüfung → Deadlock. Zweiter Fehler: `_can_p2p` nutzt den Gruppenrang als Geräteindex.
+  #1219 auf Entwurf gesetzt, Kommentar live (`comment-1219-draft.txt`). Umbau: Prüfung innerhalb der TP-Gruppe auf
+  deren Geräten, Ergebnis über die Gruppe abstimmen. Branch `fork-main-v2` (mit dem fehlerhaften Fix) nicht verwenden.
+- **#1219 gesendet** (P2P vor SM70-Top1-Kollektiven prüfen, wenn Custom-Allreduce aus ist): Treiber meldet P2P für das
+  V100-Paar, vLLMs echter IPC-Test nicht; ohne Fix hängt 27B TP2 auf 2× V100 bei der ersten Greedy-Anfrage (V1) bzw.
+  schon beim Start (V2). Fix im Fork (4626d1db6), Betriebstest: kein Hänger, Greedy 3/3, Tempo wie mit Workaround.
+- 27B TP2 auf 2× V100: V1 mit Fix/Workaround prosa 55,0 / code 85,3 / edit 84,2 tok/s; **V2 auf V100 OOM** beim
+  29k-Prefill (V2-KV-Pool 544.923 statt 450.918 Token bei util 0,98; auf RTX +6 %, dort Bildtest 1/4/12 Bilder in
+  Maximalgröße bestanden). Produktion (RTX) nicht betroffen. RTX-Backend-Pin `attention_backend FLASH_ATTN` im
+  27B-Eintrag ist auf SM70 ungültig.
+- Nebenbefund: TTS-Suite legt Qwen3-TTS jetzt auf die GPU mit dem meisten freien Speicher (23:16 GPU 0) — kollidiert
+  mit allen vLLM-Einträgen (GPU 0). Nicht geändert, an Peuqui gemeldet.
+- Offen: veraltete Attrappen in `tests/v1/spec_decode/test_dflash_mrv2_config.py` (4 rot, auch auf main).
+
 **Nachtrag 15.10. abends: Richtungsentscheid V2-Runner; 27B produktiv auf V2 (Freigabe Peuqui).**
 - **Regel (Peuqui):** neue Arbeit nur noch für den V2-Runner (`vllm/v1/worker/gpu/`); V1 nur Fehlerpflege, solange
   DSv4/DSpark ihn braucht. sync-PP gestrichen: bei uns strukturell nie schneller (Prefill 3×, Decode gleich); #852s

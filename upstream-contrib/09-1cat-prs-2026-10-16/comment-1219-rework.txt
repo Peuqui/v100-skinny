@@ -1,0 +1,3 @@
+Reworked as announced. The forced check now runs the real CUDA IPC write test from each rank's device to the devices of its group peers and agrees on the result within the TP group only (second commit), so ranks of other pipeline stages are not involved, and the group's devices rather than its rank numbers are tested.
+
+Flash-Next TP2xPP2 (Quadro RTX 8000 pair on stage 0, Tesla V100 pair on stage 1), which hung with the first version, now starts and serves with greedy output identical to our reference. The 27B TP2 case on the V100 pair still falls back to the all-gather without a hang. Numbers are in the updated description. Ready for review.

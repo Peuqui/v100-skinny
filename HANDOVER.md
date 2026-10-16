@@ -15,16 +15,27 @@ Betriebsstand (SSOT): `STAND.md`, Nachträge 15.10. abends und 16.10. nachts unt
   `Mini:AIfred-Intelligence` noch nicht gemeldet — Peuqui fragen.
 - **Neue Regel (Peuqui):** jede Messreihe auch mit Prompts bis nahe Max-Kontext (`longctx_decode_probe.py`); in die
   Standard-A/B-Skripte (`run_ab_q27v2v100_2026-10-15.sh` Modus `run`) noch einbauen, auch für Flash-Next/27B.
+- **Nachmittags erledigt (Freigabe Peuqui, „PRs doppelchecken“):**
+  - **#1221** DSpark auf MRV2 + Context-Buckets (Zweig `pr-mrv2-dspark` 450e65c52) und **#1222** Indexer-Fix über
+    131k (Zweig `pr-dsv4-longctx-indexer` f755ff05a, dritter Commit repariert die drei auf main roten Wrapper-Tests in
+    `test_cudagraph_dispatch.py`). Beide gegen main 6f3557c97 auf V100 und RTX getestet, Duplikat- und Merge-Prüfung,
+    jede Zahl gegen die Messdatei, Live-Text = Entwurf. Texte `upstream-contrib/09-1cat-prs-2026-10-16/`.
+  - **#1219** umgebaut (93780942b: P2P-Prüfung nur in der TP-Gruppe auf deren Geräten, ohne Welt-Barriere), Abnahme
+    auf `fork-main-v2b-p2p` 3b60d0303 (27B TP2 V100 ohne Workaround kein Hänger, Flash-Next TP2×PP2 startet, Greedy
+    je 3/3), Text ersetzt, „ready for review“, Kommentar live. Produktion trägt #1219 weiterhin nicht.
+  - Fork `fork-main-v2b` = 4e9ae3c3a (df0941355 + Testreparatur), gepusht; Produktion bleibt df0941355.
+  - **Lang-Kontext-Lauf im Standard-A/B-Skript** (`run_ab_q27v2v100_2026-10-15.sh`, Funktion `run`, Backup
+    `.vor-longctx-2026-10-16`); `longctx_decode_probe.py` kürzt Prompts per `/tokenize` auf die `max_model_len` des
+    Eintrags. Test Flash-Next PP4: 33.208 / 184.133 / 249.950 Token → 55,5 / 62,8 / 66,7 ms je Schritt (kein Einbruch
+    bei Flash-Next).
 - **Nächste Schritte:**
-  1. PR an 1Cat: DSpark auf V2 + Context-Buckets (Zweig `pr-mrv2-dspark`, pre-commit grün, GPU-Tests im PR-Worktree
-     noch laufen lassen, Text schreiben) und als zweiter PR der Indexer-Fix (48825d5c0, df0941355).
-  2. #1219 umbauen (P2P-Prüfung in der TP-Gruppe auf deren Geräten, Ergebnis über die Gruppe abstimmen).
-  3. Drei rote Wrapper-Tests (`test_cudagraph_dispatch.py`: `'<' not supported between float and MagicMock`, auch
-     auf alter Produktion) und die alten Attrappen aus der Liste unten reparieren.
-  4. Turing: ptxas-64-Register-Deckel für Triton auf sm_75 (Gedächtnis `project_turing_triton_register_cap`) —
+  1. Die alten Attrappen aus der Liste unten reparieren (`test_dflash_mrv2_config.py` 4,
+     `test_gpu_model_runner_v2_greedy.py` 9, `test_gpu_model_runner_v2_prefill_dispatch.py` 1 — alle auch auf main rot).
+  2. Turing: ptxas-64-Register-Deckel für Triton auf sm_75 (Gedächtnis `project_turing_triton_register_cap`) —
      GDN-Prefill auf den RTX.
-  5. Greedy bei langem Kontext über Boots nicht wortgleich (alle Arme) — Ursache suchen.
-  6. 27B DFlash2 gegen MTP auf V2 (RTX), 27B-V2-OOM auf V100 (verwandt mit 1Cat-Issue #1220?).
+  3. Greedy bei langem Kontext über Boots nicht wortgleich (alle Arme) — Ursache suchen.
+  4. 27B DFlash2 gegen MTP auf V2 (RTX), 27B-V2-OOM auf V100 (verwandt mit 1Cat-Issue #1220?).
+  5. AIfred-Befund (Sandbox `documents` nur lesend, base64 im Kontext, keine Längengrenze) — Peuqui fragt noch.
 
 ## Stand 16.10.2026 nachts (vor dem Auto-Reboot 04:30)
 

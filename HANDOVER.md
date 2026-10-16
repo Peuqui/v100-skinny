@@ -11,10 +11,18 @@ Betriebsstand (SSOT): `STAND.md`, Nachträge 15.10. abends und 16.10. nachts unt
   287k: 242 → 93 ms je Schritt (13 → 34 tok/s), kurz unverändert. Alle Produktionsmodelle kontrolliert (STAND 16.10.
   vormittags). Archiv `archive-prod-fork-main-2026-10-16b` (62b127eab).
 - **AIfred-Endloslauf 04:51–08:05 war KEIN V2-Fehler:** V1/V2 bei langem Kontext gleich, Kopiertest gleich. Auslöser
-  im AIfred-Auftrag (Sandbox `documents` nur lesend → Codine schrieb base64 in den Kontext, keine Längengrenze). Für
-  `Mini:AIfred-Intelligence` noch nicht gemeldet — Peuqui fragen.
-- **Neue Regel (Peuqui):** jede Messreihe auch mit Prompts bis nahe Max-Kontext (`longctx_decode_probe.py`); in die
-  Standard-A/B-Skripte (`run_ab_q27v2v100_2026-10-15.sh` Modus `run`) noch einbauen, auch für Flash-Next/27B.
+  im AIfred-Auftrag (Sandbox `documents` nur lesend → Codine schrieb base64 in den Kontext, keine Längengrenze).
+  **Behoben im AIfred-Repo (Peuqui 16.10. nachmittags), Commit b1dcd1f3 auf `main`, NUR LOKAL:** `execute_code_write`,
+  `delete_file`, `delete_folder` auf Stufe 2 (`chromadb_clear` bleibt 3), `MAX_OUTPUT_TOKENS = 64000` als `max_tokens`
+  jedes OpenAI-kompatiblen Aufrufs ohne eigenes `num_predict`. Nicht gepusht, weil `main` dort schon 7 ungepushte
+  Commits vom 14.10. (Personarium/Vision, andere Sitzung) trägt und origin 3 Traffic-Bot-Commits voraus ist — Push
+  mit Peuqui bzw. `Mini:AIfred-Intelligence` klären (offline am 16.10.). AIfred-Neustart macht Peuqui.
+  Dabei überschrieben: der Import im Prüfskript legte `data/logs/aifred_debug.log` neu an, der Codine-Ablauf von
+  heute früh ist dort weg (Befunde stehen im STAND-Nachtrag 16.10. vormittags).
+- **Neue Regel (Peuqui):** jede Messreihe auch mit Prompts bis nahe Max-Kontext (`longctx_decode_probe.py`, kürzt
+  per `/tokenize` auf die `max_model_len` des Eintrags); fest im Standard-A/B-Skript `run_ab_q27v2v100_2026-10-15.sh`
+  (Backup `.vor-longctx-2026-10-16`). Flash-Next PP4 geprüft: 33k / 184k / 250k = 55,5 / 62,8 / 66,7 ms je Schritt,
+  kein Einbruch.
 - **Nachmittags erledigt (Freigabe Peuqui, „PRs doppelchecken“):**
   - **#1221** DSpark auf MRV2 + Context-Buckets (Zweig `pr-mrv2-dspark` 450e65c52) und **#1222** Indexer-Fix über
     131k (Zweig `pr-dsv4-longctx-indexer` f755ff05a, dritter Commit repariert die drei auf main roten Wrapper-Tests in

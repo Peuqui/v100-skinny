@@ -1,6 +1,11 @@
 """Schritt-Anatomie eines Pipeline-Decodes aus einem nsys-SQLite-Export.
 
-Aufruf: python nsys_step_anatomy.py report.sqlite
+Aufruf: python nsys_step_anatomy.py report.sqlite [--step-kernel NAME] [--top N]
+
+Mit --step-kernel beginnt ein Schritt mit jedem Aufruf dieses Kernels auf Gerät 0
+statt mit dem großen Block (nötig, wenn der Vorwärtslauf der ersten Stufe in mehrere
+Blöcke zerfällt, z. B. PP4-Decode: _combine_sampled_and_draft_tokens_kernel,
+DSv4/DSpark: _prepare_uniform_decode_kernel).
 
 NCCL-Kernel zählen nicht als Rechnen: ein Empfangskernel dreht auf der GPU, bis die
 Vorstufe liefert, ist also Wartezeit. Je Gerät werden die Rechenkernel zu
@@ -10,14 +15,21 @@ je Gerät der Median über alle vollständigen Schritte: wann es relativ zum
 Schrittbeginn anfängt und aufhört, wie lange es rechnet, dazu die Lücken an den
 Nähten und die Umkehrzeit vom letzten Kernel des Schritts bis zum nächsten Beginn.
 """
+import argparse
 import sqlite3
 import statistics
-import sys
+from collections import defaultdict
 
 MERGE_GAP_NS = 300_000  # Kernel mit weniger Abstand gehören zu einem Block
 STEP_BLOCK_MIN_NS = 4_000_000  # der Vorwärtslauf der ersten Stufe
 
-db = sqlite3.connect(sys.argv[1])
+parser = argparse.ArgumentParser()
+parser.add_argument("report")
+parser.add_argument("--step-kernel")
+parser.add_argument("--top", type=int, default=15)
+args = parser.parse_args()
+
+db = sqlite3.connect(args.report)
 rows = db.execute(
     """SELECT k.deviceId, k.start, k.end, s.value
        FROM CUPTI_ACTIVITY_KIND_KERNEL k JOIN StringIds s ON s.id = k.shortName
@@ -25,9 +37,11 @@ rows = db.execute(
 ).fetchall()
 kernels: dict[int, list[tuple[int, int]]] = {}
 waits: dict[int, list[tuple[int, int]]] = {}
+named: dict[int, list[tuple[int, int, str]]] = {}
 for dev, start, end, name in rows:
     target = waits if "nccl" in name.lower() else kernels
     target.setdefault(dev, []).append((start, end))
+    named.setdefault(dev, []).append((start, end, name))
 devices = sorted(kernels)
 print(f"Geräte: {devices}, Rechenkernel: {sum(map(len, kernels.values()))}, "
       f"NCCL-Kernel: {sum(map(len, waits.values()))}")
@@ -44,7 +58,10 @@ def blocks(intervals: list[tuple[int, int]]) -> list[list[int]]:
 
 
 first = devices[0]
-starts = [b[0] for b in blocks(kernels[first]) if b[1] - b[0] >= STEP_BLOCK_MIN_NS]
+if args.step_kernel:
+    starts = [s for s, _, name in named[first] if name == args.step_kernel]
+else:
+    starts = [b[0] for b in blocks(kernels[first]) if b[1] - b[0] >= STEP_BLOCK_MIN_NS]
 steps = list(zip(starts[:-1], starts[1:]))
 lengths = [(b - a) / 1e6 for a, b in steps]
 typical = statistics.median(lengths)
@@ -99,3 +116,15 @@ for dev in devices:
 print(f"\nUmkehrzeit (letzter Kernel des Schritts bis Beginn des nächsten): "
       f"Median {statistics.median(turnaround):.1f} ms")
 print(f"Kernelzeit in den großen Blöcken aller Geräte: {total_busy:.1f} ms von {typical:.1f} ms je Schritt")
+
+print(f"\nTeuerste Kernel je Gerät, Kernelzeit je Schritt (ms, Mittel über {len(steps)} Schritte)")
+for dev in devices:
+    totals: dict[str, float] = defaultdict(float)
+    for begin, nxt in steps:
+        for start, end, name in named[dev]:
+            if begin <= start < nxt:
+                totals[name] += (end - start) / 1e6
+    busy = sum(v for k, v in totals.items() if "nccl" not in k.lower()) / len(steps)
+    print(f"\n Gerät {dev}: Rechenkernel {busy:.1f} ms je Schritt")
+    for name, total in sorted(totals.items(), key=lambda kv: -kv[1])[: args.top]:
+        print(f"   {total / len(steps):6.2f}  {name[:90]}")

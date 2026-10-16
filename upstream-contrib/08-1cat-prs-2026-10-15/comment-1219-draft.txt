@@ -1,0 +1,7 @@
+Converting this to a draft: the change deadlocks engines where only some TP groups provision the compact collectives.
+
+gpu_p2p_access_check generates its cache only on world local rank 0 and then waits on a world-group barrier. With pipeline parallelism over mixed hardware, only the SM70 TP group reaches the forced check. In our Qwen3.8-Flash-Next TP2xPP2 run (Quadro RTX 8000 pair on stage 0, Tesla V100 pair on stage 1) the V100 ranks wait at that barrier forever and startup hangs right after communicator setup. The PP=1 runs in the description are not affected because every rank takes the same path.
+
+There is a second problem in the same check: CustomAllreduce passes its group rank to _can_p2p, which uses it as a device index, so a TP group that does not start at device 0 tests the wrong pair.
+
+I will rework the check to run within the TP group on the group's own devices and to agree on the result across the group before asking for review again.

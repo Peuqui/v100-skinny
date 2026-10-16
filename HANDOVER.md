@@ -1,8 +1,29 @@
-# Übergabe — Stand 15.10.2026 früh (Projekt vllm-research)
+# Übergabe — Stand 16.10.2026 nachts (Projekt vllm-research)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln in `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
-Betriebsstand (SSOT): `STAND.md`, Nachtrag 11.10. abends unter „Laufzeitumgebung“.
+Betriebsstand (SSOT): `STAND.md`, Nachträge 15.10. abends und 16.10. nachts unter „Laufzeitumgebung“.
+
+## Stand 16.10.2026 nachts (vor dem Auto-Reboot 04:30)
+
+- **Richtung (Peuqui 15.10.):** neue Arbeit nur noch für den V2-Runner; V1 nur Fehlerpflege
+  (Gedächtnis `feedback_focus_v2_runner`).
+- **Produktion:** `fork-main-v2b` 62b127eab = baaa5a687 + DSpark auf V2 + Context-Buckets für Compressed-Index-Graphen
+  (Tag `verified-2026-10-16-v2-dspark`). Der P2P-Fix ist NICHT drin (Deadlock bei TP2×PP2, siehe unten). DSv4 (K=5), Flash-Next und 27B laufen auf V2; DSv4-Coding (K=7) noch auf V1.
+  Archiv: Tag `archive-prod-fork-main-2026-10-16` (baaa5a687). DSv4 V2 gegen V1: +11–12 % kurz, −5 ms je Schritt
+  bei 35,7k, Greedy identisch (STAND 16.10. nachts).
+- **PRs 15./16.10.:** #1213, #1214, #1216, #1217, #1218 offen; #1219 (P2P-Prüfung) auf ENTWURF gesetzt: Deadlock bei
+  gemischter PP (Welt-Barriere in `gpu_p2p_access_check`) und Gruppenrang als Geräteindex. Zuerst umbauen (Prüfung in
+  der TP-Gruppe auf deren Geräten, Ergebnis über die Gruppe abstimmen), auf TP2 V100 UND TP2×PP2 testen, dann wieder öffnen.
+- **Nächste Schritte:**
+  1. DSpark-auf-V2 + Context-Buckets als PR an 1Cat vorbereiten (Upstream-Gutschrift vllm-project/vllm
+     DSparkSpeculator; Duplikatsuche; Tests: Unit-Test für `DSparkSpeculator` und Bucket-Auswahl fehlen noch).
+  2. DSv4-Coding (K=7) auf V2 messen (Graph-Größen [7,8]) und ggf. umstellen.
+  3. 27B DFlash2 auf V2 gegen MTP auf V2 (RTX), dann Decode-Profil 27B/V2 auf RTX (Turing-Hotspots).
+  4. 27B-V2 auf V100 OOM beim 29k-Prefill (V2-KV-Schätzung großzügiger) — für Produktion irrelevant, für 1Cat-Bericht.
+  5. Veraltete Attrappen `tests/v1/spec_decode/test_dflash_mrv2_config.py` (4 rot, auch main) reparieren.
+- **Für Peuqui:** TTS-Suite legt Qwen3-TTS auf die GPU mit dem meisten freien Speicher (23:16 auf GPU 0) —
+  kollidiert mit vLLM-Boots (alle brauchen GPU 0). Reboot-Einzeiler für Mo+Do statt Mo/Mi/Fr steht im Chat.
 
 ## Stand 15.10.2026 früh
 

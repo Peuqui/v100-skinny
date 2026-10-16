@@ -17,11 +17,13 @@ Betriebsstand (SSOT): `STAND.md`, Nachträge 15.10. abends und 16.10. nachts unt
   der TP-Gruppe auf deren Geräten, Ergebnis über die Gruppe abstimmen), auf TP2 V100 UND TP2×PP2 testen, dann wieder öffnen.
 - **Nächste Schritte:**
   1. DSpark-auf-V2 + Context-Buckets als PR an 1Cat vorbereiten (Upstream-Gutschrift vllm-project/vllm
-     DSparkSpeculator; Duplikatsuche; Tests: Unit-Test für `DSparkSpeculator` und Bucket-Auswahl fehlen noch).
+     DSparkSpeculator; Duplikatsuche). Tests liegen auf `fork-main-v2b` 02138d3ee
+     (`tests/v1/worker/test_mrv2_dspark_context_buckets.py`, 49/49 mit den Long-Attention-Tests auf V100 und RTX).
   2. (erledigt 03:10) DSv4-Coding (K=7) auf V2: +10–12 %, umgestellt.
   3. 27B DFlash2 auf V2 gegen MTP auf V2 (RTX), dann Decode-Profil 27B/V2 auf RTX (Turing-Hotspots).
   4. 27B-V2 auf V100 OOM beim 29k-Prefill (V2-KV-Schätzung großzügiger) — für Produktion irrelevant, für 1Cat-Bericht.
-  5. Veraltete Attrappen `tests/v1/spec_decode/test_dflash_mrv2_config.py` (4 rot, auch main) reparieren.
+  5. Alte Attrappen reparieren (rot auch auf main): `tests/v1/spec_decode/test_dflash_mrv2_config.py` (4),
+     `test_draft_profile_scope.py::test_qwen4exp_mtp_model_config_is_marked_before_revalidation` (`kernel_config` fehlt).
 - **Für Peuqui:** TTS-Suite legt Qwen3-TTS auf die GPU mit dem meisten freien Speicher (23:16 auf GPU 0) —
   kollidiert mit vLLM-Boots (alle brauchen GPU 0). Reboot-Einzeiler für Mo+Do statt Mo/Mi/Fr steht im Chat.
 

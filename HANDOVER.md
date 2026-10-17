@@ -1,8 +1,28 @@
-# Übergabe — Stand 16.10.2026 mittags (Projekt vllm-research)
+# Übergabe — Stand 17.10.2026 nachts (Projekt vllm-research)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln in `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
-Betriebsstand (SSOT): `STAND.md`, Nachträge 15.10. abends und 16.10. nachts unter „Laufzeitumgebung“.
+Betriebsstand (SSOT): `STAND.md`, Nachtrag 16./17.10. nachts unter „Laufzeitumgebung“.
+
+## Stand 17.10.2026 nachts
+
+- **Produktion unverändert df0941355.** Fork `fork-main-v2b` 9e81ffeb0 (gepusht) = df0941355 + #1219 + Testreparatur
+  + Turing-Registerdeckel für `delta_h` (maxnreg 255 als Autotune-Kandidat). A/B: TTFT −6,5 % (27B), −7,5 % (PP4),
+  −5,6 % (TP2×PP2) bei 29k, Decode gleich, 27B wortgleich. **Wartet auf Peuquis Okay für die Produktion.**
+- **AIfred-Dienst hat Peuqui am 16.10. abends gestoppt** — Neustart macht Peuqui.
+- **Entscheidung offen (Empfehlung: nein):** probabilistische Entwürfe für Flash-Next — Prosa +2,5 %, Code −2 %.
+- **Nächste Schritte (Peuqui 16.10.: „allen Punkten nachgehen“), nach Nutzen:**
+  1. 27B-Lang-Kontext-Decode: MTP-Verify-Attention zerlegen (Kontext gepackt ohne Maske + kausaler Schwanz, LSE-Merge)
+     oder `sm70_grouped_long` auf Turing prüfen; Ursache belegt (Gedächtnis `project_q27_longctx_decode_slowdown`).
+  2. RTX-Prefill: frisches Profil (Aufteilung 11,10,15,12 + maxnreg), dann GDN-TileLang für sm_75 (≤ 64 KB Shared
+     Memory), QSA-Tuning für Turing, Skinny-MoE-Prefill auf Turing (Volta-Befehle?) — `project_turing_rtx_prefill_levers`.
+  3. Streuung über Boots bei Flash-Next: derselbe Prompt mehrfach in einem Boot ohne Präfix-Cache; Präfix-Cache aus;
+     PLE-Überlappen/Plattenstufe aus — `project_greedy_spread_triton_autotune` (Autotune widerlegt).
+  4. PLE bei langem Kontext: Anteil der Plattenstufe am 184k/250k-Prefill messen (Speicherdruck), dann über eine
+     Stufe „freie GPU“ entscheiden (Code nicht mehr im Fork).
+  5. Klein: `git fsck` im 1Cat-Repo + Sperrdatei `gc.log` (Okay Peuqui vorhanden), die 14 alten Test-Attrappen,
+     K=3 für Prosa, Prompt-Lookup, 27B DFlash2 gegen MTP, 27B-V2-OOM auf V100 (#1220).
+  Neue PRs an 1Cat erst, wenn 1Cat auf die 11 offenen reagiert (Stand 16.10.: keine Reaktion; main seit 13.10. ruhig).
 
 ## Stand 16.10.2026 mittags
 

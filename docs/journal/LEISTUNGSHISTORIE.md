@@ -1,6 +1,6 @@
-# Leistungshistorie der Produktionsmodelle auf dem Mini (Stand 02.10.2026, 23:48)
+# Leistungshistorie der Produktionsmodelle auf dem Mini (Stand 17.10.2026, 16:44)
 
-Zusammengestellt am 02.10. abends aus STAND, Journal, Memory und Messlogs (nur gelesen, nichts neu gemessen); Abschnitt 8 ergänzt am 03.10. die Abschlussmessung und die Produktionsumstellung. Jede Zahl hat Datum, Bedingungen und Datei:Zeile. Richtung: Zeiten (s, ms, min:s) – weniger ist besser; tok/s und Annahme – mehr ist besser. Zeiten über 60 s stehen als min:s.
+Zusammengestellt am 02.10. abends aus STAND, Journal, Memory und Messlogs (nur gelesen, nichts neu gemessen); Abschnitt 8 ergänzt am 03.10. die Abschlussmessung und die Produktionsumstellung; Abschnitt 9 ergänzt am 17.10. den Zeitraum vom 03.10. bis 17.10.2026 (Produktionsumstellungen, Meilensteine, Verworfenes, Vergleich 03.10. → 17.10. in 9d). Jede Zahl hat Datum, Bedingungen und Datei:Zeile; in Abschnitt 9 stattdessen den STAND-Block nach seiner Überschrift und die Logdatei, weil sich die STAND-Zeilen mit jedem neuen Block verschieben. Richtung: Zeiten (s, ms, min:s) – weniger ist besser; tok/s und Annahme – mehr ist besser. Zeiten über 60 s stehen als min:s.
 
 **Quellen (Kürzel → absoluter Pfad)**
 - STAND = /home/mp/Projekte/vllm-research/v100-skinny/STAND.md
@@ -536,3 +536,142 @@ wechselnden Formulierungen kommen also vom Timing bzw. vom Compile-Artefakt (vgl
 | 27B TP2 | Prefill 14,7k (s) | 27,4–27,8 (26.09.) | 19,8–20,2 (02.10., fork-next, Nebenlast nicht ausgeschlossen) | ~1,4× |
 | 27B TP2 | Schritt bei 14,6k, temp 1,0 (ms) | 48 (26.09.) | 48 (02.10.) | gleich |
 | 27B TP2 | Boot (min:s) | 6:30 (07.09.) | 2:43 (02.10.) | ~2,4× |
+
+## 9. Nachtrag 03.10.–17.10.
+
+Zusammengestellt am 17.10. aus den STAND-Nachträgen „03.10.“ bis „17.10. nachmittags“ und den dort genannten Logs (nur gelesen, nichts neu gemessen). Quellenangabe „STAND 15.10. früh“ = STAND-Block „Nachtrag 15.10. früh“; Logs unter BS/.
+
+**Messverfahren in diesem Abschnitt**
+- **29k / 35,7k:** M-lang, gezählt werden die Prompts 2–4 mit 29.167–29.243 Qwen-Tok bzw. 35.663–35.729 DSv4-Tok. Prefill = TTFT der kalten Erstanfrage; Durchsatz = Prompttoken / s, gerundet und mit „~“ als gerechnet markiert.
+- **Schritt bei 29k / 35,7k:** temp 1,0; Spanne aller Anfragen außer der ersten nach dem Boot. Die tok/s stammen aus denselben Logzeilen und hängen von der Annahme ab.
+- **Kurz greedy (M-greedy):** Prosa 33 / Code 45 Qwen-Tok, 26 / 36 DSv4-Tok.
+  - Der Bearbeitungstext wechselte: am 03.10. 1.460 Qwen-Tok bzw. 1.437 DSv4-Tok, ab 05.10. 1.867–1.911 Tok. Die Länge steht jeweils dabei.
+- **M-sonde:** BS/longctx_decode_probe.py (seit 16.10.).
+  - Greedy, 400 Ausgabetoken, echter Text (Quellen und Doku des Repos, kein Fülltext).
+  - Qwen: 184.133–184.134 Tok („184k“) und 249.950 Tok („250k“); DSv4: 178.479–178.480 Tok („178k“) und 287.077–287.078 Tok („287k“).
+  - Schritt = Decode-Zeit / Engine-Schritte.
+- **A/B-Reihen:** Fork kalt/a/b gegen Produktion a/b. Der Kaltboot nach einem Compile-Hash-Wechsel zählt nicht; STAND schließt ihn in einigen Spannen ein, daher können die Spannen hier etwas enger sein.
+- „x ms = y tok/s“ heißt: beide Werte aus derselben Messung.
+
+Richtung in allen Tabellen dieses Abschnitts: Zeiten (s, ms, min:s) – weniger ist besser; tok/s – mehr ist besser.
+
+### 9a Produktionsumstellungen
+
+Wirkung jeweils gegen den Produktionsstand davor.
+
+| Datum, Uhrzeit | Stand | Änderung | Gemessene Wirkung | Quelle |
+|---|---|---|---|---|
+| 03.10., ab 09:50 | fork-union 138059c8 | PLE-Plattenstufe mit Zeilen-Cache 0,5 GiB, Entwurfsvokabular 98.304 Tok (siehe 8c) | Ausgangspunkt dieses Abschnitts; Messung in 8a | STAND 03.10.; BS/ab_final_2026-10-03.log |
+| 05.10., spätabends | fork-main 65a3bf176 = 1Cat main 2164365ab + PLE-Plattenstufe (PR C), #715, Entwurfsvokabular, FLA-Fix, sync-PP-Korrekturen, FP8-Tuning als KernelConfig-Feld (Standard aus) | Basis 1Cat main; alle 13 vLLM-Einträge auf `--kernel-config` umgeformt | DSv4: Schritt 35,7k 85–86 → 74–75 ms (29,6–39,1 → 32,7–43,6 tok/s), edit (1.867 Tok) 91 → 77 ms (62,0–62,4 → 73,6–74,1 tok/s). PP4-Prefill 29k 13,6–13,7 → 13,9–14,0 s (~2.130–2.150 → ~2.080–2.100 tok/s); TP2×PP2 18,5–18,6 → 18,7–18,8 s (~1.570–1.580 → ~1.550–1.560 tok/s); 27B gleich | STAND 05.10. abends, 05.10. spätabends; BS/ab_forkmain_nm_2026-10-05.log (Kopf: b0083716d, Fassung vor dem DSv4-Setter-Fix) |
+| 06.10., mittags | fork-main ee5813de2 | Host-Allreduce für TP2 ohne P2P (mzen17, `sm70_host_reduce`), PLE-Policy-Fix; PP4-Aufteilung 12,12,12,12 → 11,11,14,12 | 27B prosa 37 → 33–34 ms (66,2–66,3 → 73,5–73,9 tok/s); TP2×PP2 edit (1.885 Tok) 48 → 46 ms (104,5–104,8 → 109,0–109,3 tok/s); PP4-Prefill 29k 13,8–14,0 → 13,1–13,2 s (~2.080–2.120 → ~2.210–2.230 tok/s); DSv4 gleich | STAND 06.10. mittags; BS/ab_acc_2026-10-06.log, BS/ab_accds_2026-10-06.log |
+| 11.10., abends | fork-main-next 2991fbfdc = 1Cat main be3722bc0 (~570 Upstream-Commits) + 12 eigene Commits + drei Korrekturen an 1Cats Policy-Migration | Upstream-Nachzug | Tempo gleich bis auf DSv4 prosa 70 → 71 ms (42,9–43,0 → 42,5–42,7 tok/s, −0,7 %), von Peuqui akzeptiert | STAND 11.10. abends; BS/ab_fmnext_2026-10-11.log, BS/ab_fmnext_ds5_2026-10-11.log |
+| 15.10., 03:40 | fork-main-1013 aa7087485 = 1Cat main 6f3557c97 + 16 eigene Commits + GDN-Fix | Upstream-Nachzug (im Kern #1203) | Tempo gleich; DSv4 prosa in beiden Armen 70–71 ms = 42,8–42,9 tok/s (laut STAND ist der −0,7-%-Rest vom 11.10. weg) | STAND 15.10. früh; BS/ab_fm1013_2026-10-14.log, BS/ab_fm1013b_2026-10-15.log |
+| 15.10., mittags | ple-prefill-overlap-v2 baaa5a687 | PLE-Abruf im Prefill vorgezogen (`ple_prefill_early_request`); PP4-Aufteilung 11,10,15,12 | PP4-Prefill 29k 13,1–14,1 → 12,5–12,8 s (~2.070–2.230 → ~2.280–2.340 tok/s); Decode gleich | STAND 15.10. mittags; BS/prodcheck2_2026-10-15.log |
+| 15.10., abends (Kontrolle 21:00) | baaa5a687, nur Config | 27B-Eintrag auf V2-Runner | 27B kurz ~+3 %: prosa 33–34 → 32–33 ms (73,2–73,8 → 74,8–76,3 tok/s) | STAND 15.10. abends; BS/q27v2_ab_2026-10-15.log |
+| 16.10., ~02:10 (K=7-Eintrag ~03:10) | fork-main-v2b 62b127eab | DSpark auf V2-Runner + Context-Buckets für die V2-Decode-Graphen; DSv4-Einträge auf V2 | DSv4 K=5 +11–12 %: prosa 70 → 63 ms (42,9–43,0 → 48,2–48,3 tok/s); K=7 prosa 76 → 68 ms (42,1 → 47,1 tok/s) | STAND 16.10. nachts; BS/dsv4_v2dspark_ab_2026-10-16.log, BS/dsv4k7_v2_ab_2026-10-16.log |
+| 16.10., ~11:40 | df0941355 | DSv4-Indexer über 131.072 Tok: Score-Kacheln im cuBLAS-Pfad, letzter Bucket bei der maximalen Modelllänge | DSv4 287k 241,4–242,4 → 93,1–93,5 ms (12,6–13,1 → 34,1–34,3 tok/s) | STAND 16.10. vormittags; BS/longctx_fix_2026-10-16.log |
+| 17.10., ~04:25 | 9e81ffeb0 | #1219 (P2P-Prüfung, gruppenlokal umgebaut), Testreparatur, delta_h-Autotune mit `maxnreg=255` | Prefill 29k: 27B 41,2–41,3 → 38,5–38,6 s (~710 → ~760 tok/s), PP4 12,5–12,6 → 11,6–11,9 s (~2.320–2.340 → ~2.450–2.520 tok/s), TP2×PP2 18,6–18,7 → 17,6–17,7 s (~1.560–1.570 → ~1.650–1.660 tok/s); Decode gleich | STAND 17.10. früh, 16./17.10. nachts; BS/ab_maxnreg_2026-10-16.log, BS/prodcheck_2026-10-17.log |
+| 17.10., 08:53 | 9a41a8e67 | GQA-gepackte FA2-Verify-Attention (df08fe7a9, 9a41a8e67) | 27B 250k 182,5 → 63,2 ms (14,2 → 41,5–41,6 tok/s); sehr kurzer Kontext −2 % | STAND 17.10. vormittags; BS/ab_gqapack_2026-10-17.log, BS/prodcheck_2026-10-17b.log |
+| offen | turing-prefill ee261cc74 = 9a41a8e67 + GDN-TileLang-Prefill auf Turing (548ed0cf4) + cuBLAS-QSA-Indexer und exakte Top-k auf Turing | **nicht in Produktion, Entscheidung offen** | Prefill 29k: 27B 38,5–38,6 → 35,3–35,4 s (~760 → ~825 tok/s), TP2×PP2 17,6–17,7 → 14,8 s (~1.650–1.660 → ~1.970–1.980 tok/s), PP4 11,6 → 10,2–10,6 s (~2.510–2.520 → ~2.750–2.870 tok/s). 250k: 27B 592,6 → 565,1–565,2 s (~422 → ~442 tok/s); TP2×PP2 253,3–275,7 → 157,0–162,4 s (~910–990 → ~1.540–1.590 tok/s). Decode gleich. Qualität: 27B wortgleich zur Produktion; TP2×PP2 Greedy 0/3 wortgleich (Formulierungsvarianten), 8/8 Fragen richtig; PP4 Kuanda in beiden Armen durchgefallen, der Zweig erfindet „Kenneth Kaunda, sambischer Fußballspieler“ | STAND 17.10. nachmittags; BS/ab_turingprefill_2026-10-17.log |
+
+- Zwischen 03.10. und 05.10. lief 138059c8 unverändert.
+- Jede Umstellung wurde mit Greedy-Vergleich und den acht Qualitätsfragen abgenommen (händisch gelesen). Greedy-Abweichungen bei Flash-Next treten auch zwischen Boots desselben Codes auf und sind Formulierungsvarianten (STAND 16./17.10. nachts).
+- Die Kontrolle nach der Umstellung um 08:53 lief für PP4 unter hohem Speicherdruck (943.977 Major Faults, 4.853 memory.high-Treffer): Greedy 1/3, Kuanda verzettelt. Der Textpfad von Flash-Next ist von 9a41a8e67 nicht berührt (STAND 17.10. vormittags).
+
+### 9b Meilensteine mit gemessener Wirkung
+
+#### DSv4
+
+| Datum | Änderung | Wirkung | Quelle |
+|---|---|---|---|
+| 05.10. | Basis 1Cat main 2164365ab (fork-main, Produktion 65a3bf176) | Kurz greedy: prosa 84 → 69–71 ms (37,5–37,6 → 43,1–44,7 tok/s), code 87 → 72 ms (54,8–54,9 → 63,2–63,3 tok/s), edit (1.867 Tok) 91 → 77 ms (62,0–62,4 → 73,6–74,1 tok/s). 35,7k: 85–86 → 74–75 ms (29,6–39,1 → 32,7–43,6 tok/s). Prefill 35,7k 15,3 → 15,5–15,6 s (~2.330 → ~2.290–2.310 tok/s). Ursache des schnelleren Schritts nicht untersucht | STAND 05.10. abends, 05.10. morgens; BS/ab_forkmain_nm_2026-10-05.log |
+| 16.10. | DSpark auf V2-Runner + Context-Buckets (62b127eab), Eintrag K=5 | Kurz greedy: prosa 70 → 63 ms (42,9–43,0 → 48,2–48,3 tok/s), code 73 → 65 ms (65,7–65,8 → 73,5–73,6 tok/s), edit (1.868 Tok) 78 → 70 ms (72,6–72,8 → 80,7–81,0 tok/s). 35,7k: 75–76 → 69–71 ms (31,4–46,7 → 32,8–51,1 tok/s). Prefill 35,7k 15,5–15,6 → 15,2–15,3 s (~2.290–2.310 → ~2.330–2.350 tok/s). Annahme gleich | STAND 16.10. nachts; BS/dsv4_v2dspark_ab_2026-10-16.log |
+| 16.10. | dasselbe, Coding-Eintrag K=7 | Kurz greedy: prosa 76 → 68 ms (42,1 → 47,1 tok/s), code 79 → 71 ms (63,0–63,2 → 70,3–70,4 tok/s), edit (1.868 Tok) 85 → 77 ms (77,9–78,8 → 86,3–87,3 tok/s) | STAND 16.10. nachts; BS/dsv4k7_v2_ab_2026-10-16.log |
+| 16.10. | Indexer: Score-Kacheln + Bucket bis zur maximalen Modelllänge (df0941355) | M-sonde: 178k 174,8–175,4 → 86,7–87,2 ms (19,1–20,1 → 38,4–42,0 tok/s); 287k 241,4–242,4 → 93,1–93,5 ms (12,6–13,1 → 34,1–34,3 tok/s). Unter 131.072 Tok unverändert | STAND 16.10. vormittags; BS/longctx_v1v2_2026-10-16.log, BS/longctx_fix_2026-10-16.log |
+
+#### Flash-Next
+
+| Datum | Änderung | Wirkung | Quelle |
+|---|---|---|---|
+| 06.10. | Host-Allreduce für TP2 ohne P2P (ee5813de2), TP2×PP2 | Kurz greedy: code 47–48 → 46 ms (83,6–88,8 → 90,0–91,0 tok/s), edit (1.885 Tok) 48 → 46 ms (104,5–104,8 → 109,0–109,3 tok/s). Prefill 29k gleich (18,7–18,8 s, ~1.550–1.560 tok/s) | STAND 06.10. nachts, 06.10. mittags; BS/ab_acc_2026-10-06.log |
+| 06.10. | PP4-Aufteilung 12,12,12,12 → 11,11,14,12 | Prefill 29k 13,8–14,0 → 13,1–13,2 s (~2.080–2.120 → ~2.210–2.230 tok/s); Decode gleich; KV 467.118 → 439.091 Tok | STAND 06.10. früh, 06.10. mittags; BS/ab_partition_2026-10-06.log, BS/ab_acc_2026-10-06.log |
+| 15.10. | PLE-Abruf im Prefill vorgezogen + Aufteilung 11,10,15,12 (baaa5a687), PP4 | Prefill 29k 13,1–14,1 → 12,5–12,8 s (~2.070–2.230 → ~2.280–2.340 tok/s); Decode gleich; KV 446.955 → 423.362 Tok | STAND 15.10. vormittags, 15.10. mittags; BS/partsweep_2026-10-15.log, BS/partsweep2_2026-10-15.log, BS/earlyparts_2026-10-15.log, BS/prodcheck2_2026-10-15.log |
+| 16./17.10. | delta_h-Autotune mit `maxnreg=255` (9e81ffeb0), PP4 | Prefill 29k 12,5–12,6 → 11,6–11,9 s (~2.320–2.340 → ~2.450–2.520 tok/s); 250k 152,4–154,9 → 139,9–140,1 s (~1.610–1.640 → ~1.790 tok/s); Decode gleich | STAND 16./17.10. nachts; BS/ab_maxnreg_2026-10-16.log |
+| 16./17.10. | dasselbe, TP2×PP2 | Prefill 29k 18,6–18,7 → 17,6–17,7 s (~1.560–1.570 → ~1.650–1.660 tok/s); 250k 291,4–294,8 → 253,4–262,6 s (~850–860 → ~950–990 tok/s); Decode gleich | STAND 16./17.10. nachts; BS/ab_maxnreg_2026-10-16.log |
+
+#### 27B
+
+| Datum | Änderung | Wirkung | Quelle |
+|---|---|---|---|
+| 06.10. | Host-Allreduce für TP2 ohne P2P (ee5813de2) | Kurz greedy: prosa 37 → 33–34 ms (66,2–66,3 → 73,5–73,9 tok/s), code 37 → 33–34 ms (102,1–102,5 → 113,1–114,1 tok/s), edit (1.885 Tok) 39 → 35 ms (102,8–102,9 → 114,0–114,1 tok/s). 29k: 56–57 → 53 ms (31,6–40,6 → 34,0–42,6 tok/s). Prefill 29k gleich (41,4–41,5 s, ~705 tok/s) | STAND 06.10. nachts, 06.10. mittags; BS/ab_acc_2026-10-06.log |
+| 15.10. | V2-Runner (nur Config) | Kurz greedy: prosa 33–34 → 32–33 ms (73,2–73,8 → 74,8–76,3 tok/s), code 33–34 → 32–33 ms (113,1–114,0 → 115,9–117,9 tok/s), edit (1.882 Tok) 35 → 34 ms (113,8–114,0 → 116,8–117,4 tok/s). 29k: 52–53 → 52 ms (34,1–42,7 → 38,0–47,4 tok/s). Prefill 29k 41,4–41,5 → 41,2–41,3 s (~705 → ~708 tok/s) | STAND 15.10. abends; BS/q27v2_ab_2026-10-15.log |
+| 16./17.10. | delta_h-Autotune mit `maxnreg=255` (9e81ffeb0) | Prefill 29k 41,2–41,3 → 38,5–38,6 s (~710 → ~760 tok/s); 184k 395,6 → 378,8 s (~465 → ~486 tok/s); 250k 615,5 → 592,7 s (~406 → ~422 tok/s); Decode gleich | STAND 16./17.10. nachts; BS/ab_maxnreg_2026-10-16.log |
+| 17.10. | GQA-gepackte FA2-Verify-Attention (9a41a8e67) | M-sonde: 184k 142,9–143,0 → 55,2–55,3 ms (19,4 → 50,1–50,2 tok/s), 250k 182,5 → 63,2 ms (14,2 → 41,5–41,6 tok/s). 29k bei temp 1,0: 52 → 38–39 ms (37,9–47,3 → 50,9–63,5 tok/s). Sehr kurzer Kontext: prosa 32 → 33 ms (76,1–76,3 → 74,4–74,7 tok/s), code 32–33 → 33 ms (116,4–117,7 → 114,1–115,3 tok/s). Prefill gleich | STAND 17.10. früh, 17.10. vormittags; BS/ab_gqapack_2026-10-17.log |
+
+### 9c Geprüft und verworfen
+
+- **sync-Scheduling unter PP (Issue #852), DSv4 PP5, 05.10.; am 15.10. gestrichen:** Prefill 35,7k 61,1–61,3 s (~580 tok/s) statt 15,5–15,6 s (~2.290–2.310 tok/s) bei async; prosa 72 ms = 41,8–41,9 tok/s statt 70 ms = 43,0 tok/s. STAND 05.10. spätnachmittags, 15.10. abends; BS/ab_sync_fix_2026-10-05.log, BS/ab_fm_notune_2026-10-05.log.
+- **27B PP2 statt TP2, 06.10.:** Prefill 29k 24,7–24,9 s (~1.170–1.180 tok/s) statt 41,4–41,5 s (~705 tok/s), 81k 86,0–86,3 s (~940 tok/s) statt 134,2–134,7 s (~600 tok/s). Aber Schritt kurz 52 ms = 47,1–47,2 tok/s statt 37 ms = 66,3–66,5 tok/s und nach 81k 141–142 ms = 13,3–17,5 tok/s statt 87–88 ms = 21,5–27,0 tok/s → TP2 bleibt. STAND 06.10. vormittags (dort „36k“; die Prompts haben 29.167–29.243 Tok); BS/ab_pp2_2026-10-06.log, BS/ab_pp2_long_2026-10-06.log.
+- **Oktober-Plan 3, adaptive Prüflänge für DSv4, 11.10.:** braucht sync. Schwelle 0,3: prosa 82–83 ms = 36,1–36,8 tok/s statt 70 ms = 42,9–43,0 tok/s (async); Schwelle 0,6: 109–126 ms = 25,6–29,7 tok/s. Erstes Token bei 11.876–11.930 Tok: sync 19,1–19,2 s (~620 tok/s) statt 5,2–5,4 s (~2.200–2.290 tok/s). Je ein Boot. STAND 11.10. nachts; BS/dsv4_av_2026-10-11.log, BS/dsv4_av2_2026-10-11.log.
+- **Oktober-Plan 7, nicht-blockierende PP-Metadaten (Upstream #49274), 11.10.:** ohne eigene Messung verworfen. Upstream maß mit zwei gleichzeitigen Anfragen, unser Decode sendet schon ohne Metadaten. STAND 11.10. spätabends.
+- **PP4-Aufteilungen ohne PLE-Überlappen, 15.10.:** keine übernommen.
+  - 10,10,16,12: Prefill 29k 12,5 s (~2.330 tok/s), aber KV 281.061 statt 446.955 Tok (−37 %).
+  - 9,11,16,12: 13,1–13,2 s (~2.210–2.230 tok/s); 10,11,15,12: 13,1–13,7 s (~2.130–2.230 tok/s).
+  - 10,10,15,13: OOM auf Stufe 3; 9,10,17,12: KV unter 262.144 Tok. Schon am 06.10.: 11,11,13,13 OOM auf GPU 3.
+  - Übernommen wurde 11,10,15,12 mit Überlappen, siehe 9b.
+  - STAND 15.10. vormittags, 06.10. früh; BS/partsweep_2026-10-15.log, BS/partsweep2_2026-10-15.log, BS/partsweep3_2026-10-15.log.
+- **MoE-Decode DSv4, 15.10.:** Roofline je Experte V100 754 von 866 GB/s (87 %), RTX 613 von 606 GB/s (am Anschlag) → kein Hebel über ~2 %. STAND 15.10. abends.
+- **Probabilistische Entwürfe, Flash-Next PP4, 16./17.10.** (temp 1,0 / top_k 40 / min_p 0,1): Annahme Prosa 30,0 → 31,8 %, Code 77,2 → 76,9 %; tok/s Prosa +2,5 %, Code −1,5 bis −2 % → nicht umgestellt. STAND 16./17.10. nachts.
+- **Volta-MMA-Kernel für sm_75 neu bauen, 17.10.:** hilft nicht. Die RTX 8000 führt m8n8k4 mit 45,5 TFLOPS aus (m16n8k8: 90,2; V100 m8n8k4: 92,4), der Compiler behält HMMA.884. Nur m16n8k8-Varianten würden helfen. STAND 17.10. nachmittags; BS/mma_shape_bench.cu.
+- **TP2×PP2-Aufteilung, 17.10. (auf turing-prefill):** 24,24 bleibt. 23,25: 14,8 s (~1.970 tok/s, gleich) bei KV 666.170 statt 851.968 Tok; 22,26: 15,1–15,2 s (~1.920–1.940 tok/s) und Kuanda durchgefallen. STAND 17.10. nachmittags; BS/profile_partsweep_tp2_2026-10-17.log.
+- **Kachel-Sweep der QSA-Prefill-Attention, 17.10.:** BLOCK_N 16/32 × 2/4/8 Warps × 1/2 Stufen, 1.616 Zeilen, Top-k 2.051, 184k Kontext. Die Produktionseinstellung (16, 4, 2) ist auf beiden Karten schon die schnellste: RTX 38,75 ms, V100 23,3 ms je Aufruf (weniger ist besser). Ursache des RTX-Rückstands: Triton 3.6 nutzt vor sm_80 keine Tensorkerne, der Kernel ist L1/Shared-gebunden, und Turing hat die halbe L1-Bandbreite je SM. STAND 17.10. nachmittags; BS/qsa_splitk_tile_bench_2026-10-17.log, BS/ncu_qsa_splitk_gpu0/1.ncu-rep.
+- **FP8- bzw. Int4-quantisiertes Allreduce ohne P2P (vLLM #56551, #39783):** ohne Messung abgelehnt, weil verlustbehaftet (Qualität vor Tempo). STAND, Arbeitsplan Oktober 2026 (Recherche 02.10.).
+
+### 9d Gesamtbild Stand 03.10. → Stand 17.10.
+
+Quellen:
+- **03.10.:** DSv4 und 27B aus den Produktionsarmen der nativen Gegenprobe (BS/ab_main_2026-10-03.log, 10:26–11:30, je ein Boot). PP4 und TP2×PP2 aus der Abschlussmessung des Endstands (= Produktion ab 09:50): PP4 Läufe endA/endB in BS/ab_final_2026-10-03.log, TP2×PP2 Lauf endB in BS/ab_final_tp2_2026-10-03.log. Boot-Zeiten von PP4 und TP2×PP2 aus BS/ab_main_2026-10-03.log (die ersten Endstand-Boots kompilierten neu).
+- **17.10.:** Produktion 9a41a8e67. DSv4 aus BS/prodcheck_2026-10-17b.log (ein Boot). 27B, PP4, TP2×PP2 aus den Produktionsarmen prod-a/prod-b von BS/ab_turingprefill_2026-10-17.log.
+
+Einheiten stehen in der Spalte „Kennzahl“; „ms = tok/s“ aus derselben Messung. Richtung: Zeiten weniger ist besser, tok/s mehr ist besser.
+
+| Modell | Kennzahl | Stand 03.10. | Stand 17.10. | Vergleichbarkeit |
+|---|---|---|---|---|
+| DSv4 PP5 | Prefill 35,7k kalt (s; tok/s) | 15,3 (~2.330) | 15,2–15,3 (~2.330–2.350) | vergleichbar |
+| DSv4 PP5 | Schritt 35,7k, temp 1,0 (ms = tok/s) | 85–86 = 31,3–36,4 | 70–71 = 42,0–51,2 | vergleichbar |
+| DSv4 PP5 | Schritt kurz greedy, Prosa / Code (ms = tok/s) | 84–85 = 37,5 / 87 = 54,8–54,9 | 62–63 = 48,3 / 65 = 73,5 | vergleichbar, gleiche Prompts |
+| DSv4 PP5 | Schritt Bearbeitung greedy (ms = tok/s) | 91 = 61,8–62,0 | 70 = 80,6–80,9 | eingeschränkt: Text 1.437 → 1.895 Tok |
+| DSv4 PP5 | Schritt 178k / 287k, M-sonde (ms = tok/s) | nicht gemessen | 86,5 = 43,9 / 92,9 = 36,1 | Ausgangswert erst 16.10. (Produktion 62b127eab vor dem Fix): 174,8–175,4 = 19,1–20,1 / 241,4–242,4 = 12,6–13,1 |
+| DSv4 PP5 | Prefill 178k / 287k, M-sonde (s; tok/s) | nicht gemessen | 113,1 (~1.580) / 222,9 (~1.290) | am 16.10. vor dem Fix gleich: 112,7 (~1.580) / 222,7–222,8 (~1.290) |
+| DSv4 PP5 | Boot b+g (min:s) | 4:20 | 4:20 | vergleichbar, warmer Compile-Cache |
+| DSv4 PP5 | KV-Pool (Tok) | 399.133 | 399.133 | |
+| Flash-Next PP4 | Prefill 29k kalt (s; tok/s) | 13,5–13,8 (~2.110–2.170) | 11,6 (~2.510–2.520) | eingeschränkt: Aufteilung 12,12,12,12 → 11,10,15,12; Speicherdruck siehe unten |
+| Flash-Next PP4 | Schritt 29k, temp 1,0 (ms = tok/s) | 61–66 = 30,7–41,0 | 61–65 = 28,3–41,0 | vergleichbar |
+| Flash-Next PP4 | Schritt kurz greedy, Prosa / Code (ms = tok/s) | 52–55 = 45,7–48,6 / 53–56 = 74,5–79,0 | 53–54 = 44,0–48,2 / 53–55 = 75,6–80,3 | vergleichbar; Ausgaben wechseln zwischen Boots, daher tok/s weniger robust als ms |
+| Flash-Next PP4 | Schritt Bearbeitung greedy (ms = tok/s) | 54 = 91,8–92,2 | 54 = 92,4–92,6 | eingeschränkt: Text 1.460 → 1.911 Tok |
+| Flash-Next PP4 | Prefill 184k / 250k, M-sonde (s; tok/s) | nicht gemessen | 124,5–183,0 (~1.010–1.480) / 139,3–180,1 (~1.390–1.790) | streut mit den Major Faults der PLE-Plattenstufe |
+| Flash-Next PP4 | Schritt 184k / 250k, M-sonde (ms = tok/s) | nicht gemessen | 61,6–62,5 = 46,9–48,7 / 65,8–67,3 = 39,1–40,6 | |
+| Flash-Next PP4 | Boot b+g (min:s) | 3:28 | 3:31–4:00 | vergleichbar |
+| Flash-Next PP4 | KV-Pool (Tok) | 421.103–425.286 | 423.362 | |
+| Flash-Next TP2×PP2 | Prefill 29k kalt (s; tok/s) | 18,5–18,6 (~1.570–1.580) | 17,6–17,7 (~1.650–1.660) | vergleichbar; 03.10. ein Lauf |
+| Flash-Next TP2×PP2 | Schritt 29k, temp 1,0 (ms = tok/s) | 56–57 = 37,6–43,5 | 54–56 = 38,0–44,8 | vergleichbar |
+| Flash-Next TP2×PP2 | Schritt kurz greedy, Prosa / Code (ms = tok/s) | 48 = 48,8–49,0 / 48–51 = 84,8–88,7 | 45–46 = 54,2–56,3 / 45–46 = 88,4–97,8 | vergleichbar; Ausgaben wechseln zwischen Boots |
+| Flash-Next TP2×PP2 | Schritt Bearbeitung greedy (ms = tok/s) | 49 = 101,7–101,8 | 46 = 109,1–109,6 | eingeschränkt: Text 1.460 → 1.911 Tok |
+| Flash-Next TP2×PP2 | Prefill 184k / 250k, M-sonde (s; tok/s) | nicht gemessen | 178,9–194,1 (~950–1.030) / 253,3–275,7 (~910–990) | |
+| Flash-Next TP2×PP2 | Schritt 184k / 250k, M-sonde (ms = tok/s) | nicht gemessen | 53,4–53,6 = 57,0–60,5 / 58,0–59,0 = 45,1–46,1 | |
+| Flash-Next TP2×PP2 | Boot b+g (min:s) | 4:26 | 4:16–4:29 | vergleichbar |
+| Flash-Next TP2×PP2 | KV-Pool (Tok) | 762.727 | 843.601 | |
+| 27B TP2 | Prefill 29k kalt (s; tok/s) | 41,4 (~705) | 38,5–38,6 (~756–760) | vergleichbar; 03.10. ein Boot |
+| 27B TP2 | Schritt 29k, temp 1,0 (ms = tok/s) | 56–57 = 34,1–40,0 | 38–39 = 50,7–63,6 | vergleichbar |
+| 27B TP2 | Schritt kurz greedy, Prosa / Code (ms = tok/s) | 37 = 66,3–66,5 / 37 = 102,5–102,7 | 33 = 74,4–74,7 / 33 = 115,0–115,2 | vergleichbar, gleiche Prompts |
+| 27B TP2 | Schritt Bearbeitung greedy (ms = tok/s) | 38 = 103,7–103,8 | 34 = 118,6–119,2 | eingeschränkt: Text 1.460 → 1.911 Tok |
+| 27B TP2 | Prefill 184k / 250k, M-sonde (s; tok/s) | nicht gemessen | 378,7–378,8 (~486) / 592,6 (~422) | Ausgangswert erst 16.10. (Produktion df0941355): 395,6 (~465) / 615,5 (~406) |
+| 27B TP2 | Schritt 184k / 250k, M-sonde (ms = tok/s) | nicht gemessen | 55,2–55,3 = 50,1–50,2 / 63,1–63,2 = 39,0 | Ausgangswert 16.10.: 142,9–143,0 = 19,4 / 182,4–182,6 = 14,2 |
+| 27B TP2 | Boot b+g (min:s) | 2:27 | 1:52–1:55 | eingeschränkt: b+g enthält die Antwortzeit, die mit dem schnelleren Decode sinkt |
+| 27B TP2 | KV-Pool (Tok) | 979.027 | 1.037.111 | V2-Runner seit 15.10. |
+
+Nicht vergleichbar bzw. Vorbehalte:
+- **Bearbeitungstext:** gewechselt (1.460 / 1.437 → 1.911 / 1.895 Tok), die Bearbeitungszeilen zeigen daher nur die Richtung.
+- **Speicherdruck PP4:** 03.10. Endstand 361 / 405 memory.high-Treffer bei 736 / 785 MiB von der Platte; 17.10. Produktionsarme 3.504 / 2.620 Treffer bei 10.927 / 8.642 MiB. Die Läufe vom 17.10. enthalten die Lang-Kontext-Sonde, die Zähler gelten je Lauf und sind deshalb nicht vergleichbar. Der 29k-Prefill liegt vor der Sonde und ist in beiden PP4-Armen vom 17.10. gleich (11,6 s, ~2.510–2.520 tok/s).
+- **Lange Kontexte:** M-sonde gibt es erst seit 16.10.; für 03.10. fehlen Werte über 35,7k. Die Ausgangswerte vom 16.10. sind keine Messung des Stands 03.10.
+- **Je ein Boot:** DSv4 an beiden Tagen sowie 27B und TP2×PP2 am 03.10.

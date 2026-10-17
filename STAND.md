@@ -45,7 +45,15 @@ Attention, PLE unter Druck, QSA-Indexer auf Turing.**
   `test_flash_attn_packed_gqa_verify.py` (RTX 24/24; Fehler bei 1 KV-Kopf gefunden und behoben: `merge_attn_states`
   ignoriert Strides, die LSE-Ansicht war bei einem KV-Kopf nicht dicht → `.contiguous()`). pre-commit + mypy grün,
   Architektur-Referenz neu erzeugt. `tests/v1/attention/test_attention_backends.py` hier nicht lauffähig (gated
-  `meta-llama/Meta-Llama-3-8B`, 403). Serving-A/B 27B läuft (`ab_gqapack_2026-10-17.log`, ab 06:00).
+  `meta-llama/Meta-Llama-3-8B`, 403). Erster Serving-Anlauf zeigte KEINE Wirkung: Weiche verlangte `q_descale is None`,
+  das Backend expandiert die Query-Skala auf CUDA aber immer → Bedingung entfernt (9a41a8e67, FA2 ignoriert Descales;
+  FP8-KV bleibt über `is_quantized_kv_cache` ausgeschlossen) + 10 Weichen-Tests (34/34 grün).
+  **A/B 27B** (`ab_gqapack_2026-10-17.log`, Fork kalt/a/b gegen Produktion a/b): Decode 29k 54,6–63,5 gegen 40,5–47,3
+  tok/s (+34 %, Schritt 38–39 gegen 52–53 ms); Schritt 33k 37,4 gegen 52,7–52,9 ms; 184k 55,2–55,3 gegen 142,9–143,0 ms
+  (2,6×); 250k 63,2 gegen 182,5 ms (2,9×, 41,5 gegen 14,2 tok/s); edit (1,9k) 119,0–119,2 gegen 117,3–117,4 tok/s;
+  sehr kurzer Kontext (Prompt 33/45 Token) prosa 74,4–74,7 gegen 76,1–76,3, code 114,1–115,3 gegen 116,4–117,7 (−2 %,
+  zwei Zusatzkernel; Schwelle nach Kontextlänge geht in FULL-Graphen nicht). Prefill gleich. Greedy 5/5 Boots 3/3,
+  Qualität 8/8 wortgleich mit der Produktion. Produktion wartet auf Peuquis Okay.
   Mikrobench RTX 8000 (12/2 Köpfe, D 256, q 4): 2k 0,141 → 0,123 ms, 33k 1,530 → 0,390 (3,9×), 184k 8,248 → 1,272 (6,5×),
   250k 8,688 → 1,668 ms (5,2×), relative Abweichung ≤ 6,3·10⁻⁴.
 

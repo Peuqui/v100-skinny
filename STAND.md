@@ -13,6 +13,189 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 17.10. abends: Produktion = turing-prefill ee261cc74 (20:38, Freigabe Peuqui), Kontrolle bestanden.**
+- `prod-fork-main` Fast-Forward 9a41a8e67 → ee261cc74 (nur Python), Tags `archive-prod-fork-main-2026-10-17c` (9a41a8e67) und
+  `verified-2026-10-17-turing-prefill` (ee261cc74), `fork-main-v2b` nachgezogen, alles gepusht.
+- Kontrolle `prodcheck_2026-10-17c.log` (prodonce mit Lang-Kontext-Sonde, 20:38–21:46; s = tok/s, ms = tok/s derselben Zeile):
+  27B Greedy 3/3, Qualität 8/8 wortgleich zum A/B-Zweig; 29k 35,4–35,5 s = 823–825 tok/s, 184k 363,3 s, 250k 568,7 s,
+  250k-Decode 62,8 ms = 39,2 tok/s; Kurzdecode prosa 34 ms = 72,1–72,4, code 34 ms = 111,1–112,9, edit 34 ms =
+  116,1–116,7 tok/s (A/B mit gleichem Code: 33 ms = 74,3–74,7 / 114,8–115,2 / 118,6–119,2) — **von meiner versehentlichen
+  dateisystemweiten Suche 20:46–20:48 überlagert, nachmessen**. PP4 29k 10,2 s = 2.859–2.867 tok/s, Kurzdecode 53–54 ms,
+  edit 92,4–92,5 tok/s, 184k 106,4 s, 250k 134,1 s (515k Major Faults, 2.970 memory.high), Greedy 1/3 gegen alte Referenz,
+  Qualität 6/8 wortgleich zum A/B-Zweig, englisch richtig, Kuanda verzettelt (600 Token ohne Coandă; wie die alte
+  Produktion heute früh, Stichprobe 14 gegen 13 von 20). TP2×PP2 29k 14,8 s = 1.971–1.976 tok/s, Kurzdecode 45–46 ms, edit
+  109,7–109,8 tok/s, 184k 127,0 s, 250k 167,0 s, Qualität 8/8 wortgleich zum A/B-Zweig. DSv4 Greedy 3/3, Qualität 8/8
+  wortgleich zur Kontrolle 17b, 35,7k 15,3 s, prosa 62–63 ms = 48,3 / code 65 ms = 73,4–73,5 / edit 70 ms = 80,7–81,2
+  tok/s, 178k 86,7 ms = 38,4, 287k 93,6 ms = 33,1 tok/s. Keine Fehler im Journal.
+- Greedy-Referenzen PP4/TP2 auf die neue Produktion umgestellt (`greedy_refs.sh`, Sicherung `.vor-2026-10-17c`).
+- Während der Kontrolle: Installer-Test von Mini:AIfred-Intelligence 21:07–21:09 (Boot PP4, vor der Messung) auf Bitte
+  gelöscht; ViroSpore wartete bis zum Ende.
+- PR-Vorbereitung für vier 1Cat-PRs (Freigabe Peuqui „wasserdicht prüfen, dann senden“): A delta_h-maxnreg 9e81ffeb0,
+  B GQA-Verify df08fe7a9+9a41a8e67, C GDN-TileLang Turing 548ed0cf4, D QSA-Indexer Turing ee261cc74. Konfliktfrei auf main
+  6f3557c97 (merge-tree), keine Abhängigkeit von unseren übrigen Commits, Duplikatsuche (20 Begriffe) und Überschneidung
+  mit allen 114 offenen PRs ohne Befund. Kernel-Zahlen der Commit-Nachrichten waren nicht geloggt → `pr_kernel_bench_2026-10-17.py`.
+- **22:4x gesendet: #1226 (A, delta_h maxnreg), #1227 (B, GQA-Verify), #1228 (C, TileLang Turing), #1229 (D, QSA-Indexer
+  Turing)**, Zweige `pr-*` auf dem Fork = abgenommene Commits, Live-Text = Entwurf bytegenau, alle vier mergeable. Vorher
+  frisch geprüft: main unverändert 6f3557c97, neu nur #1225 (MRv2 prompt logprobs, keine Dateiüberschneidung), merge-tree
+  gegen alle 115 offenen PR-Köpfe ohne Zusatzkonflikt (Dateilisten-Filter war unzuverlässig: `gh pr list` kappt bei 100
+  Dateien). Gesendete Fassungen `upstream-contrib/10-1cat-prs-2026-10-17/pr-122x-*-gesendet.md`.
+
+**Nachtrag 17.10. nachmittags: A/B `turing-prefill` fertig (Produktionsfrage offen), Mikrobenches, Turing-Befunde;
+TP2×PP2-Aufteilungskette: 24,24 bleibt; nsys-Profil 184k läuft ab 16:45.**
+- A/B `ab_turingprefill_2026-10-17.log` 10:47–15:04, je Modell A/B/A/B (Prefill s = tok/s, mehr tok/s besser; Decode
+  Schritt ms = tok/s derselben Zeilen, aus dem Log):
+  - 27B: 29k 38,5–38,6 s = 756–758 → 35,3–35,4 s = 825–827 tok/s; 184k 378,7–378,8 s = 486 → 358,6 s = 513 tok/s;
+    250k 592,6 s = 422 → 565,1–565,2 s = 442 tok/s. Decode gleich (prosa 33 ms = 74,3–74,7, code 33 ms = 114,8–115,2,
+    edit 34 ms = 118,6–119,2 tok/s; 250k 63,2 ms = 38,7–39,0). Greedy 3/3 und alle Qualitätsantworten wortgleich zur
+    Produktion.
+  - TP2×PP2: 29k 17,6–17,7 s = 1.649–1.659 → 14,8 s = 1.972 tok/s; 184k 178,9–194,1 s = 949–1.029 → 126,3–129,2 s =
+    1.425–1.458 tok/s; 250k 253,3–275,7 s = 907–987 → 157,0–162,4 s = 1.539–1.592 tok/s. Decode-Schritte gleich (45–46 ms);
+    prosa 54,1/53,4 gegen 54,4/55,5, code 90,7/90,8 gegen 93,7/93,1 (Annahme 4,12 gegen 4,27/4,21, anderer Text), edit
+    109,2–109,6 tok/s beide. Greedy 0/3 wortgleich (Formulierungsvarianten, inhaltlich richtig), alle 8 Qualitätsfragen
+    richtig, Kuanda zurückgewiesen ohne Erfinden (= bestanden).
+  - PP4: 29k 11,6 s = 2.516 → 10,2–10,6 s = 2.754–2.862 tok/s; Langkontext streut mit den PLE-Major-Faults (~785k Faults:
+    184k 165–183 s; ~180k Faults: 66–124 s) — eigene Spur. Decode-Schritte gleich (53–55 ms); prosa 46,7/46,2 gegen
+    45,5/46,2, code 74,1/74,0 gegen 79,2/77,8 (Annahme 4,10 gegen 4,28/4,24), edit 92,4–92,5 beide. Greedy 2/3 (Produktion
+    1/3). **Kuanda in beiden durchgefallen**: Produktion verzettelt (600 Token, Cartier-Bresson/Matisse/Rousseau), neuer
+    Zweig weist zurück, erfindet dann aber „Kenneth Kaunda, sambischer Fußballspieler“ (falsch; Kaunda war Sambias erster
+    Präsident). Je Zweig in beiden Boots wortgleich.
+- Mikrobench Tensorbefehle (`mma_shape_bench.cu`): RTX 8000 führt Volta-MMA m8n8k4 nur mit halbem Durchsatz aus
+  (45,5 TFLOPS gegen m16n8k8 90,2; V100 m8n8k4 92,4). Unsere nativen .so sind nur sm_70; Neubau für sm_75 hilft nicht
+  (Compiler behält HMMA.884) — nur m16n8k8-Varianten (Gedächtnis `reference_turing_hmma884_half_rate`).
+- Mikrobench Allreduce (`host_allreduce_bench.py`, 20 MiB fp16, bitgenau): NCCL (Produktions-Env) 10,0 ms = 2,09 GB/s
+  (V100-Paar 2,07), mit GEMM überlappt zu 80 % (V100 72 %); Kopier-Engines über Host (16 Stücke, Addition auf eigenem
+  Stream) 7,63 ms = 2,75 GB/s (V100 2,70), überlappt zu 97 % (V100 81 %). `NCCL_SHM_USE_CUDA_MEMCPY=1` hängt.
+  Entwurf `docs/entwurf-tp-prefill-allreduce-overlap-2026-10-17.md` (Hauptweg zwei verschränkte Mikro-Batches; Abnahme
+  ohne Wortgleichheitspflicht, Peuqui).
+- GPU-Log des A/B: In TP2×PP2-Langprefills wartet die V100-Stufe (~45 W) auf die RTX-Stufe, Produktion 39–60 %, neuer
+  Zweig 22–31 % der Proben. Daher Aufteilungskette `chain_partsweep_tp2_2026-10-17.sh` (24,24 / 23,25 / 22,26 / 24,24,
+  fm-Einträge auf ee261cc74), davor nsys-Profil 184k (`profile_prefill_nsys_tp2_turing_copy.sh`), Einheit
+  `profile-partsweep-tp2-1017`, Log `profile_partsweep_tp2_2026-10-17.log`.
+- **Ergebnis Aufteilungskette (15:22–16:44): 24,24 bleibt.** 29k kalt (je 3 gezählte Anfragen, s = tok/s, mehr tok/s
+  besser): 24,24 14,8–14,9 s = 1.963–1.976 (beide Boots); 23,25 14,8 s = 1.971–1.976; 22,26 15,1–15,2 s = 1.924–1.934.
+  Langkontext streut innerhalb derselben Aufteilung stärker als zwischen ihnen (184k 24,24: 129,3 s bei 211k Major Faults,
+  101,0 s bei 34k; 250k alle 133,6–148,7 s) — die PLE-Plattenstufe bestimmt die Streuung auch hier. Decode gleich
+  (prosa 45–46 ms, edit 45–47 ms = 107,1–109,8 tok/s, 184k 53,6–55,4 ms, 250k 58,0–58,5 ms). KV-Pool 851.968 →
+  666.170 → 587.797 Token. Qualität: 24,24 beide Boots wortgleich, alles richtig; 23,25 weist Kuanda mit Coandă zurück
+  (zweiter Boot mit falschem Geburtsjahr 1908 statt 1886); **22,26 fällt bei Kuanda durch** (600 Token, erfindet „Henri
+  Lopes, portugiesischer Fußballspieler“; Lopes war kongolesischer Schriftsteller). Der Scheduler reicht Prefill-Häppchen
+  unter PP überlappend weiter (`scheduler.py` ~699, 2 Batches im Flug) — die Stufen sind also schon nahezu ausgeglichen; die
+  V100-Dellen (base2: 10–16 % der Proben unter 60 W, Leerlauf 44 W) sind kein Aufteilungsproblem. Ursache klärt das Profil.
+  GPU-Log überschreibt sich je Lauf (`>`), nur base2 erhalten.
+- **nsys-Profil TP2×PP2 184k auf turing-prefill** (`nsys/tp2-turing-1017b/`, Host-Allreduce im Profil-Eintrag aus,
+  184.027 Token in 107,08 s; SQLite ohne `-q` exportiert). Kernelzeit je Stufe (weniger ist besser): RTX 94,4 s — QSA-
+  Attention `_qsa_sparse_paged_gqa_splitk_kernel` 26,5 s (28 %, 38,7 ms je Aufruf), Skinny-MoE 25,1 s (2,46 / 2,07 ms je
+  Aufruf), NCCL-Allreduce 22,2 s, GDN-TileLang nur noch 1,2 s; V100 100,7 s — Allreduce 23,8 s, MoE 22,6 s (2,21 / 1,85 ms),
+  QSA 18,1 s (22,6 ms), **SendRecv-Warten 12,4 s** (= die V100-Dellen). MoE auf der RTX nur +11 % je Aufruf → halber
+  m8n8k4-Durchsatz ist dort nicht der Engpass.
+- **Befund QSA-Attention: Triton 3.6 nutzt auf sm_70 und sm_75 keine Tensorkerne** (Kompilierprobe: `tl.dot` fp16 →
+  TTGIR `#blocked`, Operanden fp32, PTX ohne `mma.sync`; erst sm_80 `#mma`). SASS-Hauptschleife sm_75: 1.026 FFMA,
+  242 LDS.128, 0 HMMA; ncu (`ncu_qsa_splitk_gpu0/1.ncu-rep`): L1/TEX 96,8 % (RTX) / 92,8 % (V100), Stall `mio_throttle`,
+  RTX 63,3 M gegen V100 32,2 M Takte (Turing: halbe L1-Bandbreite je SM). Kachel-Sweep `qsa_splitk_tile_bench.py`
+  (`qsa_splitk_tile_bench_2026-10-17.log`, BLOCK_N 16/32 × 2/4/8 Warps × 1/2 Stufen): Produktion (16, 4, 2) ist auf
+  beiden Karten schon die schnellste (RTX 38,75 ms, V100 23,3 ms; Auswahlmuster egal). Kosten je Aufruf unabhängig vom
+  Kontext (Top-k 2051) → auch bei 29k ~4 s der RTX-Stufe. Nativer Tensorkern-Weg existiert nur für TP4 (`flash_attn_v100`
+  `grouped_sparse_page4`/XQA: 6 Köpfe, nur sm_70, 8 Zeilen je Gruppe); TP2×PP2-Rang 12 Köpfe, PP4 24. Hebel: Port auf
+  12/24 Köpfe + Turing. Gedächtnis `reference_triton36_no_tensor_cores_volta_turing`.
+- Kuanda-Stichprobentest (Peuqui 17.10.: vor der Umstellung 10–20 Ziehungen, PP4 und TP2×PP2): Einheit
+  `kuanda-sampling-1017` ab 17:13, `run_kuanda_sampling_copy.sh ee261cc74 kuanda`, je Boot 10× Kuanda mit
+  generation_config-Sampling (T 1,0, top_k 20, top_p 0,95), A/B/A/B → 20 je Arm; Log `kuanda_sampling_2026-10-17.log`,
+  Antworten `quality_2026-09-27/ks-*.json`.
+  - **Ergebnis (17:12–17:59): nur 10 unabhängige Ziehungen je Arm** — ohne Seed startet vLLM nach jedem Boot mit
+    demselben Zufallsstand, Boot b wiederholt Boot a wortgleich (40/40). Alle 40 verschiedenen Antworten händisch gelesen
+    (bestanden = zurückgewiesen bzw. Coandă erkannt und vor dem Limit beendet; verzettelt = ohne Coandă bis 600 Token
+    oder Schleife; erfunden = Biografie für „Henri Kuanda“):
+    PP4 Produktion 6/10 bestanden (2 mit Coandă), 3 verzettelt, **1 erfunden** (#4: Mobutu-Biografie als „Henri Kuanda“);
+    PP4 turing-prefill 6/10 (3 mit Coandă), 4 verzettelt (#8 Schleife „Henri Konan Bédié … Nein“), 0 erfunden;
+    TP2×PP2 Produktion 9/10 (3 mit Coandă), 1 verzettelt; TP2×PP2 turing-prefill 9/10 (2 mit Coandă), 1 verzettelt.
+    Gepaarte Ziehungen (gleicher Zufallsstand) kippen in beide Richtungen gleich oft (PP4 2:2, TP2 1:1) → **kein
+    Qualitätsunterschied Produktion/turing-prefill**. PP4 in beiden Ständen schwächer als TP2×PP2 (6 gegen 9 von 10,
+    bei n = 10 statistisch nicht gesichert); PP4 läuft öfter ins 600-Token-Limit (Produktion 6, Zweig 4 gegen 2/1).
+    Nebenbefunde in beiden Armen: Kandidatenlisten mit falschen Daten (Coandă-Jahre 1910–1997/1998/2002 statt 1886–1972,
+    Bédié „erster Präsident“) und erfundenen Ersatzpersonen („Henri Boina“, „Henri Konan Bédarraga“); Ziehung 0 in allen
+    Armen mit chinesischem Token „记录“ (bekannte temp-1,0-Glitches).
+- **V100-Vergleich nativer Tensorkern-Weg gegen Triton** (`qsa_grouped_page4_bench.py`, 6 Köpfe = TP4-Form, 1.616 Zeilen,
+  Log `qsa_grouped_page4_bench_2026-10-17.log`; ms je Aufruf, weniger ist besser): alle Zeilen teilen die Auswahl 2,85
+  gegen 20,73 ms (7,3×), Achtergruppen teilen die Hälfte 7,90 gegen 20,32 (2,6×), jede Zeile eigene Auswahl 12,79 gegen
+  20,32 (1,6×). Genauigkeit gleich: ohne die drei Tail-Token beide 6,1·10⁻⁵ gegen fp32 (mit meinen künstlichen
+  Tail-Indizes 1,6·10⁻² — der native Weg leitet den offenen Rest aus Position/Länge ab, Semantik statt Rundung;
+  `grouped_tail_probe.py` im Scratchpad). Realer Gewinn hängt davon ab, wie viel benachbarte Zeilen wirklich teilen —
+  echte Indizes aus einem Prefill noch nicht gemessen.
+- **Echte QSA-Auswahlen** (Debug-Worktree `1Cat-vLLM-qsa-dump`, Zweig `qsa-index-dump-debug` b5ce18306, nie gepusht;
+  Einheit `qsadump-1017` 18:18–18:44; Dateien `qsa_dump_2026-10-17/`, PP4-Lauf überschrieb die TP2-Dateien — Auswahl
+  ist vom Indexer bestimmt, nicht von der Aufteilung). `qsa_selection_overlap.py`: Teilungsfaktor (Summe der
+  Einzelauswahlen / Union der 4-Token-Blöcke, mehr = besser fürs Bündeln) 4 Zeilen 1,48–2,25×, 8 Zeilen 1,91–3,11×,
+  16 Zeilen 2,55–4,10× über 13 Schichten × {24k, 150k}.
+- **Zeilenverdopplung statt Kernelumbau** (`qsa_grouped_reshape_bench.py`, Log `qsa_grouped_reshape_bench_2026-10-17.log`,
+  V100, echte Auswahlen, ms je Aufruf, weniger ist besser): q `[rows, 6R, 256]` als `[rows·R, 6, 256]` ansehen, Indizes/
+  Positionen/Anfragen R-fach wiederholen → vorhandener grouped-page4-Kernel unverändert, Achtergruppe = 8/R echte Zeilen
+  × 6R Köpfe. 12 Köpfe: Triton 22,6–23,5 → nativ 7,0–9,2 (2,5–3,3×); 24 Köpfe: Triton 71,1–71,4 → nativ 9,8–11,6
+  (6,1–7,3×); Abweichung zu Triton 1,2–2,4·10⁻⁴ (eine fp16-Stelle). Turing danach: Bau 7.0;7.5 (wmma → HMMA.1688),
+  vier sm_70-Prüfungen je Gerät, Planer-Hash 4.096 (48 KB) reicht, weil bei R ≥ 2 höchstens 4 echte Zeilen je Gruppe.
+- **Nachlauf Produktionsfrage** (Einheit `nachlauf-1017` 18:45–19:14, `run_nachlauf_copy.sh ee261cc74 nachlauf`, je Arm
+  ein Boot, Seeds gleich in Produktion und Zweig; Ausgabe im Benutzer-Journal ohne Einheitenkennung, Code-Zeilen in
+  `nachlauf_code_2026-10-17.txt`):
+  - Kuanda je 10 weitere Ziehungen (Seeds 1000–1009), händisch gelesen. Gesamt je Arm 20: PP4 Produktion 14/20 bestanden
+    (5 verzettelt, 1 erfunden), PP4 turing-prefill 13/20 (6 verzettelt inkl. 2 Bédié-Schleifen, 1 erfunden: Seed 1009
+    „Henri Kuanda Nkulu, kongolesischer Diplomat“); TP2×PP2 Produktion 19/20 (1 verzettelt), turing-prefill 18/20
+    (2 verzettelt). **Qualität Produktion = Zweig.** PP4 in beiden Ständen schwächer als TP2×PP2 (27/40 gegen 37/40).
+  - Code gesampelt (20 Seeds 2000–2019, tok/s aus dem Log, mehr ist besser): PP4 67,5 → 67,4 tok/s, Annahme 3,95 →
+    3,98, Schritt 58 → 59 ms Median — gleich. **TP2×PP2 77,2 → 73,8 tok/s (gepaart −3,4 ± 1,2), Annahme 3,92 → 3,93
+    gleich, Schritt 50–51 → 51–55 ms (ein Ausreißer 70)** — **Fehlalarm, siehe unten** (ein Boot je Arm).
+- **Decode-Profil TP2×PP2** (`profile_decode_nsys_tp2_copy.sh`, `nsys/tp2-decode-1017/`, gesampelte Code-Antwort Seed
+  2018, Host-Allreduce in beiden aus): kein Kernel im Zweig langsamer; Produktion 59 Schritte in 3,77 s, Zweig 62 in
+  3,88 s (je ~63 ms); RTX-Stufe wartet 2,25 s von 3,77 s in `ncclDevKernel_Broadcast` auf die V100-Stufe (beide).
+  Seeds machen gesampelte Antworten nicht sicher gleich (Text-Hash wechselt zwischen Wiederholungen eines Boots).
+- **Decode-A/B/A/B TP2×PP2** (`codeab_tp2_2026-10-17.log`, 19:41–20:07, Modus `codeab` in `run_nachlauf_copy.sh`, Host-
+  Allreduce wie im Betrieb): Code gesampelt (20 Seeds) Produktion 77,0 / 76,9 tok/s, Zweig 77,3 / 76,9 tok/s, Annahme
+  3,91 / 3,93, Schritt-Median 51,0 ms in allen vier Boots; greedy prosa/code/edit 45–46 gegen 44–45 ms. **Decode
+  gleich** — die −4 % des Nachlaufs waren ein einzelner Ausreißer-Boot. Damit erfüllt turing-prefill ee261cc74 die
+  Umstellungsregel (Qualität gleich, Decode gleich, Prefill deutlich schneller); Umstellung wartet auf Peuqui.
+- **Zweig `qsa-page4-head-groups` (gepusht, auf ee261cc74):** 8c6a47a87 Testreparatur Plan-Suite (Import über das
+  Paket statt Top-Level-`flash_attn_v100_cuda`, das über das Editable-Mapping auf den Produktionsbau zeigte → pybind
+  „PreparedPolicy already registered“; veraltete Monkeypatches durch Policy-Asserts ersetzt); c90dc90d7 12/24-Kopf-
+  Ränge über die nativen page4-Routen (Zeilenumdeutung, nur `qsa.py`, Konstante `_SM70_QSA_PAGE4_HEADS`; neuer Test
+  `test_sm70_qsa_page4_head_groups.py` mit `no_grad`, weil Inference-Tensoren in den Workspace-Cache leckten).
+  Tests V100 123 bestanden, RTX 79 bestanden / 44 übersprungen; pre-commit inkl. mypy 3.10 grün. Wirkt nur auf
+  V100-Stufen (Gate `is_device_capability(70)`); Turing-Teil (C++: Bau 7.5, Prüfungen je Gerät, Planer 48 KB) offen.
+
+**Nachtrag 17.10. vormittags: Produktion = fork-main-v2b 9a41a8e67 (08:53, Freigabe Peuqui: zerlegte Verify-Attention);
+Turing-Prefill-Zweig (GDN-TileLang + QSA-Indexer) gebaut, A/B läuft.**
+- `prod-fork-main` per `reset --keep` 9e81ffeb0 → 9a41a8e67 (+ df08fe7a9, 9a41a8e67: GQA-gepackte FA2-Verify-Attention);
+  Tags `archive-prod-fork-main-2026-10-17b` (9e81ffeb0), `verified-2026-10-17-gqa-verify` (9a41a8e67), gepusht.
+- Kontrolle `prodcheck_2026-10-17b.log` (prodonce mit Lang-Kontext-Sonde; Schritt in ms = tok/s derselben Zeile):
+  27B Greedy 3/3, Kuanda zurückgewiesen; Prefill 29k 38,6–38,8 s (754 tok/s), 184k 379,5 s, 250k 593,6 s; Decode 29k
+  39 ms = 55,9 tok/s, prosa 33 ms = 74,5 / code 33 ms = 114,7 / edit 34 ms = 118,9 tok/s, 33k 37,7 ms = 78,3, 184k
+  55,3 ms = 50,1, 250k 63,2 ms = 38,7 tok/s. DSv4 Greedy 3/3, Prefill 35,7k 15,2–15,3 s, prosa 62–63 ms = 48,3 / code
+  65 ms = 73,5 / edit 70 ms = 80,8 tok/s, 178k 86,5 ms = 43,9, 287k 92,9 ms = 36,1 tok/s. TP2×PP2 Greedy 3/3, 29k
+  17,6–17,7 s, edit 46 ms = 109,5 tok/s. PP4 29k 11,6–12,0 s, edit 54 ms = 92,2 tok/s, aber unter hohem Speicherdruck
+  (943.977 Major Faults, 4.853 memory.high-Treffer, 184k 204,6 s statt ~94 s); Greedy 1/3 (Formulierungsvarianten,
+  Zeichen 118 und 252); Kuanda zurückgewiesen, aber ohne Coandă verzettelt (Cartier-Bresson/Matisse/Rousseau, 600 Token)
+  = Durchfall dieses Boots. Bekannte Flash-Next-Streuung (dieselbe Variante in `ctrl_chain_2026-10-16.log` mit altem
+  Produktionscode); Flash-Next nutzt FA2 nur im ViT (`MMEncoderAttention`), der Textpfad (QSA) ist von 9a41a8e67 unberührt.
+- **Turing-Prefill-Zweig `turing-prefill` ee261cc74 (gepusht)** = 9a41a8e67 + zwei Commits:
+  - 548ed0cf4 „[Perf][GDN] Run the FlashQLA TileLang prefill kernel on Turing“: `tilelang_fused_chunk_gdr_fwd_sm75` in
+    `flash_qla/.../hopper/fused_fwd.py` (ohne kt_shared, P-Kachel nutzt den A-Puffer, Barriere am Schleifenende, ~61 KB
+    statt 86.016 B Shared Memory); Auswahl in `fused_gdr_fwd` nach `shared_memory_per_block_optin` des eigenen Geräts;
+    Selektor lässt sm75 für fp16 zu. sm70-Kernelquelle unverändert (V100 lädt weiter aus `~/.tilelang/cache`, TileLang
+    0.1.10 hat kein `T.gemm_v1` — Cache nie löschen). Mikrobench RTX 8000 (fp16, D 128, Median 20, Triton/FLA → TileLang):
+    8/24 Köpfe 2.048 Token 6,92 → 1,29 ms; 16/48 1.500+548 14,33 → 1,46 ms; 16/48 8.192 47,28 → 5,13 ms (5,3–9,8×),
+    relative Abweichung ≤ 1,02·10⁻³; V100 gleiche Form 5,34 → 1,70 ms (sm70-Kernel). Tests: neuer
+    `tests/kernels/test_flashqla_turing_fused_fwd.py` RTX 6/6 (V100 übersprungen), GDN-Suiten RTX 56/32 übersprungen,
+    V100 88.
+  - ee261cc74 „[Perf][Qwen4Exp] Admit the cuBLAS QSA indexer and exact top-k on Turing“: `qsa.py`
+    `_use_sm70_qsa_indexer_cublas`, `_use_sm70_qsa_lexicographic_topk` und Mehr-Anfragen-cuBLAS auf
+    `is_device_capability_family(70)`; QSA-Tests RTX 63/63, V100 63/63 (Exaktheitstest der Indexauswahl läuft jetzt auch
+    auf Turing).
+  - A/B `ab_turingprefill_2026-10-17.log` (Skriptkopie `run_ab_turingprefill_copy.sh`, 27B/PP4/TP2, Lang-Kontext-Sonde) ab
+    10:47. Erster (ungezählter) 27B-Boot: Prefill 29k 35,3–35,5 s (825 tok/s) statt 38,6 s, 184k 358,5 statt 379,5 s,
+    250k 565,3 statt 593,6 s; Decode gleich; Greedy 3/3.
+- **TP-Prefill-Plan** (Peuqui 17.10., Gedächtnis `project_tp_prefill_allreduce_overlap`): beim 27B ist ~die Hälfte der
+  Prefill-Zeit NCCL-Allreduce (Leitung ohne P2P, PCIe Gen3 x4 je Karte, NCCL 2,1 GB/s, Senden einer Richtung 2,9–3,1 GB/s
+  laut `nccl_pairs_iommu_pt_2026-09-29.txt`). Schritte: Mikrobench `host_allreduce_bench.py` (Kopier-Engines beide
+  Richtungen gegen NCCL, Überlappung mit GEMM), dann Überlappen von Allreduce und Rechnung entwerfen. vLLMs SP/DBO stehen
+  auf der V2-Liste „unsupported“, Async TP braucht Symmetric Memory (P2P).
+
 **Nachtrag 17.10. früh: Produktion = fork-main-v2b 9e81ffeb0 (~04:25, Freigabe Peuqui), Kontrolle bestanden; 27B-Verify-
 Attention, PLE unter Druck, QSA-Indexer auf Turing.**
 - `prod-fork-main` per `reset --keep` df0941355 → 9e81ffeb0 (reines Python: #1219 + Testreparatur + delta_h-maxnreg);

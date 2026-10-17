@@ -6,10 +6,15 @@ Betriebsstand (SSOT): `STAND.md`, Nachtrag 16./17.10. nachts unter „Laufzeitum
 
 ## Stand 17.10.2026 nachts
 
-- **Produktion unverändert df0941355.** Fork `fork-main-v2b` 9e81ffeb0 (gepusht) = df0941355 + #1219 + Testreparatur
-  + Turing-Registerdeckel für `delta_h` (maxnreg 255 als Autotune-Kandidat). A/B: TTFT −6,5 % (27B), −7,5 % (PP4),
-  −5,6 % (TP2×PP2) bei 29k, Decode gleich, 27B wortgleich. **Wartet auf Peuquis Okay für die Produktion.**
+- **Produktion seit 17.10. ~04:25 = `fork-main-v2b` 9e81ffeb0** (Freigabe Peuqui) = df0941355 + #1219 + Testreparatur
+  + Turing-Registerdeckel für `delta_h`. Kontrolle aller vier Modelle bestanden (STAND 17.10. früh), Tags
+  `verified-2026-10-17-turing-maxnreg`, `archive-prod-fork-main-2026-10-17` (df0941355).
 - **AIfred-Dienst hat Peuqui am 16.10. abends gestoppt** — Neustart macht Peuqui.
+- **Fork-Baum `1Cat-vLLM-fork-main` steht auf Branch `fa2-packed-gqa-verify` (df08fe7a9, gepusht)** = 9e81ffeb0 + zerlegte
+  Verify-Attention für FA2. Tests grün; Serving-A/B 27B läuft (`ab-gqapack-1017`). Bei Erfolg: `fork-main-v2b`
+  vorspulen, Produktion umstellen (Okay Peuqui), sonst Branch liegen lassen.
+- **Als Nächstes:** PLE-Stufe „freie GPU“ neu bauen (Druckprofil spricht dafür, STAND 17.10. früh), vorher VRAM-Bedarf
+  von STT-GPU-Worker, Qwen3-TTS, Qwen3-VL-4B messen; QSA-Indexer-Weiche für Turing (A/B PP4-Prefill).
 - **Entscheidung offen (Empfehlung: nein):** probabilistische Entwürfe für Flash-Next — Prosa +2,5 %, Code −2 %.
 - **Nächste Schritte (Peuqui 16.10.: „allen Punkten nachgehen“), nach Nutzen:**
   1. 27B-Lang-Kontext-Decode: MTP-Verify-Attention zerlegen (Kontext gepackt ohne Maske + kausaler Schwanz, LSE-Merge)

@@ -13,6 +13,42 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 17.10. früh: Produktion = fork-main-v2b 9e81ffeb0 (~04:25, Freigabe Peuqui), Kontrolle bestanden; 27B-Verify-
+Attention, PLE unter Druck, QSA-Indexer auf Turing.**
+- `prod-fork-main` per `reset --keep` df0941355 → 9e81ffeb0 (reines Python: #1219 + Testreparatur + delta_h-maxnreg);
+  Tags `archive-prod-fork-main-2026-10-17` (df0941355), `verified-2026-10-17-turing-maxnreg` (9e81ffeb0), gepusht.
+- Kontrolle (`prodcheck_2026-10-17.log`, prodonce mit Lang-Kontext-Sonde): 27B Greedy 3/3, Qualität 8/8 = A/B-Fork,
+  29k-TTFT 38,5–38,7 s, prosa 76, code/edit 111–117 tok/s; PP4 Greedy 3/3 + Qualität 8/8 = Referenz (Kuanda mit Coandă),
+  29k 11,5–11,6 s; TP2×PP2 29k 17,7–17,8 s, edit 109,5 tok/s, Qualität 8/8 = nächtliche Produktion, #1219 aktiv
+  („Custom allreduce is disabled“ ×2, kein Hänger); DSv4 Greedy 3/3, Qualität 8/8, prosa/code/edit 48,3 / 73,4 /
+  80,4–80,5 tok/s, 178k 87,5 / 287k 94,0 ms je Schritt. TP2-Greedy-Referenz → `fm2-pc17-tp2-prodneu-050546` (stabile
+  Variante; Backup `greedy_refs.sh.vor-2026-10-17`).
+- PP4-Kontrolle lief unter hohem Speicherdruck (873k Major Faults, 3.815 memory.high-Treffer, IO-Warten 15,3 s): 184k
+  160,7 s, 250k 184,5 s (gute Läufe 94–100 / ~140 s) — zweiter Druckfall nach prod-b.
+- **PLE-Wartezeit bei mäßigem Druck** (`nsys/pp4-longctx-1017/`, 184k, 57k Faults, 1.051 memory.high): Stufe 0 wartet
+  nur 0,18 s von 97 s (Lücken vor `_dequantize_ple_fp8_bytes_kernel`, `nsys_gap_by_next_kernel.py`); RTX-Stufen sind der
+  Engpass (durchgehend belegt, V100 warten 25–38 s in SendRecv). Druckprofil `nsys/pp4-pressure-1017/` (27B-Vorlauf
+  scheiterte, Skript korrigiert; drei 184k-Fenster nacheinander): 66.000 / 15.743 / 1.369 Major Faults → 96,35 / 94,15 /
+  93,97 s, PLE-Wartezeit Stufe 0 1,57 / 0,87 / 0,30 s (größte Einzelwartezeit 1.086 / 235 / 118 ms), Rechenzeit Stufe 0
+  konstant 90,6–91,1 s. Untergrenze ohne Platte ≈ 94 s; direkte Wartezeit ≈ 20 µs je Major Fault → Druckfall (873k)
+  ≈ 17 s direkt, beobachtet +66 s → Rest vermutlich memory.high-Bremsen der ganzen Cgroup. Stufe „freie GPU“ würde
+  beides beseitigen (kein PLE-Seiten-Cache in der Cgroup) → Druckfälle ~160–176 → ~94 s. Empfehlung: neu bauen mit
+  KernelConfig-Feldern (Kartenliste, Reserve je Karte für STT/TTS/VLM, Peuqui 17.10.); Vorbild
+  `archive-ple-store-cardlist-2026-09-24`. nsys-Export: `nsys export -q` erzeugt hier leere SQLite — ohne `-q` exportieren.
+- **QSA-Indexer auf Turing:** `_qsa_mqa_paged_kernel` kostet im 184k-Prefill 20,0 / 30,1 s je RTX-Stufe und läuft nur
+  dort: `qsa.py` `_use_sm70_qsa_indexer_cublas` und `_use_sm70_qsa_lexicographic_topk` sind auf `is_device_capability(70)`
+  gesperrt; der cuBLAS-Weg ist ein gewöhnliches `torch.mm` + Triton-Nachlauf. Kandidat: Weiche auf
+  `is_device_capability_family(70)` (wie DSv4-Indexer), Serving-A/B.
+- **27B-Verify-Attention zerlegt** (Branch `fa2-packed-gqa-verify` df08fe7a9 auf 9e81ffeb0, gepusht): `packed_gqa_verify_attention`
+  in `flash_attn.py` (Kontext mit gepackten Q-Köpfen ohne Maske + neue Token kausal + `merge_attn_states`), Weiche
+  `_use_packed_gqa_verify`, Feld `AttentionConfig.flash_attn_pack_gqa_max_query_len` (16, 0 = aus), Test
+  `test_flash_attn_packed_gqa_verify.py` (RTX 24/24; Fehler bei 1 KV-Kopf gefunden und behoben: `merge_attn_states`
+  ignoriert Strides, die LSE-Ansicht war bei einem KV-Kopf nicht dicht → `.contiguous()`). pre-commit + mypy grün,
+  Architektur-Referenz neu erzeugt. `tests/v1/attention/test_attention_backends.py` hier nicht lauffähig (gated
+  `meta-llama/Meta-Llama-3-8B`, 403). Serving-A/B 27B läuft (`ab_gqapack_2026-10-17.log`, ab 06:00).
+  Mikrobench RTX 8000 (12/2 Köpfe, D 256, q 4): 2k 0,141 → 0,123 ms, 33k 1,530 → 0,390 (3,9×), 184k 8,248 → 1,272 (6,5×),
+  250k 8,688 → 1,668 ms (5,2×), relative Abweichung ≤ 6,3·10⁻⁴.
+
 **Nachtrag 16./17.10. nachts: Turing-Registerdeckel (delta_h) im Fork, A/B; Streuung über Boots; probabilistische Entwürfe;
 27B-Lang-Kontext-Ursache (Produktion unverändert df0941355, AIfred von Peuqui gestoppt).**
 - **Fork `fork-main-v2b` 9e81ffeb0 (gepusht)** = df0941355 + #1219 (50a699cb0, 80c82bde9, Code = Abnahme 3b60d0303) + Testreparatur

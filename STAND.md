@@ -13,6 +13,42 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 16./17.10. nachts: Turing-Registerdeckel (delta_h) im Fork, A/B; Streuung über Boots; probabilistische Entwürfe;
+27B-Lang-Kontext-Ursache (Produktion unverändert df0941355, AIfred von Peuqui gestoppt).**
+- **Fork `fork-main-v2b` 9e81ffeb0 (gepusht)** = df0941355 + #1219 (50a699cb0, 80c82bde9, Code = Abnahme 3b60d0303) + Testreparatur
+  + „[Perf][FLA] Let the delta_h autotuner lift the ptxas register cap“: `_delta_h_configs` je Config zusätzlich
+  `maxnreg=255`, Autotuner wählt je Gerät; `create_chunk_kernels` nutzt die Modulliste statt einer Kopie; Test
+  `tests/kernels/test_fla_delta_h_maxnreg.py` (V100 und RTX je 5 grün, GDN-Tests 41/3 grün, pre-commit + mypy grün).
+  Ursache: ptxas (Triton 3.6) gibt `chunk_gated_delta_rule_fwd_kernel_h` auf sm_75 in allen 12 Configs nur 64 Register
+  (2,9–8,7 KB Stack); Mikrobench RTX 8000 (27B-TP2-Formen, 2048 Token): 6,94 → 2,74 ms je Aufruf, bitgleich; `kkt` und
+  `chunk_fwd_o` ohne Gewinn (beste Varianten lagern nicht aus). Volta nutzt für den GDN-Prefill TileLang, unberührt.
+- **A/B** (`ab_maxnreg_2026-10-16.log`, Fork kalt/a/b gegen Produktion a/b, mit Lang-Kontext-Sonde), TTFT in s:
+  27B 29k 38,5–38,7 gegen 41,2–41,4 (−6,5 %), 184k 378,8 gegen 395,6, 250k 592,7 gegen 615,5; Flash-Next PP4 29k
+  11,5–11,9 gegen 12,5–12,6 (−7,5 %), 250k 140 gegen 152–155; TP2×PP2 29k 17,6–17,7 gegen 18,6–18,7 (−5,6 %), 250k
+  253–281 gegen 291–295. Decode und Annahme überall gleich. 27B in allen 5 Boots wortgleich. PP4-184k streut mit
+  PLE-Plattenstufe/Speicherdruck (prod-b 176 s bei 594k Major Faults, 4.749 memory.high-Treffer, gegen 94–110 s).
+- **Streuung über Boots bei Flash-Next** (Gegenprobe `ctrl_chain_2026-10-16.log`): Produktionscode mit frischen Caches
+  (`iso-1`, `iso-2`) weicht von der Referenz UND untereinander ab (Greedy 2/3, Qualität 4/8); TP2×PP2 `fm-a` ≠ `fm-b`,
+  `fm-b` = `prod-a` = `prod-b`; Produktion mit altem Cache über 4 Boots stabil, Qualität hängt aber von der
+  Anfragen-Vorgeschichte ab (base-a = base-b, beide ≠ A/B-Reihenfolge; Präfix-Cache?). Triton-Autotune WIDERLEGT:
+  `vllm/env_override.py` setzt `TRITON_CACHE_AUTOTUNING=1`, `iso-2` tunte nicht und wich trotzdem ab. Kuanda je nach
+  Variante bestanden (Coandă), verzettelt (Cartier-Bresson/Matisse) oder Schleife (Bédié bis 600 Token, Fork-PP4-Arm).
+  Folge: Greedy-Abweichungen bei Flash-Next sind keine Regression; Abnahme über Tempo + gelesene Inhalte.
+- **Probabilistische Entwürfe** (Flash-Next PP4, AIfreds Sampling temp 1,0 / top_k 40 / min_p 0,1,
+  `sampled_accept_bench.py`, je 2 gezählte Boots): Akzeptanz Prosa 30,0 → 31,8 %, Englisch 42,9 → 46,1 %, Code
+  77,2 → 76,9 %, Bearbeiten 99,9 → 99,9 %; tok/s Prosa +2,5 %, Englisch +2–4 %, Code −1,5–2 %, Bearbeiten −0,5–1 %.
+  Grund: min_p 0,1 macht die Zielverteilung fast greedy-spitz; Entwurf wird nur mit Temperatur gezogen. Nicht umgestellt.
+- **27B-Decode bei langem Kontext** (nsys `nsys/q27-longctx-1017/`, `nsys_attn_grid_report.py`): MTP-Verify (4
+  Query-Token) läuft in FA2 mit Grid 1×11×12 — je Q-Kopf, nur 11 Splits, KV-Cache 6× gelesen: 1,16 ms (33k) → 8,60 ms
+  (250k) je Aufruf, ≈ 137 ms je Schritt; der Drafter (1 Token) ist gepackt (1×62×2). FA2 packt GQA nur bei
+  seqlen_q == 1. Fix-Idee: Verify in Kontext (gepackt, ohne Maske) + 4er-Schwanz (kausal) zerlegen, LSE-Merge.
+- **RTX-Prefill-Hebel** (Profil `nsys/pp4-prefill-1015`): GDN auf V100 als TileLang-Kernel ~55 ms je Stufe, auf RTX als
+  Triton-Kette ~830 ms (vor maxnreg) — FlashQLA-SM70 braucht 86.016 B Shared Memory, Turing max 65.536 B; QSA-Attention
+  auf RTX 1,3–1,7× langsamer je Schicht; Skinny-MoE-Prefill +15 % je Schicht, Decode am Bandbreitenanschlag.
+- Nebenbefunde: 1Cat-Repo ist Partial Clone (blob:none); ein `git log -S` lud Blobs nach, `gc` scheitert mit `bad tree
+  object a9dcbd8f…` (Sperrdatei `.git/worktrees/1Cat-vLLM-fork-main/gc.log`) — `git fsck` steht aus. Test-Caches
+  `vllm-isocache-1016`/`torchinductor-iso-1016` gelöscht.
+
 **Nachtrag 16.10. vormittags: DSv4-Einbruch über 131.072 Token Kontext behoben (Produktion df0941355, Freigabe Peuqui).**
 - **Anlass:** AIfred-Auftrag (Heizöl-Morgenbericht, Sub-Agent Codine) lief ab 04:51 bis zum Stopp ~08:05 mit einer
   DSv4-Anfrage: Prompt 84.477 Token (Codine hatte ein PNG als base64 nach stdout geschrieben, 92.881 Byte, weil die

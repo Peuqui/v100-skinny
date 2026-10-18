@@ -13,6 +13,22 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 18.10. spätabends: Produktion = `ple-cascade-runtime-merge` 6bbcd40be (~21:50, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-ple-cascade-runtime-merge`.**
+- `prod-fork-main` Fast-Forward cf50e1a2c → 6bbcd40be (nur Python, `_C` unverändert; Produktions-venv lädt den neuen Code).
+  `fork-main-v2b` = 99ec940c8 (+ schärferer Regressionstest und genauerer Kommentar, nur Test/Kommentar). Gepusht.
+- **Kontrolle `prodcheck_2026-10-18c.log`** (21:51–22:51, q27/pp4/tp2/ds; PP4/TP2 kompilierten wegen der Quelländerung neu) und
+  **`prodcheck_2026-10-18d.log`** (23:07–23:29, pp4/tp2 aus dem Cache): Journale ohne Fehler. 27B und DSv4 Greedy 3/3, Zeiten wie
+  vorher (27B 29k 35,3–35,5 s, edit 34 ms = 118,8–119,1 tok/s, 184k/250k 358,4/565,4 s; DSv4 35,7k 15,2–15,3 s, edit 70 ms =
+  81,1–81,2 tok/s). PP4/TP2×PP2: Kalt- und Cache-Boot bytegleich (Greedy und Qualität), **PP4 und TP2×PP2 Greedy 3/3
+  wortgleich**; Qualität händisch gelesen richtig (Kuanda zurückgewiesen, kleine Grammatikschwäche). Cache-Boot: PP4 29k
+  7,5–7,6 s, edit 54 ms = 92,6–92,7 tok/s, 184k/250k 71,1/80,7 s; TP2×PP2 29k 11,8–11,9 s, edit 45 ms = 110,2–110,4 tok/s,
+  184k/250k 99,6/130,0 s. PP4 der Produktion weicht vom A/B-Fix-Arm nur am Ende eines Greedy-Prompts ab (anderes
+  Compile-Artefakt, Fast-Gleichstand) und ist dafür wortgleich zu TP2×PP2.
+- Neue Greedy-Referenzen PP4/TP2 aus dem Cache-Boot (`greedy_refs.sh`, alt `.vor-2026-10-18c`); 27B/DSv4 unverändert.
+- PR an 1Cat: Zweig `pr-ple-merge-runtime` c04e2da46 (lokal), Entwurf nach Gutachter-Durchsicht überarbeitet
+  (`upstream-contrib/11-1cat-prs-2026-10-18/`); Tests auf main 260/34 gegen 259/35 (nur der neue Test, an der Assertion),
+  mit #1214 284/10; keine neuen Konflikte (auch #828). Wartet auf Peuquis Durchsicht.
+
 **Nachtrag 18.10. abends — Planpunkt 5: Flash-Next rechnet seit fork-main ohne die VRAM-Zeilen der PLE-Einbettung.**
 - Symptom: teacher-forced Logprobs (`ppl_probe.py`/`ppl_sequence.py`/`ppl_variant.sh`) von Flash-Next PP4 weichen
   zwischen Durchläufen desselben Texts im selben Boot ab (deutscher Text: mittl. |Δ| 0,11–0,18 nats, Top-1 91–94 %

@@ -13,6 +13,35 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 18.10. mittags: Produktion = `ple-prefetch-window` cf50e1a2c (13:39, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-ple-prefetch-window`.**
+- = 58415430e + begrenztes Vorladefenster im PLE-Plattenzugriff (Grundlage: A/B/A/B im Block „Fix gebaut“ unten). Ablauf:
+  altes `_C` (md5 300067ad…) gesichert in `~/.cache/prod-switch-2026-09-29/_C-vor-2026-10-18-plewindow/`;
+  `prod-fork-main` Fast-Forward auf cf50e1a2c; neues `_C` (md5 57721a8c…) aus `1Cat-vLLM-qsa-turing` kopiert (alle
+  anderen .so bytegleich); Produktions-venv lädt das neue Op-Schema, Fenster-Standard 4096 KiB, llama-swap-Config
+  unverändert; `prod-fork-main` und `fork-main-v2b` gepusht.
+- **Kontrolle `prodcheck_2026-10-18b.log` (13:41–14:40, prodonce q27/pp4/tp2/ds, Vergleich `prodcheck_2026-10-18.log`):**
+  Greedy 27B 3/3, DSv4 3/3, PP4 1/3 und TP2×PP2 1/3 (Muster wie bisher). Qualität: 27B und DSv4 bytegleich zur
+  Kontrolle 08:52; TP2×PP2 bytegleich zum A/B-Fix-Arm; PP4 motor/zug/kuanda neu, händisch gelesen richtig (Kuanda
+  zurückgewiesen). Journale ohne Fehler. 29k-TTFT: 27B 35,3 s, PP4 7,9/7,6/7,5 s, TP2×PP2 11,7–11,8 s, DSv4 (35,7k)
+  15,2–15,3 s. Decode edit: 27B 34 ms = 118,9–119,0 tok/s, PP4 54 ms = 92,7, TP2 45 ms = 110,2, DSv4 70 ms =
+  80,9–81,1. Langkontext 184k/250k: 27B 358,3/565,4 s, 55,1 ms = 50,3 / 63,3 ms = 40,1 tok/s; **PP4 72,9/72,1 s (vorher
+  134,6/67,2 s; 280k Faults, 8,7 GB gelesen statt 691k/10,5 GB)**, 61,5 ms = 52,3 / 66,2 ms = 40,4; TP2×PP2 99,1/133,8 s
+  (vorher 102,8/109,8, A/B-Streuung 113–138 s), 53,1 ms = 57,8 / 58,2 ms = 49,3; DSv4 113,2/222,9 s (287k), 86,9 ms =
+  44,6 / 92,6 ms = 33,4.
+- **Planpunkt 4 (sm70-only-Gates), Befund aus dem Code (nur gelesen):** Die Gates in Qwen4Exp fragen das eigene Gerät ab
+  (`is_device_capability` ohne device_id = aktuelles Gerät), auf den RTX-Stufen laufen also die allgemeinen Pfade.
+  Größerer Fund: `vllm/platforms/runtime_defaults.py:431` (1Cat 108da48ef, 09.10.) setzt `VLLM_SM70_QWEN38_FP16_GEMV`,
+  `…FUSED_GDN_INPUT_FP16`, `…FUSED_HC_FP16` und damit die Dual-Compile-Spur nur, wenn ALLE beteiligten Geräte sm_70 sind.
+  PP4 und TP2×PP2 laufen auf RTX, RTX, V100, V100 (`CUDA_VISIBLE_DEVICES=0,2,1,3`) → auch die V100-Stufen ohne diese
+  Pfade; Beleg: kein „Auto-setting VLLM_SM70_QWEN38_FP16_GEMV“ in den Produktionsjournalen, die llama-swap-Einträge setzen
+  die Schalter nicht. Die Ladeprüfung je Prozess (`sm70_fp16_gemv.py:773`) würde nur die V100 umschalten; Dual-Compile
+  wirkt aber auf alle Stufen. Weitere Kandidaten: Shared-Key-Scorer der MTP-Verifikation fällt auf der RTX auf Triton
+  zurück (Journal: „shared-key scorer fallback: requires_SM70“, `qsa_indexer_sm70.cu:157` TORCH_CHECK, kein Shared
+  Memory); PLE-Gates liegen auf PP0 = RTX (`model_state.py:78`, `ple_layer.py:1607/2488/2780`), kleiner Gewinn.
+  Nicht lohnend: MTP-FC und MTP-Kopf (nur TP4), Host-KV (aus), `family(70)`-Stellen (schon offen).
+  Nächster Schritt: Probestart PP4 mit den drei Schaltern im Testeintrag, dann A/B/A/B PP4 und TP2×PP2 mit und ohne
+  Dual-Compile, Qualität händisch.
+
 **Nachtrag 18.10. vormittags: Produktion = `qsa-page4-turing` 58415430e (08:52, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-qsa-page4-turing`.**
 - Grundlage: Turing-A/B unten (29k-Prefill TP2×PP2 −20 %, PP4 −25 %, Decode gleich, Kuanda PP4 24 gegen 22, TP2 31 gegen
   34 ohne Code-Ursache). 58415430e = eb203d0a3 + vorübergehende Diagnose bei `host_reduce_open`-Fehlern (Freigabe
@@ -94,10 +123,8 @@ so", nicht „wie ist es".
       zurück (≤ 1,8k Faults). Datei-Refaults folgen den Faults → das Vorladen-von-allem wird im echten Lauf vor dem
       Kopieren verdrängt (offline nicht nachstellbar), das Fenster verhindert es weitgehend.
     - **Bewertung:** Tempo PP4 klar besser (184k halbiert, 250k ohne Ausreißer), TP2 184k besser, 250k im Rauschen,
-      29k und Decode gleich; Qualität gleich. Zweig `ple-prefetch-window` gepusht. **Umstellung vorbereitet, wartet auf
-      Freigabe Peuqui** (Auto-Modus lehnte den Eingriff in `1Cat-vLLM-work` ab): Fast-Forward `prod-fork-main` auf
-      cf50e1a2c, altes `_C` nach `~/.cache/prod-switch-2026-09-29/_C-vor-2026-10-18-plewindow/`, neues `_C` (md5
-      57721a8c…) aus `1Cat-vLLM-qsa-turing` kopieren (alle anderen .so bytegleich), dann Kontrolle prodonce q27/pp4/tp2/ds.
+      29k und Decode gleich; Qualität gleich. Zweig `ple-prefetch-window` gepusht. Umstellung 13:39 nach Freigabe
+      Peuqui (der Auto-Modus hatte den Eingriff in `1Cat-vLLM-work` zuerst abgelehnt), Kontrolle s. Nachtrag mittags oben.
 
 **Nachtrag 18.10. nachts (autonom, Freigabe Peuqui 17.10. ~22:55): A/B `qsa-page4-head-groups` c90dc90d7 (native
 page4-QSA für 12/24 Köpfe auf den V100-Stufen) gegen Produktion ee261cc74, Flash-Next TP2×PP2 und PP4.**

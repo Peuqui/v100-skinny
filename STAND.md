@@ -36,7 +36,7 @@ so", nicht „wie ist es".
 - **A/B/A/B PP4 + TP2×PP2 bestanden** (`run_ab_plemerge.sh`, Log `ab_plemerge_2026-10-18.log`, 19:20–21:11, Journale
   ohne Fehler; Checkpoint-Belege `ple_dump_truth_run3_2026-10-18.txt` (Fehler) und `…_fixdump_…` (Fix)):
   - Tempo gleich: Schrittzeiten je Kategorie gleich (PP4 edit 54 ms = 92,3 gegen 92,5 tok/s, TP2×PP2 45 ms = 110,0
-    gegen 110,0), 29k-TTFT gleich (PP4 7,5–7,6 s, TP2×PP2 11,8 s), Langkontext-Schritt gleich (PP4 250k 66,8/67,4 gegen
+    gegen 110,0), 29k-TTFT gleich (PP4 7,5–7,6 gegen 7,5–8,0 s, TP2×PP2 11,8–11,9 gegen 11,8 s), Langkontext-Schritt gleich (PP4 250k 66,8/67,4 gegen
     67,0/68,1 ms, TP2×PP2 59,2/57,9 gegen 58,8/58,4 ms); 150k-TTFT eher kürzer (PP4 71,9/72,2 gegen 73,3/74,5 s,
     TP2×PP2 99,3/99,6 gegen 107,6/111,1 s). tok/s schwanken mit dem Text über die Annahme: PP4 prosa 47,1 gegen 45,6,
     29k 37,5 gegen 35,5; TP2×PP2 prosa 54,0 gegen 57,2 (Annahme 2,42 gegen 2,58), 29k 43,8 gegen 41,8 tok/s.
@@ -50,6 +50,9 @@ so", nicht „wie ist es".
   - Greedy gegen die alten Referenzen erwartungsgemäß verschieden (Referenzen stammen aus dem fehlerhaften Stand).
 - Produktion erst nach Freigabe Peuqui (nur Python, `_C` gleich: `prod-fork-main` auf 6bbcd40be vorziehen), danach
   neue Greedy-Referenzen und PR an 1Cat.
+- Zweig `ple-cascade-runtime-merge` gepusht; PR-Zweig `pr-ple-merge-runtime` (cc0934ee9 auf main 6f3557c97, Worktree
+  `1Cat-vLLM-pr-plemerge`, lokal): Tests auf main 260/34 gegen 259/35 ohne Fix (nur der neue Test), pre-commit und
+  mypy-3.10 grün, keine Duplikate, keine neuen Konflikte; Entwurf `upstream-contrib/11-1cat-prs-2026-10-18/`, nicht gesendet.
 
 **Nachtrag 18.10. mittags: Produktion = `ple-prefetch-window` cf50e1a2c (13:39, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-ple-prefetch-window`.**
 - = 58415430e + begrenztes Vorladefenster im PLE-Plattenzugriff (Grundlage: A/B/A/B im Block „Fix gebaut“ unten). Ablauf:

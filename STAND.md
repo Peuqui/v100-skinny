@@ -52,6 +52,52 @@ so", nicht „wie ist es".
   - **Fix-Plan:** begrenztes Vorladefenster in `ple_disk_gather_u8` (Zeilen nach Adresse ordnen, `WILLNEED` nur für ein
     Fenster vor dem Kopierzeiger, Größe als KernelConfig-Feld), dann Byte-Prüfung und A/B/A/B. MemoryHigh-Anhebung
     (sudo, Peuqui) nur, falls danach noch nötig.
+  - **Fix gebaut, Ursache danach relativiert (10:00–10:47):** Branch `ple-prefetch-window` (Worktree
+    `1Cat-vLLM-qsa-turing`): bf91f9b4c `ple_disk_gather_u8` kopiert in Adressreihenfolge und lädt nur
+    `ple_disk_prefetch_window_kib` (KernelConfig, Standard 4096, 0 = ohne Vorladen, vom Compile-Hash ausgenommen) vor dem
+    Kopierzeiger vor; cf50e1a2c repariert zehn GGUF-PLE-Tests, die seit 82b296a3f/906f8ff41 (1Cat main) rot waren. Bau
+    inkrementell im Bau-Baum `1Cat-vLLM-fork-main` (4:47 min, Hardlinks zu qsa-turing/qsa-dump vorher getrennt; Version per
+    `VLLM_VERSION_OVERRIDE`, weil setuptools_scm den Verified-Tag nicht parsen kann), nur `_C` anders als Produktion.
+    Tests: 58 Gather-Tests, 332 PLE-Tests grün, pre-commit sauber.
+  - Offline mit echter PLE-Tabelle unter MemoryHigh (`ple_window_offline_2026-10-18.log`,
+    `ple_window_squeeze_2026-10-18.log`, `ple_cache_swap_2026-10-18.log`; je Aufruf 18.000 Zeilen = Plattenanteil eines
+    2048er-Häppchens): altes Vorladen-von-allem erzeugt KEINEN Stillstand (487–489 ms je Aufruf, ~250 Faults), auch bei 150 MB
+    Cache-Spielraum, mit Seitentabellen-Freigabe, mit 1,5-GiB-Zeilen-Cache + heißem Ballast + Swap. Fenster 1–4 MiB:
+    444–447 ms (−8 %), Bytes per SHA-256 identisch zum Produktions-`_C`. Ohne Vorladen: 736k Faults, 3,7 s je Aufruf = das
+    Produktionsbild → in der Produktion wirkt das Vorladen nicht bzw. Seiten werden doppelt gelesen (10,5 GB für 691k
+    Faults). Zweiter Verdacht Swap: llama-swap-Cgroup seit Boot pswpout 79 Mio., pswpin 22 Mio. Seiten, `/swap.img` auf
+    derselben USB-SSD. A/B/A/B im Modell `ab_plewindow_2026-10-18.log` ab 10:48 mit Spalten Swap-in/Refaults anon/Datei und
+    `swap_plewindow_2026-10-18.csv` (VmSwap/VmRSS/majflt je Prozess, 2 s).
+  - **A/B/A/B im Modell 10:48–12:44 (`ab_plewindow_2026-10-18.log`, fm = cf50e1a2c im Baum `1Cat-vLLM-qsa-turing`,
+    prod = 58415430e; je Modell fm-kalt, prod-a, fm-a, prod-b, fm-b; keine Journalfehler, keine Waisen):**
+    - PP4 TTFT (weniger ist besser): 29k 7,5–7,9 s fm gegen 7,5–8,0 s prod (gleich); **184k fm 69,4/63,6 s ≈ 2650/2900
+      tok/s gegen prod 131,8/183,0 s ≈ 1400/1010 tok/s**; 250k fm 81,3/82,0 s ≈ 3080/3050 tok/s gegen 80,8/148,8 s ≈
+      3090/1680 tok/s. Major Faults des PLE-Workers im Langkontext fm 208k/110k gegen prod 536k/1.060k; System gelesen
+      8,7/8,0 gegen 10,1/12,4 GB, IO-Wartezeit 4,0/4,6 gegen 15,2/28,2 s; Datei-Refaults 459k/291k gegen 831k/1.419k.
+    - TP2×PP2 TTFT: 29k 11,7–11,8 s beide; 184k fm 78,6/98,6 s ≈ 2340/1870 tok/s gegen 108,5/127,1 s ≈ 1700/1450 tok/s;
+      250k fm 125,5/136,8 s ≈ 1990/1830 tok/s gegen 113,5/137,9 s ≈ 2200/1810 tok/s (streut, Mittel +4 %); Faults
+      PLE-Worker fm 103k/306k gegen 200k/350k, gelesen 2,8/3,7 gegen 3,4/3,9 GB. Summe 184k+250k je Boot fm 204/235 s
+      gegen prod 222/265 s.
+    - Decode (ms = tok/s, mehr tok/s ist besser): PP4 edit 54 ms = 92,6–92,8 gegen 92,7–92,9; 184k 61,9/62,7 ms = 49,2/48,5
+      gegen 62,1/61,5 ms = 51,4/51,9 (tok/s aus dem Log, anderer Text → 131 statt 125 Schritte, ms gleich); 250k 66,7/67,2
+      ms = 39,1/39,1 gegen 67,2/66,3 ms = 39,1/39,6. TP2 edit 45 ms = 110,0–110,2 beide; 184k 53,5/53,7 ms = 57,4/57,2
+      gegen 53,7/53,9 ms = 56,3/56,1; 250k 58,1/58,7 ms = 47,7/47,2 gegen 58,5/58,4 ms = 47,7/47,8.
+    - Greedy: PP4 alle fünf Boots (fm wie prod) wortgleich, gegen Referenz 1/3 wie bisher; TP2 prod-a/b gleich, fm-Boots
+      streuen untereinander (bekannte Flash-Next-Streuung, alle Hashes schon in Produktion gesehen). Qualität: je Arm 8/8
+      über alle Boots bytegleich; fm/prod PP4 5/8, TP2 3/8 wortgleich (anderes Compile-Artefakt) — händisch gelesen
+      gleichwertig, alle sachlich richtig, Kuanda überall zurückgewiesen (PP4-fm nennt Bédié mit falschen Amtsdaten,
+      prod Cartier-Bresson/Matisse/Rousseau — beide bestanden).
+    - **Ursache geklärt: Datei-Seiten werden wieder gelesen, nicht Swap.** Sampler: alle Major Faults im PLE-Worker
+      (`python`, letzter Kindprozess), sein VmSwap bleibt in 6 von 10 Armen 0 MiB, auch im schlimmsten (PP4 prod-b,
+      1,06 Mio. Faults); Cgroup-Swap-in je Arm nur 10–25k
+      Seiten (40–100 MB; fm-kalt 153k), die GPU-Worker werden im Langprefill bis 1,5 GB ausgelagert, lesen aber kaum
+      zurück (≤ 1,8k Faults). Datei-Refaults folgen den Faults → das Vorladen-von-allem wird im echten Lauf vor dem
+      Kopieren verdrängt (offline nicht nachstellbar), das Fenster verhindert es weitgehend.
+    - **Bewertung:** Tempo PP4 klar besser (184k halbiert, 250k ohne Ausreißer), TP2 184k besser, 250k im Rauschen,
+      29k und Decode gleich; Qualität gleich. Zweig `ple-prefetch-window` gepusht. **Umstellung vorbereitet, wartet auf
+      Freigabe Peuqui** (Auto-Modus lehnte den Eingriff in `1Cat-vLLM-work` ab): Fast-Forward `prod-fork-main` auf
+      cf50e1a2c, altes `_C` nach `~/.cache/prod-switch-2026-09-29/_C-vor-2026-10-18-plewindow/`, neues `_C` (md5
+      57721a8c…) aus `1Cat-vLLM-qsa-turing` kopieren (alle anderen .so bytegleich), dann Kontrolle prodonce q27/pp4/tp2/ds.
 
 **Nachtrag 18.10. nachts (autonom, Freigabe Peuqui 17.10. ~22:55): A/B `qsa-page4-head-groups` c90dc90d7 (native
 page4-QSA für 12/24 Köpfe auf den V100-Stufen) gegen Produktion ee261cc74, Flash-Next TP2×PP2 und PP4.**

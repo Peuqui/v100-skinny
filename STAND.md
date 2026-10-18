@@ -13,6 +13,44 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 18.10. abends — Planpunkt 5: Flash-Next rechnet seit fork-main ohne die VRAM-Zeilen der PLE-Einbettung.**
+- Symptom: teacher-forced Logprobs (`ppl_probe.py`/`ppl_sequence.py`/`ppl_variant.sh`) von Flash-Next PP4 weichen
+  zwischen Durchläufen desselben Texts im selben Boot ab (deutscher Text: mittl. |Δ| 0,11–0,18 nats, Top-1 91–94 %
+  gleich), bootübergreifend bitgleich; 27B und DSv4 deterministisch. Ausgeschlossen: Präfix-Cache, page4-QSA,
+  PLE-Zeilen-Caches, torch.compile/CUDA-Graphen, `ple_prefill_early_request`. Digest-Hook: erstes abweichendes Modul
+  auf PP0 ist `Qwen4ExpNGramEmbedding`.
+- **Ursache:** `PleOffloadLayer.forward` fragt bei jedem Aufruf `offload_keeps_local_tables()` →
+  `ple_cascade_configured()`, das seit 1Cat 41faaa6d1 (03.10., vorher Env-Variable aus unserem 67cd4290e)
+  `kernel_config.ple_disk_cascade_active` aus der aktuellen vLLM-Config liest. Die ist nur um Aufbau und Laden gesetzt,
+  nicht um `execute_model` → zur Laufzeit „keine Kaskade“ → PP0 nimmt den rohen Puffer des Offload-Workers, der nur die
+  Platten-Plätze schreibt. Dump-Hook (`ple_dump_hook/`, Auswertung `ple_dump_truth.py`) gegen den Checkpoint: Platten-
+  Plätze 15.264/15.264 richtig, VRAM-Plätze **0/10.592** (PP4: N-Gramm-Köpfe 0–5 ganz, 6 zu 55 %, ~41 % aller Plätze;
+  1. Durchlauf 10.585 Nullzeilen, danach Reste früherer Häppchen). TP2×PP2 hält je Rang 125,4 von 160 Mio. Zeilen
+  resident → ebenso betroffen. 1Cat main (6f3557c97) hat denselben Code. Betroffen seit der Produktionsumstellung auf
+  fork-main; alle Flash-Next-Qualitätsvergleiche seitdem liefen mit dem Fehler.
+- **Fix 6bbcd40be** (Zweig `ple-cascade-runtime-merge` auf cf50e1a2c, Baum `1Cat-vLLM-qsa-turing`): der geschützte
+  Konstruktor hält seine Entscheidung fest (`_keeps_local_tables`), der Forward mischt genau die gebauten Tabellen ein;
+  Regressionstest `test_ple_layer_merges_local_tables_outside_the_engine_config` (ohne Fix rot), PLE-Tests 316 bestanden,
+  pre-commit grün. Probelauf PP4 eager: alle Plätze bitgleich zum dequantisierten Checkpoint, beide Durchläufe exakt
+  gleich (3.707/3.707 Logprobs), mittlere NLL deutscher Text 1,4115/1,4023 → **1,3609**.
+- **A/B/A/B PP4 + TP2×PP2 bestanden** (`run_ab_plemerge.sh`, Log `ab_plemerge_2026-10-18.log`, 19:20–21:11, Journale
+  ohne Fehler; Checkpoint-Belege `ple_dump_truth_run3_2026-10-18.txt` (Fehler) und `…_fixdump_…` (Fix)):
+  - Tempo gleich: Schrittzeiten je Kategorie gleich (PP4 edit 54 ms = 92,3 gegen 92,5 tok/s, TP2×PP2 45 ms = 110,0
+    gegen 110,0), 29k-TTFT gleich (PP4 7,5–7,6 s, TP2×PP2 11,8 s), Langkontext-Schritt gleich (PP4 250k 66,8/67,4 gegen
+    67,0/68,1 ms, TP2×PP2 59,2/57,9 gegen 58,8/58,4 ms); 150k-TTFT eher kürzer (PP4 71,9/72,2 gegen 73,3/74,5 s,
+    TP2×PP2 99,3/99,6 gegen 107,6/111,1 s). tok/s schwanken mit dem Text über die Annahme: PP4 prosa 47,1 gegen 45,6,
+    29k 37,5 gegen 35,5; TP2×PP2 prosa 54,0 gegen 57,2 (Annahme 2,42 gegen 2,58), 29k 43,8 gegen 41,8 tok/s.
+  - Deterministisch: alle drei Fix-Boots je Topologie liefern dieselben Greedy-Texte, Qualitätsantworten (bytegleich)
+    und Annahmequoten, auch innerhalb eines Boots (prosa 546/546 statt 519/553). **PP4 und TP2×PP2 schreiben mit Fix
+    dieselben Texte** (Greedy 2 von 3 wortgleich, der dritte gleich bis Zeichen 625 von 665; Qualität motor/prime/
+    code_bug/summary/english wortgleich) — Produktion: gemeinsamer Anfang nur 377/211/66 Zeichen.
+  - Qualität händisch gelesen: alles richtig, Zug 84 km/h (PP4 fertig in 595 Token, Produktion lief in die 600er-Grenze),
+    Henri Kuanda zurückgewiesen ohne Erfindung (Fix: fokussiert auf Bédié/Lumumba; Produktion PP4: Cartier-Bresson/
+    Matisse/Rousseau, lief in die Grenze). Langkontext 150k/250k zusammenhängend.
+  - Greedy gegen die alten Referenzen erwartungsgemäß verschieden (Referenzen stammen aus dem fehlerhaften Stand).
+- Produktion erst nach Freigabe Peuqui (nur Python, `_C` gleich: `prod-fork-main` auf 6bbcd40be vorziehen), danach
+  neue Greedy-Referenzen und PR an 1Cat.
+
 **Nachtrag 18.10. mittags: Produktion = `ple-prefetch-window` cf50e1a2c (13:39, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-ple-prefetch-window`.**
 - = 58415430e + begrenztes Vorladefenster im PLE-Plattenzugriff (Grundlage: A/B/A/B im Block „Fix gebaut“ unten). Ablauf:
   altes `_C` (md5 300067ad…) gesichert in `~/.cache/prod-switch-2026-09-29/_C-vor-2026-10-18-plewindow/`;

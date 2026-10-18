@@ -39,8 +39,25 @@ so", nicht „wie ist es".
   zurück (Journal: „shared-key scorer fallback: requires_SM70“, `qsa_indexer_sm70.cu:157` TORCH_CHECK, kein Shared
   Memory); PLE-Gates liegen auf PP0 = RTX (`model_state.py:78`, `ple_layer.py:1607/2488/2780`), kleiner Gewinn.
   Nicht lohnend: MTP-FC und MTP-Kopf (nur TP4), Host-KV (aus), `family(70)`-Stellen (schon offen).
-  Nächster Schritt: Probestart PP4 mit den drei Schaltern im Testeintrag, dann A/B/A/B PP4 und TP2×PP2 mit und ohne
-  Dual-Compile, Qualität händisch.
+  **Probestarts (14:43–15:24, `sm70gates_smoke_2026-10-18.log`, `…smoke2…`, `…ctl…`):** Haupteintrag mit den Schaltern:
+  `opt-in rejected … exact_contract=False` — der Vertrag verlangt `language_model_only`, die Flash-Next-Haupteinträge
+  sind multimodal (`image:12`) → die Pfade greifen dort nie, unabhängig von der Alle-Geräte-Prüfung (die
+  `-vlm-qwen3vl4b`-Sprachvarianten laut Journal seit 10.10. unbenutzt). Mit `--language-model-only`: Dual-Compile an,
+  Schritt prosa 52–54 / code 53–55 / edit 54 / 184k 62,4 / 250k 65,6 ms gegen Kontrolle 53–54 / 53–54 / 54 / 62,2 /
+  66,7 ms → **kein Decode-Gewinn, Planpunkt 4 V100-Teil abgehakt.** Messfalle: alle drei Starts 29k-TTFT 10,2 s statt
+  7,5–7,9 s, weil `PYTHONPATH=1Cat-vLLM-work` das veraltete Wurzelverzeichnis `1Cat-vLLM-work/flash_attn_v100/` (nur
+  .so vom 05.10., sm_70) als Namespace-Paket lädt → RTX ohne page4-QSA. Produktion (ohne PYTHONPATH) lädt korrekt
+  `flash-attention-v100/flash_attn_v100`. Symlink-Lösung wie in den anderen Bäumen bei Peuqui angefragt; Testeinträge
+  bis dahin aus `1Cat-vLLM-qsa-turing` (gleicher Commit, gleiches `_C`).
+- **PP4-Decodeprofil Produktion** (`profile_decode_nsys_pp4_1018_copy.sh`, `nsys/pp4-decode-1018/`, gesampelte Code-Antwort
+  Seed 2018, 57 Schritte, Median 62,8 ms unter nsys): Rechenzeit je Schritt Gerät 0/1 (RTX) 8,9/8,0 ms, Gerät 2/3 (V100)
+  13,0/19,2 ms, zusammen 48,9 ms; Rest ~14 ms Nähte (≥ 100 µs nur ~4 ms auf Gerät 0, davon 2 ms vor `_post_update_kernel`
+  = Warten auf die gesampelten Token; sonst viele Kleinstlücken bei ~1.050 Kernels je Gerät und Schritt). QSA-Kernel je
+  Gerät nur 0,6–0,8 ms → die RTX-Kandidaten Shared-Key-Scorer/PLE-Kette sind klein. Letzte Stufe: FP16-Kopf über cuBLAS
+  (Kernel2) = Draft-Kopf 98.304 Zeilen 4× je Schritt à 743 µs (3,1 ms) + voller LM-Kopf 248.320 Zeilen 1,9 ms, ~670
+  GB/s. Kandidat: 8-Bit-Draft-Kopf für das reduzierte Draft-Vokabular (Ausgabe verlustfrei, weil mit FP16 verifiziert;
+  Annahme prüfen) — vorhandener QPN8-Kopf (`sm70_mtp_head.py:338`) passt nur auf TP4-Shards 62080×2560; Ersparnis
+  höchstens ~1,5 ms je Schritt (~2,5 %). Vorerst nur notiert.
 
 **Nachtrag 18.10. vormittags: Produktion = `qsa-page4-turing` 58415430e (08:52, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-qsa-page4-turing`.**
 - Grundlage: Turing-A/B unten (29k-Prefill TP2×PP2 −20 %, PP4 −25 %, Decode gleich, Kuanda PP4 24 gegen 22, TP2 31 gegen

@@ -13,14 +13,181 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 18.10. vormittags: Produktion = `qsa-page4-turing` 58415430e (08:52, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-qsa-page4-turing`.**
+- Grundlage: Turing-A/B unten (29k-Prefill TP2×PP2 −20 %, PP4 −25 %, Decode gleich, Kuanda PP4 24 gegen 22, TP2 31 gegen
+  34 ohne Code-Ursache). 58415430e = eb203d0a3 + vorübergehende Diagnose bei `host_reduce_open`-Fehlern (Freigabe
+  Peuqui 18.10.: loggt nur im Fehlerzweig Abbildung samt Nachbarn aus `/proc/self/maps`, VmLck/VmPin, freien Platz in
+  `/dev/shm`, RLIMIT_MEMLOCK, dann derselbe Fehler; entfernen mit dem Fix der Ursache).
+- Ablauf: Tag `archive-prod-fork-main-2026-10-18` (ee261cc74) gepusht; alte `flash_attn_v100`-.so (11.10., nur sm_70)
+  gesichert in `~/.cache/prod-switch-2026-09-29/flash_attn_v100-vor-2026-10-18/`; `prod-fork-main` Fast-Forward auf
+  58415430e; neue .so (sm_70 + sm_75, laut cuobjdump je 6 Kernel) aus `1Cat-vLLM-qsa-turing` bytegleich kopiert; `_C`
+  und FA2 waren bereits bytegleich; `prod-fork-main` und `fork-main-v2b` gepusht. Kontrolle `prodcheck_2026-10-18.log`
+  (prodonce q27, pp4, tp2, ds mit Langkontext-Sonde) 08:54–09:54.
+- **Kontrolle `prodcheck_2026-10-18.log` (Vergleich `prodcheck_2026-10-17c/d.log` = ee261cc74):**
+  - Greedy: 27B 3/3, DSv4 3/3 wortgleich zur Referenz; PP4 1/3 (Muster wie 17c), TP2×PP2 1/3 (17c 0/3, 17b 3/3) =
+    bekannte Flash-Next-Streuung; Texte händisch gelesen, korrekt. Qualität 8 Fragen je Modell händisch gelesen: alle
+    sachlich richtig, Kuanda überall zurückgewiesen (bestanden). Journale: nur Proxy-Abweisungen während des Boots.
+  - 29k-TTFT (Seeds 6173/6185/6187, weniger ist besser): PP4 9,4/7,6/7,5 s (≈ 3100–3900 tok/s) gegen 10,2 s
+    (≈ 2860 tok/s), TP2×PP2 11,8 s (≈ 2475 tok/s) gegen 14,8 s (≈ 1970 tok/s); 27B 35,3 s und DSv4 15,2 s unverändert.
+  - Decode (Schritt ms / tok/s, mehr tok/s ist besser): PP4 prosa/code/edit 54 ms = 44,4–47,0 / 75,6–79,1 / 92,2–92,7
+    gegen 44,2 / 74,1 / 92,4; TP2 45 ms = 52,9–54,5 / 90,0–92,0 / 109,9–110,0 gegen 53,6 / 95,6 / 109,7; 27B 33–34 ms
+    = 74,7–74,9 / 115,3–115,4 / 117,6–118,6; DSv4 62–70 ms = 48,3 / 73,5 / 80,7–81,1 (gleich).
+  - Langkontext 184k/250k (TTFT s, Decode ms = tok/s): 27B 358,3/564,7 s, 55,1 ms = 49,9 / 63,0 ms = 38,9 (17d 358,6/565,1
+    s); PP4 134,6/67,2 s (Stillstand im ersten langen Prefill: 691k Major Faults, 10,5 GB gelesen, 3803 memory.high-Treffer),
+    61,5 ms = 51,9 / 66,7 ms = 39,4; TP2 102,8/109,8 s (17c 127,0/167,0), 53,7 ms = 56,3 / 58,2 ms = 48,0; DSv4 113,2/222,9
+    s (287k), 86,4 ms = 41,6 / 92,6 ms = 34,2 (17c 113,3/223,3).
+- **Diagnose der PP4-Langprefill-Stillstände (`heapdiag_2026-10-18.log`, Skripte `run_heapdiag_copy.sh`,
+  `ple_thread_sampler.py`, `heap_trim_now.sh`):**
+  - Thread-Probe des PLE-Workers (Boot a, 184k-TTFT 164,7 s): ALLE 586k Major Faults macht der Hauptthread (48,7 s sys,
+    10,7 s user); die 16 `ple-mmap`-Pool-Threads haben 0 Faults. Im Stillstand steht er zu 60–80 % in
+    `folio_wait_bit_common`, ~3.500 Faults/s ≈ 280 µs je Seite = synchrones Einzelseiten-Lesen von der USB-SSD.
+  - Ursache im eigenen Code (PR C, `csrc/ple_disk_rows.cpp`, `ple_disk_gather_u8`): erst `mincore` + `MADV_WILLNEED` für
+    ALLE fehlenden Seiten der Anfrage, dann `memcpy` aller Zeilen. Bei ~1,2 GB Cache in der Cgroup verdrängt der Kernel
+    die vorgeladenen Seiten, bevor das Kopieren sie erreicht → Nachladen Seite für Seite. In der 250k-Phase desselben
+    Boots dagegen `blk_mq_get_tag` (Gerätewarteschlange voll, kaum Faults) = das Vorladen wirkt, wenn die Seiten bleiben.
+  - glibc-Heaps (gdb über den ptrace-Haken; nötig `set sysroot /`, weil der Dienst einen eigenen Mount-Namespace hat):
+    Worker je ~2,2 GB malloc in Benutzung = lebender Speicher, `malloc_trim` gibt 0 frei; API 1,28 GB System / 655 MB
+    benutzt (Trim −573 MiB), EngineCore −295 MiB. Trim ist kein ausreichender Hebel.
+  - Boot b (Start mit 4,3 GB Cache, Trim vor der Messung): 184k 64,8 s, 250k 84,9 s.
+  - **Fix-Plan:** begrenztes Vorladefenster in `ple_disk_gather_u8` (Zeilen nach Adresse ordnen, `WILLNEED` nur für ein
+    Fenster vor dem Kopierzeiger, Größe als KernelConfig-Feld), dann Byte-Prüfung und A/B/A/B. MemoryHigh-Anhebung
+    (sudo, Peuqui) nur, falls danach noch nötig.
+
+**Nachtrag 18.10. nachts (autonom, Freigabe Peuqui 17.10. ~22:55): A/B `qsa-page4-head-groups` c90dc90d7 (native
+page4-QSA für 12/24 Köpfe auf den V100-Stufen) gegen Produktion ee261cc74, Flash-Next TP2×PP2 und PP4.**
+- `ab_qsapage4_2026-10-17.log` 23:11–01:14, je Modell fm-kalt, prod-a, fm-a, prod-b, fm-b; keine Fehler, keine Waisen.
+  Route betrifft nur den Prefill (Mindestzeilen 64; MTP-Decode mit 5 Zeilen/Anfrage bleibt Triton).
+- Routenbeleg aus dem Journal unmöglich: `info_once` hat Scope "local" → nur `Worker_PP0_TP0` (RTX) loggt. nsys-Beleg
+  `routecheck_qsapage4_2026-10-17.log` (01:15–01:28) lief, SQLite-Export leer (Export lief vor Dateiende) → nachholen.
+  Indiz für Treffer: fm und prod unterscheiden sich systematisch in Text (einziger Code-Unterschied ist diese Route).
+- TP2×PP2: TTFT 29k 14,7 s beide; 184k fm 145,2/128,9 gegen 109,1/129,0 s, 250k 167,4/163,9 gegen 137,7/173,1 s
+  (streut, RTX-Stufe ist Engpass); Decode prosa/code/edit 45 ms beide (edit ~109,9 tok/s), 184k 53,8–53,9 gegen
+  54,2–54,4 ms. Greedy: fm-Boots untereinander 3/3 wortgleich, prod-a/prod-b 1/3; Qualität fm 8/8, prod 8/8 je Arm
+  stabil, fm/prod 1/8 wortgleich — händisch gelesen gleichwertig (Kuanda beide zurückgewiesen, ohne Coandă).
+- PP4: TTFT 29k 10,2–11,1 gegen 10,2–10,6 s; 184k 62,8/63,0 gegen 78,6/80,8 s; 250k 84,8/85,0 gegen 109,4/102,3 s;
+  Decode edit 54 ms = 92,2–92,5 gegen 92,4–92,6 tok/s, 250k 66,6 ms = 39,9 gegen 67,9–70,3 ms = 38,3–39,5 tok/s.
+  **Aber:** GPU-Log im 184k-Prefill: alle vier Stufen rechnen bei prod nur 62–75 % der Proben, bei fm 81–94 % →
+  prod hält die ganze Pipeline an (Major Faults prod 251–314k gegen fm 20–65k; Warmup 33k prod 41–43 s gegen fm 13 s).
+  Gestern im A/B turing-prefill dasselbe Muster zugunsten fm. Verdacht Umgebung (eigener `VLLM_CACHE_ROOT`,
+  PYTHONPATH), nicht Code → A/A-Gegenprobe (fm-Baum auf ee261cc74 gegen prod) geplant.
+- PP4-Qualität: Greedy 5/5 Boots wortgleich (beide Arme); Qualität je Arm 8/8 stabil, fm/prod 4/8 wortgleich.
+  **fm-Kuanda greedy durchgefallen** (erfindet „Kenneth Kaunda, sambischer Fußballspieler“), english ohne
+  „Rayleigh“; prod Kuanda zurückgewiesen. → Kuanda-Stichprobe 20 Seeds (1000–1019) je Arm, PP4 + TP2
+  (`nachlauf_qsapage4_2026-10-18.log`, 01:28–01:56), alle Antworten händisch gelesen, Maßstab wie 17.10.
+  (bestanden = zurückgewiesen bzw. Coandă; verzettelt = ohne Coandă bis 600 Token oder Schleife; erfunden = Biografie):
+  **PP4 prod 14/20** (3 verzettelt, 3 erfunden: Häuptling, Physiker, „Henrietta Kuanda“), **PP4 fm 13/20** (5 verzettelt
+  inkl. Bédié-Schleife, 2 erfunden: „Henri Kuanda Nkulu“, Botschafter); gepaart nach Seed 4:3 Kippungen → kein
+  Unterschied (wie 17.10.: 14 gegen 13). **TP2 fm 16/20** (3 verzettelt, 1 erfunden: südafrikanischer Künstler; 2×
+  einzelnes CJK-Token). TP2-prod-Boot 01:46 **brach beim Start ab** (s. u.) → TP2-prod wiederholt ab 02:00
+  (`nachlauf_qsapage4_tp2_2026-10-18.log`).
+- **Host-Allreduce-Startabbruch, zweiter Fall (01:47:10, Produktion TP2×PP2):** `host_reduce_open` →
+  `cudaHostRegister` „invalid argument“; Kernel: `Cannot map memory with base addr 0x75afec4d4000 and size of 0x108
+  pages` (264 Seiten = 1.081.344 B = der Kanal) → Treiber konnte die Seiten der `/dev/shm`-Datei nicht pinnen;
+  IO_PAGE_FAULTs 4 s später sind Folgen. Erster Fall 16.10. 12:23. Kein Movable/CMA (Migration als Ursache scheidet
+  aus); beide Ränge öffnen mit O_CREAT und ftruncate vor mmap (kein Größenwettlauf). Ursache offen → Nachstellung
+  (zwei Prozesse, Schleife open/close) in einer Messpause; Code stammt aus #1216 → Fix im Fork und im PR. Kein
+  Retry/Fallback ohne Peuqui. Rest: `/dev/shm/vllm_host_reduce_f190ba…` (01:47) und `…8af46b…` (17.10. 15:21).
+  Kernel-Log seit 20.09.: genau drei Fälle (16.10. 12:23, 17.10. 15:21 = nsys-TP2-Profil, 18.10. 01:47).
+  Nachstellung `host_reduce_open_repro.py` (zwei Prozesse, Barriere, open/close wie beim Boot): 300 Runden GPU 0/2
+  und 300 Runden GPU 1/3 ohne Fehler, auch unter nsys (5 Runden) ohne Fehler → Auslöser liegt im Zustand eines
+  echten Workers (Kandidat: NCCL-shm-Puffer ohne P2P, kurz vorher registriert). Vorschlag an Peuqui: bei
+  Fehlschlag Diagnose ins Log (`/proc/self/maps` um die Adresse), kein Retry.
+- **TP2-prod-Wiederholung 02:00–02:18** (`nachlauf_qsapage4_tp2_2026-10-18.log`): **TP2 prod 19/20** (1 erfunden,
+  Seed 1011 — denselben erfindet auch fm), gepaart mit fm 16/20: **3:0 Kippungen für prod** (Seeds 1006/1013/1017,
+  fm jeweils zurückgewiesen, dann ohne Coandă bis 600 Token). fm zieht mit gleichen Seeds über zwei Boots 20/20
+  wortgleich. **Entscheidung: V100-Teil allein nicht in Produktion** (Qualität TP2 nicht als gleich belegt, Tempo
+  TP2 gleich, PP4-Gewinn vermutlich Umgebung) → mit dem Turing-Teil zusammen neu bewerten, größere Stichprobe.
+- **nsys-Routenbeleg nachgeholt (04:0x, Export in den Scratchpad):** TP2×PP2: V100-Stufe nimmt die native Route
+  (grouped 677 ms + Planer 69 ms in 126 Aufrufen, XQA-Rest; Triton dort nur 2,2 ms), RTX-Stufe Triton 4182 ms.
+  **PP4: keine Karte nimmt sie** (V100 Triton 3182/3146 ms). Ursache: Flash-Next hat `num_attention_heads` 24,
+  `num_key_value_heads` 2 → TP1-Stufe 24/2, die Weiche verlangte `k_cache.shape[2:] == (1, 256)`. **Korrektur:**
+  meine Aussage um 00:14 („Änderung greift in den V100-Stufen“) stimmt nur für TP2×PP2; die PP4-Unterschiede zwischen
+  fm und prod (Text, Stillstand, TTFT) sind dort reine Umgebungseffekte. Ebenso: Mikrobench und Test „24 Köpfe“
+  liefen mit EINEM KV-Kopf — diese Form kommt im Modell nicht vor; „6,1–7,3×“ gilt für keine reale Aufteilung.
+- **Mehrere KV-Köpfe je Rang** (Zweig `qsa-page4-turing`, Python): Weiche prüft Token-Stride = KV-Köpfe × 256,
+  page4-Sicht und Mikroblock-Abstand über `_qsa_xqa_page4_page_stride` (= stride(0) // (4 · stride(1))), Route
+  läuft je KV-Kopf gegen dessen Cache-Scheibe (Kernel bekommen Block-/Token-/Kopf-Stride getrennt). Test mit
+  Betriebs-Layout `[blocks, 2, page, kv, 256]` für 6/1, 12/1, 24/2, 24/1: 8/8 auf RTX und V100 (atol 2e-3 gegen
+  Triton und fp32). Damit wird PP4 auf allen Stufen erreichbar (V100; RTX mit dem sm_75-Bau).
+- Layout-Sonde (`accumulator_layout_probe.py`, Scratchpad): 32/32 Lanes auf RTX (Zeilen lane/4, +8) und V100
+  (Volta-Muster, r/r+2) → `accumulator_16x16_rows()` stimmt. Turing-Tests (`turing_tests_2026-10-18.erster/`):
+  keine neuen Fehler; RTX 124 bestanden statt 79 (45 vorher übersprungene laufen jetzt), V100 152 statt 151.
+  `test_host_kv.py` 72 rot in beiden Bäumen UND auf 1Cat main 6f3557c97 → Upstream-Fehler, Liste.
+- Produktionsbaum: `1Cat-vLLM-work/flash_attn_v100/` im Wurzelordner enthält veraltete .so vom 05.10. (28,5 MB); die
+  Produktion lädt laut Editable-Mapping aber `flash-attention-v100/flash_attn_v100/` (11.10., 32,7 MB) — Altlast,
+  aufräumen nach Rückfrage.
+- Turing-Teil im Worktree `1Cat-vLLM-qsa-turing` (Branch `qsa-page4-turing`, nicht gebaut): `fused_mma.h` kennt sm_75
+  (`accumulator_16x16_rows()` als einzige Layout-Stelle; die zwei Skalierungshelfer des page4-Kernels setzten das
+  Volta-Akkumulator-Layout voraus), Planer-Kapazität nach Shared Memory des Geräts (8192 bei ≥96 KiB, 5120 bei
+  ≥60 KiB, schlimmster Fall 4104 Einträge), Host-Prüfungen per Shared Memory statt `major==7&&minor==0`, neue Abfrage
+  `grouped_sparse_page4_device_supported` (Kernel-Image + Shared Memory), Python-Weiche damit je Gerät, Routen-Logs
+  mit `scope="process"`, setup.py (beide) lassen 7.5 zu; Tests angepasst. Bauskript
+  `build_flashv100_turing_2026-10-18.sh`, Layout-Sonde im Scratchpad.
+- **A/A PP4 (`aa_pp4_2026-10-18.log`, 04:40–05:37): Produktion gegen fork-main-Baum auf DEMSELBEN Commit ee261cc74**
+  (fm-kalt, prod-a, fm-a, prod-b, fm-b). 29k-TTFT 10,2 s in beiden Armen; **184k fm 68,8/63,0 s (kalt 68,2) gegen prod
+  103,4/112,5 s**, 250k fm 84,7/85,0 gegen prod 108,4/93,1 s; Decode 184k 62,0–62,3 ms in beiden (fm 49,2–49,5, prod
+  48,5–48,7 tok/s laut Log). → Der PP4-Vorsprung der fm-Arme ist Umgebung, nicht Code. Busy-Anteil im 184k-Prefill
+  (Proben > 80 W, Skript `aa_stage_busy.py` im Scratchpad): prod 51/55/59/53 % und 51/62/51/42 %, fm 85/85/82/85 % und
+  84/94/94/90 %. Zeitverlauf (`aa_stage_timeline.py`): prod steht 40–50 s mit ALLEN vier Karten still (prod-b gleich zu
+  Beginn, prod-a in der Mitte); ebenso im A/B vom 17.10. nachts (prod-a 18 s am Anfang, prod-b zwei Lücken à 8–10 s),
+  fm nie. Gesamt-TTFT (Warmup + 184k + 250k) folgt den Major Faults: fm-b 160,8 s / 17k, fm-a 194,4 s / 306k (dazu 15 s
+  Stillstand in der ersten 29k-Anfrage), fm-kalt 201,2 s / 193k, prod-a 224,8 s / 357k, prod-b 267,5 s / 469k.
+  Gleich in beiden Armen: Code, native .so (bytegleich), cwd `/`, keine Überschattung durch PYTHONPATH. Verschieden:
+  PYTHONPATH, `VLLM_CACHE_ROOT` (Compile-Artefakt prod `7836c6d756` vom 17.10. 21:07, fm `10bdb3d36c` vom 17.10. 12:48,
+  Graph bis auf den Pfad gleich), Modellname. Greedy je Arm über Boots wortgleich (prod 132/132/149 Schritte, fm
+  130/130/150), zwischen den Armen verschieden → passt zu verschiedenen Compile-Artefakten.
+  **Speicher:** passiver Beobachter `proc_fault_monitor.py` (alle 2 s, Major Faults und Rss je Prozess der
+  llama-swap-Cgroup, `faults_turing_2026-10-18.csv`, Unit `fault-monitor`) zeigt beim TP2-Boot: Cgroup-anon 15,5 GB
+  von MemoryHigh 16 GB, Seiten-Cache nur 1,35 GB; der PLE-Offload-Worker (Spawn-Prozess, 51 Threads) hält 2,65 GB anon
+  und hatte schon 276k Major Faults. Hypothese: Die PLE-Plattenstufe kämpft am MemoryHigh-Rand um Seiten-Cache;
+  schon wenig mehr anon-Speicher in einem Arm treibt die Nachlade-Fehler hoch. Prüfung: anon je Prozess prod gegen fm
+  im PP4-Teil des Turing-A/B.
+  **Korrektur nach dem Turing-A/B (unten): Umgebungs-Hypothese widerlegt.** Die Stillstände treffen beide Arme, je Boot
+  zufällig: PP4 fm-a 184k 155,8 s bei 649k Faults, fm-kalt 51,7 s bei 29k. Entscheidend ist der Seiten-Cache, den die
+  Cgroup in der Messung übrig hat (s. Speicherbefund unten). Die A/A-Verteilung 2:2 zugunsten fm war Zufall.
+- **A/B Turing (`ab_turing_2026-10-18.log`, 05:38–07:40): `qsa-page4-turing` eb203d0a3 (page4-QSA auf V100 UND RTX,
+  mehrere KV-Köpfe je Rang) gegen Produktion ee261cc74**, Flash-Next TP2×PP2 und PP4, je fm-kalt, prod-a, fm-a, prod-b,
+  fm-b; keine Fehler, keine Waisen, Config zurück = Backup.
+  - Routenbeleg (Journal, Logger-Scope jetzt "process"): fm alle vier Worker melden „grouped QSA Flash-V100 page4
+    prefill route“ (PP4: PP0/PP1 = RTX, PP2/PP3 = V100; TP2×PP2: alle vier Ränge), prod keiner.
+  - **Prefill 29k (Mittel der Seeds 6173/6185/6187, erster Lauf; 29.204 Token; s weniger besser, tok/s mehr besser):
+    TP2×PP2 fm 11,8 s (alle drei Boots) = 2.475 tok/s gegen prod 14,8 s = 1.972 tok/s (−20 %); PP4 fm 7,67/7,70 s =
+    3.802 tok/s gegen prod 10,33/10,20 s = 2.844 tok/s (−25 %).** Vorher V100-Teil allein: 29k gleich (14,7 s / 10,2 s)
+    → der Gewinn kommt von den RTX-Stufen.
+  - Decode gleich: TP2 prosa/code/edit 45 ms = 57,0–58,0 / 93,6–94,2 / 109,9–110,2 tok/s in beiden Armen; PP4 54 ms,
+    edit 92,4–92,8 tok/s in beiden; 184k TP2 53,8/54,9 ms = 57,0/55,9 tok/s gegen 53,7/53,8 ms = 57,6/57,5 tok/s.
+  - 184k/250k-TTFT vom Platten-Rauschen beherrscht (s. u.): TP2 fm 80,8/108,3 s gegen prod 134,5/99,5 s; PP4 fm
+    155,8/73,2 gegen prod 164,9/184,0 s (250k fm 74,6/88,4 gegen 123,0/159,3 s). Bester Boot je Code bei wenig Faults:
+    PP4 fm(eb203d0a3) 51,7 s (29k Faults) gegen fm(ee261cc74) 63,0 s im A/A (17k Faults).
+  - Greedy: PP4 alle vier Boots beider Arme wortgleich; TP2 streut in beiden Armen (bekannt), Texte händisch einwandfrei.
+    Langkontext-Zusammenfassungen in beiden Armen zusammenhängend.
+  - **Kuanda 40 Seeds (1000–1039) je Arm** (`nachlauf_turing_2026-10-18.log` 07:40–08:31, alle 160 Antworten händisch
+    gelesen, Bewertung je Seed in `quality_2026-09-27/kuanda_bewertung_turing_2026-10-18.txt`; b/v/e = bestanden/
+    verzettelt/erfunden): **PP4 fm 24/12/4 gegen prod 22/13/5** (gepaart: nur fm besteht 10×, nur prod 8×);
+    **TP2×PP2 fm 31/7/2 gegen prod 34/4/2** (gepaart 2:5, Vorzeichentest p = 0,45). Seeds 1000–1019 je Arm wortgleich
+    zu den Läufen von heute Nacht (prod beide, TP2-fm zu c90dc90d7). **Wichtig:** Die page4-Route greift beim kurzen
+    Kuanda-Prompt gar nicht (Mindestzeilen 64) — TP2-fm ist mit und ohne Turing-Teil wortgleich; die Unterschiede
+    zwischen den Armen kommen vom Compile-Artefakt (wie im A/A mit identischem Code). Damit war auch die Zurückstellung
+    des V100-Teils (16 gegen 19) kein Code-Befund.
+  - **Speicherbefund (Beobachter `fault_monitor_report.py`, PSI ab 07:17 `psi_turing_2026-10-18.csv`):** 184k-TTFT folgt
+    dem Seiten-Cache im Langkontext-Fenster: PP4 fm-kalt 3.107 MiB / 20k Faults / 51,7 s; fm-a 2.188 (in der
+    Stillstandsphase 1.260) / 557k / 155,8 s; prod-a 1.244 / 862k / 164,9 s; prod-b 580 / 930k / 184,0 s; fm-b 3.401 /
+    280k / 73,2 s. Zeitreihe fm-a: 2:50 min lang anon 14,85 GB, Cache 1,26 GB, 20–33k Faults je 10 s, im Mittel nur
+    0,4–1 von 4 Karten über 80 W; dann lagert der Kernel kalten anon-Speicher der vier Worker aus (je ~2,4 → ~1,2 GB),
+    Cache wächst auf 5,7 GB, Faults weg, alle Karten rechnen. → Jeder Worker trägt ~1,2 GB nie benutzten anon-Speicher.
+    PSI prod-b: IO-Warten nur 21 s in 389 s Fenster → die Faults kosten nicht nur IO-Latenz; Ursache der restlichen
+    Stillstandszeit offen (Kandidaten: CPU in Reclaim/Fault-Pfad der PLE-Threads, Sperren um madvise).
+
 **Nachtrag 17.10. abends: Produktion = turing-prefill ee261cc74 (20:38, Freigabe Peuqui), Kontrolle bestanden.**
 - `prod-fork-main` Fast-Forward 9a41a8e67 → ee261cc74 (nur Python), Tags `archive-prod-fork-main-2026-10-17c` (9a41a8e67) und
   `verified-2026-10-17-turing-prefill` (ee261cc74), `fork-main-v2b` nachgezogen, alles gepusht.
 - Kontrolle `prodcheck_2026-10-17c.log` (prodonce mit Lang-Kontext-Sonde, 20:38–21:46; s = tok/s, ms = tok/s derselben Zeile):
   27B Greedy 3/3, Qualität 8/8 wortgleich zum A/B-Zweig; 29k 35,4–35,5 s = 823–825 tok/s, 184k 363,3 s, 250k 568,7 s,
   250k-Decode 62,8 ms = 39,2 tok/s; Kurzdecode prosa 34 ms = 72,1–72,4, code 34 ms = 111,1–112,9, edit 34 ms =
-  116,1–116,7 tok/s (A/B mit gleichem Code: 33 ms = 74,3–74,7 / 114,8–115,2 / 118,6–119,2) — **von meiner versehentlichen
-  dateisystemweiten Suche 20:46–20:48 überlagert, nachmessen**. PP4 29k 10,2 s = 2.859–2.867 tok/s, Kurzdecode 53–54 ms,
+  116,1–116,7 tok/s (A/B mit gleichem Code: 33 ms = 74,3–74,7 / 114,8–115,2 / 118,6–119,2) — von meiner versehentlichen
+  dateisystemweiten Suche 20:46–20:48 überlagert. **Nachmessung 22:46–23:09 (`prodcheck_2026-10-17d.log`, ruhig): prosa
+  33 ms = 74,5, code 33 ms = 114,6, edit 34 ms = 118,7–118,8 tok/s, 250k-Decode 63,2 ms = 38,7 tok/s, TTFT 29k 35,3–35,5 s,
+  184k 358,6 s, 250k 565,1 s; Greedy 3/3, Qualität 8/8 wortgleich zu 17c — gleich dem A/B, erledigt.** PP4 29k 10,2 s = 2.859–2.867 tok/s, Kurzdecode 53–54 ms,
   edit 92,4–92,5 tok/s, 184k 106,4 s, 250k 134,1 s (515k Major Faults, 2.970 memory.high), Greedy 1/3 gegen alte Referenz,
   Qualität 6/8 wortgleich zum A/B-Zweig, englisch richtig, Kuanda verzettelt (600 Token ohne Coandă; wie die alte
   Produktion heute früh, Stichprobe 14 gegen 13 von 20). TP2×PP2 29k 14,8 s = 1.971–1.976 tok/s, Kurzdecode 45–46 ms, edit

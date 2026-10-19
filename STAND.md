@@ -13,6 +13,23 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. nachmittags: Platte aufgeräumt (Freigabe Peuqui), frei 134G → 236G (85 % → 73 %). Produktion unverändert 6bbcd40be.**
+- Liste mit allen Pfaden und Prüfungen: `handover/aufraeum-liste-2026-10-19.md`. Gelöscht: `~/.cache/vllm-forkmain`
+  (30,0 GiB), 149 alte Compile-Hashes in `~/.cache/vllm/torch_compile_cache` (behalten die fünf seit 18.10. 21:40 benutzten;
+  Einträge, die seitdem nicht liefen, kompilieren einmal neu), 43 Arbeitsbäume (28 gemergter/geschlossener PRs, 15 Mess- und
+  Debug-Bäume; `git worktree remove`, alle Zweige bleiben), 6 verwaiste Worktree-Einträge, `tools/bench_qsa_sparse_prefill.py`.
+  Vorher geprüft: kein Symlink, Editable-Install, llama-swap-Pfad oder laufender Prozess zeigt in die Kandidaten.
+- **NICHT gelöscht:** `~/.cache/huggingface/hub/blobs/<2 Zeichen>/` (3 GiB) — ONNX-Sprachmodelle ohne Symlink, und der
+  Container `stt-suite` bindet `~/.cache/huggingface` ein. DFlash2-Kopf bleibt (Planpunkt Prompt-Lookup: 1Cats `ngram_assist`
+  gibt es nur für DFlash2). Kein Docker-Befehl ausgeführt.
+- Ergebnis „Steckt alles aus unseren PRs in der Produktion?“: Laufzeitcode aller 18 offenen PRs ist in 6bbcd40be (merge-tree
+  und Rückwärts-Anwenden je Datei); abweichend nur Tests (#1187 ein Test mehr, #1234 schärferer Test = 99ec940c8 in
+  fork-main-v2b), Kommentare und generierte Doku. Ohne PR in der Produktion, bewusst: PLE-Plattenstufe (Zeilen-Cache,
+  Seitentabellen, Profil), FLA-Shared-Memory je Gerät, sync-PP-Fixes, Bauanleitung, `host_reduce_open`-Diagnose.
+- Host-Allreduce-Startabbruch: genau drei Fälle im Kernel-Log (16.10. 12:23, 17.10. 15:21, 18.10. 01:47) bei rund 135 Starts
+  mit HOST_REDUCE seit 14.10.; seit der Diagnose kein weiterer. Peuqui: nicht in #1216 ankündigen, erst berichten, wenn die
+  Ursache gefunden ist.
+
 **Nachtrag 19.10. 13:45: Übersicht 1Cat #674 nachgezogen (Freigabe Peuqui 19.10.). Produktion unverändert 6bbcd40be.**
 - Stand vorher 03.10. nachmittags. Neu: Update-Absatz (seit 03.10. gemergt #856, #857, #873, #874, #1004, #1005; #611 von
   yangzhuxinyzx zugunsten #822 geschlossen, #1006 von uns zugunsten #1187), Liste der 18 offenen PRs mit je einer Kennzahl aus

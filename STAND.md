@@ -13,6 +13,21 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. spätabends: vLLM #61589 (Lookahead-Block-Hashes) portiert, A/B 27B läuft. Produktion unverändert 6bbcd40be.**
+- Zweig `lookahead-block-hashes` 4651800f7 (Fork gepusht), Worktree `1Cat-vLLM-lookahead` (native .so aus der Produktion
+  kopiert, `flash_attn_v100/` als Symlinks auf das getrackte Paket). Freigabe Peuqui 19.10. („Hebel 1–4 umsetzen und prüfen“).
+- Inhalt: Block-Hash deckt das Folgetoken ab, Hash erst wenn es existiert; kein Eagle-Verwurf mehr; letzter Block beim Stopp
+  veröffentlicht. 1Cat-Anpassung: Verwurf-Entscheidungen über `drop_eagle_group_ids` (DSv4-Gruppen sind unabhängig von
+  `use_eagle` markiert), Retention-Replay-Grenzen, Mamba-Rückschau und Häppchengrenze folgen dem Verwurf; Encoder-Verschiebung
+  und P/D-Grenze behalten Eagle-Semantik (`use_eagle` gegen `use_eagle_block_drop`). Aktiv mit Präfix-Cache für
+  `use_eagle_kv_cache()` (MTP, EAGLE, DSpark; DFlash ohnehin ausgenommen), nicht mit KV-Connector oder Mehrschicht-MTP;
+  abschaltbar per `speculative_config.disable_lookahead_block_hashes`. Compile-Hash unverändert.
+- Tests: `tests/v1/core` Grundlinie 646/1 rot (bekannt: async `test_abort_request_when_structured_output_fsm_cannot_advance`),
+  mit Port 670/1 rot (gleicher Test); neue Datei `tests/v1/core/test_lookahead_block_hashes.py` (24). Hybrid-Fall 1.249 Token,
+  Mamba-Ausrichtung 544: ohne Spekulation 1.088, alter Verwurf 544, Lookahead 1.088. pre-commit und mypy-3.10 grün.
+- DSv4 (DSpark, kein KV-Connector) bekäme den Port ebenfalls → vor einer Übernahme eigene DSv4-Reihe.
+- A/B 27B: `~/.cache/bench-scripts/ab_lookahead_2026-10-19.log` (Start 20:18, `run_lookahead_start.sh`).
+
 **Nachtrag 19.10. abends: A/B/A/B 27B DFlash2 (k=7) gegen Produktion MTP (k=3) — gemischt, Produktion bleibt MTP.**
 - Aufbau: Produktion 6bbcd40be, TP2 RTX 0/2, Variante = Produktionseintrag mit `{"method":"dflash","model":…maurienne-ai
   Qwen3.8-27B-DFlash2-NVFP4-RTNcal…,"num_speculative_tokens":7,…,"sm70_dflash2":{"quant_lm_head":true}}` (PV_REPLACE in

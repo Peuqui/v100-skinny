@@ -13,7 +13,17 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
-**Nachtrag 19.10. vormittags: zwei PR-Entwürfe an 1Cat fertig, Zweige im Fork, NICHT gesendet (Freigabe Peuqui offen). Produktion unverändert 6bbcd40be.**
+**Nachtrag 19.10. 11:30: 1Cat #1235 (PLE-Vorladefenster) und #1236 (QSA-page4) gesendet (Freigabe Peuqui 19.10.). Produktion unverändert 6bbcd40be.**
+- Vor dem Senden erneut geprüft: main weiter 6f3557c97, alle 122 offenen PR-Köpfe unverändert, merge-tree und Duplikatsuche
+  wiederholt (gleiches Ergebnis), jede Zahl noch einmal gegen die Logs. Korrekturen dabei: QSA PP4-Durchsatz 2.826 / 3.809 statt
+  2.827 / 3.808 tok/s (aus ungerundeten Mitteln); „Gewinn kommt von den RTX-Stufen“ nur für TP2×PP2 belegt, Satz eingeengt.
+  Vorladefenster: Langkontext-Decode jetzt mit tok/s (die Antworten unterscheiden sich zwischen den Armen, PP4 184k 125 gegen 131
+  Runden für 400 Token); Ausgabe-Absatz präzisiert, der alte Satz „Streuung in beiden Armen“ stimmte nicht: PP4-Greedy in allen
+  fünf Boots wortgleich, TP2×PP2-Greedy streut nur im Fix-Arm, Langkontext- und Qualitätsantworten je Arm in jedem Boot gleich,
+  zwischen den Armen verschieden; mit #1234 obendrauf (6bbcd40be, `ab_plemerge_2026-10-18.log`) drei Boots je Topologie
+  bytegleich. Gleicher Ausgabe-Absatz auch im QSA-Text. Qualitätsantworten beider A/B-Messungen händisch gelesen: beide Arme
+  bestehen dieselben Prompts. Live-Text = Entwurf, GitHub meldet beide MERGEABLE; gesendete Fassungen
+  `pr-1235-ple-prefetch-window-gesendet.md`, `pr-1236-qsa-page4-turing-gesendet.md`.
 - Texte: `upstream-contrib/12-1cat-prs-2026-10-19/body-ple-prefetch-window.md` und `body-qsa-page4-turing.md`; jede Zahl
   gegen die Logs vom 18.10. geprüft (`ab_plewindow_2026-10-18.log`, `ple_window_squeeze_2026-10-18.log`,
   `heapdiag_2026-10-18/threads-heapdiag-a.csv`, `ab_turing_2026-10-18.log`, `qsa_page4_kvheads_bench_{rtx,v100}_2026-10-18.log`,
@@ -33,7 +43,7 @@ so", nicht „wie ist es".
   b1a646d80 mehrere KV-Köpfe. Flash-V100 sm_70+sm_75 gebaut (3:58 min). Tests (`qsapage4main_pr_tests_2026-10-19/`): V100 156
   bestanden/72 rot gegen main 109/72/38 Fehler, RTX 128/72/28 übersprungen gegen 79/72/68; die 72 = `test_host_kv.py` auf
   beiden; kein neuer Fehlschlag. Die zwei Fehlschläge im Lauf vom 18.10. 04:30 waren vor der Testanpassung in eb203d0a3 (04:36).
-  **Offen für Peuqui:** Der Zweig erzeugt neue Konflikte mit #828 (Leonccaa, gleiche Seitenabstand-Bedingung in `qsa.py`),
+  Im PR-Text offen benannt: Der Zweig erzeugt neue Konflikte mit #828 (Leonccaa, gleiche Seitenabstand-Bedingung in `qsa.py`),
   #903 (areslp, Nachbarschaft in drei Flash-V100-Dateien) und der Entwurfsreihe #1179–#1198 (yangzhuxinyzx, Stand 11./12.10.,
   `flash_decode_paged.cu`; #1194–#1198 auch `qsa.py`). Hilfsbaum `1Cat-vLLM-pr-qsapage4` (Zweig `pr-qsa-page4-turing` auf
   #1229, nur lokal) diente dem Vergleich gegen #1229.

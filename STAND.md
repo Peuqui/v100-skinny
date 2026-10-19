@@ -13,6 +13,60 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. abends: A/B/A/B 27B DFlash2 (k=7) gegen Produktion MTP (k=3) — gemischt, Produktion bleibt MTP.**
+- Aufbau: Produktion 6bbcd40be, TP2 RTX 0/2, Variante = Produktionseintrag mit `{"method":"dflash","model":…maurienne-ai
+  Qwen3.8-27B-DFlash2-NVFP4-RTNcal…,"num_speculative_tokens":7,…,"sm70_dflash2":{"quant_lm_head":true}}` (PV_REPLACE in
+  `~/.cache/bench-scripts/dflash2_pv_replace.txt`, Starter `run_dflash2_start.sh`). Ohne `quant_lm_head` bootet DFlash2 am
+  NVFP4-Zielkopf nicht („requires an unquantized target LM head“); damit läuft der Kandidaten-TopK über volle Logits des
+  quantisierten Kopfs (verlustfrei, das Ziel prüft). Der QPN8-Schnellweg greift ohnehin nur bei FP16-Kopf UND Capability 7.0.
+  Log `~/.cache/bench-scripts/ab_dflash2_2026-10-19.log` (pv-kalt, prod-a, pv-a, prod-b, pv-b; 17:18–19:09).
+- Ausgabe: Greedy in allen 5 Boots identisch zur Referenz, die 8 Qualitätsantworten in allen 5 Boots und beiden Armen
+  wortgleich (händisch gelesen, Befund wie Produktion). 29k-Läufe sind gesampelt (T=1,0) → Texte je Arm über Boots gleich,
+  zwischen den Armen verschieden (andere Zufallsfolge). Langkontext greedy: 184k und 250k in allen 5 Boots wortgleich; 33k
+  je Arm über Boots gleich, zwischen den Armen ab Zeichen 752 anders („Kontinuierliches Batching“ gegen
+  „Batch-Verarbeitung eingehender Anfragen in Echtzeit“), beide inhaltlich richtig — Prüfbreite 4 gegen 8 Token, andere
+  Rechenform, kippt einen Fast-Gleichstand.
+- Tempo (Werte a/b; tok/s mehr besser, ms und s weniger besser):
+
+  | Messung | MTP (Produktion) | DFlash2 | DFlash2 |
+  |---|---|---|---|
+  | Prosa kurz, 554 Tok greedy | 74,5–74,7 tok/s, 33 ms, 2,47 Tok/Runde | 61,6–61,8 tok/s, 41 ms, 2,53 | −17 % |
+  | Code, 437 Tok | 114,0–115,0 tok/s, 33 ms, 3,82 | 163,1–163,8 tok/s, 41 ms, 6,72 | +43 % |
+  | Bearbeitung, 1861 Tok | 119,0–119,1 tok/s, 34 ms, 3,99 | 189,6–190,4 tok/s, 42 ms, 7,95 | +60 % |
+  | Prosa nach 29k (4 Texte × 2) | 38–39 ms, 50,8–63,7 tok/s | 46–47 ms, 40,7–52,1 tok/s | Schritt +20 % |
+  | Decode bei 33k (greedy) | 37,4–37,6 ms, 81,7–82,0 tok/s | 45,7 ms, 71,0 tok/s | −13 % |
+  | Decode bei 184k | 55,2–55,3 ms, 50,1–50,2 tok/s | 60,4–60,5 ms, 47,1–47,2 tok/s | −6 % |
+  | Decode bei 250k | 63,4–63,5 ms, 40,0–40,1 tok/s | 66,9 ms, 39,2 tok/s | −2 % |
+  | Prefill 29k kalt | 35,3–35,5 s (~825 tok/s) | 34,3–34,6 s (~849 tok/s) | −3 % Zeit |
+  | Prefill 184k | 358,6 s (513 tok/s) | 338,3–338,5 s (544 tok/s) | −6 % Zeit |
+  | Prefill 250k | 565,9–566,0 s (442 tok/s) | 530,2–530,4 s (471 tok/s) | −6 % Zeit |
+  | 29k wiederholt (Präfix-Treffer), TTFT | 1,7 s | 0,4–0,5 s | |
+
+  Die erste lange Anfrage von prod-a (65 ms) zählt nicht. DFlash2 gewinnt, wo fast alle 7 Entwürfe treffen, und beim Prefill
+  (Entwurf mit Sliding Window 2048 statt der Voll-Attention-MTP-Schicht); es verliert bei Prosa und beim Decode mit langem
+  Kontext, weil eine Runde 41–47 statt 33–39 ms kostet. AIfreds Last ist überwiegend Prosa, der Entwurf sieht keine
+  Bild-Embeddings („does not support external multimodal embeddings“) → keine Umstellung (Regel: Tempo UND Qualität
+  mindestens gleich). Am 09./10.09. (V1, kurzer Prompt) lag DFlash2 12 % vor MTP; seitdem fiel die MTP-Runde von ~40 auf
+  33 ms, die DFlash2-Runde blieb bei 41–43 ms.
+- Präfix-Treffer: MTP verwirft den letzten Trefferblock (`drop_eagle_block`, Entwurfs-KV am Blockende hängt vom Folgetoken
+  ab); ein Block ist beim 27B 800 Token (Hybrid-Seitenvereinheitlichung). DFlash auf V2 ist ausgenommen
+  (`SpeculativeConfig.use_eagle_kv_cache`). Upstream-Lösung: vLLM #61589 (Lookahead-Hashes, offen, +927/−145).
+  Beleg `prefix_hit_probe.py` (23.527-Token-Prompt, dann Folgerunde): MTP 22.400 aus dem Cache (= 28 × 800, ohne Verwurf
+  wären es 23.200), 1.127 bzw. 1.272 neu gerechnet (`nsys_q27_dflash2_2026-10-19.log`, Host-Reduce aus); DFlash2 23.296
+  (= 28 × 832, Maximum), 231 bzw. 386 neu gerechnet (`prefix_probe_q27_dflash2_2026-10-19.log`, Produktionsbedingungen).
+  Im Profillauf lief DFlash2 bei dieser Probe in einen CUDA-OOM (0.98 Speicheranteil, NCCL statt Host-Reduce, nsys);
+  unter Produktionsbedingungen nicht.
+- Profil je Runde (`profile_decode_nsys_q27_dflash2_2026-10-19.sh`, Auswertung `v100-skinny/tools/nsys_round_kernels.py`,
+  Greedy-Prosa, Host-Reduce aus → Allreduce über NCCL): MTP 41,0 ms / DFlash2 51,4 ms Wand (Produktion 33 / 41).
+  Unterschied: Allreduce +5,25 ms (128 der 140 Aufrufe sind Zielprüfung, Nutzlast 8 statt 4 Token), NVFP4-GEMMs +2,37 ms
+  (Entwurf 5 Schichten + Kandidatenkopf 0,69 ms), GDN-Update +0,67, AllGather der vollen Ziel-Logits +0,64 (MTP 0,71 ms,
+  DFlash2 1,45 ms je Runde — auch MTP zahlt das), FP8 +0,54; dafür fallen ~2,4 ms MTP-Entwurf weg.
+- 1Cats 17 geprüfte DFlash2-Prüfwege (`SM70_DFLASH2_VERIFIER_DEFAULTS`: fused GDN verify/metadata/norm/split, Kontext-KV-
+  Graph, verify fastpath, sparse target rejection, QPN8-Rerank …) gelten nur, wenn eine Karte Capability 7.0 hat
+  (`platforms/runtime_defaults.py`), und sind im Code zusätzlich an `(7, 0)` und teils an TP4 gebunden (fused GDN verify,
+  Kontext-KV-Graph, sparse rejection; Metadatenwege gehören zum flash_v100-Backend). Auf dem RTX-Paar ist keiner aktiv.
+  Portieren träfe nur den nicht strukturellen Teil der 8 ms; Prüfbreite und Entwurfsschichten bleiben → nicht empfohlen.
+
 **Nachtrag 19.10. nachmittags: 1Cat #1237 gesendet (Rest von #739, Freigabe Peuqui „739 oki“); #674 nachgezogen. Produktion unverändert.**
 - Ursache: `_init_offload_distributed` baute `VllmConfig()` und setzte DP1 erst danach; `ParallelConfig` übernimmt die geerbten
   `VLLM_DP_*`, `__post_init__` fragt dann Gerät 1 → IndexError mit einer sichtbaren Karte. Fix: ParallelConfig zuerst auf DP1,

@@ -138,3 +138,43 @@ e) **Threads unter torch.compile**: Der 2048er-Prefill läuft stückweise kompil
 4. A/B 27B und Flash-Next TP2×PP2 bis 250k: Prefill als s und tok/s, Decode als ms und tok/s, Greedy und Qualität
    händisch.
 5. PR an 1Cat (hilft jedem Aufbau ohne NVLink/P2P).
+
+## Nachtrag 19.10. nachts: Kartierung des V2-Runners (gelesen, nichts gebaut)
+
+Baum `1Cat-vLLM-lookahead` (4651800f7). Drei Befunde ändern den Plan:
+
+- **Kein DBO-Umschaltpunkt im TP-Allreduce.** DBO gibt nur im MoE-all2all ab (`modular_kernel.py` 1279–1305, DeepEP).
+  Der natürliche Haken ist `CudaCommunicator.all_reduce` direkt vor dem pynccl-Zweig (`cuda_communicator.py` ~410): Dort
+  landen RowParallel, Embedding, MoE, `all_reduce_sum2` und der SM70-Fused-Norm-Rückweg. Ein Halbhäppchen
+  (~800 × 5120 × 2 B ≈ 8 MB) geht immer über pynccl; `PyNcclCommunicator.all_reduce(..., stream=)` nimmt einen eigenen
+  Stream. Ablauf je Hälfte: `out` auf dem Rechen-Stream anlegen → Ereignis, Comm-Stream wartet → NCCL auf dem
+  Comm-Stream → Ereignis → CPU-Abgabe an die andere Hälfte → beim Weiterlaufen wartet der Rechen-Stream → `out` zurück.
+- **Align-Modus: Hälfte A muss in die Zustandsspalte des ganzen Schritts schreiben.** Der Scheduler schneidet beim 27B
+  auf 800er-Grenzen (1600er-Häppchen), die Mitte liegt also auf einer Blockgrenze. A's eigene Spalte
+  (`(nc+h−1)//800`) ist ein Nullblock und wird nie vorkopiert; A's GDN-/Conv-Zustandsindex muss auf Spalte
+  Y = `ceil((nc+N)/800)−1` überschrieben werden (z. B. optionales `state_seq_lens` im GDN-Builder, nur
+  `gdn_attn.py` 1193–1198). B landet von selbst auf Y und liest in Stream-Reihenfolge, was A geschrieben hat; die
+  Kernels lesen und schreiben im selben Slot (`gdn_prefill.py` 113–215). Kein Kernel-Eingriff; `preprocess_state` und
+  `postprocess_state` bleiben einmal je Schritt.
+- **Der MTP-Entwurf nutzt die Metadaten des ganzen Schritts** (`speculator.py` 881–892). Die Hälften-Metadaten kommen
+  zusätzlich, `ExecuteModelState` behält die vollen.
+
+Weitere Punkte:
+- Prefill der 27B-Häppchen läuft ohne CUDA-Graph (Größen 1/2/4/8), stückweise kompiliert; Compile-Bereiche werden nach
+  Laufzeitform gewählt, eine halbe Größe löst kein Nachkompilieren aus.
+- `ubatching.py` (`UBatchContext`) ist vom V2-Runner aus nicht erreichbar; `ubatch_utils.split_attn_metadata` verliert
+  Felder (`is_prefilling`, `causal`, `positions` …) und taugt für den Hybridpfad nicht; `gpu_ubatch_wrapper` verlangt DP.
+  Eigenes kleines Kontextobjekt nach dem Muster von `UBatchContext`, **nicht** die DBO-Registry (sonst schaltet
+  `dbo_enabled()` global um, Asserts in `modular_kernel.py` 1260/1486, Workspace-Slot 1).
+- Persistente Puffer nicht überschreiben (`input_buffers.query_start_loc`, `seq_lens`); Hälften-Werte als eigene kleine
+  Tensoren, A's `seq_lens = seq_lens − (N−h)` auf der GPU ohne Sync.
+- `TorchCompileWithNoGuardsWrapper._dispatch_to_compiled_code` tauscht `__code__` nicht reentrant → im Hauptthread einmal
+  um den Zwei-Thread-Lauf halten.
+- Laufzeitressourcen sind ContextVars und gehen nicht in neue Threads über → je Thread aktivieren.
+- Ausnahme in einem Thread lässt den anderen ewig warten → Abbruchpfad nötig.
+- Beide TP-Ränge müssen identisch teilen (nur Scheduler-Eingaben für die Entscheidung).
+- Schalter `kernel_config.tp_prefill_overlap {enabled, min_tokens}` neben `host_reduce` (`config/kernel.py` ~759), aus
+  dem Compile-Hash heraus.
+- Bedingungen Prototyp: keine Dummy-Läufe, Graph-Modus NONE, keine Entwurfstoken im Schritt, alle Anfragen im Prefill,
+  eine Anfrage, N ≥ min_tokens, PP=1, keine LoRA/PLE, TP>1. TP2×PP2 später (`IntermediateTensors` zusammenfügen).
+- Prüfen: Logits gegen `--max-num-batched-tokens 800` (Halbgröße), dann nsys 9,7k.

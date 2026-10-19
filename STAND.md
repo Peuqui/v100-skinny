@@ -13,6 +13,31 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 20.10. früh: GLM-5.3-Flash-Inbetriebnahme vorbereitet (Code gebaut, noch nicht im Fork); Lookahead DSv4 ohne Gewinn.**
+- Lookahead DSv4 (Nachtreihe 22:14–23:23): wiederholter 36k-Prompt in beiden Armen 0,4–0,6 s, Bearbeitung Annahme
+  5,69 → 5,66–5,67 und 81,1–81,2 → 80,5–80,9 tok/s (alle 4 Boots), Greedy + Qualität byte-gleich → DSpark aus dem
+  Lookahead nehmen (wie Upstream #61589: nur EAGLE/MTP).
+- Lookahead Flash-Next PP4 (23:23–00:17): wiederholter 29k-Prompt 1,4–1,5 → 0,3–0,4 s, Bearbeitung 1,6 → 0,6 s; Code und
+  Bearbeitung gleich. Greedy Text 3 und 5 von 8 Qualitätsantworten weichen im Lookahead-Arm ab (in allen drei fm-Boots
+  gleich, beide prod-Boots = Referenz); händisch gelesen alle richtig. Ursache offen: Lookahead-Code oder
+  Compile-/Autotune-Artefakte (fm-Einträge nutzen `VLLM_CACHE_ROOT=…/vllm-forkmain`) → Kontroll-Boot Produktionscode mit
+  diesem Cache (`run_cachecontrol_start.sh`, Log `cachecontrol_2026-10-20.log`) direkt nach der Nachtreihe.
+- GLM-5.3-Flash-FP4-Local (165,3 GiB, `/home/mp/models/GLM-5.3-Flash-NVFP4-MTP`): Experten-Skalen `csf_32x2_v1`
+  komprimiert; ausgepackt +8,1 GiB → passt nicht. Weg B: CSF bleibt im VRAM, Triton-Auspacker füllt je gruppiertem
+  Skinny-Aufruf die aktiven Experten in ein gemeinsames QPN-Raster; MXFP8 beim Laden → FP16. Decoder gegen den Checkpoint
+  byte-genau (decode → encode = gespeicherte Teile). Gerechnete Aufteilung PP5 `0,1,4,3,2` 13,7,7,7,11, frei ~3,1/1,9/
+  1,9/1,9/0,8 GiB. Weitere Funde: KDA `chunk_kernels` ungebunden (seit 234c56abb), FP8_PB_WO-Kern nie vorbereitet
+  (`modelopt.py` 809/834), GLM erbt falsches `packed_modules_mapping`, SM75-Sperren (Sparse-MLA, KPool, mHC).
+  Code in `~/.cache/claude-wip/2026-10-19/` (Basis 4651800f7), Zweige nach den Messreihen (`make_branches.sh`).
+- Für MTP (4,1 GiB) oder DFlash2 (incoai, 2,18 GiB) reicht der Speicher erst mit Weg C: MXFP8 in 8 Bit über einen neuen
+  QPN8-Skalenmodus „je Zeile und 32er-Gruppe“ (C++ vorbereitet, Neubau nötig) + KDA-Projektion aufteilen (q/k/v
+  quantisiert, b/f_a/g_a FP16). Zeilenweise Requantisierung ist nicht verlustfrei (0,006–0,01 % Werte) → verworfen.
+- Peuqui 20.10.: Kartenvergleich RTX gegen V100 je Kernel, RTX-Tensorkerne voll nutzen. Plan nach dem ersten Boot:
+  nsys je Stufe (Zeit je Schicht, Prefill 512er-Häppchen und Decode) → Mikrotests Skinny-MoE, QPN8, KDA, Sparse-MLA, mHC,
+  CSF-Auspacker → Hebel: KDA-Prefill ist eine FLA-Triton-Kette (keine Tensorkerne auf beiden Karten, RTX halbe L1) →
+  fusionierter TileLang-KDA-Kern wie GDN (dort 5 statt ~100 ms je Schicht); Skinny/QPN8 `m16n8k8` für Turing nur im
+  Prefill ab ≥16 Zeilen je Experte sinnvoll (GLM 512er-Häppchen ≈ 14 Zeilen → eher größere Häppchen + m16n8k8).
+
 **Nachtrag 19.10. nachts: A/B/A/B 27B Lookahead-Block-Hashes bestanden; Nachtreihe DSv4 + Flash-Next PP4/TP2 läuft.**
 - Log `~/.cache/bench-scripts/ab_lookahead_2026-10-19.log` (fm-kalt, prod-a, fm-a, prod-b, fm-b; 20:18–22:14), Baum
   `1Cat-vLLM-lookahead` 4651800f7.

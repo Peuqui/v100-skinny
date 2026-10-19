@@ -13,6 +13,21 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. früh: PLE-Merge-Fix als 1Cat #1234 gesendet; vLLM #58926 mit main zusammengeführt. Produktion unverändert 6bbcd40be.**
+- Nacht 18./19.: die Sitzung blieb um 23:36 mitten in der Bestandsaufnahme zum Aufräumen stehen (letzte API-Anfrage ohne
+  Antwort), Auto-Reboot 04:32. Nichts gelöscht (Platte 85 %, 138 GB frei); die Löschlisten lagen im Scratchpad und sind weg.
+  Seit 06:45 belegt AIfred (Scheduler) alle fünf Karten mit DSv4.
+- **1Cat #1234** (Freigabe Peuqui 19.10.): Zweig `pr-ple-merge-runtime` c04e2da46 auf main 6f3557c97 (main seit dem Entwurf
+  unverändert), Text = Entwurf (`upstream-contrib/11-1cat-prs-2026-10-18/pr-1234-ple-merge-runtime-gesendet.md`), MERGEABLE.
+  Vor dem Senden neu geprüft: keine Duplikate (neu seit 18.10. nur #1230/#1232, KV-Cache); merge-tree gegen #828/#1020/#1023/
+  #1094/#1167/#1214/#1217 ohne neuen Konflikt (#1020/#1023 mit und ohne #1234 dieselben Konfliktdateien gegen main). #828,
+  #1094 und #1167 ändern die beiden Dateien nur gegen ihre alte Basis (GitHub-Dateiliste), gegen main nicht mehr.
+- **vLLM #58926** (PP-Trim, Issue #54260): mergify meldete am 18.10. 23:41 UTC Konflikt (`needs-rebase`). Fehler auf vLLM main
+  1aa5b6d9fb unverändert (`elif` in `_update_states`). Konflikt nur in der Testdatei (main fügte `_update_config` direkt hinter
+  unserem Test ein, beides behalten). Merge-Commit 49fabdbe83 (kein Force-Push), Diff gegen main weiter nur +47/−2 in zwei
+  Dateien. `pytest -k update_states` 8 bestanden (RTX GPU 0 neben DSv4, opt-125m-Fixture); Gegenprobe mit `elif`: neuer Test
+  rot (`[111, -1, -1, -1] == [111]`); pre-commit grün (inkl. mypy). Test-venv ungeändert (alte vorkompilierte .so von a2d06e23c).
+
 **Nachtrag 18.10. spätabends: Produktion = `ple-cascade-runtime-merge` 6bbcd40be (~21:50, Freigabe Peuqui), Kontrolle bestanden, Tag `verified-2026-10-18-ple-cascade-runtime-merge`.**
 - `prod-fork-main` Fast-Forward cf50e1a2c → 6bbcd40be (nur Python, `_C` unverändert; Produktions-venv lädt den neuen Code).
   `fork-main-v2b` = 99ec940c8 (+ schärferer Regressionstest und genauerer Kommentar, nur Test/Kommentar). Gepusht.
@@ -27,7 +42,7 @@ so", nicht „wie ist es".
 - Neue Greedy-Referenzen PP4/TP2 aus dem Cache-Boot (`greedy_refs.sh`, alt `.vor-2026-10-18c`); 27B/DSv4 unverändert.
 - PR an 1Cat: Zweig `pr-ple-merge-runtime` c04e2da46 (lokal), Entwurf nach Gutachter-Durchsicht überarbeitet
   (`upstream-contrib/11-1cat-prs-2026-10-18/`); Tests auf main 260/34 gegen 259/35 (nur der neue Test, an der Assertion),
-  mit #1214 284/10; keine neuen Konflikte (auch #828). Wartet auf Peuquis Durchsicht.
+  mit #1214 284/10; keine neuen Konflikte (auch #828). Am 19.10. als #1234 gesendet (siehe Nachtrag 19.10.).
 
 **Nachtrag 18.10. abends — Planpunkt 5: Flash-Next rechnet seit fork-main ohne die VRAM-Zeilen der PLE-Einbettung.**
 - Symptom: teacher-forced Logprobs (`ppl_probe.py`/`ppl_sequence.py`/`ppl_variant.sh`) von Flash-Next PP4 weichen

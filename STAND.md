@@ -13,6 +13,17 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. nachmittags: 1Cat #1237 gesendet (Rest von #739, Freigabe Peuqui „739 oki“); #674 nachgezogen. Produktion unverändert.**
+- Ursache: `_init_offload_distributed` baute `VllmConfig()` und setzte DP1 erst danach; `ParallelConfig` übernimmt die geerbten
+  `VLLM_DP_*`, `__post_init__` fragt dann Gerät 1 → IndexError mit einer sichtbaren Karte. Fix: ParallelConfig zuerst auf DP1,
+  dann `VllmConfig(parallel_config=…)`. Zweiter Fehler war ein Folgefehler: der Test patchte `VLLM_DP_RANK` vor
+  `VLLM_DP_RANK_LOCAL` als envs-Attribut (Standard von RANK_LOCAL = RANK) → monkeypatch stellte RANK_LOCAL = 1 als Attribut
+  wieder her, alle späteren Tests liefen als DP-Rang 1; jetzt `set_lazy_env`.
+- Zweig `pr-ple-offload-dp1-config` bb17a93c0 (Worktree `1Cat-vLLM-pr-dp1offload`), Log `pr_dp1offload_tests_2026-10-19.log`:
+  Datei mit PR 3 rot/52/1 (eine V100, eine RTX, zwei V100) gegen main 5/50/1 (eine Karte); mit #1214-Testteil 55/1; jede Hälfte
+  allein lässt einen der zwei Tests rot. pre-commit + mypy-3.10 grün; einziger Zusatzkonflikt #1023 (Entwurf, Importzeile).
+  Text `upstream-contrib/12-1cat-prs-2026-10-19/pr-1237-ple-offload-dp1-gesendet.md`, Live = Entwurf, MERGEABLE.
+
 **Nachtrag 19.10. nachmittags: Platte aufgeräumt (Freigabe Peuqui), frei 134G → 236G (85 % → 73 %). Produktion unverändert 6bbcd40be.**
 - Liste mit allen Pfaden und Prüfungen: `handover/aufraeum-liste-2026-10-19.md`. Gelöscht: `~/.cache/vllm-forkmain`
   (30,0 GiB), 149 alte Compile-Hashes in `~/.cache/vllm/torch_compile_cache` (behalten die fünf seit 18.10. 21:40 benutzten;

@@ -13,6 +13,31 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. vormittags: zwei PR-Entwürfe an 1Cat fertig, Zweige im Fork, NICHT gesendet (Freigabe Peuqui offen). Produktion unverändert 6bbcd40be.**
+- Texte: `upstream-contrib/12-1cat-prs-2026-10-19/body-ple-prefetch-window.md` und `body-qsa-page4-turing.md`; jede Zahl
+  gegen die Logs vom 18.10. geprüft (`ab_plewindow_2026-10-18.log`, `ple_window_squeeze_2026-10-18.log`,
+  `heapdiag_2026-10-18/threads-heapdiag-a.csv`, `ab_turing_2026-10-18.log`, `qsa_page4_kvheads_bench_{rtx,v100}_2026-10-18.log`,
+  Journal 18.10. 05:38–07:41 für den Routenbeleg).
+- **PLE-Vorladefenster:** Zweig `pr-ple-prefetch-window` (Worktree `1Cat-vLLM-pr-plewindow`) = b9a867788 (Fenster, csrc
+  patch-identisch zu bf91f9b4c) + a729ae272 (Testreparatur der zehn GGUF-PLE-Attrappen = cf50e1a2c; damit ruft
+  `test_gguf_packed_embedding.py` den Gather 222× mit 4-MiB-Fenster auf). `_C` für main+PR inkrementell im Bau-Baum
+  `1Cat-vLLM-fork-main` nur als Ziel `_C` gebaut und per `cmake --install` in eine Scratch-Präfix installiert
+  (`build_ple_window_pr_2026-10-19.sh`); Bau-Baum danach zurück auf 6c29f8a33, dessen installiertes `_C` wieder bytegleich mit
+  der Produktion (57721a8c). Falle: `build/temp…/_C.abi3.so` trägt den Bau-RUNPATH, erst `cmake --install` entfernt ihn.
+  Tests (`tests_ple_window_pr_2026-10-19b.log`): V100 266 bestanden/8 rot gegen main 213/18; RTX 259/8/7 übersprungen gegen
+  210/14/7; die 8 roten auch auf main (veraltete Attrappen, #1214 repariert sie). pre-commit + mypy grün. Konflikte gegen alle
+  122 offenen PR-Köpfe nur im generierten `runtime_reference.md` (#903, #1210, #1211, #1215, #1216, #1217).
+- **QSA-page4 Turing:** Zweig `pr-qsa-page4` (Worktree `1Cat-vLLM-pr-qsapage4main`) direkt auf main, OHNE #1229 (die vier
+  Commits passen auch so; Unterschied zum Fork genau #1229): ce14fd34e Testreparatur, 947782839 12/24 Köpfe (Commit-Text
+  korrigiert: die „24 Köpfe 6,1–7,3×“ waren eine Form mit EINEM KV-Kopf, die im Modell nicht vorkommt), f2674c58c Turing,
+  b1a646d80 mehrere KV-Köpfe. Flash-V100 sm_70+sm_75 gebaut (3:58 min). Tests (`qsapage4main_pr_tests_2026-10-19/`): V100 156
+  bestanden/72 rot gegen main 109/72/38 Fehler, RTX 128/72/28 übersprungen gegen 79/72/68; die 72 = `test_host_kv.py` auf
+  beiden; kein neuer Fehlschlag. Die zwei Fehlschläge im Lauf vom 18.10. 04:30 waren vor der Testanpassung in eb203d0a3 (04:36).
+  **Offen für Peuqui:** Der Zweig erzeugt neue Konflikte mit #828 (Leonccaa, gleiche Seitenabstand-Bedingung in `qsa.py`),
+  #903 (areslp, Nachbarschaft in drei Flash-V100-Dateien) und der Entwurfsreihe #1179–#1198 (yangzhuxinyzx, Stand 11./12.10.,
+  `flash_decode_paged.cu`; #1194–#1198 auch `qsa.py`). Hilfsbaum `1Cat-vLLM-pr-qsapage4` (Zweig `pr-qsa-page4-turing` auf
+  #1229, nur lokal) diente dem Vergleich gegen #1229.
+
 **Nachtrag 19.10. früh: PLE-Merge-Fix als 1Cat #1234 gesendet; vLLM #58926 mit main zusammengeführt. Produktion unverändert 6bbcd40be.**
 - Nacht 18./19.: die Sitzung blieb um 23:36 mitten in der Bestandsaufnahme zum Aufräumen stehen (letzte API-Anfrage ohne
   Antwort), Auto-Reboot 04:32. Nichts gelöscht (Platte 85 %, 138 GB frei); die Löschlisten lagen im Scratchpad und sind weg.

@@ -13,6 +13,28 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. nachts: A/B/A/B 27B Lookahead-Block-Hashes bestanden; Nachtreihe DSv4 + Flash-Next PP4/TP2 läuft.**
+- Log `~/.cache/bench-scripts/ab_lookahead_2026-10-19.log` (fm-kalt, prod-a, fm-a, prod-b, fm-b; 20:18–22:14), Baum
+  `1Cat-vLLM-lookahead` 4651800f7.
+- Ausgabe: Greedy in allen 5 Boots identisch zur Referenz; die 8 Qualitätsantworten in allen 5 Boots byte-gleich (händisch
+  gelesen, Befund wie Produktion, Kuanda zurückgewiesen = bestanden); Langkontext-Texte 33k/184k/250k in den 4 gezählten
+  Boots byte-gleich (nur der erste lange Lauf nach dem Kaltstart weicht ab, zählt nicht). Die 29k-Läufe sind gesampelt
+  (T=1,0, Texte nicht gespeichert); Längen je Arm über Boots gleich, zwischen den Armen teils anders.
+- Tempo (Werte a/b; s und ms weniger besser, tok/s mehr besser):
+
+  | Messung | Produktion | Lookahead |
+  |---|---|---|
+  | Erstes Token, 29k-Prompt wiederholt (4 Texte × 2) | 1,7 s (8 von 8) | 0,7–0,9 s |
+  | Erstes Token, Bearbeitung 1.911 Tok wiederholt | 1,2 s | 0,6 s |
+  | Prosa / Code / Bearbeitung | 74,4–74,6 / 114,6–115,2 / 118,8–119,2 tok/s | 74,5 / 114,6–114,8 / 118,7–119,2 tok/s |
+  | Prefill 29k / 184k / 250k kalt | 35,3–35,5 / 358,6–358,7 / 565,8–566,0 s | 35,4–35,5 / 358,7–358,8 / 565,9 s |
+  | Decode 184k | 55,2 ms, 50,2 tok/s | 54,3–55,0 ms, 50,7–51,0 tok/s |
+  | Decode 250k | 63,4–63,5 ms, 40,0–40,1 tok/s | 62,6–62,7 ms, 40,8–40,9 tok/s |
+
+- Nachtreihe ab 22:14 auf demselben Baum: DSv4, Flash-Next PP4, TP2×PP2 (`ab_lookahead_night_2026-10-19.log`, Einheit
+  `lookahead-night-1019`), danach DFlash2 + Prompt-Lookup 27B (k=15, Graph-Größen 16/32/48). Produktion erst nach der
+  Reihe umstellen: Die Prod-Arme laufen aus `1Cat-vLLM-work`.
+
 **Nachtrag 19.10. spätabends: vLLM #61589 (Lookahead-Block-Hashes) portiert, A/B 27B läuft. Produktion unverändert 6bbcd40be.**
 - Zweig `lookahead-block-hashes` 4651800f7 (Fork gepusht), Worktree `1Cat-vLLM-lookahead` (native .so aus der Produktion
   kopiert, `flash_attn_v100/` als Symlinks auf das getrackte Paket). Freigabe Peuqui 19.10. („Hebel 1–4 umsetzen und prüfen“).

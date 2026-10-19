@@ -13,6 +13,20 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 19.10. 13:45: Übersicht 1Cat #674 nachgezogen (Freigabe Peuqui 19.10.). Produktion unverändert 6bbcd40be.**
+- Stand vorher 03.10. nachmittags. Neu: Update-Absatz (seit 03.10. gemergt #856, #857, #873, #874, #1004, #1005; #611 von
+  yangzhuxinyzx zugunsten #822 geschlossen, #1006 von uns zugunsten #1187), Liste der 18 offenen PRs mit je einer Kennzahl aus
+  dem gesendeten PR-Text (jede Zahl maschinell gegen den Text des jeweiligen PRs abgeglichen), Richtigstellung zu #1226/#1228/
+  #1229: deren Flash-Next-Greedy-Streuung über Boots kam vom PLE-Merge-Fehler, mit #1234 drei Boots je Topologie bytegleich.
+- merge-tree: alle 18 sauber gegen main 6f3557c97; untereinander nur #1217 auf #1214 und die Zeilenanker von KernelConfig im
+  generierten `runtime_reference.md` (#1216, #1217, #1235). Auf keinem der 18 ein Kommentar oder Review von 1Cat.
+- **#739 auf main neu geprüft** (`issue739_recheck_2026-10-19.log`, Baum `1Cat-vLLM-pr-mainbase`): Test 1 grün (Leonccaa
+  91701504c, seit 03.10. in main). Test 2 mit EINER sichtbaren Karte weiter rot, jetzt über `apply_runtime_policy_defaults`
+  (`vllm/platforms/runtime_defaults.py`), dazu `test_offload_world_drops_the_pipeline_layer_partition` mit demselben
+  IndexError; mit zwei Karten beide grün. Ganze Datei: eine Karte 5 rot, zwei Karten 3 rot (veraltete Attrappen, #1214).
+- Texte `upstream-contrib/12-1cat-prs-2026-10-19/issue-674-vorher-2026-10-19.md` und `issue-674-gesendet-2026-10-19.md`;
+  Live-Text = Entwurf.
+
 **Nachtrag 19.10. 11:30: 1Cat #1235 (PLE-Vorladefenster) und #1236 (QSA-page4) gesendet (Freigabe Peuqui 19.10.). Produktion unverändert 6bbcd40be.**
 - Vor dem Senden erneut geprüft: main weiter 6f3557c97, alle 122 offenen PR-Köpfe unverändert, merge-tree und Duplikatsuche
   wiederholt (gleiches Ergebnis), jede Zahl noch einmal gegen die Logs. Korrekturen dabei: QSA PP4-Durchsatz 2.826 / 3.809 statt

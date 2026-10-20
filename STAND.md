@@ -13,6 +13,80 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 20.10. 06:20: Lookahead-Block-Hashes in Produktion (23e34b03c), Kontrolle aller Modelle bestanden; Textabweichung im Test-Arm = Compile-Artefakte.**
+- Commits: 175c8c11f fix(core) ausgerichtete Replay-Grenzen, 45dc306a5 DSpark behält den Drop, 23e34b03c Testreparatur
+  `test_async_scheduler` (handgebauter Scheduler ohne `mixed_prefill_budget` seit 1cabc7ce9 und ohne
+  `use_lookahead_block_hashes`; auch auf Produktion und 1Cat main rot). Gepusht nach fork. ruff/mypy grün, die drei
+  betroffenen Testdateien grün; volle `tests/v1/core` abgebrochen (startet eine EngineCore auf GPU 1, kollidiert mit Boots).
+- PP4 A/B/A/B 03:48–04:39 (`ab_lookahead2_pp4_2026-10-20.log`; s/ms weniger, tok/s mehr besser), Produktion → Lookahead:
+  29k wiederholt 1,4–1,5 → 0,3–0,4 s; Bearbeitung wiederholt 1,6 → 0,3/0,6 s; 29k kalt gleich (7,5–15,4 s); Decode
+  Bearbeitung 54 ms = 92,0–92,6 → 92,7 tok/s, Code 76,7–79,4 → 75,5–81,2 tok/s; 184k 71,2–71,7 → 71,6–72,0 s und
+  62,1–62,5 → 62,0–62,4 ms; 250k 81,8–88,7 → 81,5–85,8 s und 66,5–67,3 → 66,5–67,1 ms.
+- TP2 einmal (`lookahead2_tp2_once_2026-10-20.log`): Greedy identisch; 29k wiederholt 0,2–0,3 s; Decode 45 ms = Prosa
+  55–57, Code 92–94, Bearbeitung 110 tok/s; 184k 81,8 s / 54,2 ms, 250k 109,9 s / 58,7 ms (Einzellauf, kein A/B; gestern
+  97,6–98,7 / 130,0–135,3 s in beiden Armen — nicht als Gewinn werten).
+- Texte: Greedy jetzt in allen Lookahead-Boots = Referenz (Fix wirkt dort). Qualitätsfragen PP4: je Arm über alle Boots
+  byte-gleich, zwischen den Armen 5 von 8 anders (Motor, Kuanda, Logik, Zusammenfassung, Englisch), gelesen alle richtig
+  und gleichwertig (Kuanda: Nichtexistenz benannt, Coandă in keinem Arm). Drei der PP4-Lookahead-Varianten sind byte-gleich
+  mit der TP2-Produktion → dieselben Kippstellen, die schon der Topologiewechsel umlegt. Langkontext-Texte weichen ab.
+  Zustandsblock 1616 Token: keine Qualitätsfrage erreicht eine Blockgrenze → die Abweichung kommt nicht aus der
+  Prefill-/Decode-Teilung. Greedy (direkt nach dem Boot) gleich, Qualität und Decode-Prosa (nach den langen Prompts mit
+  Präfixtreffern) anders → Verdacht auf Abhängigkeit von der Cache-Vorgeschichte. E1 und Kontrollboot vom 19./20.10.
+  liefen nur mit Greedy (pvsmoke), die Qualitätsfragen hatten keine Gegenprobe.
+- Diagnose 04:52–05:17 (Logs `qualdiag_2026-10-20.log`, `qualdiag_e1q_2026-10-20.log`, `qualdiag_ccq_2026-10-20.log`):
+  je Arm frisch = nach den langen Prompts (keine Abhängigkeit von der Cache-Vorgeschichte). e1q (Lookahead-Baum,
+  `disable_lookahead_block_hashes: true`, `vllm-forkmain`, Compile-Verzeichnis ef0d081ba2) = Lookahead-Texte; ccq
+  (Produktionscode, `vllm-forkmain`, 429a9df94b) = ein dritter Textsatz; Produktion (`~/.cache/vllm`, 429a9df94b) =
+  Referenz. → Die Qualitätstexte folgen dem Compile-Artefaktsatz (Cache-Pfad + Code-Hash), nicht dem Lookahead-Schalter;
+  Greedy überall gleich. Die Lookahead-Logik änderte nur Greedy-Text 3 (Teilung bei n−1, behoben).
+- **Umstellung 05:18:53:** `prod-fork-main` per ff auf 23e34b03c (nur Python + Doku, `.so` unverändert; Rücksprung Tag
+  `verified-2026-10-18-ple-cascade-runtime-merge`). Kontrolle aller Modelle `prodcheck_2026-10-20_lookahead.log`
+  (Tags `sw-`, DSv4 zuerst). Erster Boot je Modell kompiliert neu (Code-Hash gewechselt).
+- **Kontrolle 05:19–06:17 bestanden** (`prodcheck_2026-10-20_lookahead.log`): alle vier Greedy identisch; Qualitätsantworten
+  byte-gleich mit der bisherigen Produktion bei DSv4, PP4, TP2 und 27B (27B auch Langkontext). DSv4: Bearbeitung 5,69 je
+  Runde, 81,1–81,2 tok/s wie vorher (DSpark-Ausschluss greift), 184k 113,3 s / 86,8 ms, 250k 223,1 s / 93,1 ms. PP4:
+  29k wiederholt 0,3 s, Bearbeitung wiederholt 0,6 s, Decode 54 ms = 92,6–92,7 tok/s. TP2: 29k wiederholt 0,2–0,3 s,
+  Decode 45 ms = Bearbeitung 110,2 tok/s. 27B: 29k wiederholt 0,7–0,8 s (vorher 1,7 s), Decode 33–34 ms = Prosa 74,5 /
+  Code 114,8–114,9 / Bearbeitung 118,8–119,2 tok/s, 184k 358,5 s / 54,5 ms, 250k 565,6 s / 62,8 ms. Tag
+  `verified-2026-10-20-lookahead-block-hashes` (auf 23e34b03c), `prod-fork-main` und Tag nach fork gepusht.
+- 27B-FP8 (offiziell `Qwen/Qwen3.8-27B-FP8`, Block 128, MTP in FP8, 28,7 GiB) für einen Qualitätsvergleich geladen nach
+  `/mnt/speicher/models/Qwen3.8-27B-Dense-FP8-Block128-MTP-Qwen`. `Fp8LinearMethod` nimmt den QPN8-Pfad nur auf SM70
+  (`fp8.py:352`); auf den RTX bräuchte es die Freigabe für SM75. GGUF-Recherche: siehe Gedächtnis
+  `reference_1cat_gguf_path_status` (Schnellpfade nur SM70, kein MTP aus GGUF, kein DSv4/GLM).
+
+**Nachtrag 20.10. 03:45: 27B DFlash2 + Prompt-Lookup verliert gegen MTP und gegen DFlash2 allein → verworfen.**
+- A/B/A/B 01:46–03:37 (`ab_dflash2lookup096_2026-10-20.log`), Produktion (MTP k=3) gegen Variante (DFlash2 k=7 +
+  Prompt-Lookup, `--gpu-memory-utilization 0.96`); beide Boots je Arm gleich (tok/s mehr, ms/s weniger besser):
+  Prosa 74,2–74,6 → 58,8–58,9 tok/s (33 → 43 ms je Runde), Code 114,7–114,9 → 146,2–146,6, Bearbeitung 118,9–119,0 →
+  152,4–152,8; 29k-Prosa 50,8–63,7 → 38,7–49,7 tok/s; Decode 184k 50,2 → 44,9 tok/s (55,2 → 63,0 ms), 250k 40,0–40,1 →
+  37,2 (63,4–63,5 → 69,6–69,7 ms); Prefill 184k 358,4 → 336,0 s, 250k 565,6 → 526,6 s, 29k 35,3–35,5 → 34,0–34,1 s.
+- Gegen DFlash2 allein (19.10.): Code 163,5 → 146,4, Bearbeitung 190,0 → 152,6, Prosa 61,7 → 58,8 tok/s; Annahme je
+  Runde Bearbeitung 7,95 → 6,72, Code 6,72 → 6,33 (Lookup-Vorschläge verdrängen bessere Entwurfsvorschläge, achte
+  Position nie angenommen), Runde 41–42 → 43–44 ms. Der Prefill-Vorteil gehört zu DFlash2 selbst (19.10.: 250k 530 s).
+- Texte: Greedy 3, acht Qualitätsantworten und Langkontext in allen fünf Boots byte-gleich (Produktion = Variante).
+
+**Nachtrag 20.10. 02:00: Ursache der Lookahead-Textabweichung bei Flash-Next gefunden (Prefill-Teilung bei n−1), Fix im Baum.**
+- TP2×PP2 Lookahead (Nachtreihe 00:17–01:20, Werte a/b; s/ms weniger, tok/s mehr besser): 29k wiederholt 1,3–1,4 →
+  0,3–0,4 s; kalt 11,8–11,9 s gleich; Decode 45 ms = Prosa 53–55 / Code 91–95 / Bearbeitung 110 tok/s gleich; 184k
+  97,6–98,7 s / 54 ms gleich; 250k 130,0–135,3 s / 58–59 ms gleich. Texte wie PP4: je Arm über Boots gleich, Greedy 3
+  und Motor/Zug/Kuanda weichen zwischen den Armen ab (gelesen: alle richtig).
+- Kontrollboot (Produktionscode, `VLLM_CACHE_ROOT` des Lookahead-Arms) = Referenz. Er lud laut Journal dieselben
+  AOT-Graphen (`torch_aot_compile`, Schlüssel ohne Code-Hash) und dieselben Inductor-Kerne → Artefakte unschuldig.
+  Lookahead-Baum mit `disable_lookahead_block_hashes: true` (gleicher Cache `ef0d081ba2`) = Referenz → die Logik.
+- Ursache: `KVCacheCoordinator.get_replay_boundaries` gibt ohne Drop-Gruppen die rohen Positionen `(n−1, n)` zurück;
+  `_mamba_block_aligned_split` nimmt sie als Haltepunkte → jeder Prefill endet zuerst bei n−1, das letzte Token kommt in
+  einem eigenen Schritt (ein Schritt mehr, andere GDN-Rundung, der Zustand bei n−1 ist nie cachebar). Gleich in 1Cat main
+  6f3557c97 für jedes Hybridmodell ohne EAGLE-Drop mit Sparse-Retention; Produktion bisher nicht betroffen (alle Mamba-
+  Modelle mit MTP-Drop), 27B nicht betroffen (Annahme und Texte in beiden Armen gleich). Fix: beide Zweige liefern
+  ausgerichtete Grenzen (Scheduler und `reachable_block_mask` lesen dieselbe Wahrheit) + Test; dazu DSpark-Ausschluss.
+- DFlash2-Lookup 27B: Variantenarm brach mit `--gpu-memory-utilization 0.98` und den Graphen 16/32/48 beim Aufwärmen der
+  Prompt-Logprobs mit OOM ab (1,19 GiB angefordert, 0,52 frei); Lauf gestoppt (Trap lief nicht, Config von Hand zurück),
+  neu mit 0.96 nur im Variantenarm (`run_dflash2lookup096_start.sh`): Smoke Greedy identisch, A/B/A/B ab 01:46.
+- GLM-DFlash2-Entwurf auf der Datenplatte: `/mnt/speicher/models/GLM-5.3-Flash-DFlash2-Drafter-1.2B-BF16-release-7d74cdd`
+  (1Cats Vergleichsarm) und `…-main-bf582e4` (neuester Checkpoint 31.08.), je 2,2 GiB.
+- Weiter: Tests `tests/v1/core`, Commit, A/B/A/B Flash-Next PP4+TP2 mit Fix (`run_lookahead2_start.sh`, `la2-`), dann
+  Umstellung und Kontrolle aller Modelle vor 06:45.
+
 **Nachtrag 20.10. früh: GLM-5.3-Flash-Inbetriebnahme vorbereitet (Code gebaut, noch nicht im Fork); Lookahead DSv4 ohne Gewinn.**
 - Lookahead DSv4 (Nachtreihe 22:14–23:23): wiederholter 36k-Prompt in beiden Armen 0,4–0,6 s, Bearbeitung Annahme
   5,69 → 5,66–5,67 und 81,1–81,2 → 80,5–80,9 tok/s (alle 4 Boots), Greedy + Qualität byte-gleich → DSpark aus dem

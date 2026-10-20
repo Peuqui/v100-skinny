@@ -13,6 +13,30 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 20.10. 17:20: QPN8-Turing — Decode-Vorteil war Messartefakt; Weiche jetzt M ≤ 8 gepackter Kern, M 9–512 neuer
+Kern (4da0bcfa4); DSv4-A/B: Schritt gleich, Prefill −0,5 %, Qualität gleich; Annahmeprüfung läuft, nicht in Produktion.**
+- KORREKTUR: Alle Operator-Messungen bis 16:00 (auch „Operator im Wechsel gemessen“ im Nachtrag 09:10 und die Aussage „v4
+  im Decode 0,3–3 % schneller“ im Commit 40cea0e5b) setzten CUDA-Events um EINZELNE Aufrufe und maßen den Python-Dispatch
+  mit. Im CUDA-Graph (`qpn8proto/graph_eval.py`, 20 Aufrufe je Graph, neu/alt, weniger besser): M 1–8 1,01–1,28 auf 10 von
+  13 Formen (DSv4 wq_a/wq_b/idx_wq_b/wo_b/shared_w13/shared_w2/main_proj, 27B qkv/in_proj/gate_up), 0,78–1,02 auf wkv/o_proj/
+  down; M 16–64 0,16–0,60. Daher 4da0bcfa4: M ≤ 8 wieder der gepackte m8n8k4-Kern auf Volta UND Turing, Turing M 9–512 der
+  neue Kern, darüber Dense + cuBLAS; Test `test_turing_decode_keeps_the_packed_gemm` (bitgleich zum gepackten Kern).
+- v3 (zwei K-Schritte Vorladen) verworfen: BM16 +1,1–1,6 %, BM32 +3,5 % langsamer (Register 54→64 / 72→82). v4 = Skala mit
+  den Codes laden (40cea0e5b): bitgleich zu v2 in 840 Konfigurationen, im Graph BM16/32/64 gleich (±2 %), BM128 0,879–0,926.
+- DSv4-A/B 1 mit 40cea0e5b (`ab_qpn8turing_ds_2026-10-20.log`, 14:40–15:49): Decode-Schritt +1 ms (Code 65 → 66, Bearbeitung
+  70 → 71 ms), Prefill −0,5 % → nicht umgestellt.
+- DSv4-A/B 2 mit 4da0bcfa4 (`ab_qpn8turing_ds2_2026-10-20.log`, 16:02–17:10, prod → fm; ms und s weniger, tok/s mehr besser):
+  Schritt Prosa 62–63 → 62, Code 65 → 65, Bearbeitung 70 → 70 ms, Langprompt 35,7k 70,0–70,4 → 70,4–70,5 ms; Prefill 32k
+  14,76–14,77 → 14,63–14,66 s, 150k 113,40–113,41 → 112,71–112,74 s (1574 → 1583–1584 tok/s), 250k 223,59 → 222,42 s (1284 → 1291
+  tok/s). tok/s der festen Greedy-Prompts: Prosa 48,3 → 47,2 (Annahme je Runde 3,02 → 2,94), Code 73,5–73,6 → 67,6–67,7 (4,78
+  → 4,41), Bearbeitung 80,7–81,2 → 80,4–80,9 — andere Textverläufe, weil der Prefill M 9–512 anders rundet (im A/B 1 lag fm
+  bei Prosa vorn: 50,8 gegen 48,3); Langprompts je 8 Anfragen 45,27 → 44,56 und 43,50 → 42,35 tok/s bei einer Streuung von
+  38,2–50,3 innerhalb von prod. Texte je Arm über die Boots byte-gleich; zwischen den Armen 7 von 8 Antworten und Greedy 2/3
+  anders, händisch gelesen alle richtig und gleichwertig. Rechengenauigkeit (`qpn8proto/precision_ds.py`, DSv4-Formen, M 9–512):
+  neuer Kern 2,05–2,09e-4 gegen FP64, Rekonstruktion + torch.mm gleich oder bis 1,57× schlechter.
+- Offen vor einer Umstellung: Annahme bei AIfreds Sampling über 48 Anfragen je Arm (`run_ab_qpn8turing_accept_2026-10-20.sh
+  4da0bcfa4 accept` → `sampled_accept_bench.py`, Log `ab_qpn8turing_accept_2026-10-20.log`).
+
 **Nachtrag 20.10. 14:05: QPN8-Turing-Kern im FP8-27B-A/B nur +0,5–1 % (Texte gleich, nicht in Produktion); #1240 an 1Cat; Stillstandswächter.**
 - A/B/A/B FP8-27B prod 23e34b03c gegen fm 7f343a791 (`ab_q27fp8turing_2026-10-20.log`, 09:07–11:18; tok/s mehr, ms und s
   weniger besser): Greedy 3 und alle acht Qualitätstexte in allen gezählten Boots byte-gleich (nur fm-kalt Frage 2 anders,
@@ -44,7 +68,7 @@ neu schreiben“). Messdateien `~/.cache/bench-scripts/qpn8_turing_2026-10-20/`;
   Kernvarianten (an `grid_measure.json` angepasst: im Mittel 1,9 % hinter dem besten Kandidaten). Keine zweite Gewichtskopie.
   Decoder + Lane-Zuordnung in `fp8_qpn8_codes_sm70.cuh` (SSOT für beide Kerne); sm_75-Code im 7.0-Bau per Quelldatei-Gencode.
   Turing nimmt den Kern für M=1..512 (darüber Dense+cuBLAS schneller: 1,15–1,75× bei M ≥ 1024, nur ~50 TFLOPS).
-- Operator im Wechsel gemessen (`interleaved.py`, RTX): qkv M=1/4/8/16 0,0821/0,0831/0,0922/0,4622 → 0,0754/0,0753/0,0762/
+- Operator im Wechsel gemessen (`interleaved.py`, RTX; enthält den Python-Dispatch, siehe Korrektur 17:20): qkv M=1/4/8/16 0,0821/0,0831/0,0922/0,4622 → 0,0754/0,0753/0,0762/
   0,0828 ms; in_proj 0,0922/0,0922/0,0942/0,4818 → 0,0780/0,0804/0,0864/0,0960 ms; Fehler gegen FP64 2,0–2,1e-4 (cuBLAS
   2,0–3,6e-4). Tests `test_sm70_qpn8_block_fp8.py`: RTX 110 passed / 10 skipped, V100 96 passed / 24 skipped; pre-commit grün.
 - Nur DSv4 nutzt in Produktion Block-FP8-QPN8 auf der RTX (PP0/PP4; Flash-Next PP4/TP2 und 27B-NVFP4 nicht) → vor jeder

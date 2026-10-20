@@ -34,8 +34,18 @@ Kern (4da0bcfa4); DSv4-A/B: Schritt gleich, Prefill −0,5 %, Qualität gleich; 
   38,2–50,3 innerhalb von prod. Texte je Arm über die Boots byte-gleich; zwischen den Armen 7 von 8 Antworten und Greedy 2/3
   anders, händisch gelesen alle richtig und gleichwertig. Rechengenauigkeit (`qpn8proto/precision_ds.py`, DSv4-Formen, M 9–512):
   neuer Kern 2,05–2,09e-4 gegen FP64, Rekonstruktion + torch.mm gleich oder bis 1,57× schlechter.
-- Offen vor einer Umstellung: Annahme bei AIfreds Sampling über 48 Anfragen je Arm (`run_ab_qpn8turing_accept_2026-10-20.sh
-  4da0bcfa4 accept` → `sampled_accept_bench.py`, Log `ab_qpn8turing_accept_2026-10-20.log`).
+- Annahme bei AIfreds Sampling (Temperatur 1,0, top_k 40, min_p 0,1; je Arm ein Boot, 48 Anfragen; `run_ab_qpn8turing_accept_
+  2026-10-20.sh 4da0bcfa4 accept`, Log `ab_qpn8turing_accept_2026-10-20.log`, 17:17–17:44; prod → fm, mehr besser): Prosa
+  Akzeptanz 35,4 → 37,1 %, Annahme je Runde 2,77 → 2,86, 42,0 → 43,3 tok/s; Englisch 38,2 → 37,6 %, 2,91 → 2,88, 43,1 → 42,7;
+  Code 72,0 → 71,6 %, 4,60 → 4,58, 67,3 → 67,2; Bearbeitung 93,5 → 93,2 %, 5,68 → 5,66, 77,6 → 77,3; Schritt gleich (66,0/
+  67,5/68,4→68,2/73,2→73,3 ms). Texte ohne Schleifen, alle 12 Umbenennungen vollständig, Stichproben gelesen gleichwertig.
+  → Tempo UND Qualität mindestens gleich. Umstellung vorbereitet (ff `prod-fork-main` → 4da0bcfa4, `_C` bec73f532fe6 statt
+  57721a8c440d, sonst keine nativen Unterschiede), um 17:48 vom Auto-Modus-Klassifizierer abgelehnt und nicht ausgeführt;
+  Produktion unverändert 23e34b03c. Kontrolle nach der Umstellung: Modus `prodonce`, MODELS="ds pp4 tp2 q27".
+- Split-Sweep des gepackten Kerns im CUDA-Graph (`qpn8proto/graph_sweep.py`, RTX GPU 2, M 1–8; beste/heutige Wahl, weniger
+  besser): DSv4 wq_a 0,85–0,90 und wkv 0,79–0,90 mit split 32 statt 16, sonst 0,97–1,00 (DSv4 < 0,2 % je Schritt); 27B-FP8-
+  Formen o_proj/out_proj 0,78–0,90 und down_proj 0,73–0,87 mit split 8 statt 16 (down M=4 90,6 → 77,2 µs), sonst gleich. Die
+  Split-Tabelle `_SM70_FP8_QPN8_CONFIGS` ist geräteunabhängig und auf V100 vermessen.
 
 **Nachtrag 20.10. 14:05: QPN8-Turing-Kern im FP8-27B-A/B nur +0,5–1 % (Texte gleich, nicht in Produktion); #1240 an 1Cat; Stillstandswächter.**
 - A/B/A/B FP8-27B prod 23e34b03c gegen fm 7f343a791 (`ab_q27fp8turing_2026-10-20.log`, 09:07–11:18; tok/s mehr, ms und s

@@ -13,6 +13,30 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 20.10. 09:10: QPN8-Block-FP8 auf Turing — neuer m16n8k8-Kern auf den QPN8-Codes (Zweig `qpn8-fp8-turing`
+7f343a791, nicht in Produktion), A/B FP8-27B läuft.** Auftrag Peuqui 06:20 („für Turing optimieren und notfalls den Kernel
+neu schreiben“). Messdateien `~/.cache/bench-scripts/qpn8_turing_2026-10-20/`; ms weniger, GB/s und tok/s mehr besser.
+- Kartenbenchmark (`card_gpu0/1.json`, 27B-TP2-Formen): heute bei M 9–64 ganze Matrix je Aufruf entpackt + cuBLAS, auf der
+  RTX z. B. gate_up M=16 1,072 ms gegen 0,176 ms bei M=4 (6×); M=512 1,968 gegen cuBLAS-auf-FP16 1,237 ms; Decode o_proj/down
+  auf der RTX 268–393 GB/s von 613 (Turing 1024 Threads/SM → split 16 = 2 Blöcke/SM, zweite Welle fast leer; Sweep
+  `sweep_gpu0/1.json`: split 8 −9 bis −19 % auf der RTX, V100-Produktionswahl höchstens 3 % vom Besten).
+- Neuer Kern `csrc/sm70_turbomind/ops/fp8_qpn8_mma_sm75.cu`: Kachel BM×128×32, Codes beim Staging in Shared Memory entpackt
+  und blockskaliert (B-Operand = Dense-Rekonstruktion bitgleich), ldmatrix + `mma.m16n8k8`, gruppierte Blockreihenfolge,
+  Split-K über CTAs mit FP32-Teilsummen in fester Reihenfolge; Kachel/Split aus einem Wellenmodell über die Belegung der
+  Kernvarianten (an `grid_measure.json` angepasst: im Mittel 1,9 % hinter dem besten Kandidaten). Keine zweite Gewichtskopie.
+  Decoder + Lane-Zuordnung in `fp8_qpn8_codes_sm70.cuh` (SSOT für beide Kerne); sm_75-Code im 7.0-Bau per Quelldatei-Gencode.
+  Turing nimmt den Kern für M=1..512 (darüber Dense+cuBLAS schneller: 1,15–1,75× bei M ≥ 1024, nur ~50 TFLOPS).
+- Operator im Wechsel gemessen (`interleaved.py`, RTX): qkv M=1/4/8/16 0,0821/0,0831/0,0922/0,4622 → 0,0754/0,0753/0,0762/
+  0,0828 ms; in_proj 0,0922/0,0922/0,0942/0,4818 → 0,0780/0,0804/0,0864/0,0960 ms; Fehler gegen FP64 2,0–2,1e-4 (cuBLAS
+  2,0–3,6e-4). Tests `test_sm70_qpn8_block_fp8.py`: RTX 110 passed / 10 skipped, V100 96 passed / 24 skipped; pre-commit grün.
+- Nur DSv4 nutzt in Produktion Block-FP8-QPN8 auf der RTX (PP0/PP4; Flash-Next PP4/TP2 und 27B-NVFP4 nicht) → vor jeder
+  Umstellung DSv4-A/B nötig.
+- FP8-27B (`Qwen/Qwen3.8-27B-FP8`) einmal auf Produktion (`q27fp8_once_2026-10-20.log`): 29k-Prefill 34,3 s (NVFP4 35,4),
+  Decode 46 ms (NVFP4 33): Prosa 56,3–56,7 / Code 83,1–83,5 / Bearbeitung 86,7–86,8 tok/s (NVFP4 74,5 / 114,8–114,9 /
+  118,8–119,2); 184k 351,5 s, 67,1 ms / 39,1 tok/s (NVFP4 358,5 s, 54,5 ms / 50,8); 250k 556,2 s, 75,0 ms / 35,2 tok/s
+  (NVFP4 565,6 s, 62,8 ms / 40,5). Qualität von Hand: alle acht richtig, Deutsch sauberer als NVFP4 (Motor-Text), Kuanda
+  in beiden zurückgewiesen. Einzellauf, keine Tempo-Aussage.
+
 **Nachtrag 20.10. 06:20: Lookahead-Block-Hashes in Produktion (23e34b03c), Kontrolle aller Modelle bestanden; Textabweichung im Test-Arm = Compile-Artefakte.**
 - Commits: 175c8c11f fix(core) ausgerichtete Replay-Grenzen, 45dc306a5 DSpark behält den Drop, 23e34b03c Testreparatur
   `test_async_scheduler` (handgebauter Scheduler ohne `mixed_prefill_budget` seit 1cabc7ce9 und ohne

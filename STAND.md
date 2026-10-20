@@ -13,6 +13,24 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 20.10. 14:05: QPN8-Turing-Kern im FP8-27B-A/B nur +0,5–1 % (Texte gleich, nicht in Produktion); #1240 an 1Cat; Stillstandswächter.**
+- A/B/A/B FP8-27B prod 23e34b03c gegen fm 7f343a791 (`ab_q27fp8turing_2026-10-20.log`, 09:07–11:18; tok/s mehr, ms und s
+  weniger besser): Greedy 3 und alle acht Qualitätstexte in allen gezählten Boots byte-gleich (nur fm-kalt Frage 2 anders,
+  gleichwertig). Decode prod → fm: Prosa 56,3–56,9 → 56,9–57,4, Code 82,6–84,5 → 83,2–85,1, Bearbeitung 86,9–87,0 →
+  87,4–87,6 tok/s; 184k 67,1 ms / 39,4 tok/s → 66,8–66,9 ms / 39,5 tok/s; 250k 75,0 ms / 35,2 tok/s → 74,7–74,8 ms /
+  35,8 tok/s; Prefill gleich (29k 34,2–34,3 s, 184k 351,6–351,7 s, 250k 556,4–556,5 s).
+- nsys-Decode 128 Token (`nsys/q27fp8turing-1020/`, beide RTX summiert): QPN8-Linears 2574,4 ms (`fp8_qpn8_sm70_kernel`,
+  27.352×) + Entpacken 187,8 ms + cuBLAS 90,3 ms (Prefill M=27) → 2510,7 ms (`fp8_qpn8_mma_sm75_kernel`, 27.872×) +
+  Split-Reduktion 76,6 ms; alle Kerne 4854,0 → 4595,0 ms. Die Linears sind rund die Hälfte des Decodes und laufen beim alten
+  Kern schon bei ~85 % der 613 GB/s → im Decode höchstens ~3,7 ms je Schritt drin. v3 (zwei Schritte Vorladen, Skala vorab,
+  BM ≤ 32) im Fork-Baum geschrieben, ungebaut; Messung als Nächstes.
+- #1240 an 1Cat gesendet (Freigabe Peuqui): `get_replay_boundaries` ohne EAGLE-Drop liefert ausgerichtete Grenzen; Zweig
+  `pr-replay-boundaries-align` df743d36f gegen main 6f3557c97, Live = Entwurf, merge-tree gegen alle 125 offenen PR-Köpfe ohne
+  Zusatzkonflikt. Volle `tests/v1/core` hängt auf main UND PR in `test_scheduler_e2e.py::test_concurrent_partial_prefill`
+  (EngineCore wartet, nur im Gesamtlauf; einzeln grün) — erster Lauf stand dadurch 11:28–13:20 still.
+- Daraus: `~/.cache/bench-scripts/watch_job.sh <pid|unit:NAME> <min> <log>...` meldet Ende UND Stillstand (rc 3); große
+  Testsuiten künftig eine Datei je pytest-Prozess.
+
 **Nachtrag 20.10. 09:10: QPN8-Block-FP8 auf Turing — neuer m16n8k8-Kern auf den QPN8-Codes (Zweig `qpn8-fp8-turing`
 7f343a791, nicht in Produktion), A/B FP8-27B läuft.** Auftrag Peuqui 06:20 („für Turing optimieren und notfalls den Kernel
 neu schreiben“). Messdateien `~/.cache/bench-scripts/qpn8_turing_2026-10-20/`; ms weniger, GB/s und tok/s mehr besser.

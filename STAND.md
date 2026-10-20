@@ -50,8 +50,9 @@ so", nicht „wie ist es".
   Code 114,8–114,9 / Bearbeitung 118,8–119,2 tok/s, 184k 358,5 s / 54,5 ms, 250k 565,6 s / 62,8 ms. Tag
   `verified-2026-10-20-lookahead-block-hashes` (auf 23e34b03c), `prod-fork-main` und Tag nach fork gepusht.
 - 27B-FP8 (offiziell `Qwen/Qwen3.8-27B-FP8`, Block 128, MTP in FP8, 28,7 GiB) für einen Qualitätsvergleich geladen nach
-  `/mnt/speicher/models/Qwen3.8-27B-Dense-FP8-Block128-MTP-Qwen`. `Fp8LinearMethod` nimmt den QPN8-Pfad nur auf SM70
-  (`fp8.py:352`); auf den RTX bräuchte es die Freigabe für SM75. GGUF-Recherche: siehe Gedächtnis
+  `/mnt/speicher/models/Qwen3.8-27B-Dense-FP8-Block128-MTP-Qwen`. Auf den RTX läuft Block-FP8 schon über
+  `QPN8Fp8BlockScaledMMLinearKernel` (`fp8_block.py`, SM70/72/75; DSv4-PP0 nutzt ihn); `fp8.py:352` sperrt nur den Volta-TurboMind-Weg.
+  Turing-Optimierung (M > 8 entpackt die ganze Matrix je Aufruf) → Gedächtnis `project_qpn8_fp8_turing`. GGUF-Recherche: siehe Gedächtnis
   `reference_1cat_gguf_path_status` (Schnellpfade nur SM70, kein MTP aus GGUF, kein DSv4/GLM).
 
 **Nachtrag 20.10. 03:45: 27B DFlash2 + Prompt-Lookup verliert gegen MTP und gegen DFlash2 allein → verworfen.**

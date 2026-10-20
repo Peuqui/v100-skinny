@@ -13,6 +13,29 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 20.10. 21:20: Produktion seit 20:12 = 4da0bcfa4 (QPN8-Turing-Kern M 9–512), Kontrolle bestanden, Tag
+`verified-2026-10-20-qpn8-turing`; Split-Regel 6c0ef8efb an der 27B +1,4–1,8 % Decode, DSv4-A/B dazu läuft.**
+- Umstellung nach Peuquis Freigabe: ff `prod-fork-main` 23e34b03c → 4da0bcfa4, `_C` bec73f532fe6 (alte 57721a8c440d in
+  `~/.cache/prod-switch-2026-09-29/_C-vor-2026-10-20-qpn8turing/`). Kontrolle `prodcheck_2026-10-20_qpn8.log` (20:13–21:11,
+  Modus `prodonce`): Flash-Next PP4/TP2 und 27B greedy identisch, alle acht Qualitätstexte byte-gleich zur Kontrolle vom
+  Morgen (`sw-`); DSv4 greedy 2/3 anders als die Referenz, aber Greedy und Qualitätstexte byte-gleich zu allen drei fm-Boots
+  des A/B 2 (dort händisch gelesen), Antworten noch einmal gelesen, alle bestanden. Langkontext wie bisher (DSv4 250k 222,47 s
+  Prefill, 92,9 ms / 32,8 tok/s; 27B 250k 565,94 s, 62,8 ms / 40,5 tok/s).
+- Erste `memory.used`-Spitzen (MiB je Karte, Index nach PCI-Bus, 0 und 2 RTX mit 49152, 1/3/4 V100 mit 32768; Messphase):
+  DSv4 PP5 0=39233 1=32178 2=47345 3=32178 4=32178; Flash-Next PP4 0=43325 1=31536 2=22885 3=31564; TP2×PP2 0=46739
+  1=31666 2=46739 3=31666; 27B TP2 0=47979 2=47979.
+- 27B-A/B der Split-Regel (`ab_qpn8split_2026-10-20.log`, 18:15–20:11, prod 23e34b03c → fm 6c0ef8efb mit eigenem Compile-Cache;
+  tok/s mehr, ms weniger besser): Prosa 74,2–74,5 → 75,6–75,7, Code 114,3–114,9 → 116,4–116,9, Bearbeitung 118,8–119,1 →
+  120,6–121,0 tok/s (Schritt 33–34 → 32–33 ms); 184k 54,6–54,7 ms / 50,7 tok/s → 54,2 ms / 51,1–51,2 tok/s, 250k 62,8–62,9 ms /
+  40,4–40,5 tok/s → 62,4 ms / 40,7 tok/s; Prefill gleich (250k 565,86 → 565,82–566,04 s). Greedy und Texte in allen Boots
+  byte-gleich.
+- AOT-Falle belegt: Die Inductor-Artefakte unter `torch_aot_compile/<Schlüssel>` tragen die Split-Literale (z. B.
+  `turing_fp8_qpn8_linear.default(…, 5120, 8, 2, False)`), der Schlüssel enthält keinen Code-Hash. Die Produktions-27B in
+  `~/.cache/vllm` hat split 16 eingebrannt → bei der Umstellung auf 6c0ef8efb ihre AOT-Ordner beiseiteschieben (verschieben,
+  nicht löschen), sonst wirkt die Regel dort nicht.
+- DSv4-A/B prod 4da0bcfa4 gegen fm 6c0ef8efb ab 21:15 (`ab_qpn8split_ds_2026-10-20.log`); die Regel ändert dort wq_a und wkv
+  (split 32) auf allen Stufen.
+
 **Nachtrag 20.10. 17:20: QPN8-Turing — Decode-Vorteil war Messartefakt; Weiche jetzt M ≤ 8 gepackter Kern, M 9–512 neuer
 Kern (4da0bcfa4); DSv4-A/B: Schritt gleich, Prefill −0,5 %, Qualität gleich; Annahmeprüfung läuft, nicht in Produktion.**
 - KORREKTUR: Alle Operator-Messungen bis 16:00 (auch „Operator im Wechsel gemessen“ im Nachtrag 09:10 und die Aussage „v4

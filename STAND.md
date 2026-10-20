@@ -46,6 +46,20 @@ Kern (4da0bcfa4); DSv4-A/B: Schritt gleich, Prefill −0,5 %, Qualität gleich; 
   besser): DSv4 wq_a 0,85–0,90 und wkv 0,79–0,90 mit split 32 statt 16, sonst 0,97–1,00 (DSv4 < 0,2 % je Schritt); 27B-FP8-
   Formen o_proj/out_proj 0,78–0,90 und down_proj 0,73–0,87 mit split 8 statt 16 (down M=4 90,6 → 77,2 µs), sonst gleich. Die
   Split-Tabelle `_SM70_FP8_QPN8_CONFIGS` ist geräteunabhängig und auf V100 vermessen.
+- 18:20: Ursache und Regel. Ein CTA deckt 32 Spalten mit split_k Warps (32·split Threads); Turing 1024 Threads/SM → split 16
+  = 2 CTAs/SM = 144 Plätze, N = 5120 (160 CTAs) läuft eine zweite Welle mit 16 CTAs; V100 2048 → 320 Plätze. Gegensweep V100
+  und Prüfformen (`graph_sweep_gpu1.json`, `probe_sweep_gpu1/2.json`): split 32 bei CTAs ≤ SMs und K ≥ 4096 auf beiden Geräten
+  bis 21 % (RTX) / 28 % (V100) schneller, höchstens 2 % langsamer; split 8 bei Turing-Schwanzwelle (2 Wellen, Rest < SMs/2)
+  3–27 % schneller, auf der V100 in gleicher Lage 18–24 % LANGSAMER. Commit 6c0ef8efb (`qpn8-fp8-turing`, nur Python):
+  `fp8_qpn8_occupancy_split_k` in `sm70_turbomind.py`, genutzt vom Blockweg (max 32) und vom Weg je Tensor (max 16, wegen der
+  M-9–32-Kerne). Die Produktions-27B rechnet alle Attention-Projektionen FP8 je Tensor → o_proj/out_proj (K 3072, N 5120) bekommt
+  split 8 (gerechnet ~0,3 ms/Schritt); Fehler gegen FP64 unverändert 4,1–4,9e-4. Tests RTX 113/10, V100 96/27, CPU 33 passed,
+  pre-commit + mypy grün. A/B 27B prod gegen fm 6c0ef8efb ab 18:15 (`ab_qpn8split_2026-10-20.log`, fm mit eigenem
+  `VLLM_CACHE_ROOT=~/.cache/vllm-qpn8split`, weil der AOT-Cache ohne Code-Hash sonst alte Graphen mit split 16 lädt; DSv4 läuft
+  ohne torch.compile, dessen A/Bs sind davon nicht betroffen).
+- 27B-Entwurfsvokabular (Lauf 18:01): Variante bootet nicht, `draft_token_map needs an unquantized lm_head` — der lm_head der
+  Produktions-27B ist NVFP4 (meine Annahme „FP16, 1,27 GB je Rang“ war falsch; NVFP4 ~0,32 GB je Rang, Hebel gerechnet nur ~0,9
+  ms). Lauf abgebrochen, Config = Backup. Bräuchte einen eingeschränkten NVFP4-Kopf.
 
 **Nachtrag 20.10. 14:05: QPN8-Turing-Kern im FP8-27B-A/B nur +0,5–1 % (Texte gleich, nicht in Produktion); #1240 an 1Cat; Stillstandswächter.**
 - A/B/A/B FP8-27B prod 23e34b03c gegen fm 7f343a791 (`ab_q27fp8turing_2026-10-20.log`, 09:07–11:18; tok/s mehr, ms und s

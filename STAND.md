@@ -13,6 +13,86 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 21.10. 09:00: Grid-A/B bestanden, Produktion seit 08:45 = 79e07bfef (Freigabe Peuqui), Kontrolle DSv4 + 27B
+bestanden, Tag `verified-2026-10-21-moegrid`. Flash-Next eingefroren (Peuqui 21.10.); sm_75-Bau der eigenen Kernfamilie folgt.**
+- **Kontrolle** (`prodcheck_2026-10-21_moegrid.log`, 08:46–09:22): DSv4 Greedy und alle 8 Qualitätsantworten byte-gleich zum
+  fm-Arm der Grid-A/B; Langkontext 33k / 178k / 287k: Prefill 12,34 / 79,05 / 144,26 s, Schritt 65,7 / 82,6 / 89,4 ms (53,7 /
+  43,1 / 35,2 tok/s). 27B (Graphen neu kompiliert, Split-Regel wirkt): Greedy 3/3 identisch zur Referenz; tok/s (mehr besser)
+  Prosa 74,2–74,5 → 75,4–75,6, Code 114,3–114,9 → 115,9–116,1, Bearbeitung 118,8–119,1 → 120,7 (Schritt 33 ms); 184k 54,2 ms /
+  50,7 tok/s, 250k 62,4 ms / 40,7 tok/s, Prefill 250k 565,99 s (gleich). Von 8 Qualitätsantworten 7 byte-gleich zur Kontrolle vom
+  20.10.; die Zug-Aufgabe ist anders formuliert, gleich richtig (41/12 h, 287 · 12/41 = 84 km/h, beide an derselben Längengrenze
+  abgeschnitten) — neuer Compile-Artefaktsatz, die Codeänderungen berühren die 27B nicht (0314585ac betrifft nur den Blockweg mit
+  max_split_k ≥ 32). Speicherspitzen 27B 0=48031 2=48031 MiB (Messung).
+- **DSv4-A/B** (`ab_moegrid_ds_2026-10-21.log`, 07:41–08:43, prod 4da0bcfa4 gegen fm 79e07bfef, A/B/A/B nach fm-Kaltboot;
+  Prefill s, weniger besser): 32k 14,66/14,66 → 12,32/12,33; 178k 112,73/112,71 → 79,03/79,00 (1583 → 2259 tok/s, −29,9 %);
+  287k 222,29/222,16 → 144,76/144,25 (1292 → 1986 tok/s, −35,0 %); 35,7k-Langprompts 15,1–15,2 → 12,4–12,6. Gegen e1cb50fd9
+  aus `ab_dsv4sm_2026-10-21.log` (12,94 / 82,17 / 149,73 s): −4,8 / −3,8 / −3,5 % = Grid-Fix allein. Decode (ms weniger, tok/s
+  mehr besser) wie e1cb50fd9: kurz Prosa 62 → 61 ms (47,2 → 46,9–47,0 tok/s), Code 65 → 63 (67,4–67,7 → 71,6–71,7), Bearbeitung
+  70 → 69 (80,4–80,9 → 82,2–82,8); 35k 70–71 → 68–69; 178k 87,3–87,5 → 83,5–83,8; 287k 93,2–93,5 → 89,6–90,4. **Texte:** Greedy
+  und alle 8 Qualitätsantworten in allen fm-Boots byte-gleich zu den fm-Boots von e1cb50fd9 (Grid-Fix Ende-zu-Ende bitgleich),
+  Prod in allen vier Prod-Boots byte-gleich; Langkontexttexte streuen in beiden Armen, angelesen zusammenhängend und gleichwertig.
+  Speicherspitzen (MiB) fm 0=39193 1=32158 2=47285 3=32158 4=32158 = e1cb50fd9.
+- **Flash-Next PP4** (`ab_moegrid_2026-10-21.log`, 06:49–07:40, Prefill s): 29k ~7,6 → 6,7–7,2; 184k 71,4/71,4 → 65,0/68,9;
+  250k 79,9/81,3 → 60,1/71,8; Decode gleich (62–64 / 67 ms). Beide Arme langsamer als die Kontrolle vom 20.10. (56,4 s bei 184k):
+  3.300–3.700 memory.high-Treffer und Swap an der PLE-Plattenstufe. TP2×PP2 übersprungen (Kette um 07:40:50 nach pp4-fm-b
+  beendet, Config = Backup, keine Restprozesse).
+- **Umstellung 08:45** (Freigabe Peuqui 21.10. „Umstellung frei“): ff `prod-fork-main` 4da0bcfa4 → 79e07bfef (gepusht), `_C`
+  2a78916c2e7f (alte bec73f532fe6 in `~/.cache/prod-switch-2026-09-29/_C-vor-2026-10-21-moegrid/`); die 27B-Caches mit
+  eingebranntem split 16, laut Journal des Prod-Boots vom 20.10. 20:49 geladen (`torch_aot_compile/a64204a2a77f…`,
+  `7e4353dce08f…`, Compile-Cache `f753253985`), nach `~/.cache/prod-switch-2026-09-29/aot-27b-vor-2026-10-21/` verschoben (die
+  übrigen split-16-Ordner gehören zu Varianten-Einträgen). Kontrolle `prodcheck_2026-10-21_moegrid.log` (Modus `prodonce`,
+  MODELS `ds q27`). Rücksprung: Tag `verified-2026-10-20-qpn8-turing` + alte `_C` + AOT-Ordner zurück.
+- **Flash-Next eingefroren** (Peuqui 21.10.): keine Optimierung und Messungen mehr; Schwerpunkt DSv4, als Nächstes GLM-5.3-Flash.
+  Gewichte (124 GB) gehen nach `/mnt/speicher/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-nvidia-fc694b5` (Skript
+  `move_flashnext_to_hdd_2026-10-21.sh`: Kopie, Prüfung gegen die Blob-Hashes, dann Snapshot-Links umbiegen und SSD-Blobs
+  löschen; llama-swap-Einträge bleiben bootfähig). Fork-Code und die PRs #1234–#1237 bleiben.
+- **sm_75 für die eigene Kernfamilie** (Peuqui 21.10. „Sm75 müssen wir freischalten“; Zweig `sm75-native-sass-2026-10-21` im
+  Bau-Baum, noch nicht gebaut): `TORCH_CUDA_ARCH_LIST="7.0;7.5"` allein wäre falsch — die SM70-TurboMind-Familie ist in CMake
+  fest auf `"7.0"` geschnitten (bekäme kein sm_75), und ein gemischter Marlin-Bau lässt die Volta-Marlin-Kerne weg
+  (`MARLIN_SM70_ARCHS AND NOT MARLIN_OTHER_ARCHS`). Stattdessen bleibt die Liste 7.0, und eine Variable `SM70_FAMILY_ARCHS`
+  („7.0;7.5“) gilt für TurboMind-Ops, Ring/Host-Reduce, Sampler und die acht Zusatzbibliotheken (h3, QSA, Router, Exact-Reduce,
+  Sparse-Attention). Geprüft: die SM75-Zweige in den TurboMind-Headern geben nur `ldmatrix`/`m16n8k8`-Hilfen frei, die die
+  sm70_884-Kerne nicht rufen; `sm70_grouped_long` (Header mit `#error` außer sm_70) hängt an `_vllm_fa2_C` und bleibt sm_70.
+
+**Nachtrag 21.10. 07:00: Annahme von e1cb50fd9 über 18 Runden innerhalb der Streuung (Englisch −1,7 ± 1,2 Punkte) →
+Umstellung entscheidet Peuqui; Skinny-MoE-Grid auf min(Plätze, Experten) begrenzt (79e07bfef, bitgleich, Kern −8 bis
+−47 %), A/B läuft. Produktion unverändert 4da0bcfa4.**
+- **Annahme e1cb50fd9, Runden 6–17** (`ab_dsv4sm_accept2_2026-10-21.log`, 06:11–06:34, ein Boot, RUN_TAG `sm2-`) gegen Prod
+  4da0bcfa4 Runden 6–17 (`ab_qpn8split_accept2_2026-10-20.log`). Aus den Rohzählern über 18 Runden (Akzeptanz %, mehr besser):
+  Prosa 36,21 → 35,49, Englisch 37,34 → 35,72, Code 71,52 → 71,94, Bearbeitung 93,34 → 93,32. **Die Runden 0–5 sind gegen Prod
+  vorbelastet:** 4da0bcfa4 kam am 20.10. nach genau diesen Seeds in Produktion (Prosa 37,13 gegen 23e34b03c 35,41; e1cb50fd9
+  35,23). Frische Runden 6–17 (Differenz je Runde ± Standardfehler, Punkte): Prosa −0,16 ± 0,35, Englisch −1,64 ± 1,23, Code
+  +0,02 ± 1,75, Bearbeitung −0,06 ± 0,13 → innerhalb der Streuung; Englisch (kleinste Stichprobe, 4655 Token in 12 Runden)
+  liegt als einzige Kategorie in beiden Hälften niedriger (−1,4 / −1,7). Zum Vergleich 5669da106: Prosa, Englisch und Code
+  über 18 Runden identisch zu Prod (Prompts ≤ 2048 Token wählen alle Keys, Texte byte-gleich), Bearbeitung 93,23.
+- **Skinny-MoE-Grid** (79e07bfef, Zweig `skinny-moe-grid-2026-10-21` = e1cb50fd9 + dies, gepusht; Worktree `1Cat-vLLM-moegrid`,
+  umbenannt aus dem erledigten `1Cat-vLLM-lookahead`; `_C` 2a78916c2e7f, Bauskript `build_moegrid_2026-10-21.sh`): Der grouped
+  QPN-Kern startete je Routing-Platz eine Grid-Zeile (S = Token × Top-k), Arbeit haben höchstens E Gruppen — DSv4 T512 3072
+  Zeilen für ≤ 256 Gruppen, Flash-Next T748 7480 für 512; der ncu-Bericht vom 22.09. zeigt 393.216 Blöcke je w13-Aufruf, ~92 %
+  lesen nur `goff` und enden. Grid-y jetzt min(S, E) (statisch, CUDA-Graph-tauglich); Decode (S < E) startet wie bisher. 1Cat
+  main hat dieselbe Zeile (PR-Kandidat). CUDA-Graph-Mikrobench (Scratchpad `moegrid/moe_grid_bench.py`: Kernquelle mit nur der
+  Grid-Zeile geändert gegen die Produktions-`_C`, beide sm_70-SASS, synthetische Gewichte, gleichverteiltes Routing; µs je
+  Aufruf, weniger besser; alle Ausgaben bitgleich):
+
+  | Form | RTX w13 | RTX w2 | V100 w13 | V100 w2 |
+  |---|---|---|---|---|
+  | DSv4 T512 (E256, Top-6) | 7070 → 6506 | 3546 → 3250 | 5524 → 5004 | 3004 → 2442 |
+  | Flash-Next PP T748 (E512, Top-10) | 3800 → 3297 | 2682 → 2002 | 3127 → 2567 | 2557 → 1634 |
+  | Flash-Next TP2 T748 (inter 320) | 1961 → 1653 | 2113 → 1329 | 1663 → 1275 | 1977 → 1052 |
+  | Flash-Next T2048 | 9367 → 7990 | 6593 → 4841 | 7552 → 6038 | 6378 → 3727 |
+  | Decode T6 | gleich | gleich | gleich | gleich |
+
+  Tests `tests/kernels/moe/test_skinny_sm70_moe.py` 77 passed (V100 und RTX) mit der neu gebauten `_C`, pre-commit grün; die
+  gebaute `_C` im Mikrobench gegengeprüft (so schnell wie die Variante).
+- **Nebenbefund sm_75-SASS:** Die Produktions-`_C` enthält 73 sm_70-Cubins und 1 sm_75 (`TORCH_CUDA_ARCH_LIST=7.0`), die RTX
+  führen also fast alle eigenen Kerne als sm_70-SASS aus. Dieselbe MoE-Quelle mit sm_75-SASS ist auf der RTX 1–4 % schneller
+  (Decode Flash-Next w2 10 %), auf der V100 gleich. Kandidat: `_C` für `7.0;7.5` bauen (generisch, alle eigenen Kerne), eigene A/B.
+- **A/B ab 06:49** (`ab_moegrid_2026-10-21.log`, MODELS `pp4 tp2 ds`, prod 4da0bcfa4 gegen fm 79e07bfef, A/B/A/B nach fm-Kaltboot).
+  Flash-Next nutzt keine QPN8-FP8-Linears → fm unterscheidet sich dort von Prod nur durch den Grid-Fix; DSv4-fm zusätzlich
+  gegen fm e1cb50fd9 aus `ab_dsv4sm_2026-10-21.log` (Texte müssen byte-gleich sein).
+- Upstream 21.10.: 1Cat main unverändert seit 13.10. (6f3557c97); neu #1242 (Flash-Next GGUF IQ3_S auf 4× V100-16GB) und #1243
+  (DSv4.1 EXL3 auf 8× V100), beide nicht unsere Pfade. AIfred-Dienst weiterhin gestoppt (kein 06:45-Job).
+
 **Nachtrag 21.10. früh (Morgenbericht): DSv4-Kandidat 5669da106 bestanden (Prefill 150k −16,7 %, 250k −22,2 %, Texte und
 Annahme gleich) → Umstellung entscheidet Peuqui; Sparse-Softmax e1cb50fd9 obendrauf (Prefill-Durchgang RTX −47 %), A/B:
 Prefill 150k −27,1 %, 250k −32,6 % gegen Prod (gegen 5669da106 −12,5 / −13,5 %), Schritt 1–4 ms kürzer, Texte gelesen gleichwertig, Annahme in 6 Runden gemischt (Prosa −1,9, Code +1,6 Punkte) → vor einer Umstellung 18 Annahmerunden; Profile aller Einträge ausgewertet. Produktion unverändert 4da0bcfa4, Config gleich Produktion.**

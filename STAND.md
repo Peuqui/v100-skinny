@@ -13,6 +13,36 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 21.10. 10:35: sm_75-Bau der eigenen Kernfamilie gebaut und getestet, A/B DSv4 + 27B läuft; Flash-Next liegt auf
+/mnt/speicher; GLM-5.3 Weg B als Fork-Zweig (4417a4c04), Tests grün bis auf vorbestehende Fehler. Produktion unverändert 79e07bfef.**
+- **sm_75** (Zweig `sm75-native-sass-2026-10-21` = 79e07bfef + 2f70712b0 + 5028a3fc4, Prüfbaum `1Cat-vLLM-sm75` (umbenannt aus
+  moegrid), Bau `build_sm75_2026-10-21b.out`, 09:45–09:48): erster Bau scheiterte an `nvcc fatal: Unsupported gpu architecture
+  'compute_70;75'` — `cmake_parse_arguments` hält ein gequotetes „70;75“ als ein Element, daher ungequotet übergeben (5028a3fc4).
+  Cubins danach: `_C` 73 sm_70 + 56 sm_75 (vorher 1), alle neun Zusatzbibliotheken (`_h3_*`, `_sm70_*`, Sampler) sm_70 + sm_75;
+  `_moe_C`, `_C_gguf`, `_C_stable_libtorch`, `cumem_allocator`, `spinloop` bytegleich zu Prod (Marlin und Routen unberührt).
+  Tests (`pytest_sm75_2026-10-21/`, 154 Kerntest-Dateien je Prozess, GPU 0 RTX + 1 V100): 145 grün, 9 mit Fehlschlägen; 8 davon
+  auf Prod identisch (`pytest_sm75prod_2026-10-21/`: trtllm_kvfp8, vit_fp8_quant, silu_mul_fp8 ×2, sm70_mtp_lossless,
+  sm70_gdn_ba_verify, sm70_gemm_workspace, flash_v100_compact_pages); `test_sm70_flash_v100_anchored_swa.py` läuft nur im
+  Prüfbaum (Prod überspringt: das veraltete Wurzelverzeichnis `1Cat-vLLM-work/flash_attn_v100/` vom 05.10. verdeckt im
+  Baum-cwd das Paket) und scheitert auf der RTX mit „Kernel supports only Volta GPUs“ — Test ohne Geräteauswahl. Produktion lädt
+  das richtige Paket (llama-swap cwd `/`, venv löst auf `flash-attention-v100/flash_attn_v100` vom 18.10. auf).
+  A/B `ab_sm75_2026-10-21.log` ab 10:32 (MODELS `ds q27`, fm mit eigenem Compile-Cache `~/.cache/vllm-sm75`, weil
+  `vllm-forkmain` alte 27B-Graphen mit split 16 halten kann). Peers vorher gefragt: ViroSpore und AIfred-Intelligence ohne Bedarf.
+- **Flash-Next verschoben** (`move_flashnext_2026-10-21.log`, 09:26–09:57): 24 Dateien (124 GB) nach
+  `/mnt/speicher/models/Qwen3.8-Flash-Next-180B-A4B-NVFP4-MTP-nvidia-fc694b5`, jede gegen ihren Blob-Hash geprüft, Snapshot-Links
+  umgebogen, SSD-Blobs gelöscht (nur `.gitattributes` blieb, der Glob überspringt Punktdateien). SSD 48 → 171 GB frei (81 %).
+- **GLM-5.3 Weg B** (Zweig `glm53-flash-fp4local` 4417a4c04 auf 79e07bfef, gepusht; Worktree `1Cat-vLLM-glm53`, umbenannt aus
+  qpn8turing, Prod-Bibliotheken kopiert): Spiegel `~/.cache/claude-wip/2026-10-19/glmfork` (ganze Dateien auf Basis 4651800f7)
+  per `git merge-file` gegen Basis eingespielt, ohne Konflikt, Prod-Änderungen seit 19.10. erhalten. pre-commit nachgezogen: mypy
+  (CSF-Ausnahmen als Dict, Protokoll `CsfScaleConsumer` statt Backend-Name `SM70_SKINNY` in `modelopt`), Architektur-Hook
+  (Indexer nutzt `is_pre_ampere_cuda_platform` direkt, Kommentare ohne Generationsnamen), alle neuen Fähigkeitsabfragen auf das
+  eigene Gerät (`residual.get_device()` bzw. `current_device_index`). Tests (GPU 2 RTX + 3 V100): CSF 13, Skinny 77, mHC/KDA/KPool/
+  glm5next/ModelOpt/Prozessor grün; vorbestehend auch auf 79e07bfef: `test_pp.py` (2, `_pp_aux_dump` bei `__new__`-Modell),
+  `test_sm70_glm53_modelopt_nvfp4.py` (1) und `test_sm70_modelopt_nvfp4.py` (3, je ohne vLLM-Config-Kontext). `test_kda.py`
+  braucht beim ersten Lauf ~10 min Triton-Autotuning (danach 4,9 s).
+- **Reparaturpaket vorbestehender Testfehler (offen):** die sechs GLM/ModelOpt-Tests oben, `anchored_swa` (Geräteauswahl), das
+  veraltete `flash_attn_v100/`-Wurzelverzeichnis im Prod-Baum durch Symlinks ersetzen (wie in den Prüfbäumen).
+
 **Nachtrag 21.10. 09:00: Grid-A/B bestanden, Produktion seit 08:45 = 79e07bfef (Freigabe Peuqui), Kontrolle DSv4 + 27B
 bestanden, Tag `verified-2026-10-21-moegrid`. Flash-Next eingefroren (Peuqui 21.10.); sm_75-Bau der eigenen Kernfamilie folgt.**
 - **Kontrolle** (`prodcheck_2026-10-21_moegrid.log`, 08:46–09:22): DSv4 Greedy und alle 8 Qualitätsantworten byte-gleich zum

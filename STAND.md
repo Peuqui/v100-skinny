@@ -13,6 +13,76 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 21.10. 12:50: Turing-Kernpaket begonnen (Peuqui: „eigene Kerne für Turing, die genau optimiert sind, die
+wichtigsten für unsere Modelle, generisch für zukünftige Generationen“). sm_75-A/B DSv4: kein Unterschied (Prefill ≤ 0,2 %,
+Texte aller fünf Läufe bytegleich) — erwartet, `HMMA.884` bleibt auf Turing halbratig; der sm_75-Bau ist aber die Grundlage
+der Turing-Kerne und geht mit dem ersten Kern in Produktion.**
+- **Grundsatz:** Gewichtslayout je Karte. Auf Karten ab 7.5 packt `qpn_prepack` die Experten beim Laden in m16n8k8-Ordnung,
+  Volta behält m8n8k4 (reine Permutation, gleiche Größe, keine zweite Kopie; jede Schicht liegt auf einer Karte). Weiche einmal
+  je Worker (`qpn_fragment_order(current_device_index)`), an das Op als `fragment_order` übergeben. Rollentausch: Gewichte
+  sind der 16-zeilige A-Operand, Token der 8-breite B-Operand (keine Polsterverschwendung bei schmalen Experten). Gemeinsamer
+  Header `csrc/sm70_turbomind/ops/mma_fragments_sm70.cuh` (E2M1-Decoder, m16n8k8, ldmatrix, Turing-Packordnung) ersetzt die
+  Kopien in `nvfp4_qpn4_sm70.cu` und `fp8_qpn8_mma_sm75.cu`.
+- **Reihenfolge:** (1) frisches nsys-Profil DSv4 + 27B auf 79e07bfef (Rangliste der RTX-Kerne nach Indexer-Epilog, Softmax,
+  Grid); (2) Skinny-MoE Decode + Prefill (DSv4 MXFP4, GLM NVFP4/CSF, Flash-Next) — Zweig `turing-kernels-2026-10-21` im
+  Baubaum `1Cat-vLLM-fork-main` auf 5028a3fc4, Kern `skinny_nvfp4_moe_m16n8k8` geschrieben, noch ungebaut; Mikrotest
+  `scratchpad/turing/moe_turing_bench.py` (Anker `_C` bitgleich zu m8n8k4-Ordnung, m16n8k8 gegen m8n8k4 und fp32-Referenz,
+  CUDA-Graph-Zeiten); (3) dichte QPN-Kerne (NVFP4/MXFP4, Paar-Kern) für 27B und GLM; (4) DSv4-Eigene (QSA-Indexer nativ, HC)
+  nach Profilgewicht; (5) 27B-FA (wmma läuft seit 18.10. als HMMA.1688, aber ~20 von 90 TFLOPS) und Triton ohne Tensorkerne.
+  Nicht: GGUF, DFlash2 (nicht in Produktion). Zugelassen bleibt das Backend auf 7.0 und 7.5 (nur dort getestet).
+- **Erwartung ehrlich:** MoE auf der RTX ist nicht rein tensorgebunden (315 von 613 GB/s); m16n8k8 halbiert die MMA-Zeit,
+  zusätzlich entfällt das Aktivierungs-Staging. Gewinn wird gemessen, nicht versprochen. Texte gegenüber dem alten RTX-Pfad
+  nicht bytegleich (nur Summationsreihenfolge im Tensorkern), Abnahme über Qualitätsfragen.
+- **GLM-Erststart** (Speicher mit/ohne Bildteil für AIfred-Intelligence) wird in eine Phase gelegt, in der nur Code entsteht.
+- **13:30 Nachtrag — MoE-Kern fertig** (Peuqui 12:47: sm_75-A/B abgebrochen, „wir optimieren Turing jetzt komplett fertig,
+  dann testen“). Zweig `turing-kernels-2026-10-21` = 039c1b6af (gepusht), Prüfbaum `1Cat-vLLM-sm75` darauf, `_C`
+  37bf4e91c91e (`build_turing_2026-10-21.sh`). Durchläufe `scratchpad/turing/v{1..4}_*.log`, `final_{rtx,v100}.log`:
+  Turing-Konfiguration Split 8 (K < 2048: 4), NT 2 Spaltenkacheln je CTA, RB 4 Zeilenblöcke im Prefill / 1 im Decode, eine
+  Gruppe vorausladen (tiefere Ringe und NT 4 nicht besser). RTX µs je Aufruf alt → neu: DSv4-512 w13 6555 → 4303, w2
+  3271 → 2238 (V100 4933/2412); GLM-512 w13 8566 → 5316, w2 4205 → 2760; Flash-Next-748 −40/−44 %; Decode ±1 %
+  (RTX/V100 = Bandbreitenverhältnis 1,2). Alte Ordnung bitgleich zu Prod-`_C` (alle 12 GEMMs), Turing-Ordnung ≤ 6,3e-4 vom
+  Ausgabemaximum, fp32-Abstand gleich. Tests `pytest_turing_moe2_2026-10-21/` 136 grün / 13 übersprungen.
+  nsys DSv4 fm (`nsys/ds-stages-turing-1021`, 150k): Prefill 55,7 s (gestern 90,7 s vor Indexer/Softmax/Grid/Turing-MoE),
+  alle Stufen 53–55 s Kernzeit, MoE je Aufruf RTX 3,17 ms / V100 3,68 ms; Aufteilung 10,8,8,8,9 bleibt optimal → weitere
+  DSv4-Gewinne brauchen auch die V100-Seite (MoE dort 32 %). 27B: FA2-sm75 Prefill d=256 gemessen 22,5 TFLOPS
+  (`scratchpad/turing/fa_bench.py`), Split-KV-Kern ohne Q-in-Registern → eigener Turing-Attention-Kern ist der 27B-Hebel.
+- **14:05 Nachtrag — Turing-Prefill-Attention** f9ac81b6b (`csrc/sm70_turbomind/ops/paged_prefill_attention_sm75.cu`, Op
+  `paged_prefill_attention_sm75`, FLASH_ATTN-Weiche `_use_turing_prefill`: SM75 der eigenen Karte, d=256, fp16-KV, kausal, ohne
+  Fenster/Softcap/Sinks, ab `flash_attn_turing_prefill_min_query_len` = 65 Query-Token). Aufbau: 128 GQA-gepackte Zeilen je CTA
+  (8 Warps × 16, Q in Registern), K/V-Kacheln 32 Schlüssel doppelt gepuffert (64 KB), nächste Kachel in zwei Registerhälften
+  vorgeladen, 32-Bit-Offsets, Seitengröße als Template (16/32/64), O-Umskalierung übersprungen bei Faktor 1. Weg dorthin
+  (`scratchpad/turing/attn/`): v1 64 Zeilen × 2 CTAs 39,7 TFLOPS; ncu zeigte L2-Treffer 98 %, DRAM 1 % → nicht bandbreiten-,
+  sondern latenzgebunden (Stalls: feste Latenz 2,8, Smem 1,4, global 1,2 je Befehl); Rechenobergrenze ohne Laden 83 TFLOPS.
+  Ergebnis RTX, 27B-Ranggrößen, ms je Aufruf FA2 → eigen: 2048 Token 32k 35,3 → 13,1, 150k 165,8 → 61,5 (61 TFLOPS); 512
+  Token 150k 52,5 → 20,0; 96 Token 24,6 → 19,8; 64 Token FA2 5,3 vs 19,9 (FA2 teilt den Kontext) → Schwelle 65. Fehler gegen
+  fp32-Referenz gleich FA2 in allen Fällen (q=1, kv=1/17, Batch aus 5, Seiten 16/32/64).
+- **14:20 Nachtrag — 27B-Profil mit Turing-Attention** (`nsys/q27-stages-turing-1021`, fm f9ac81b6b): 150k-Prefill 207,9 s
+  (gestern 267,9 s, −22 %), `paged_prefill_attention_kernel` 46,8 s statt FA2-splitkv 110 s → Weiche greift im Betrieb.
+  Neue Rangliste je RTX: NCCL-Allreduce 46 % (95,9 s), cuBLAS-GEMMs 20,6 %, NVFP4-Entpacken 4,8 %, FP8-Entpacken 1,2 %.
+  Größter 27B-Hebel jetzt Kommunikation (Überlappung / eigener 2-Rang-Host-Allreduce, siehe Gedächtnis).
+- **GLM-Zweig auf Turing** `glm53-turing-2026-10-21` = 1ddebbbd7 (Merge von glm53-flash-fp4local auf f9ac81b6b, im Baum
+  `1Cat-vLLM-glm53`, Turing-`_C` kopiert): `qpn_prepack` mit `scales=None` + Ordnung; CSF-Ausweitung schreibt über
+  `qpn_scale_entries` (Inverse der Skalentabelle aus `_fragment_tables`, ersetzt `_qpn_lane`); CSF-Test in beiden Ordnungen.
+  Bootskript für den ersten Start mit Speichermessung: `glm53_boot_2026-10-21.sh text|image`.
+- **15:40 Nachtrag — Volta-MoE und GLM-Inbetriebnahme.** Volta übernimmt die Turing-Struktur (7ee89582f, `_C` c869d134c3ee im
+  Prüfbaum): NT 2 Spaltenkacheln, Split 8 (16/10 nur wo 8 nicht teilt), RB 2 Prefill / 1 Decode; `nacc` 2 (ohne Aufrufer)
+  entfernt. V100 µs alt → neu (`scratchpad/turing/volta2_v100.log`, ohne Nebenlast): DSv4-512 w13 4979 → 4374, w2
+  2441 → 2395; GLM-512 6878 → 5954, 3567 → 3218; Decode 0,80–0,97. Erster Volta-Lauf (`volta1`) streute wegen paralleler
+  Testsuite und hatte eine selbst eingebaute Decode-Regression (+18 %, Ladereihenfolge) — behoben.
+  GLM erster Start: Fehlerkette, je Fix mit Test auf `glm53-turing-2026-10-21`: (1) 3856a7b67 MLA-Prefill-Auswahl band die
+  Flash-V100-Laufzeit vor dem Binden (1Cat-Upstream-Code); (2) 434b350c2 Direct-I/O kannte U16/U32 nicht (CSF-Seitenbasen);
+  (3) 5cc9779e1 CSF-Teile wurden nach Umschreiben des Namens nicht erkannt; (4) 08fbcdf68 ausgenommener LM-Head bekam
+  `UnquantizedLinearMethod`, die im Fork LinearBase-Attribute braucht → `None`/Embedding-Methode; (5) 7104b7d46 + 0cac9351d
+  MLA-Kontextpuffer: „8 Anfragen“ bzw. „4 Seiten“ bei Hybrid-Seiten 8576 Token → 2,1 GiB Profilierungspuffer je Stufe
+  (Speicherschnappschuss `PROFILE_MEMSNAP_PATH`, Pfad muss unter `~/.cache` liegen: llama-swap hat `PrivateTmp`), jetzt
+  ≤ max_num_seqs × max_model_len. Stand davor je Stufe (GB): V100 Gewichte 29,97 von 33,05, KV −1,65; PP4 47,96 von 49,23,
+  KV −1,14; PP0 +1,34. SM70-Graph-Reserve = gemessene Aktivierungsspitze (`get_sm70_cudagraph_memory_reserve`, Override
+  `VLLM_V2_CUDAGRAPH_MEM_MIB`). Testeintrag jetzt GMU 0,98. Zwischenfall 14:45: zwei Bootskripte gleichzeitig → Config 52 s
+  leer, wiederhergestellt; Skript jetzt mit flock, eindeutigem Backup, Signal-Trap und Abbruch vor den Qualitätsfragen bei
+  gescheitertem Boot. **Sechster Start 15:39 (0cac9351d, GMU 0,98): Speicher passt** (KV V100 je ~+1,05 GB, PP0 +3,02,
+  PP4 +0,55; 41 506 KV-Token; Aktivierungsspitze 1,15 GB), dann Fehler 6 bei der Graph-Aufnahme auf PP0 (RTX):
+  `sparse_attn_indexer_kpool.py:347 assert q_quant.dtype == torch.float16`. Übergabe in HANDOVER.md (21.10. 15:55).
+
 **Nachtrag 21.10. 10:35: sm_75-Bau der eigenen Kernfamilie gebaut und getestet, A/B DSv4 + 27B läuft; Flash-Next liegt auf
 /mnt/speicher; GLM-5.3 Weg B als Fork-Zweig (4417a4c04), Tests grün bis auf vorbestehende Fehler. Produktion unverändert 79e07bfef.**
 - **sm_75** (Zweig `sm75-native-sass-2026-10-21` = 79e07bfef + 2f70712b0 + 5028a3fc4, Prüfbaum `1Cat-vLLM-sm75` (umbenannt aus

@@ -13,6 +13,67 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 21.10. früh (Morgenbericht): DSv4-Kandidat 5669da106 bestanden (Prefill 150k −16,7 %, 250k −22,2 %, Texte und
+Annahme gleich) → Umstellung entscheidet Peuqui; Sparse-Softmax e1cb50fd9 obendrauf (Prefill-Durchgang RTX −47 %), A/B:
+Prefill 150k −27,1 %, 250k −32,6 % gegen Prod (gegen 5669da106 −12,5 / −13,5 %), Schritt 1–4 ms kürzer, Texte gelesen gleichwertig, Annahme in 6 Runden gemischt (Prosa −1,9, Code +1,6 Punkte) → vor einer Umstellung 18 Annahmerunden; Profile aller Einträge ausgewertet. Produktion unverändert 4da0bcfa4, Config gleich Produktion.**
+- **Split-Regel ohne split 32** (0314585ac, Zweig `qpn8-fp8-turing`; Archiv-Tag `archive-qpn8split32-2026-10-21` auf
+  6c0ef8efb): split 32 senkte die DSv4-Annahme in 8 von 8 Vergleichen (Prosa 37,1 → 35,6 / 35,8 → 35,4 %, Code 71,6 → 70,5 /
+  71,5 → 70,4 %) ohne Schrittgewinn → entfernt; Regel 2 (split 8, 27B +1,4–1,8 %) bleibt.
+- **DSv4-Indexer-Prefill-Epilog** (5669da106, Zweig `dsv4-prod-next-2026-10-21` = 0314585ac + Epilog): las die FP16-Score-Kachel
+  mit 2 Keys je Thread (RTX 105, V100 184 GB/s); 8 Keys je Thread 562 / 782 GB/s. A/B `ab_dsv4idx_2026-10-21.log` (00:10–01:15,
+  prod 4da0bcfa4 / fm 5669da106, A/B/A/B; Prefill s, weniger besser): 32k 14,66/14,66 → 14,16/14,15; 150k 112,79/112,76 →
+  93,94/93,96 (1582 → 1900 tok/s); 250k 222,35/222,50 → 173,07/173,14 (1291 → 1658 tok/s). Schritt gleich (kurz 62/65/70 ms
+  = 47,2/67,5/80,4–81,1 tok/s; 150k 87–88 ms; 250k 93–94 ms). Greedy und alle 8 Qualitätstexte in allen 5 Boots byte-gleich;
+  Langkontexttexte streuen schon prod-a gegen prod-b, alle gelesen: gleichwertig. Speicherspitzen gleich.
+  Annahme (`ab_dsv4idx_accept_2026-10-21.log`, fm Runden 0–17 gegen Prod 0–5 + 6–17 gewichtet; Akzeptanz %, mehr besser):
+  Prosa 36,23 → 36,2, Englisch 37,33 → 37,3, Code 71,53 → 71,5, Bearbeitung 93,37 → 93,2 (Streuung zwischen Bäumen am selben
+  Commit 93,2–93,3); Tokenzahlen exakt gleich. → **bestanden**.
+- **Sparse-MLA-Softmax** (e1cb50fd9, Zweig `dsv4-sparse-softmax-2026-10-21` = 5669da106 + dies): im Profil lagen 820 von
+  1434 µs je 128-Token-Durchgang in sechs elementweisen Torch-Ops um die zwei BLAS-Aufrufe (Broadcast-`masked_fill_` über die
+  gesammelten Schlüssel allein 395 µs). Neu: Gather schreibt Nullen für unbenutzte Plätze, ein Triton-Kern für scale, Maske,
+  Sink, FP32-Softmax und FP16-Ausgabe; Puffer 140 → 110 MiB. CUDA-Graph-Mikrobench (µs, weniger besser): Prefill W640 RTX
+  1438,3 → 755,7, V100 1178,7 → 632,0; W2176 RTX 4666,8 → 2367,7, V100 3760,3 → 1983,5; Decode C4 V100 146,5 → 96,5. Fehler gegen
+  FP64 gleich, 99,2–99,8 % bitgleich, Rest ≤ 3e-5. Tests grün (V100 29, RTX 17 + 12 übersprungen), pre-commit/mypy grün.
+  A/B `ab_dsv4sm_2026-10-21.log` (prod 4da0bcfa4 / fm e1cb50fd9): 02:26–03:29, A/B/A/B nach einem ungezählten Kaltboot; Prefill s, weniger besser (tok/s mehr besser): 32k 14,67/14,66 →
+  12,94/12,94 (−11,8 %, 2228 → 2525 tok/s); 150k 112,71/112,70 → 82,20/82,14 (−27,1 %, 1584 → 2172 tok/s); 250k 222,26/222,19 →
+  149,73/149,72 (−32,6 %, 1292 → 1917 tok/s). Gegen 5669da106 aus dem A/B 00:10 (14,16 / 93,95 / 173,1 s): −8,6 / −12,5 / −13,5 %.
+  Schritt (ms, weniger besser; tok/s aus dem Log): kurz Prosa 62 → 61 (47,2 → 46,9–47,0 tok/s), Code 65–66 → 63 (66,9–67,5 →
+  71,6–71,8 tok/s, Annahme/Runde 4,41 → 4,54), Bearbeitung 70 → 69 (80,7–81,4 → 82,3–82,8 tok/s); 35k-Prosa 70–72 → 68–69;
+  150k 86,8–86,9 → 84,5–84,9; 250k 93,6–93,8 → 90,4–90,8. Texte: je Arm in allen Boots byte-gleich (Greedy 3, Qualität 8),
+  zwischen den Armen alle verschieden (neue Reduktionsreihenfolge im Softmax); alle gelesen: Motor, Primzahl (fm überspringt
+  gerade Zahlen, Beispiele richtig), Zug 84 km/h, Kuanda zurückgewiesen (fm nennt zusätzlich Kenneth Kaunda als mögliche
+  Verwechslung, nichts erfunden → bestanden), Logik, Code-Bug, Zusammenfassung zwei Sätze, Englisch Rayleigh: gleichwertig.
+  Langkontexttexte streuen in beiden Armen (auch prod-a gegen prod-b), gelesen gleichwertig. Speicherspitzen Messung (MiB) fm
+  0=39193 1=32158 2=47285 3=32158 4=32158 gegen prod 0=39233 1=32178 2=47345 3=32178 4=32178 (20–60 MiB weniger).
+  Annahme (`ab_dsv4sm_accept_2026-10-21.log`, fm Runden 0–5 gegen Prod 0–5; Akzeptanz %, mehr besser): Prosa 37,1 → 35,2,
+  Englisch 37,6 → 36,3, Code 71,6 → 73,2, Bearbeitung 93,3 → 93,3; Tokenzahlen verschieden (12487 / 2265 / 2789 / 11100), weil
+  die Texte abweichen. Sechs Runden reichen für ±2 Punkte nicht (split 32 fiel in 8 von 8 Vergleichen, hier gemischt) →
+  **Tempo klar besser, Annahme offen: 18 Runden vor der Umstellung.**
+- **Profile** (`nsys/{ds-stages-1020,pp4-stages-1021,tp2-stages-1021,q27-stages-1021}`, je ~150k-Prefill; Anteil an der
+  Kernzeit der Stufe):
+  - DSv4 PP5 (90,7 s): RTX-Stufen Engstelle (V100 warten 24,5–26,1 s); Skinny-MoE 36 %, Indexer-Epilog 16 % (behoben),
+    Sparse-Attention ~19 % (Hilfsschritte behoben).
+  - Flash-Next PP4 (43,2 s): MoE 35–47 % auf allen Stufen (Häppchen 748 Token); Engstelle V100-Stufe 2 mit 15 Schichten
+    (wartet 2,5 s, RTX-Stufen 10,3 / 13,4 s). 11,10,15,12 stammt aus dem 29k-Sweep vom 15.10.; für langen Kontext lohnt ein
+    eigener Sweep (Speichergrenzen siehe 15.10.).
+  - Flash-Next TP2×PP2 (83,9 s): MoE 27–34 %, Allreduce 28–30 % (7,9 MB je Aufruf, 3,9 ms).
+  - 27B TP2 (267,9 s): `flash_fwd_splitkv_kernel` 40,4 % (108 s, grob 20 TFLOPS bei Kopfdim 256), Allreduce 35,6 % (95 s).
+  - RTX/V100 je Aufruf (~1,3 = Bandbreite): Ausreißer nur kleine Triton-Kerne ohne Auslagerung (STACK 0): hc_combine_norm
+    1,59, qsa_lexicographic_topk 1,48, hc_gate_mix 1,48, qnorm_rope 1,47, inverse_rope 1,38 — je ≤ 2 % Stufenzeit.
+- **NCCL-Allreduce ist über die Umgebung ausgereizt** (Mikrobench je Nachrichtengröße, RTX-Paar 0,2 und V100-Paar 1,3): ab
+  1 MB 2,1 GB/s Nutzlast je Rang, gleich für PROTO Simple/LL, Puffer 1/4 MB; 4–16 Kanäle +3–4 %. Karten an PCIe Gen3 x4.
+  `NCCL_SHM_USE_CUDA_MEMCPY=1` hebt große Nachrichten auf 2,6 GB/s (+23 %), verdoppelt aber den Decode-Allreduce (27B 4×5120:
+  57,6 → 103–108 µs) und gilt je Prozess → verworfen. Hebel nur strukturell: Überlappung oder eigener Host-Allreduce.
+- **Skinny-MoE mit 32 statt 16 Zeilen je Gewichtsladung (RB 4)**: auf V100 1,10–1,35× langsamer (DSv4 und Flash-Next, 512–2048
+  Token), bitgleich → das Neulesen der Gewichte ist nicht die Bremse. Vermutung: je Block nur 32 Ausgabespalten, die
+  Aktivierungen werden je Spaltenkachel neu gelesen (w13 bei 512 Token ~3,2 GB L2-Verkehr je Aufruf gegen 2,28 GB Gewichte).
+  Marlin-MoE als Ersatz scheidet aus (Decode 37 % langsamer, zweites Layout = doppelter Speicher).
+- **Rangliste nächster Hebel (Vorschlag):** 1. Umstellung auf 5669da106 (Tempo und Annahme bestanden) oder gleich e1cb50fd9, wenn dessen 18 Annahmerunden halten (vorher die 27B-AOT-Ordner `a64204a2a77f…`,
+  `7e4353dce08f…` und Compile-Cache `f753253985` verschieben, Kontrolle `run_prodcheck_qpn8split_2026-10-21.sh`); 2. Prefill-
+  Pfad im Skinny-MoE mit breiteren Spaltenkacheln, auf Turing m16n8k8 (größter Posten in DSv4 und Flash-Next); 3. 27B-Langkontext-
+  Attention auf Turing (FA2 splitkv, d 256); 4. TP-Allreduce überlappen; 5. PP4-Aufteilung für langen Kontext; 6. die kleinen
+  Triton-Kerne. PR-Angebote an 1Cat für Indexer-Epilog und Sparse-Softmax (unser Code) auf Peuquis Ansage.
+
 **Nachtrag 20.10. 21:20: Produktion seit 20:12 = 4da0bcfa4 (QPN8-Turing-Kern M 9–512), Kontrolle bestanden, Tag
 `verified-2026-10-20-qpn8-turing`; Split-Regel 6c0ef8efb an der 27B +1,4–1,8 % Decode, DSv4-A/B dazu läuft.**
 - Umstellung nach Peuquis Freigabe: ff `prod-fork-main` 23e34b03c → 4da0bcfa4, `_C` bec73f532fe6 (alte 57721a8c440d in

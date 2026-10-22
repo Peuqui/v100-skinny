@@ -13,6 +13,31 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 22.10. 08:40: Triton-A/B abgebrochen — weder 27B noch DSv4 haben einen Triton-Kern mit `tl.dot` im Pfad.**
+Peuqui 08:35: „briche es ab, wenn wir keine Triton-Vergleichswerte bekommen können, und fixe das erstmal“; danach: **erst
+sämtliche Optimierungen umsetzen, dann gemeinsam testen** (spart Läufe). Log `~/.cache/bench-scripts/ab_triton_2026-10-22.log`,
+GPU-Protokoll 27B `gpu_ab_triton_2026-10-22-q27.csv`, DSv4 `gpu_ab_triton_2026-10-22.csv`. Arme: Produktion 79e07bfef
+(Stock-Triton 3.6) gegen `-pv-vllm` mit `/home/mp/.cache/triton-sm7x-v2` (433472b167) und eigenen Caches.
+- 27B TP2 (RTX): pv-kalt, prod-a, pv-a vollständig, prod-b beim Claude-Neustart 07:42 abgebrochen. prod-a / pv-a: Prefill
+  184 134 Token 358,68 / 358,64 s, danach 54,1 ms/Schritt und 51,2 Token/s; 249 992 Token 565,88 / 566,15 s, 62,3 / 62,4 ms,
+  40,8 Token/s; Prosa 75,7–75,9 / 75,7–75,8 Token/s bei 32–33 ms. Qualitätsantworten prod-a und pv-a bytegleich.
+- DSv4 PP5 (ab 07:49 als systemd-User-Einheit): pv-kalt, prod-a, pv-a, prod-b gemessen, Abbruch 08:35 im Langkontext von
+  prod-b. prod-a / pv-a / prod-b: Prefill 178 480 Token 79,25 / 79,20 / 79,22 s, 83,6 / 83,9 / 84,0 ms/Schritt (Token/s
+  40,4 / 44,0 / 44,4 je nach Annahme); 287 039 Token (prod-a / pv-a) 144,74 / 144,83 s, 90,1 / 90,0 ms, 33,8 / 34,9 Token/s;
+  Prosa in allen Armen 46,8–47,0 Token/s bei 61 ms.
+- Ursache, an Quelle, Journal und Cache belegt: 27B — Attention FA2 nativ, GDN-Prefill TileLang (FlashQLA-SM70), GEMMs
+  QPN8/NVFP4 nativ; Triton nur Inductor-Fusionen, Sampler, Conv1d, GDN-Decode-Update. DSv4 — Indexer-Prefill cuBLAS +
+  Triton-Epilog, Indexer-Decode „cuBLAS route“, Sparse-MLA-Decode „batched matmul“, Prefill BMM + Triton-Softmax. Der
+  sm7x-Triton-Cache nach dem DSv4-Kaltlauf: 103 Kerne, keiner mit `tl.dot` (`~/.cache/bench-scripts/triton_dot_kernels.py`,
+  AST-Abgleich Quelle gegen Cache); von 72 gleichnamigen Kernen sind 64 im Befehlsteil bytegleich mit Stock-Triton, 8 nur
+  umgeordnet (`triton_compare_ptx.py`). Die `tl.dot`-Kerne im Produktions-Cache (`_paged_index_logits_relu_kernel`,
+  `_sm70_sparse_paged_fp8_kernel` u. a.) stammen aus älteren Routen.
+- Folgerung: sm7x-Triton wirkt erst, wenn Routen auf Triton-Tensorkern-Kerne umgestellt werden. Vorgehen: jede Route als
+  eigener Schalter, je Schritt nur Kerntests und Mikrobench im CUDA-Graph, am Ende je Modell ein A/B/A/B.
+- Claude-Neustart beendet auch `setsid`-Jobs → lange Läufe als `systemd-run --user`
+  (`~/.cache/bench-scripts/start_ab_triton_ds_2026-10-22.sh`). Mikrobench-Skripte der Triton-Arbeit gesichert unter
+  `~/.cache/bench-scripts/triton-sm7x/` (vorher nur im `/tmp`-Scratchpad).
+
 **Nachtrag 22.10. 04:25: Triton mit Tensorkernen auf Turing — Frage „Triton heute / Triton mit Tensorkernen / Handkern“
 beantwortet (Peuqui 21.10. spät: „das will ich echt beantwortet haben“).** Eigener Triton-Baum
 `/home/mp/Projekte/vllm-research/triton-sm7x` (v3.6.0 = Torch-Pin, Zweig `sm7x-tensor-cores`, lokal, nicht gepusht), Bau-venv

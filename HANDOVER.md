@@ -28,6 +28,56 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   Load + Adressrechnung im Dot-Operand-Layout (kein Smem, keine Barriere), B immer, A nur als reiner Load. Nur-B-Fassung
   (Runde `directload`, 20:31): alle Prüfungen 0 Fehler. **Mit A-Erweiterung (Runde `directload2`): check_skinny_volta 72
   schlechte Fälle → zuerst klären** (Log `~/.cache/bench-scripts/triton-sm7x/check_skinny_volta_directload2.log`).
+  **Geklärt 20:45:** keine Rechenfehler, sondern Absturz im Prefetch-Pass bei ≥ 2 Stufen (`getPrefetchSrc` dereferenzierte
+  die erzeugende Operation eines registergepipelinten Schleifenarguments). Fix in `Prefetch.cpp` (uncommittet, gebaut),
+  Repro `repro_decode_stages.py`; Runde `directload3` läuft.
+  **21:15 committet als e74d755ee8 — nur B direkt** (A direkt war langsamer, 1,17 → 1,33×, und erzeugte mit 3D S16/BN64/
+  BK64/2 Stufen falsche Ergebnisse → zurückgenommen). Gegen QPN8 (A/B/A/B): wkv 0,68×, wq_a 0,79× (Triton vorn), wq_b 1,08×,
+  shared_w13 1,06×, wo_b 1,14×, shared_w2 1,22×. Nächster Hebel: ncu-Befehlszählung (Triton gibt mehr Befehle aus als QPN8).
+  **21:25 ncu (wo_b):** Triton führt WENIGER Befehle aus (4,18 Mio. gegen 6,06 Mio.); Unterschied allein Parallelität
+  (≈ 6 gegen 26 Warps/SM, je Warp 4× längere K-Kette), dazu Barriere- und lg_throttle-Stalls. Schließt nur Split-K im Block
+  mit 16 Warps (wie QPN8); offen: x-Operand ohne Smem-Barriere (A direkt war im 2D-Kern langsamer und gab in 3D S16/BN64/
+  BK64/2 Stufen falsche Ergebnisse — Ursache nicht geklärt, vor neuem Versuch untersuchen).
+  **21:20 Familien-Bench (Modul `w8a16_block_fp8.py`, `run_bench_family.sh e74d`, Logs `family_e74d_gpu*.log`), Faktor
+  Triton/heute A/B/A/B:** V100 Decode wq_a 0,80, wkv 0,68, wq_b 1,09, w13 1,04, wo_b 1,16, w2 1,23; V100 Prefill 1,05–1,31
+  (Dequant+cuBLAS bleibt). RTX Decode wkv 0,79, wq_a/wq_b 1,00, w2 0,98, wo_b 1,02, w13 1,04; RTX Prefill wq_a 0,86, wkv
+  0,91, w13/w2 1,03, wo_b 1,04, wq_b 1,14. → Route je Form/Karte aus dieser Tabelle.
+  **21:30 Volta-GEMM 4096³ ncu (`profile_gemm.py`, Log `ncu_gemm_4096.txt`):** cuBLAS = CUTLASS 256x128 s884, Split-K 2,
+  1,64 ms, Tensor 86 %; Triton 128x256x32 w8 s3 1,99 ms, Tensor 75 %. Befehle/Register/Smem/Belegung gleich; Triton-Stalls je
+  Warp: Barriere 67 500 (CUTLASS 4 500), long scoreboard 31 200 (3 800), mio 18 300 (3 000), wait 67 900 (30 200). Bankkonflikte
+  sind es nicht (CUTLASS 3,2 Mio., Triton 69 000). → Volta-Hauptschleife: globale Loads früher (Vorladeabstand), MMA-Operanden
+  mit LDS.128 statt .v2; wirkt auf jeden Volta-Prefill.
+  **21:45 Attention (Familie 4) zurückgestellt:** `bench_attn.py` (jetzt mit Produktions-Handkern, PYTHONPATH braucht
+  `1Cat-vLLM-fork-main`), RTX 27B-Formen, Prefill 2048: sm75-Handkern 3,18/13,32/53,33 ms (8k/32k/128k, 57–61 TFLOPS ≈ Grenze
+  fp32-Akku), FA2 10,52/35,94/144,70, Triton unified_attention 10,57/46,66/195,65 (Log `attn_e74d_rtx.log`). Der frühere
+  „Triton schlägt FA2“-Befund galt nur gegen FA2. Handkern bleibt; V100-Dichte-Attention nutzt kein Produktionsmodell.
+  **Nächster Hebel Decode (W8A16 + MoE):** Split-K im Block mit 16 Warps; A direkt laden, wenn kein anderer Warp dieselben
+  A-Elemente braucht (LL ohne Warp-Mehrfachhaltung: 3D ja, 2D nein) — vorher den 3D-Fehler (S16/BN64/BK64/2 Stufen) reproduzieren.
+  **22:10 Volta-Hauptschleife (Prefill-GEMM), uncommittet:** 0efa8e4aac committet (Direktlade nur ohne Warp-Mehrfachhaltung,
+  A-direkt verworfen, neue `check_split_volta.py`). In Arbeit: eine Barriere je Iteration statt zwei — Pipeliner legt den
+  registergestagten Load+Store eine Stufe vor den Verbrauch (`createRegisterStagedCopy`, Attribut
+  `ttg.register_staged_store`), Membar-Filter `NVIDIA::canSkipRegisterStagedBarSync` nur unter sm_80 (der allgemeine
+  `canSkipBarSync` ist seit Triton-Commit b39c1e14b8 aus dem NVIDIA-Weg genommen). Erster Versuch (Store blieb auf Stufe 0)
+  war FALSCH: bei 3 Stufen schreibt der Store dort den Puffer, den der Dot gerade liest → Race (check_skinny 3, check_split 1
+  Fehler; Dot-Tests merkten es nicht). GEMM-Gewinn jenes Versuchs (4096³ 74,1 → 77,8 TFLOPS) daher ungültig. Runde
+  `onebarrier2` läuft. Danach: A-Operand mit Verschränkungseinheit 8 (LDS.128), Entwurf siehe Verlauf (td, Volta-Zweig).
+  **22:40 committet 11521d5263:** eine Barriere je Iteration, nur Volta (Load/Store eine Stufe vor dem Verbrauch + Membar-
+  Filter); V100-GEMM 4096³ 74,1 → 76,4, M 128 44,7 → 48,0 (> cuBLAS 44,8). Turing behält den Weg aus 35d55f38f3 (zwei
+  Barrieren): dort 4096³ −3 % im A/B mit der neuen Stufe, Ursache offen (Register gleich, keine Spills). **Offen: eigenes
+  ncu-Profil Turing-GEMM gegen cuBLAS** (RTX 4096³ ≈ 70 gegen 82 TFLOPS; m16n8k8/ldmatrix, andere Hebel als Volta).
+  In Arbeit: A-Verschränkung 8 (LDS.128 für k-zusammenhängende Operanden mit kWidth 4), Runde `avec8`.
+  **Stand 22:45 (Kontext 94 %, Übergabe für die nächste Instanz):** einzige uncommittete Änderung im Triton-Baum ist
+  `include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td` (Volta-Zweig: `vec = 8` wenn `alongK && kWidth == 4 && K >= 8`),
+  gebaut 22:37. Kompilat 128x256x32: A jetzt 32× ld.shared.v4 + 32× v2 statt 64× v2 + 16× v4. Runde `avec8` läuft
+  (`run_gemm_round_avec8.out`, Logs `check_*_avec8.log`, `gemm_avec8_{v100,rtx}.log`). Entscheidung: alle Prüfungen 0 und
+  V100-GEMM gegenüber 11521d5263 (M16 10,5 / M128 48,0 / 512 71,9 / 2048 71,8 / 4096³ 76,4 / 8192x2048x7168 77,5 TFLOPS) ohne
+  Verlust außerhalb ~2 % → nur die .td committen (dazu `run_budget.sh avec8` + `compare_ptx_sets.py` für RTX-Gleichheit);
+  sonst `git checkout -- include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td`, neu bauen, Befund notieren.
+  Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
+  (Muster 7458c6257, Tabelle 21:20 oben), (3) MoE-Familie (Explore-Agent wie für Attention), (4) Split-K im Block 16 Warps.
+  **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den
+  anderen Routen in den Fork. Jetzt Familie 4 Attention (27B-FA 40 % des Prefill; Triton-FA RTX 14,4 vs FA2 24,8 ms bei 32k,
+  V100 ~1/4 von flash_attn_v100), danach MoE (Familie 3, 27–47 %).
 
 **W8A16-Decode V100 (M 6, Gewichtsrotation, Faktor Triton/QPN8, kleiner ist besser), Stand Runde `directload`:**
 gepackt+1 Start: wkv 0,63, wq_a 0,75 (Triton vorn); wq_b 1,09, shared_w13 1,08, wo_b 1,15–1,20, shared_w2 1,23 (dort

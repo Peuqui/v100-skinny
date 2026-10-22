@@ -15,6 +15,11 @@ Vorige Übergabe (21.10. 15:55) liegt in der Git-Historie dieses Repos. Grund de
   Schalter (KernelConfig-Feld bzw. Policy), je Schritt nur Kerntests + Mikrobench im CUDA-Graph, am Ende je Modell ein
   A/B/A/B (Vorlage `run_ab_triton_2026-10-22.sh` im Modus `prodpv`, Start über `systemd-run --user`).
 - Peer-Status: „sm7x-Triton: Routen auf Triton-Tensorkern-Kerne umstellen“.
+- **Stand 10:20:** Familie 1 (Indexer-Prefill) fertig, Fork `triton-sm7x-routes` bis 7458c6257 gepusht; Zahlen im
+  STAND-Nachtrag 22.10. 09:00. Nächstes: Triton-Dot-Testfehler reparieren (Peuqui), dann Familie 2 (quantisierte
+  Linear-GEMM). Aufräumen: Skript `cleanup_2026-10-22.sh` (Scratchpad dieser Sitzung, ~36 GB Test-Caches/HF-Testmodelle)
+  wurde von der Auto-Prüfung blockiert — Peuqui startet es selbst oder gibt frei; offen: Host-Blobs der stt-suite (3,3 GB,
+  nur mit Okay), GLM-Diagnose-Checkpoints (~95 GB) und nsys (6 GB) nach `/mnt/speicher` verschieben (Okay ausstehend).
 
 ## Ergebnisse 21./22.10. (alle gemessen, Dateien in STAND.md)
 

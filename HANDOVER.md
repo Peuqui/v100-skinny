@@ -6,29 +6,15 @@ Betriebsstand (SSOT): `STAND.md`, Nachträge 22.10. 04:25 bis 07:20 ganz oben un
 Vorige Übergabe (21.10. 15:55) liegt in der Git-Historie dieses Repos. Grund der Übergabe: Peuqui startet nur Claude neu
 (kein Rechner-Neustart). AIfred-Dienst bleibt gestoppt, kein anderer Dienst braucht die Karten (Peuqui 06:00).
 
-## Läuft gerade / zuerst prüfen
+## Nachtrag 22.10. 08:45 — Triton-A/B abgebrochen, neues Vorgehen
 
-- **Triton-A/B 27B + DSv4** (`~/.cache/bench-scripts/run_ab_triton_2026-10-22.sh 79e07bfef prodpv`, Log
-  `ab_triton_2026-10-22.log`, GPU-Protokoll `gpu_ab_triton_2026-10-22.csv`, Backup
-  `~/.cache/prod-switch-2026-09-29/config.yaml.vor-ab-triton-2026-10-22`). Produktion (Stock-Triton 3.6) gegen Variante
-  `-pv-vllm` = Produktion + `PYTHONPATH=/home/mp/.cache/triton-sm7x-v2` + eigene Caches
-  (`TRITON_CACHE_DIR=~/.cache/triton-cache-pv-sm7x`, `VLLM_CACHE_ROOT=~/.cache/vllm-pv-sm7x`,
-  `TORCHINDUCTOR_CACHE_DIR=~/.cache/torchinductor-pv-sm7x`), damit nichts in die Produktions-Caches gelangt.
-  Aufruf: `FM_TREE=/home/mp/Projekte/vllm-research/1Cat-vLLM-work MODELS="q27 ds" RUN_TAG=tri- PV_DROP=TORCHINDUCTOR_CACHE_DIR
-  PV_EXTRA="PYTHONPATH=… TRITON_CACHE_DIR=… VLLM_CACHE_ROOT=… TORCHINDUCTOR_CACHE_DIR=…"`.
-  Stand 07:40: q27 pv-kalt, prod-a, pv-a fertig (Greedy überall dreimal „identical“), prod-b misst, danach pv-b, dann DSv4
-  (5 Läufe, Ende ~10:30). **Peuqui 07:45: weiterlaufen lassen**, auch über den Claude-Neustart. Das Skript läuft als
-  PID 2578932 in eigener Session (SID 2578922), Ausgabe in die Logdatei; ob der Claude-Neustart es mit abräumt, ist offen.
-  **Nach dem Neustart zuerst prüfen:** `ps -p 2578932` und Log-Fortschritt; neuen Wächter setzen
-  (`~/.cache/bench-scripts/watch_job.sh 2578932 25 ~/.cache/bench-scripts/ab_triton_2026-10-22.log`). Peuqui Bescheid geben,
-  wenn das A/B fertig ist.
-- Wenn der Lauf durch einen Neustart abgebrochen wurde: Config gegen das Backup prüfen (`cmp`), Test-Einträge
-  `-pv-vllm`/`-fm-vllm` dürfen nicht stehen bleiben; verwaiste vLLM-Worker (ppid 1) prüfen; dann nur die fehlenden Läufe
-  wiederholen (RUN_TAG neu, damit Antwortdateien nicht überschrieben werden).
-- Auswertung: je Lauf Langprompts (`dsv4_bench.py --lang`, 4 Seeds), Decode-Bench, Qualitätsfragen
-  (`quality_2026-09-27/fm2-tri-*-ds.json` von Hand lesen), Langkontext-Probe, Speicherspitzen nach MESSENDE.
-  Danach **Entscheidungsvorlage für Peuqui: sm7x-Triton in die Produktion?** (Umstellung nur mit Freigabe).
-- Peer-Status steht auf „Triton-Tensorkern-Machbarkeit…“: nach Abschluss mit `""` zurücksetzen.
+- Das Triton-A/B (27B + DSv4) ist abgebrochen: Beide Modelle haben **keinen Triton-Kern mit `tl.dot`** im Pfad, beide Arme
+  waren bis auf Rauschen gleich (Zahlen und Belege im STAND.md-Nachtrag 22.10. 08:40). Nichts läuft, Config gleich Backup,
+  Karten leer.
+- **Peuqui 22.10. ~08:40: erst sämtliche Optimierungen umsetzen, dann gemeinsam testen.** Jede neue Route als eigener
+  Schalter (KernelConfig-Feld bzw. Policy), je Schritt nur Kerntests + Mikrobench im CUDA-Graph, am Ende je Modell ein
+  A/B/A/B (Vorlage `run_ab_triton_2026-10-22.sh` im Modus `prodpv`, Start über `systemd-run --user`).
+- Peer-Status: „sm7x-Triton: Routen auf Triton-Tensorkern-Kerne umstellen“.
 
 ## Ergebnisse 21./22.10. (alle gemessen, Dateien in STAND.md)
 
@@ -66,7 +52,10 @@ lokal; Bundle-Sicherung `/mnt/speicher/backup/triton-sm7x-tensor-cores-2026-10-2
 
 ## Offene Arbeit (Reihenfolge)
 
-1. Triton-A/B auswerten → Entscheidungsvorlage (Tempo je Modell, Qualität, Speicher). Davon hängen 2 und 4 ab.
+1. Routen auf Triton-Tensorkern-Kerne umstellen, wo sie den heutigen Weg schlagen (Mikrobench je Gerät): DSv4-Indexer
+   Prefill/Decode und Sparse-MLA (Triton-Kerne liegen schon im Baum, heute cuBLAS/BMM), 27B-Prefill-Attention (FA2 40 % des
+   150k-Prefills; Triton-FA RTX 14,42 gegen FA2 24,76 ms, braucht einen prefill-tauglichen Kern mit Seitentabelle), GLM
+   (KDA-Kette, Variante C). Danach gemeinsame Testreihe → Entscheidungsvorlage sm7x-Triton in die Produktion.
 2. GLM Variante C: MXFP8-Gewichte in 8 Bit (KDA q/k/v/o, dichtes MLP, lm_head; spart ~5 GiB), Triton-Kern
    `scratchpad/triton/mxfp8_w8a16.py` (GEMM korrekt, Prefill M 512 noch 1,6× langsamer als cuBLAS-fp16; neue GEMV-Variante
    ohne tl.dot für M ≤ 8 geschrieben, noch ungetestet). Prefill braucht Tensorkern-Triton. Danach Schichtverteilung

@@ -1,10 +1,59 @@
-# Übergabe — Stand 22.10.2026, 07:45 (Projekt vllm-research)
+# Übergabe — Stand 22.10.2026, 20:50 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
 Betriebsstand (SSOT): `STAND.md`, Nachträge 22.10. 04:25 bis 07:20 ganz oben unter „Laufzeitumgebung“.
 Vorige Übergabe (21.10. 15:55) liegt in der Git-Historie dieses Repos. Grund der Übergabe: Peuqui startet nur Claude neu
 (kein Rechner-Neustart). AIfred-Dienst bleibt gestoppt, kein anderer Dienst braucht die Karten (Peuqui 06:00).
+
+## Nachtrag 22.10. 20:50 — Abend: Volta-Compiler nach Handkern-Vorbild, Familie 2 (W8A16-Decode) läuft
+
+**Regeln von heute Abend (alle im Gedächtnis `feedback_unify_hand_kernels_in_triton.md`):** Maximum aus den Karten, so viel
+wie möglich (am liebsten alles) in Triton, aber nie langsamer; der Schnellere gewinnt je Form und Karte (Route wählt nach M,
+gemessene Konstanten); innerhalb der Messstreuung = gleich; 10-%-Regel gestrichen; holt Triton einen Handkern ein, sofort
+umstellen. Handkern-Algorithmik 1:1 übernehmen (Kernquelle oder eigener Compiler). Programmierteil zuerst, Modell-A/B/A/B
+gesammelt am Schluss (DSv4 + 27B, GLM-5.3 wenn reif, Flash-Next nur bei eigenen Pfaden); Schnellprüfungen je Schritt
+bleiben. AIfred-Dienst ist aus bis Projektende (keine 06:45-Grenze). **Befehle nur über freigegebene Wege** (`env …`,
+`timeout … bash skript`, Edit/Write; nie `export`, `rm`, `bash x.sh` direkt — `feedback_avoid_approval_commands.md`).
+Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zuerst anbieten, sonst eigener Fork-Name.
+
+**Triton-Baum `triton-sm7x`, Zweig `sm7x-tensor-cores` (lokal), Commits heute Abend:**
+- dcf200731d Volta row/col je Operand (kWidth 1/4 nach `getOrderForMemory`); V100-GEMM 64 → 74 TFLOPS (cuBLAS 86).
+- d105df138b Volta-Kachel **8x32** für Dots ≤ 8 Zeilen (instrShape [8,32], Quadpairs nebeneinander wie QPN8), Hochzieh-
+  Regel aus Linear Layout (Dekodieren im Operand-Layout nur ohne Lane-Mehrfachhaltung), Faltungsfix MMAv1 (Absturz map::at
+  bei M < 4 aus dcf200731d). Budget unverändert, RTX-PTX bytegleich.
+- 2ddd426b2a **Batch-Dots (3D) auf Volta** (Split-K im Block über Batch-Dimension), k-Dimension der row/col-Wahl rangfest.
+  PTX aller 786 Budget-Kompilate bytegleich zu d105df138b.
+- **Uncommittet in `RemoveLayoutConversions.cpp`: direkter Registerweg** (`hoistConvertDotOperand`, nur 8x32-Kachel):
+  Load + Adressrechnung im Dot-Operand-Layout (kein Smem, keine Barriere), B immer, A nur als reiner Load. Nur-B-Fassung
+  (Runde `directload`, 20:31): alle Prüfungen 0 Fehler. **Mit A-Erweiterung (Runde `directload2`): check_skinny_volta 72
+  schlechte Fälle → zuerst klären** (Log `~/.cache/bench-scripts/triton-sm7x/check_skinny_volta_directload2.log`).
+
+**W8A16-Decode V100 (M 6, Gewichtsrotation, Faktor Triton/QPN8, kleiner ist besser), Stand Runde `directload`:**
+gepackt+1 Start: wkv 0,63, wq_a 0,75 (Triton vorn); wq_b 1,09, shared_w13 1,08, wo_b 1,15–1,20, shared_w2 1,23 (dort
+schwankte die Referenz 20 % zwischen Läufen → Schlussmessung jetzt A/B/A/B verschränkt, 5 Runden, Median).
+ncu wo_b: alle lesen 33,67 MB DRAM; QPN8 ≈ 26 Warps/SM (78 % DRAM), Triton ≈ 6 Warps/SM (67 %) — Engpass Parallelität.
+Split-K im Block (3D, S 16 = Handkern-Struktur) war durch Smem+Barriere je K-Schritt langsam; mit direktem Weg für A und B
+sollte es die Lücke schließen (darum die A-Erweiterung). Restliche Barrieren im 3D-Kern: Skalen-Load ([S, BN] = Threadzahl
+→ `isExpensiveLoadOrStore` hält ihn für teuer; Kandidat `<` → `<=`, dann PTX-Mengen vergleichen).
+
+**Werkzeuge (alle in `~/.cache/bench-scripts/triton-sm7x/`):** `build_triton.sh` (Aufruf `timeout 3600 bash …`);
+`run_round.sh <tag>` = `run_checks_volta.sh` (check_skinny/dots/batched auf GPU 1/3/4 + `run_dot_tests_par.sh` auf allen
+5 Karten, 4:38 min statt 8 min) + `run_exp_decode.sh` (exp_w8a16_decode.py auf 3 V100 + wo_b allein); Start als Einheit:
+`env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemd-run --user --unit=… bash -c
+'exec bash run_round.sh TAG >> run_round_TAG.out 2>&1'`; Wächter `timeout 14400 bash ~/.cache/bench-scripts/watch_job.sh
+unit:… 15 <logs>` (setzt den User-Bus jetzt selbst). `compare_ptx_sets.py <cacheA> <cacheB>` (Regressionsbeleg),
+`run_budget.sh <tag>` (FA/Indexer/GLM; GLM-Bench ohne Graph ist im Parallellauf unzuverlässig, Einzel-A/B mit
+`run_glm_once.py`), `inspect_exp_kernel.py`/`inspect_cta_kernel.py` (TTGIR/PTX eines Tiles), `profile_exp.py` (Scratchpad,
+ncu-Ziel). Familienmodul-Entwurf `w8a16_block_fp8.py` (gepackte Dekodierung, Split-K in einem Start, multiple_of) —
+`bench_w8a16_fp8.py` soll ihn importieren (erst ändern, wenn kein Lauf den Bench importiert; exp importiert ihn als
+„per-element“). Messverfahren: Gewichtsrotation ≥ 48 MB + vorgefüllte Warteschlange (`feedback_microbench_in_cuda_graphs.md`).
+
+**Nächste Schritte:** (1) 72 Fehlfälle der A-Direktlade klären, Runde wiederholen, dann committen (Nachweis PTX-Mengen +
+Budget). (2) Skalen-Load ohne Barriere. (3) Bench auf Familienmodul, Decode+Prefill auf V100 und RTX. (4) Prefill V100:
+Volta-GEMM-Lücke 74 vs 86 TFLOPS (ncu Triton vs cuBLAS). (5) Route im Fork `triton-sm7x-routes` (Triton wo schneller,
+sonst QPN8/Dequant+cuBLAS), dann MXFP8/NVFP4 und weitere Familien. (6) Erkannt, nicht dringend: e4m3→fp16 vor sm_89 als
+Compiler-Weg (exakt inkl. NaN) für allgemeine Kerne.
 
 ## Nachtrag 22.10. 08:45 — Triton-A/B abgebrochen, neues Vorgehen
 

@@ -40,10 +40,17 @@ jetzt gebaut: `_C` 9f65e857ccb3, Prüfbaum `1Cat-vLLM-sm75` darauf; beide Zweige
   `~/.cache/bench-scripts/triton-sm7x/sweep_idx_table_*.json`, Nachmessung `confirm_idx_final_*.log`. Nebenbei: die
   Kopfzahlen-Tests aus 7d83b7032 liefen nie auf GPU und waren rot (Referenz ohne fp16-Rundung) — repariert.
   Für die Aufräumphase vorgemerkt: `indexer_prefill_cublas` (führt mit dem Feld nur noch zu einem FMA-Weg).
-- Triton `test_core -k dot` (RTX 70 / V100 71 Fehlschläge, auch mit Stock-Triton): 40× int8-3D-Dot Compilerabsturz in
-  `TritonGPUAccelerateMatmul` (FMA-Weg erweitert int8 mit `arith.extf`), 26× fp16-3D-Dot zu ungenau (FMA summiert bei
-  fp16-Ergebnis in fp16, bis 0,032 statt 0,01), 4× fp8 `test_dot_max_num_imprecise_acc` braucht 128 KB Smem, 1× V100
-  fp32-ieee offen. Peuqui 22.10.: reparieren.
+- **12:50 Triton `test_core -k dot` repariert (Peuqui: auch Upstream-Fehler beheben):** jetzt RTX 287/0, V100 287/0
+  (vorher 70 bzw. 71 Fehlschläge). Triton-Baum ed24adfaaa int8-FMA-Erweiterung (Absturz `arith.extf` auf i8, auch in
+  Triton main), 3e70421440 **Volta-MMA-Fragmentplätze aus dem Registerindex — bei Ausgaben unter 8 Zeilen/Spalten rechnete
+  MMAv1 falsch (2×4: Abweichung 10,5 statt 1e-6); frühere sm7x-Läufe auf V100 mit so kleinen Dot-Kacheln sind verdächtig,
+  der Indexer nicht (Kacheln ≥ 16)**, 455ca34f4a FMA mit fp16/bf16-Akkumulator summiert in fp32, 78e9487850 Batch-Dots auf
+  Turing über MMAv2 (Batch-Versatz in den Turing-Aufrufern), d902b6c272 fp8-Test überspringt nach `metadata.shared`.
+  Leistung unverändert (FA, Indexer, GLM-Sparse auf beiden Karten). Bundle erneuert. Skripte: `run_dot_tests.sh`,
+  `run_budget.sh` (Regressionsprüfung), `repro_small_dot.py` (mit `-P` starten, nicht `-I`: `-I` ignoriert PYTHONPATH).
+- Aufräumen 22.10. (Peuqui-Freigabe): ~39 GB Test-Caches, HF-Testmodelle, alte Triton-Kopie, Backup 15.10., verwaiste
+  Parakeet-Blobs gelöscht; GLM-Diagnose-Checkpoints (95 GB) nach `/mnt/speicher/models/glm53-debug-checkpoints/`.
+  Systemplatte 98 % → 82 % (157 GB frei).
 - Regeln je Familie: ein Modul + ein Commit, Kacheln je Architektur als gemessene Konstanten, kein Autotuning zur Laufzeit,
   Abnahme Fehler ≤ heute und Tempo ≥ heute auf V100 UND RTX (CUDA-Graph-Mikrobench), alte Kerne erst nach der gemeinsamen
   Testreihe entfernen. Sicherung Triton: Bundles `triton-sm7x-tensor-cores-2026-10-22.bundle` (bis 433472b167) und

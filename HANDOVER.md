@@ -91,6 +91,24 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   `run_bench_family.sh <tag>` mit 11521d5263 — kippt W8A16-Prefill V100 (zuletzt 1,05–1,31× Dequant+cuBLAS) jetzt?
   Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (1b) A-LDS.128 mit konfliktfreier Verschränkung (oben), (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
   (Muster 7458c6257, Tabelle 21:20 oben), (3) MoE-Familie (Explore-Agent wie für Attention), (4) Split-K im Block 16 Warps.
+  **23:30 Familien-Bench 11521d (`family_11521d_gpu*.log`), Faktor Triton/heute:** V100 Prefill unverändert (wq_a 1,21,
+  wkv 1,31, wq_b 1,03, wo_b 1,16, w13 1,15, w2 1,19), V100 Decode wq_a 0,81, wkv 0,68, sonst 1,02–1,21; RTX Prefill wq_a 0,86,
+  wkv 0,90, sonst 1,00–1,03; RTX Decode wkv 0,79, sonst 0,98–1,03. **Ursache V100-Prefill:** auf der V100 gewann immer
+  `stages 1` (Sweep `sweep_w8a16_tiles.py`, Logs `sweep_11521d_*`): die registergestufte Hauptschleife griff beim fusionierten
+  Kern nie — (a) der Bench probierte nur stages 1–2 (Stufung erst ab 3), (b) der Pipeliner nahm nur Loads, deren Nutzer direkt
+  der Dot ist; das e4m3-Dekodieren dazwischen ließ ihn in den Ein-Puffer-Weg (2 Barrieren je Iteration) fallen. Nebenbefund:
+  128x128 mit 4 Warps spillt beim fusionierten Kern massiv (bis 87 ms; Dot-Ergebnis + Akku = 2 fp32-Kacheln), mit 8 Warps nicht.
+  **23:40 uncommittet, gebaut: `LowerLoops.cpp` `getRegisterStagedDecode`** — reine Elementweise-Kette zwischen Load und Dot
+  (jedes Glied einziger Nutzer, sonst nur Schleifeninvarianten) wandert mit in den Speicherschritt: einmal je Element dekodiert,
+  fp16 im Ringpuffer, eine Barriere je Iteration (Volta). TTGIR bestätigt (`dumps/fam_v100_64x64x64_w4s3_dec.ttgir`). Bench
+  jetzt mit stages 3. Runde `decstage`: alle 4 Volta-Prüfungen 0, Dot-Tests V100/RTX je 283 bestanden, 0 neu fehlgeschlagen.
+  Sweeps (`sweep_decstage_*`) liefen unter CPU-Last von Agent-Orc (Testsuite 23:41–23:43, SwiftShader-Chrome + Vite ab 23:45) —
+  unveränderte Kacheln 10–30 % langsamer, absolute Zahlen ungültig. Im selben Lauf V100: wo_b s3 128x128x64 w8 0,665 gegen
+  bestes s1 0,750 ms, w13 0,342 gegen 0,383, wkv 0,056 gegen 0,061 → Stufung bringt 8–11 %. **Messfunktion gehärtet:**
+  `bench_timing.py` (SSOT für bench_w8a16_fp8, exp, bench_gemm, sweep): `torch.cuda._sleep` ~30 ms vor jedem gemessenen Replay
+  statt eines Vor-Replays, damit Host-Verdrängung nicht in die Messung fällt. **Nächstes, wenn Agent-Orc fertig ist** (hat
+  Vorrang, Peuqui 23:50): Sweeps wo_b/w13 auf V100+RTX wiederholen, dann `run_bench_family.sh decstage` (A/B/A/B gegen heute),
+  Budget + PTX-Mengen (RTX-Pfad ändert sich bei stages ≥ 3 ebenfalls), commit.
   **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den
   anderen Routen in den Fork. Jetzt Familie 4 Attention (27B-FA 40 % des Prefill; Triton-FA RTX 14,4 vs FA2 24,8 ms bei 32k,
   V100 ~1/4 von flash_attn_v100), danach MoE (Familie 3, 27–47 %).

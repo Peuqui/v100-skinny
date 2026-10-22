@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 01:00 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 01:45 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -137,6 +137,21 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   das gepackte Layout liest je Warp 512 B am Stück und schlägt im Decode das Checkpoint-Layout; V100 M 512: wo_b 0,95,
   wq_b 0,96, w13 1,04, wq_a 1,06, w2 1,09, wkv 1,12. RTX (vor Fix 2) M 512 0,90–1,10, M 6 0,88–1,10. Bench wählt Layout
   per `W8A16_LAYOUT=qpn8|raw`. Runde `qpn8b` (Prüfungen, QPN8-Checks, Familie, Budget gegen `decstage`) läuft seit 00:55.
+  **01:40 committet b919d9104e** (reshape/trans in der gestuften Kette + Hoist-Regel nur für reine Umordnungsketten; die
+  erste, pauschale Hoist-Regel brach GLM-Kachel 32/64/8/1 auf der RTX: 160 KB Smem statt ≤ 64 KB → verfeinert). Nachweis
+  Runde `qpn8c`: Prüfungen 0, Dot-Tests 0 neu, QPN8-Kern 390/390 je Karte; Budget gegen `decstage`: sm_70 PTX-gleich, sm_75
+  nur GLM in anderer Op-Reihenfolge (24/24 Kacheln gleiches PTX-Befehlshistogramm + Smem). GLM-Parallel-Bench schwankt bei
+  identischem PTX 13,40 ↔ 14,99 ms (V100) → nur `run_glm_once.py` (jetzt `GLM_TILE=BH,BK,w,s`) und `ab_glm_builds.sh`
+  (A/B über Baustände per Patch-Dateien in `patches/`) zählen. **Familie `qpn8c` (Faktor Triton/heute):** V100 M 6: wkv 0,67,
+  wq_a 0,80, wq_b 0,85, wo_b 0,88, w13 0,97, w2 1,14; V100 M 512: wq_b 0,96, wo_b 1,01, w13 1,03, wq_a 1,07, w2 1,08, wkv 1,12;
+  RTX M 6: wkv 0,86, wo_b 1,01, w13 1,03, wq_b 1,05, wq_a 1,07, w2 1,08; RTX M 512: wq_a 0,84, wkv 0,90, w13 0,93, w2 0,94,
+  wq_b 0,95, wo_b 0,92. → Einzige reine M-Regel, die nirgends verliert: **RTX M 9–512 → Triton**. V100-Decode scheitert nur
+  an w2 (+14 %; Hebel Split-K im Block mit 16 Warps). Routenkachel im Entwurf: `w8a16_qpn8.route_tile` (sm75: 128x128x64
+  w8 s3, Split bis ≥ 64 Programme, max 8); `bench_w8a16_route.py` misst genau diese Auswahl über M (Lauf `r1` RTX läuft).
+  Fork-Plan: Kern nach `vllm/model_executor/kernels/linear/qpn/fp8_block_triton.py`, gepackter e4m3-Dekodierer nach
+  `vllm/models/deepseek_v4/common/ops/fp8_software.py` (SSOT; Indexer-Kopie `_e4m3_bits_as_scaled_fp16` später umstellen,
+  eigene Messung), Op `sm70_fp8::qpn8_native_linear` bekommt optionale Workspace-Tensoren (Partials ≤ 8 MB/Gerät, Locks).
+  **Fallen:** `ruff … && systemd-run …` — scheitert ruff, startet der Lauf nicht, der Wächter meldet sofort „fertig“.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

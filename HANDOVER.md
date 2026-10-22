@@ -1,4 +1,4 @@
-# Übergabe — Stand 22.10.2026, 20:50 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 00:40 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -109,6 +109,23 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   statt eines Vor-Replays, damit Host-Verdrängung nicht in die Messung fällt. **Nächstes, wenn Agent-Orc fertig ist** (hat
   Vorrang, Peuqui 23:50): Sweeps wo_b/w13 auf V100+RTX wiederholen, dann `run_bench_family.sh decstage` (A/B/A/B gegen heute),
   Budget + PTX-Mengen (RTX-Pfad ändert sich bei stages ≥ 3 ebenfalls), commit.
+  **23.10. 00:40 committet b5633732c9** (Dekodier-Kette im registergestuften Puffer; gebaut 00:37). Nachweis: Runde
+  `decstage` (Prüfungen 0, Dot-Tests 0 neu), Budget `decstage` gegen `warpshared3`: alle 394 sm_70- und 392 sm_75-Kompilate
+  PTX-gleich. Kernquelle `w8a16_block_fp8.py` dazu: (a) skalare Blockskala je K-Schritt (BN teilt 128, assert im Launcher;
+  V100-Prefill-Hauptschleife 890 → 844 SASS-Befehle/Iteration, `sass_loop_mix.py`), (b) Gewicht + Skala VOR x laden —
+  sonst setzt ptxas auf Volta das x-STS vor 5 der 8 Gewichts-LDGs (zwei Speicher-Rundreisen, wq_b-Decode 1,87× langsamer;
+  ncu `ncu_scale_wq_b_v100.txt`). Rest: wq_b-Decode-Kachel BN64 w2 auf V100 +14 % gegen Spaltenskala bei gleichen
+  DRAM-Bytes (lg_throttle 3,5 statt 1,2) — Familie wählt dort BM16 und liegt bei 1,02, QPN8 bleibt.
+  **Familientabelle `order` (00:30, `family_order_gpu*.log`, A/B/A/B, Faktor Triton/heute, < 1 = Triton schneller) — Grundlage
+  der W8A16-Route:** V100 M 6: wq_a 0,80, wkv 0,72, w13 0,96, wq_b 1,02, wo_b 1,05, w2 1,16; V100 M 512: wq_b 0,94, wo_b 0,97,
+  w13 0,99, wq_a 1,02, w2 1,05, wkv 1,06; RTX M 6: wkv 0,79, w2 0,97, wq_a 0,98, wq_b 1,03, wo_b 1,03, w13 1,04; RTX M 512:
+  wq_a 0,77, wkv 0,87, wq_b 0,95, w13 0,96, w2 0,96, wo_b 0,97. Kacheln je Form im Log (V100-Prefill 128x128x64 w8 s3,
+  RTX-Prefill 64x128x64 w4 s3). Werkzeuge neu: `bench_timing.py` (SSOT Messfunktion mit ~30-ms-Spin),
+  `sweep_w8a16_tiles.py` (alle Kacheln einer Form), `ab_scale_variants.py` (zwei Kernfassungen im selben Prozess),
+  `sass_loop_mix.py`/`sass_scale_variants.py` (SASS-Befehlsmix der Hauptschleife), `run_ncu_stalls.sh`/`run_ncu_bytes.sh`.
+  **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
+  heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
+  und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.
   **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den
   anderen Routen in den Fork. Jetzt Familie 4 Attention (27B-FA 40 % des Prefill; Triton-FA RTX 14,4 vs FA2 24,8 ms bei 32k,
   V100 ~1/4 von flash_attn_v100), danach MoE (Familie 3, 27–47 %).

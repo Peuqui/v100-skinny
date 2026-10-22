@@ -80,6 +80,11 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   s3); (b) LDS.128 bedient einen Viertelwarp (8 Threads = Zeilen 0-3 und 8-11 der 16x16-Kachel); mit vec 8 fällt maxPhase auf
   4 → Zeile r und r+8 gleiche Bänke. Verschränkung über Zeilenbits 0, 1, 3 oder Auffüllen (+16 B je Zeile) entwerfen (ggf.
   freies Smem-Layout statt vec/perPhase/maxPhase); (c) A/B. Ziel: MIO-Stau (Triton 18 300 gegen CUTLASS 3 000) senken.
+  **23:00 Schritt (1) erledigt — Turing-GEMM ncu 4096³ (`ncu_gemm_4096_rtx.txt`):** cuBLAS turing_s1688gemm 256x128 (8 Warps,
+  16 KB Smem) 1,91 ms, Tensor 91 %, 94,6 Mio. Befehle; Triton 128x128x32 w4 s3 2,34 ms, Tensor 74 %, 124,5 Mio. Befehle (+32 %).
+  Stalls Triton/cuBLAS: mio 46 600/13 700, short scoreboard 47 600/12 700, Barriere 20 900/3 400. → Engpass Turing = Operanden
+  aus dem Smem laden (nicht die Barriere). Nächstes: prüfen, ob sm_75-PTX `ldmatrix` nutzt (grep ldmatrix/ld.shared im
+  Kompilat, `inspect_gemm.py` auf GPU 0), sonst MMAv2-Operandenladen auf ldmatrix.x4 bringen; dann 8 Warps/256x128 testen.
   Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (1b) A-LDS.128 mit konfliktfreier Verschränkung (oben), (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
   (Muster 7458c6257, Tabelle 21:20 oben), (3) MoE-Familie (Explore-Agent wie für Attention), (4) Split-K im Block 16 Warps.
   **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den

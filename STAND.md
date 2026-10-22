@@ -13,6 +13,42 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 22.10. 09:00: Handkerne in Triton vereinheitlichen (Peuqui 08:50) — Schalter eingebaut, Plan.**
+Vorgabe: Handkerne in Triton vereinheitlichen, möglichst wenig Parameter, Volta UND Turing, atomar, modular, wenig Irrwege;
+erst alles umsetzen, dann gemeinsam testen. Fork-Zweig `triton-sm7x-routes` (auf `turing-kernels-2026-10-21` 7d83b7032,
+jetzt gebaut: `_C` 9f65e857ccb3, Prüfbaum `1Cat-vLLM-sm75` darauf; beide Zweige gepusht).
+- 28fc41221: `kernel_config.triton_sm7x_tensor_cores` (Vorgabe aus, im Compile-Hash) + `vllm/triton_utils/sm7x.py`
+  `triton_sm7x_tensor_cores(kernel_config, device)` als einzige Abfrage der Routen; prüft je Architektur per
+  Compile-only-Probe (16×16 fp16 `tl.dot`, `mma.sync` im PTX) und bricht mit Stock-Triton ab. Echt geprüft: Stock-Triton →
+  Abbruch auf RTX und V100, sm7x-Triton → True. Tests `tests/kernels/test_triton_sm7x_tensor_cores.py` 8/8 mit beiden.
+- Bestandsaufnahme (Explore, 22.10.): Tensorkern-Handkerne in den Produktionspfaden — Block-FP8-Linear 4 Wege
+  (`fp8_qpn8_gemm_sm70` M ≤ 8 m8n8k4, `fp8_qpn8_mma_sm75` M 9–512, Dequant+cuBLAS, TurboMind s884 Volta; DSv4, GLM),
+  NVFP4-Linear `nvfp4_qpn2_gemm_sm70` M ≤ 32 auf RTX mit m8n8k4 (halbe Rate; 27B), Skinny-MoE FP4 m8n8k4/m16n8k8 (DSv4,
+  GLM), `paged_prefill_attention_sm75` + FA2-sm75 (27B), `indexer_prefill_scores_sm75` / cuBLAS+Epilog (DSv4, GLM).
+  Ohne MMA, bleiben: Top-k, Router, Host-Reduce/Allreduce, mHC-FMA, GDN-Decode; GDN-Prefill TileLang.
+- Reihenfolge der Familien: (1) Indexer-Prefill (Entwurf `triton-sm7x/bench_idx.py`; RTX braucht Compiler-Hebel
+  Register-Regel), (2) quantisierte Linear-GEMM W8A16/W4A16 mit Decodern Block-FP8, MXFP8 (GLM Variante C), NVFP4 — ersetzt
+  die vier FP8-Wege und QPN2, (3) MoE-Experten FP4 gruppiert (größter Zeitanteil), (4) Attention paged Prefill/Decode/Verify
+  für d 128/256 auf beiden Karten, (5) Sparse-MLA und GDN-Prefill nur messen. Daneben Compiler: Volta-GEMM-Abstand.
+- **10:20 Familie 1 fertig** (Fork 43ecd2ac8 Entscheidung als `KernelConfig.use_triton_sm7x_tensor_cores()` wegen
+  Schichtenregel, 7458c6257 Triton-Indexer-Prefill für beide Karten; gepusht). Triton-Baum 685842d596: Registerbudget
+  224 (Operand + schleifengetragener Zustand) statt 64er-Grenze — RTX-Indexer 5,55 → 4,77 ms, GLM-Sparse-fusioniert RTX
+  13,72 → 11,03 ms, FA unverändert, `test_core -k dot` gleiche Listen. Produktionsfunktion gegen heutigen Weg (Summe
+  4,8k–76,8k Keys, 512 Token, ms): V100 64 Köpfe 46,94 → 28,87 (−38,5 %), 32 Köpfe 23,96 → 17,18 (−28,3 %); RTX 64 Köpfe
+  23,97 → 24,21 (+1,0 %), 32 Köpfe 12,53 → 13,12 (+4,7 %; bis 19,2k Keys schneller, darüber 2–7 % langsamer); Fehler
+  gleich dem heutigen Weg. Kacheln: RTX 2048 Score-Elemente je Warp, V100 je Kopfzahl (`_score_tile`); Sweep
+  `~/.cache/bench-scripts/triton-sm7x/sweep_idx_table_*.json`, Nachmessung `confirm_idx_final_*.log`. Nebenbei: die
+  Kopfzahlen-Tests aus 7d83b7032 liefen nie auf GPU und waren rot (Referenz ohne fp16-Rundung) — repariert.
+  Für die Aufräumphase vorgemerkt: `indexer_prefill_cublas` (führt mit dem Feld nur noch zu einem FMA-Weg).
+- Triton `test_core -k dot` (RTX 70 / V100 71 Fehlschläge, auch mit Stock-Triton): 40× int8-3D-Dot Compilerabsturz in
+  `TritonGPUAccelerateMatmul` (FMA-Weg erweitert int8 mit `arith.extf`), 26× fp16-3D-Dot zu ungenau (FMA summiert bei
+  fp16-Ergebnis in fp16, bis 0,032 statt 0,01), 4× fp8 `test_dot_max_num_imprecise_acc` braucht 128 KB Smem, 1× V100
+  fp32-ieee offen. Peuqui 22.10.: reparieren.
+- Regeln je Familie: ein Modul + ein Commit, Kacheln je Architektur als gemessene Konstanten, kein Autotuning zur Laufzeit,
+  Abnahme Fehler ≤ heute und Tempo ≥ heute auf V100 UND RTX (CUDA-Graph-Mikrobench), alte Kerne erst nach der gemeinsamen
+  Testreihe entfernen. Sicherung Triton: Bundles `triton-sm7x-tensor-cores-2026-10-22.bundle` (bis 433472b167) und
+  `triton-sm7x-upstream-2026-10-22.bundle` auf `/mnt/speicher/backup/`, beide geprüft.
+
 **Nachtrag 22.10. 08:40: Triton-A/B abgebrochen — weder 27B noch DSv4 haben einen Triton-Kern mit `tl.dot` im Pfad.**
 Peuqui 08:35: „briche es ab, wenn wir keine Triton-Vergleichswerte bekommen können, und fixe das erstmal“; danach: **erst
 sämtliche Optimierungen umsetzen, dann gemeinsam testen** (spart Läufe). Log `~/.cache/bench-scripts/ab_triton_2026-10-22.log`,

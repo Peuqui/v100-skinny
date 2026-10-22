@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 00:40 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 01:00 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -123,6 +123,20 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   RTX-Prefill 64x128x64 w4 s3). Werkzeuge neu: `bench_timing.py` (SSOT Messfunktion mit ~30-ms-Spin),
   `sweep_w8a16_tiles.py` (alle Kacheln einer Form), `ab_scale_variants.py` (zwei Kernfassungen im selben Prozess),
   `sass_loop_mix.py`/`sass_scale_variants.py` (SASS-Befehlsmix der Hauptschleife), `run_ncu_stalls.sh`/`run_ncu_bytes.sh`.
+  **01:00 QPN8-Layout statt Checkpoint-Layout (Grund: der Fork-Kern verwirft nach dem Laden das Checkpoint-Layout und
+  hält nur QPN8-Codes; zweite Kopie wäre ~4 GB bei DSv4):** Entwurf `w8a16_qpn8.py` liest `codes` + fp16-`group_scales`
+  (×256) von `fp8_qpn8_prepare_sm70` direkt. Layout: je 32 Spalten × 16 k ein 512-Byte-Block (lane = col bits 0-1 | bits 3-4
+  << 2 | bit 2 << 4; je 8 k erst die geraden, dann die ungeraden). Gewicht in physischer k-Reihenfolge (16-Byte-Loads), x per
+  `reshape/permute` in den Registern in dieselbe Reihenfolge, Ausgabe per `reshape/permute` zurück auf Spalten. Prüfung
+  `check_qpn8_triton.py`: je 390 Fälle V100/RTX, 0 Fehler. Naiv mit permutierten Adressen 1,1–5,9× langsamer (2-Byte-
+  Zugriffe) → Register-Permutation. **Compiler, uncommittet, gebaut 00:54:** (1) `LowerLoops.cpp`: `tt.reshape`/`tt.trans`
+  dürfen in der gestuften Kette stehen (sonst fiel x aus dem Doppelpuffer); (2) `RemoveLayoutConversions.cpp`
+  `hoistConvertDotOperand`: vor sm_80 nur hoisten, wenn an den Loads ein Dot-Operand-Layout ankommt (Turing schob das
+  Dot-Layout durch reshape/trans bis hinter den Load → convert zu #linear → nicht stufbar, RTX-Prefill 1,27×).
+  **Familie `qpn8` (vor Fix 2, 00:53):** V100 M 6: wkv 0,67, wq_a 0,79, wq_b 0,84 (!), wo_b 0,87 (!), w13 1,01, w2 1,17 —
+  das gepackte Layout liest je Warp 512 B am Stück und schlägt im Decode das Checkpoint-Layout; V100 M 512: wo_b 0,95,
+  wq_b 0,96, w13 1,04, wq_a 1,06, w2 1,09, wkv 1,12. RTX (vor Fix 2) M 512 0,90–1,10, M 6 0,88–1,10. Bench wählt Layout
+  per `W8A16_LAYOUT=qpn8|raw`. Runde `qpn8b` (Prüfungen, QPN8-Checks, Familie, Budget gegen `decstage`) läuft seit 00:55.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

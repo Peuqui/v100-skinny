@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 01:45 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 01:55 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -152,6 +152,12 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   `vllm/models/deepseek_v4/common/ops/fp8_software.py` (SSOT; Indexer-Kopie `_e4m3_bits_as_scaled_fp16` später umstellen,
   eigene Messung), Op `sm70_fp8::qpn8_native_linear` bekommt optionale Workspace-Tensoren (Partials ≤ 8 MB/Gerät, Locks).
   **Fallen:** `ruff … && systemd-run …` — scheitert ruff, startet der Lauf nicht, der Wächter meldet sofort „fertig“.
+  **01:55 W8A16-Route zurückgestellt (Anteil am Gesamttempo ~1–2 %, MoE zuerst):** Routenkachel 128x128x64 über M (Lauf
+  `r1`, `route_r1_gpu{0,2}.log`): M ≤ 64 1,3–2,4× (Turing-Handkern m16n8k8 ist für kleines M gebaut), M 384 1,07–1,53 (Wellen:
+  3 Zeilenkacheln kosten wie 4), wkv verliert bis M 384. Beste Kachel je Form (Sweeps `sweep_mid_*`, QPN8-Layout): M 128
+  0,83–0,97, M 256 0,73–0,96, M 384 0,84–1,05 (wo_b/wq_a verlieren) — Gewinner wechseln BM 64/128, BN 64/128, BK 32/64,
+  Split 1–4 → Route bräuchte Kacheltabelle je M-Bereich und N. Wiederaufnahme mit Split-K im Block (V100-Decode w2 +14 %, RTX-
+  Decode) und Kachelregel nach N (N ≤ 1024: BM64 BN64 BK32 S4 w4 s3) + M-Bereich. Entwurf + Daten bleiben in bench-scripts.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

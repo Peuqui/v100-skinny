@@ -87,6 +87,8 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   Kompilat) — **geprüft 23:05: ja**, je Iteration 8× ldmatrix.x4 + 8× ldmatrix.x4.trans + 16× ld.shared.v4, 128× mma m16n8k8,
   24× st.shared.v4, 6 bar.sync. Offen: woher die +32 % Befehle (Adressrechnung? Register-Staging-Stores?) — SASS-Befehlsmix
   gegen cuBLAS vergleichen (ncu --section InstructionStats/SourceCounters); dann 8 Warps/256x128 testen.
+  **23:10 Peuqui:** cuBLAS bleibt, wo schneller; Hauptschleife nur für fusionierte Kerne. NÄCHSTER SCHRITT daher:
+  `run_bench_family.sh <tag>` mit 11521d5263 — kippt W8A16-Prefill V100 (zuletzt 1,05–1,31× Dequant+cuBLAS) jetzt?
   Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (1b) A-LDS.128 mit konfliktfreier Verschränkung (oben), (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
   (Muster 7458c6257, Tabelle 21:20 oben), (3) MoE-Familie (Explore-Agent wie für Attention), (4) Split-K im Block 16 Warps.
   **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den

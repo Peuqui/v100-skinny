@@ -73,6 +73,9 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   V100-GEMM gegenüber 11521d5263 (M16 10,5 / M128 48,0 / 512 71,9 / 2048 71,8 / 4096³ 76,4 / 8192x2048x7168 77,5 TFLOPS) ohne
   Verlust außerhalb ~2 % → nur die .td committen (dazu `run_budget.sh avec8` + `compare_ptx_sets.py` für RTX-Gleichheit);
   sonst `git checkout -- include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td`, neu bauen, Befund notieren.
+  **22:50 Ergebnis avec8: verworfen** (Prüfungen grün, aber V100 langsamer: M128 48,0 → 44,6, 512 71,9 → 66,6, 4096³ 76,4 →
+  73,8, 8192x2048x7168 77,5 → 73,1 TFLOPS; vermutlich Bankkonflikte bei 16-Byte-Zugriffen). .td zurückgesetzt, neu gebaut;
+  Baum sauber auf 11521d5263. Falls A-LDS.128 später nochmal: Verschränkung für Viertelwarp-Wavefronts neu entwerfen.
   Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
   (Muster 7458c6257, Tabelle 21:20 oben), (3) MoE-Familie (Explore-Agent wie für Attention), (4) Split-K im Block 16 Warps.
   **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den

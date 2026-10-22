@@ -75,8 +75,12 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   sonst `git checkout -- include/triton/Dialect/TritonGPU/IR/TritonGPUAttrDefs.td`, neu bauen, Befund notieren.
   **22:50 Ergebnis avec8: verworfen** (Prüfungen grün, aber V100 langsamer: M128 48,0 → 44,6, 512 71,9 → 66,6, 4096³ 76,4 →
   73,8, 8192x2048x7168 77,5 → 73,1 TFLOPS; vermutlich Bankkonflikte bei 16-Byte-Zugriffen). .td zurückgesetzt, neu gebaut;
-  Baum sauber auf 11521d5263. Falls A-LDS.128 später nochmal: Verschränkung für Viertelwarp-Wavefronts neu entwerfen.
-  Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
+  Baum sauber auf 11521d5263. **Peuqui 22:55: weiterverfolgen** — Bankkonflikte sind nur Vermutung: (a) ncu
+  l1tex__data_bank_conflicts_pipe_lsu_mem_shared_op_ld/st für avec8 gegen 11521d5263 (`profile_gemm.py`, 4096³ 128x256x32 w8
+  s3); (b) LDS.128 bedient einen Viertelwarp (8 Threads = Zeilen 0-3 und 8-11 der 16x16-Kachel); mit vec 8 fällt maxPhase auf
+  4 → Zeile r und r+8 gleiche Bänke. Verschränkung über Zeilenbits 0, 1, 3 oder Auffüllen (+16 B je Zeile) entwerfen (ggf.
+  freies Smem-Layout statt vec/perPhase/maxPhase); (c) A/B. Ziel: MIO-Stau (Triton 18 300 gegen CUTLASS 3 000) senken.
+  Danach in dieser Reihenfolge: (1) Turing-GEMM ncu gegen cuBLAS, (1b) A-LDS.128 mit konfliktfreier Verschränkung (oben), (2) W8A16-Route Hybrid in den Fork `triton-sm7x-routes`
   (Muster 7458c6257, Tabelle 21:20 oben), (3) MoE-Familie (Explore-Agent wie für Attention), (4) Split-K im Block 16 Warps.
   **Priorität (nach Anteil am Gesamttempo):** W8A16-Decode bleibt Hybrid (Triton wkv/wq_a, QPN8 sonst), Route kommt mit den
   anderen Routen in den Fork. Jetzt Familie 4 Attention (27B-FA 40 % des Prefill; Triton-FA RTX 14,4 vs FA2 24,8 ms bei 32k,

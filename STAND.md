@@ -13,6 +13,87 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 22.10. 04:25: Triton mit Tensorkernen auf Turing — Frage „Triton heute / Triton mit Tensorkernen / Handkern“
+beantwortet (Peuqui 21.10. spät: „das will ich echt beantwortet haben“).** Eigener Triton-Baum
+`/home/mp/Projekte/vllm-research/triton-sm7x` (v3.6.0 = Torch-Pin, Zweig `sm7x-tensor-cores`, lokal, nicht gepusht), Bau-venv
+`~/.venv/triton-build` (pybind11, setuptools, wheel, ninja, lit — mit Freigabe), LLVM unter `~/.cache/triton-build-home`, Bau
+`scratchpad/triton/build_triton.sh` (Vollbau 4:20 h mit -j4, danach ninja inkrementell). Produktions-venv unberührt; Tests
+laden den Baum über `PYTHONPATH=…/triton-sm7x/python`. Zwei Patches: ba18facf27 (sm_75-Sperre aus #5066 aufheben — die
+Turing-Absenkung `m16n8k8` lag gepflegt im Baum; bf16/tf32/3D bleiben FMA) und 3519c6abea (Pipeliner auf sm_75, ohne cp.async
+über Register). Messungen RTX 8000 (Skripte und Logs `scratchpad/triton/`):
+- GEMM fp16 (TFLOPS, mehr ist besser): FMA 3,0–7,5; Tensorkerne 7,9 / 34,0 / 75,6 / 69,4 bei M = 16 / 128 / 512 / 4096
+  (cuBLAS 7,3 / 34,3 / 71,8 / 82,1) → Triton = cuBLAS bis M 512, große Formen 82–85 %.
+- Flash-Attention-Prefill 27B-Form (12/2 Köpfe, d 256, 2048 Queries): FA2 von Hand 32k 25,14 ms (31,8 TFLOPS); klassischer
+  Triton-FA-Kern FMA 561,9 ms (1,4), mit Tensorkernen + Pipelining 19,78 ms (40,4) → **Triton 21 % schneller als FA2**
+  (8k: 5,92 gegen 6,52 ms). vLLMs `unified_attention` (BLOCK_M 16, für Decode gebaut): FMA 877 ms, TC 77,5 ms.
+- DSv4-Indexer-Scores (512 × 64 Köpfe): Handkern 7d83b7032 4,57 ms (68,8 TFLOPS) gegen Triton-TC 5,51 ms (56,8) bei 37 500
+  Keys (1,21×), 1,04–1,12× bei 1k–4k. Ursache laut TTGIR: Triton liest das schleifeninvariante Q jede Runde neu per ldmatrix
+  aus dem Shared Memory (Turing: halbe Smem-Bandbreite je SM) → Compiler-Hebel „invariante Dot-Operanden in Registern halten“.
+- GLM-Sparse-MLA (T 512, 64 Köpfe, 2048 Keys): Blockroute cuBLAS 10,2 ms; alter Triton-Kern FMA 180 ms (Prod-Kachel 734 ms),
+  mit TC 20,0 ms (Prod-Kachel 40,1 ms). Der Kern ist vom Aufbau schwach (16 Keys je Schritt) — Grenze gerechnet 2–3 ms.
+- Korrektheit: Triton `test_core.py -k dot` auf RTX: 221 bestanden, 70 Fehlschläge — exakt dieselben 70 wie mit unverändertem
+  Triton (66× `test_dot3d` int8/fp16-FMA, 4× fp8 mit 128 KB Smem > 64 KB). test_matmul/test_pipeliner laufen.
+**05:15: Volta läuft auch (bb909d9c5c, dazu allgemeine Reduktionskorrektur a47131f3b5; lokal).** MMAv1 über Linear Layouts
+(`voltaMmaTile`, Absenkung `DotOpToLLVM/MMAv1.cpp` auf `mma.m8n8k4`), Prefetch + Register-Pipelining auch für sm_70. Dabei zwei
+echte Triton-Fehler behoben, die nur Layouts mit verstreuten Lane-Bits treffen (Volta: Zeilen auf Lane-Bit 0/2/4, Spalten 1/3):
+Warp-Reduktion und `delinearize` nahmen zusammenhängende Bits an → Online-Softmax falsch. V100-Messungen:
+- GEMM fp16 (TFLOPS): FMA 3,9–8,6; Volta-TC 8,1 / 30,1 / 50,2 / 57,8 bei M 16 / 128 / 512 / 4096 (cuBLAS 8,1 / 44,3 / 78,7 /
+  83,5) → ~70 % von cuBLAS bei großen Formen (B K-major +4 %, Pipelining/Prefetch ±0) — Ursache offen.
+- Flash-Attention 27B-Form 32k: Triton-TC 24,58 ms (32,5 TFLOPS), FMA 319 ms, handgeschriebener dichter `flash_attn_v100`
+  75,4 ms (10,6) → Triton 3× schneller; Abweichung 1,5e-5 (Referenz-Check `check_fa_v100.py`).
+- DSv4-Indexer: Triton-TC 0,72–0,86× der Produktions-cuBLAS-Route (37 500 Keys 6,58 gegen 9,13 ms), Fehler gleich (1,8e-4)
+  → das ist der geplante „Volta-Indexer“, ohne Handkern.
+- GLM-Sparse-MLA T 512: Blockroute 9,56 ms, alter fusionierter Kern mit TC 25,4 ms (Aufbau schwach, s. o.).
+- Tests: V100 `test_core -k dot` 220 bestanden / 71 Fehlschläge, alle 71 auch mit unverändertem Triton (das hat 97); RTX nach
+  der Reduktionskorrektur identische Fehlerliste. RTX test_matmul/test_pipeliner: 131 bestanden, 8 Fehlschläge = 128 KB Smem
+  in einem AMD-Test (Hardwaregrenze 64 KB).
+**05:50: GLM-Gesamtmessung der Blockroute (422184292, unverändertes Triton) und Register-Regel 433472b167.**
+- GLM-5.3 PP5, Profil-Skript wie 21.10. 22:16 (`glm53_profile_blocked_2026-10-22.log`, nsys `nsys/glm53-blocked/`):
+  Prefill 14 038 Token **68,72 → 10,75 s** (204 → 1306 Token/s, 6,4×); 14k-Prompt + 128 Token 38,81 → 12,57 s; kurzer
+  Prompt + 128 Token 7,93 → 7,88 s. Neue Spitze im Prefill: `_csf32_expand_kernel` 29 % (RTX) bzw. 50 % (V100) der
+  Rechenzeit, dann Skinny-MoE 24–28 %. Decode (kurz): Stufen rechnen 1,1–2,0 s von ~7 s, Rest PP-Wartezeit; auf den RTX-Stufen
+  ist cuBLAS-fp16-GEMV der entpackten MXFP8-Gewichte ~50 % → FP8-GEMV (Variante C, spart ~5 GiB) als Decode-Hebel.
+- 433472b167: vor sm_80 bleiben schleifeninvariante Dot-Operanden ≤ 64 Register außerhalb der Schleife (ReorderInstructions
+  zog sie hinein → Q jede Runde neu aus dem Smem). RTX-FA 32k 19,78 → 14,42 ms (55,4 TFLOPS, **1,7× FA2 von Hand**);
+  Indexer bräuchte 128 Register (ohne Grenze gleichauf mit Handkern, aber GLM-Sparse-Kern −18 %) → Option je Kern offen.
+- Neuer fusionierter Triton-Sparse-MLA-Kern (`scratchpad/triton/glm_sparse_fused.py`): korrekt, aber 13,7 ms (RTX) /
+  20,9 ms (V100) gegen Blockroute 10,3 / 9,5 → nicht übernommen (Q über Warps kopiert, BK 16 smem-gebunden).
+**06:20: GLM mit sm7x-Triton (Eintrag `glm53_test_entry_sm7x_2026-10-22.yaml`: PYTHONPATH auf die eingefrorene Kopie
+`~/.cache/triton-sm7x-v2`, eigener TRITON_CACHE_DIR) und CSF-Fix 0b8b98c4f (gepusht).** Peuqui 06:00: AIfred bleibt gestoppt,
+Karten frei, alles durchziehen.
+- Qualität (`glm53_boot_text_sm7x_2026-10-22.log`, Antworten `quality_2026-09-27/glm53-text-quality.json`, Lauf 12 gesichert
+  als `…-run12-2026-10-21.json`): erste Antwort wortgleich mit Lauf 12, alle acht Fragen von Hand gelesen und richtig (Zug
+  84 km/h, Logik, Code-Bug, Kuanda zurückgewiesen, Zusammenfassung wortgleich). Decode 17,3–17,6 Token/s, KV 41 506 Token,
+  Speicherspitzen wie Lauf 12. Boot 465 s (kalter Triton-Cache).
+- Profil (Einzelläufe, keine Tempo-Aussage ohne A/B/A/B): Prefill 14k 10,75 s (Stock) / 11,75 s (sm7x), Decode lang
+  12,57 / 12,33 s, kurz 7,88 / 7,86 s; Rechenzeit RTX-Stufen 8,69/8,84 → 8,02/8,29 s (KDA-Kerne aus der Spitze), V100-Stufen
+  gleich — dort bestimmt `_csf32_expand_kernel` (50 %) die Zeit.
+- CSF: Grid lief über S = Token × top_k = 4096 Gruppenzeilen statt min(S, 288 Experten) — derselbe Fehler wie gestern im
+  Skinny-MoE-Grid; dazu ein Programm je Kachelzeile statt je 512-Byte-Kachel. Raster bytegleich, Test um „mehr Slots als
+  Experten“ erweitert (19/19 auf V100 und RTX). Einzelkern V100 w13 1,03 → 0,90 ms (alle Slots), 0,94 → 0,06 ms (8 von 288).
+  Gesamtprofil (`glm53_profile_csf_2026-10-22.log`, Einzellauf): Prefill 14k **10,75 → 8,20 s** (1306 → 1712 Token/s; seit
+  21.10. abends 68,72 s → 8,4×), 14k + 128 Token 12,57 → 11,39 s, kurz 7,88 → 7,96 s. CSF V100 3776 → 250 ms, Rechenzeit
+  V100-Stufen 7,2–7,5 → 3,7–3,9 s, RTX 8,7/8,8 → 6,7/6,5 s → jetzt binden die RTX-Stufen (13 und 11 Schichten gegen 7);
+  Umverteilung braucht VRAM auf den V100 → zusammen mit Variante C (MXFP8 8 Bit, ~5 GiB).
+- Triton-A/B für 27B und DSv4 läuft seit 06:27 (`ab_triton_2026-10-22.log`): `run_ab_triton_2026-10-22.sh` (Modus prodpv, Variante mit eigenen Triton-, vLLM-
+  und Inductor-Caches, damit nichts in die Produktions-Caches gelangt).
+- 27B mit sm7x-Triton (Kaltlauf des A/B): Greedy dreimal „identical“ zur Produktionsreferenz.
+- **Entscheidung Peuqui ~06:45: Triton-Basis bleibt 3.6 (Torch-Pin), kein Port auf Triton main.** ~07:20: erst alles
+  ausreizen, bis die eigenen Patches auf Stand sind und nichts mehr herauszuholen ist — dann sortieren und Triton upstream
+  UND 1Cat anbieten (RFC zuerst, Texte vorher zeigen). Der Zweig unten liegt bis dahin geparkt.
+- Upstream (Peuqui 06:40: „Wir machen das einfach“ — Triton anbieten, parallel Issue/RFC): Triton-Diskussion zu #5066:
+  Beiträge für Pre-Ampere-MMA willkommen, „unlikely to accept complex performance related patches“. Offene PRs bei Triton:
+  437 (140 Entwürfe), Alter Median 63 Tage, ältester 760. `main` ist 2049 Commits weiter: Reduktion dort schon LL-nativ mit
+  Lane-Masken (unser a47131f3b5 entfällt), Verifier lehnt Volta inzwischen aktiv ab (Lit-Test `invalid-attributes.mlir`),
+  `instrShape`→blockTileSize, CTA→CGA. Worktree `triton-sm7x-upstream`, Zweig `sm7x-upstream` (lokal): Turing + Pipelining +
+  Volta portiert (Konflikte gelöst, Warp-Politik als `getMmaWarpsPerCTA` mit V1/V2, Verifier + Lit-Test angepasst), NICHT
+  gebaut (neues LLVM `cmake/llvm-info.json`, Vollbau nach dem A/B). Register-Regel (433472b167) bleibt im Fork.
+- MXFP8-W8A16-Triton-Kern (`scratchpad/triton/mxfp8_w8a16.py`): korrekt; V100 Decode 0,73–1,18× cuBLAS-fp16, Prefill
+  M 512 1,6× langsamer → GEMV-Variante ohne tl.dot geschrieben, Test im nächsten GPU-Fenster. Variante C setzt für den Prefill
+  ein Triton mit Tensorkernen voraus → hängt an der Produktionsentscheidung zum sm7x-Triton.
+Nächste Schritte: Triton-A/B 27B + DSv4 auswerten → Entscheidungsvorlage sm7x-Triton für Peuqui; danach MXFP8-GEMV,
+Volta-GEMM-Abstand (ncu, 8-Warp-Kacheln), Upstream-Bau + Tests + englische PR-Texte (vor dem Senden Peuqui zeigen).
+
 **Nachtrag 21.10. 12:50: Turing-Kernpaket begonnen (Peuqui: „eigene Kerne für Turing, die genau optimiert sind, die
 wichtigsten für unsere Modelle, generisch für zukünftige Generationen“). sm_75-A/B DSv4: kein Unterschied (Prefill ≤ 0,2 %,
 Texte aller fünf Läufe bytegleich) — erwartet, `HMMA.884` bleibt auf Turing halbratig; der sm_75-Bau ist aber die Grundlage
@@ -82,6 +163,56 @@ der Turing-Kerne und geht mit dem ersten Kern in Produktion.**
   gescheitertem Boot. **Sechster Start 15:39 (0cac9351d, GMU 0,98): Speicher passt** (KV V100 je ~+1,05 GB, PP0 +3,02,
   PP4 +0,55; 41 506 KV-Token; Aktivierungsspitze 1,15 GB), dann Fehler 6 bei der Graph-Aufnahme auf PP0 (RTX):
   `sparse_attn_indexer_kpool.py:347 assert q_quant.dtype == torch.float16`. Übergabe in HANDOVER.md (21.10. 15:55).
+- **16:40 Nachtrag — Fehler 6 behoben, vorbestehende Testfehler behoben, neuer DSv4-Hebel.** 37143bf1d: der Erzeuger der
+  GLM-Indexer-Query fragte exakt SM 7.0 und quantisierte auf der RTX nach FP8, der Op erwartet fp16 auf allen Karten vor Ampere
+  → beide fragen `is_pre_ampere_cuda_platform()` (Wert im Konstruktor). e51b3b877 merged 7ee89582f (Volta-MoE) in den GLM-Zweig,
+  `_C` c869d134c3ee kopiert. 076e37e67: die drei vorbestehenden Testdateien (auch auf 1Cat main rot) an den Code angepasst —
+  `test_pp` (Diagnosekanal fehlte beim Bau ohne Konstruktor), `test_sm70_modelopt_nvfp4` (patchte das nicht mehr gefragte
+  `should_prepare_turbomind`), `test_sm70_glm53_modelopt_nvfp4` (Skinny-Zulassung festgelegt). GLM-Liste 23 Dateien grün
+  (`pytest_glm53merge_2026-10-21/`; eine Datei lief mit Zwischenstand, einzeln auf RTX + V100 grün), Volta/Attention-Tests
+  7ee89582f grün. `run_pytest_per_file.sh`: relativer `-o`-Pfad brach nach `cd` in den Baum → `realpath`.
+  **Siebter GLM-Start (16:20):** Graph-Aufnahme auf allen Stufen bestanden, dann kompilierte jede Stufe beim ersten Durchlauf
+  Triton-Kerne für sm_75 (PP0 4 min) → llama-swap brach nach 15 min ab (der `healthCheckTimeout` je Eintrag wirkt nicht, nur
+  der globale 900 s). Triton-Cache gefüllt, achter Start 16:37 läuft.
+  **DSv4-Engpass sind die RTX-Stufen** (`nsys/ds-stages-turing-1021`, Kernzeit ohne NCCL): RTX 50,9 / 51,8 s, V100 47,0 / 47,5 /
+  48,4 s → jede RTX-Einsparung bis ~3,4 s wirkt direkt. RTX-Posten außer MoE: Indexer-Scores über cuBLAS (`s1688gemm` 4,07 s) +
+  Kopfsumme (`_relu_weight_headsum` 2,80 s) = 6,9 s, FP8-QPN8 5,9 s (Formen bei 512 Token: wqa_wkv 4096→1536 41 TFLOPS,
+  wq_b 1024→32768 58, wo_b/Shared-Expert →4096 56, Indexer-wq_b 1024→8192 46). V100 dichtes FP8 = Entpacken (1,5 s) + cuBLAS.
+  **Fusionierter Indexer-Scorer für Turing** (Zweig `turing-kernels-2026-10-21`, uncommittet, `indexer_prefill_scores_sm75.cu`,
+  Op `indexer_prefill_scores_sm75`, Weiche `_turing_fused_prefill_scores` in `deepseek_v4/sm70/indexer.py`, 32/64 Köpfe):
+  je Warp ein Token × 32 Köpfe Q in Registern, Schlüsselkachel 64 e4m3 → fp16 in Smem (doppelt), m16n8k8, Scores auf fp16
+  gerundet wie der cuBLAS-Weg, ReLU × Gewicht, Kopfsumme in Registern + Shuffle-Reduce-Scatter, nur [Token, Keys] fp32 in den
+  Speicher (statt 64 MiB Zwischenpuffer je 1024 Keys). 196 Register, kein Spill. Prüfstand `scratchpad/turing/idx/`, Sweep-
+  Prüfstand FP8-QPN8 `scratchpad/turing/qpn8/` (10 Kachelvarianten) — beide warten auf freie GPUs.
+- **19:45 Nachtrag — GLM-Zeichensalat: Ursache gefunden und behoben (58e0e6cde, gepusht).** Achter Start (16:37) bootete in
+  531 s (Speicherspitzen MiB Boot 0=45419 1=30600 2=47275 3=30584 4=30382, 41 506 KV-Token, 17,5 tok/s), Antworten auf allen
+  8 Fragen Unsinn. Eingrenzung: Mini-Checkpoints der ersten 4/8/20 Schichten (Byte-Kopie, `~/.cache/glm53-mini*`): 4 Schichten
+  = transformers-Referenz (Top-10 gleich, Logprobs ±0,01), V100 = RTX, eager = kompiliert, PP2 und Präfix-Caching sauber.
+  Diagnose-Boot (eager, `VLLM_DFLASH_DEBUG_TARGET_LAYER_TRACE=1`): keine nicht-endlichen Werte, aber MLA-Decode-Ausgabe exakt 0
+  in allen 11 MLA-Schichten. 20-Schichten-Nachbau PP5 (`0,1,4,3,2`): Schicht 11/15/19 betroffen, Indexer liefert 28 gültige
+  Top-k, Metadaten gleich, aber KV schon nach dem Prefill null, weil `fused_qkv_a_proj`/`q_b_proj`/`o_proj` null (nie geladen).
+  Ursache: FP32-Blockskala steht in manchen Shards vor dem FP8-Gewicht; `dequantize_mxfp8_weight_pairs` hielt das Gewicht bis
+  Stromende zurück, `AutoWeightsLoader` ruft das Sprachmodell je Präfix-Lauf einzeln auf, der Paarpuffer verwarf das halbe Paar
+  still. Fix: Paarstufe gibt Skala und Gewicht immer direkt hintereinander aus und läuft im obersten `load_weights`; Abbruch bei
+  unvollständigem Paar; PP-Prüfung in den FP8-Paarladern. Nachbau danach: alle Projektionen geladen, KV gefüllt, Direct-I/O = mmap.
+  Gemessen nebenbei (freie RTX): fusionierter Indexer-Scorer gleiche Genauigkeit wie cuBLAS-Weg (max. Fehler gegen fp64 identisch),
+  −54 bis −59 % (37 500 Keys 11,0 → 4,5 ms); FP8-QPN8-Sweep: keine Kachelvariante schlägt Produktion (cuBLAS auf fp16 wäre 1,5×,
+  bräuchte aber eine fp16-Kopie ~1,3 GB je RTX-Stufe → nicht verfolgt). Neunter Start mit Fix läuft.
+- **22:20 Nachtrag — GLM-5.3 rechnet korrekt (85b95af2c, gepusht).** Der Paar-Fix allein änderte nichts (Antwort byte-gleich);
+  Perplexität 21 036 auf deutschem Text. Modulweise gegen transformers fp32 mit vLLMs eigenen Eingängen: CSF-Entpacker 42/42
+  byte-gleich, MoE 42/42 (rel. ≤ 1,9e-2, Kosinus ≥ 0,99999), KDA im Vollmodell 34/34 falsch (Kosinus 0,10–0,89), im Mini richtig.
+  Gewichtsvergleich aller Decoder-Parameter gegen den Checkpoint im Worker (`scratchpad/glm/glm_weight_check.py`): KDA b/f_a/
+  g_a/f_b/g_b, MLA `kv_b_proj`, Indexer `wq_b` leer — alle in `tensors/native-QB.safetensors` (Unterordner); der Lader globbte
+  nur den obersten Ordner, ohne Fehler. Die Mini-Ausschnitte hatten die Datei nach oben kopiert und waren darum richtig.
+  Fix im Lader (`indexed_shards_in_subfolders`, Abbruch bei nicht geladenen Index-Shards ohne eigene Muster). Danach
+  (Sonde, PP5 13,7,7,7,11, GMU 0,98): 1 090 Parameter gleich, Perplexität **1,98**, „Die Hauptstadt von Frankreich ist“ →
+  „ Paris. Paris ist die größte Stadt…“. Zwölfter Start über llama-swap: erste Antwort nach 326 s „…</think>Paris“; 8 Fragen
+  gelesen: Zug 84 km/h, Logik David/Ben, Code-Bug +1 mit Leerliste, Zusammenfassung zwei korrekte Sätze, Englisch Rayleigh +
+  Weg, Kuanda zurückgewiesen (bestanden); Motor und Primzahl inhaltlich richtig, an 600 Token im Denken abgeschnitten.
+  Decode 17,2–17,6 tok/s (≈ 57–58 ms/Token, ohne Spekulation), KV 41 506 Token. **Für AIfred-Intelligence (Textvariante,
+  GMU 0,98, 16k):** Spitzen memory.used MiB Boot+erste Antwort 0=45419 1=30342 2=47295 3=30546 4=30382, Qualitätsfragen
+  0=44577 1=29934 2=46895 3=29916 4=29796 (Karten 0/2 RTX 48 GB, 1/3/4 V100 32 GB); Bildvariante steht noch aus.
+  Testeintrag-Vorlagen jetzt mit `--enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45` (laut README).
 
 **Nachtrag 21.10. 10:35: sm_75-Bau der eigenen Kernfamilie gebaut und getestet, A/B DSv4 + 27B läuft; Flash-Next liegt auf
 /mnt/speicher; GLM-5.3 Weg B als Fork-Zweig (4417a4c04), Tests grün bis auf vorbestehende Fehler. Produktion unverändert 79e07bfef.**

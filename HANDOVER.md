@@ -1,127 +1,91 @@
-# Übergabe — Stand 21.10.2026, 15:55 (Projekt vllm-research)
+# Übergabe — Stand 22.10.2026, 07:45 (Projekt vllm-research)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
-Betriebsstand (SSOT): `STAND.md`, Nachträge 21.10. 12:50 bis 15:40 ganz oben unter „Laufzeitumgebung“.
-Vorige Übergabe (17.10.) liegt in der Git-Historie dieses Repos.
+Betriebsstand (SSOT): `STAND.md`, Nachträge 22.10. 04:25 bis 07:20 ganz oben unter „Laufzeitumgebung“.
+Vorige Übergabe (21.10. 15:55) liegt in der Git-Historie dieses Repos. Grund der Übergabe: Peuqui startet nur Claude neu
+(kein Rechner-Neustart). AIfred-Dienst bleibt gestoppt, kein anderer Dienst braucht die Karten (Peuqui 06:00).
 
-## Auftrag von Peuqui (21.10.)
+## Läuft gerade / zuerst prüfen
 
-- 12:47: sm_75-A/B abgebrochen. „Wir verwenden die neuen Kernel“, „wir optimieren Turing jetzt komplett fertig, dann
-  testen“, „eigene Kerne für Turing, die genau optimiert sind, die wichtigsten für unsere Modelle, generisch für zukünftige
-  Generationen oder auch alte“. Auf Rückfrage zur Reihenfolge: „japp, alles umsetzen“.
-- Reihenfolge (mit Peuqui abgestimmt): GLM zum Laufen bringen → GLM-Profil → Volta-MoE übernehmen → FP8-QPN8-Turing-
-  Durchlauf → Fused-NVFP4-Prefill für 27B. **Erst danach** die große A/B (DSv4 + 27B, ggf. GLM) gegen Produktion und
-  Umstellung nur mit Peuquis Freigabe.
-- Flash-Next ist eingefroren (keine Messungen), Schwerpunkt DSv4, dann GLM-5.3.
+- **Triton-A/B 27B + DSv4** (`~/.cache/bench-scripts/run_ab_triton_2026-10-22.sh 79e07bfef prodpv`, Log
+  `ab_triton_2026-10-22.log`, GPU-Protokoll `gpu_ab_triton_2026-10-22.csv`, Backup
+  `~/.cache/prod-switch-2026-09-29/config.yaml.vor-ab-triton-2026-10-22`). Produktion (Stock-Triton 3.6) gegen Variante
+  `-pv-vllm` = Produktion + `PYTHONPATH=/home/mp/.cache/triton-sm7x-v2` + eigene Caches
+  (`TRITON_CACHE_DIR=~/.cache/triton-cache-pv-sm7x`, `VLLM_CACHE_ROOT=~/.cache/vllm-pv-sm7x`,
+  `TORCHINDUCTOR_CACHE_DIR=~/.cache/torchinductor-pv-sm7x`), damit nichts in die Produktions-Caches gelangt.
+  Aufruf: `FM_TREE=/home/mp/Projekte/vllm-research/1Cat-vLLM-work MODELS="q27 ds" RUN_TAG=tri- PV_DROP=TORCHINDUCTOR_CACHE_DIR
+  PV_EXTRA="PYTHONPATH=… TRITON_CACHE_DIR=… VLLM_CACHE_ROOT=… TORCHINDUCTOR_CACHE_DIR=…"`.
+  Stand 07:40: q27 pv-kalt, prod-a, pv-a fertig (Greedy überall dreimal „identical“), prod-b misst, danach pv-b, dann DSv4
+  (5 Läufe, Ende ~10:30). **Peuqui 07:45: weiterlaufen lassen**, auch über den Claude-Neustart. Das Skript läuft als
+  PID 2578932 in eigener Session (SID 2578922), Ausgabe in die Logdatei; ob der Claude-Neustart es mit abräumt, ist offen.
+  **Nach dem Neustart zuerst prüfen:** `ps -p 2578932` und Log-Fortschritt; neuen Wächter setzen
+  (`~/.cache/bench-scripts/watch_job.sh 2578932 25 ~/.cache/bench-scripts/ab_triton_2026-10-22.log`). Peuqui Bescheid geben,
+  wenn das A/B fertig ist.
+- Wenn der Lauf durch einen Neustart abgebrochen wurde: Config gegen das Backup prüfen (`cmp`), Test-Einträge
+  `-pv-vllm`/`-fm-vllm` dürfen nicht stehen bleiben; verwaiste vLLM-Worker (ppid 1) prüfen; dann nur die fehlenden Läufe
+  wiederholen (RUN_TAG neu, damit Antwortdateien nicht überschrieben werden).
+- Auswertung: je Lauf Langprompts (`dsv4_bench.py --lang`, 4 Seeds), Decode-Bench, Qualitätsfragen
+  (`quality_2026-09-27/fm2-tri-*-ds.json` von Hand lesen), Langkontext-Probe, Speicherspitzen nach MESSENDE.
+  Danach **Entscheidungsvorlage für Peuqui: sm7x-Triton in die Produktion?** (Umstellung nur mit Freigabe).
+- Peer-Status steht auf „Triton-Tensorkern-Machbarkeit…“: nach Abschluss mit `""` zurücksetzen.
 
-## Stand GLM-Start (letzter Lauf 15:39–15:46, nichts läuft mehr)
+## Ergebnisse 21./22.10. (alle gemessen, Dateien in STAND.md)
 
-- **Sechster Start: Speicher passt jetzt** (GMU 0,98, MLA-Puffer gedeckelt). Budget je Stufe (Bytes aus
-  `journalctl -u llama-swap | grep "GPU startup budget bytes"`): V100 PP1–PP3 Gewichte 29,9 GB, Aktivierungsspitze 1,15 GB,
-  Graph-Reserve 1,15 GB, KV +1,04 bis +1,06 GB; PP0 (RTX) 45,5 GB, KV +3,02 GB; PP4 (RTX) 47,96 GB, KV +0,55 GB.
-  **GPU KV cache size 41 506 Token.** Speicherspitze Boot (MiB): 0=45421 1=30582 2=47739 3=30584 4=30446.
-  Ladezeit je Stufe 4:49–5:37 min.
-- **Neuer Fehler (Nr. 6), danach gescheitert:** bei der Graph-Aufnahme auf PP0 (RTX) in
-  `vllm/model_executor/layers/sparse_attn_indexer_kpool.py:347` `assert q_quant.dtype == torch.float16` — die quantisierte
-  Query des Indexers kommt auf der RTX in einem anderen Datentyp an. Nächster Schritt: Herkunft von `q_quant` für SM75
-  prüfen (Weichen nach Gerätefähigkeit, u. a. `kpool_compress.py` mit `has_device_capability(89, …)`, Indexer-Pfad
-  `is_pre_ampere_cuda_platform`), Fix mit Test, dann neu starten (`glm53_boot_2026-10-21.sh text`, danach `image`).
-- Config ist zurück (36110 Byte, 31 Modelle), GPUs frei, kein Skript läuft.
-- Falls später doch Speicher fehlt: `ENTRY_EXTRA_ENV="VLLM_V2_CUDAGRAPH_MEM_MIB=…"` (SM70-V2 reserviert für Graph-Pools die
-  ganze Aktivierungsspitze, `get_sm70_cudagraph_memory_reserve`) oder Weg C (MXFP8-Attention als FP8, ~5 GB).
-- Peer-Status steht noch auf „GLM-5.3 erster Start … alle GPUs belegt“: bei Pause zurücksetzen und das Fensterende melden
-  (Mini:ViroSpore war heute aktiv; Mini:AIfred-Intelligence wartet auf die GLM-Speicherzahlen mit und ohne Bildteil).
+**Eigenes Triton 3.6 mit Tensorkernen** (Baum `/home/mp/Projekte/vllm-research/triton-sm7x`, Zweig `sm7x-tensor-cores`,
+lokal; Bundle-Sicherung `/mnt/speicher/backup/triton-sm7x-tensor-cores-2026-10-22.bundle`, nur bis bb909d9c5c):
+- ba18facf27 Turing MMAv2 m16n8k8 frei, 3519c6abea Register-Pipelining sm_75, a47131f3b5 Reduktion/`delinearize` bei
+  verstreuten Lane-Bits (Volta-Layouts), bb909d9c5c Volta MMAv1 über Linear Layouts (+ Prefetch, Pipelining sm_70),
+  433472b167 schleifeninvariante Dot-Operanden ≤ 64 Register vor sm_80 außerhalb der Schleife.
+- Eingefrorene Kopie für Läufe: `/home/mp/.cache/triton-sm7x-v2` (Stand 433472b167, per `PYTHONPATH`). Ältere Kopie
+  `/home/mp/.cache/triton-sm7x-turing` (nur Turing) kann weg (vorher fragen).
+- Bau: `scratchpad/triton/build_triton.sh` (Bau-venv `~/.venv/triton-build`, LLVM `~/.cache/triton-build-home`); Vollbau
+  4:20 h, inkrementell Minuten. **Nicht im Baum bauen, solange ein Lauf das Baum-Triton lädt.**
+- RTX: Triton-FA (27B-Form, 32k) 14,42 ms = 55,4 TFLOPS gegen FA2 von Hand 24,76 ms; GEMM fp16 = cuBLAS bis M 512, groß
+  82–85 %; DSv4-Indexer 1,04–1,21× Handkern (ohne 64-Register-Grenze gleichauf). V100: FA 24,6 ms = 32,4 TFLOPS gegen
+  `flash_attn_v100` 75,5 ms; GEMM ~70 % cuBLAS (Ursache offen); Indexer 0,72× der Produktions-cuBLAS-Route.
+- Korrektheit: `test_core.py -k dot` auf RTX und V100 ohne einen Fehlschlag, den unverändertes Triton nicht auch hat.
 
-## Zweige und Bäume
+**GLM-5.3** (Baum `1Cat-vLLM-glm53`, Zweig `glm53-turing-2026-10-21`, gepusht bis 0b8b98c4f):
+- 422184292 Sparse-MLA-Prefill über Tensorkern-Blöcke statt FMA-Triton-Kern; 0b8b98c4f CSF-Expansion: Grid über
+  min(Slots, Experten) statt Token × top_k, ein Programm je Kachelzeile (Raster bytegleich, Test erweitert).
+- Profil-Skript, 14 038 Token, Einzelläufe unter nsys (Zeit s / Token/s): 21.10. 68,72 / 204 → Blockroute 10,75 / 1306 →
+  + CSF **8,20 / 1712**. Decode langer Kontext (128 Token, inkl. erstes Token): 303,2 → 89,0 ms/Token (3,3 → 11,2 Token/s);
+  kurz unverändert ~62 ms/Token (16,1 Token/s), ohne nsys 17,3–17,6 Token/s. Noch kein A/B/A/B → nach dem Triton-A/B
+  GLM-A/B/A/B gestriger gegen heutigen Baum, ohne nsys, mit Langkontext-Probe (Peuqui will ms und Token/s).
+- GLM mit sm7x-Triton: Qualität 8/8 von Hand richtig, RTX-Stufen −0,6 s Rechenzeit; Eintrag
+  `glm53_test_entry_sm7x_2026-10-22.yaml`. Run-12-Antworten gesichert als `glm53-text-quality-run12-2026-10-21.json`.
+- Jetzt binden die RTX-Stufen (13/11 Schichten, 6,5–6,7 s gegen V100 3,7–3,9 s); Umverteilung braucht VRAM.
 
-| Baum | Zweig / Stand | Inhalt |
-|---|---|---|
-| `1Cat-vLLM-work` | `prod-fork-main` = 79e07bfef | **Produktion, unverändert** (Tag `verified-2026-10-21-moegrid`) |
-| `1Cat-vLLM-fork-main` (Baubaum) | `turing-kernels-2026-10-21` = 7ee89582f, gepusht | 79e07bfef + sm_75-Bau (2f70712b0, 5028a3fc4) + Turing-MoE (039c1b6af) + Turing-Prefill-Attention (f9ac81b6b) + Volta-MoE NT2/Split 8 (7ee89582f) |
-| `1Cat-vLLM-sm75` (Prüfbaum für fm-Boots) | detached 7ee89582f, `_C` c869d134c3ee | Bau per `build_turing_2026-10-21.sh <commit>` |
-| `1Cat-vLLM-glm53` | `glm53-turing-2026-10-21` = 0cac9351d, gepusht | Merge glm53-flash-fp4local auf f9ac81b6b (1ddebbbd7) + sechs GLM-Fixes; **noch ohne 7ee89582f**, `_C` 62375240caca (Stand f9ac81b6b, passt zu seinem Python mit `nacc`) |
+## Entscheidungen Peuqui (22.10.)
 
-- Beim Nachziehen von 7ee89582f in den GLM-Zweig ändert sich die Op-Signatur (`nacc` entfällt) und
-  `grouped_splitk(k, order)` (ohne `reduces_hidden`); danach `_C` aus `1Cat-vLLM-fork-main/vllm/*.so` in den GLM-Baum
-  kopieren. Der GLM-Zweig ändert kein C++.
-- **Für 7ee89582f laufen die MoE-Tests noch aus** (`run_pytest_per_file.sh -g 0,1 … 1Cat-vLLM-sm75
-  tests/kernels/moe/test_skinny_sm70_moe.py`). Der Stand davor (039c1b6af/f9ac81b6b) war grün: 136 bestanden, 13
-  übersprungen; Attention-Test 4/4.
-
-## Ergebnisse heute (alle gemessen, Dateien genannt)
-
-**Turing-MoE m16n8k8** (`skinny_nvfp4_moe_m16n8k8`, Gewichtslayout je Karte über `qpn_fragment_order`, gemeinsamer
-Header `csrc/sm70_turbomind/ops/mma_fragments_sm70.cuh`): RTX µs je Aufruf alt → neu (`scratchpad/turing/final_rtx.log`):
-DSv4-512 w13 6555 → 4303, w2 3271 → 2238; GLM-512 8566 → 5316, 4205 → 2760; Flash-Next-748 −40/−44 %; Decode ±1 %.
-RTX im MoE-Prefill jetzt 7–33 % schneller als V100. Alte Ordnung bitgleich zum Prod-`_C`, Turing-Ordnung ≤ 6,3e-4 vom
-Ausgabemaximum. Konfiguration: Split 8 (K < 2048: 4), NT 2, RB 4 Prefill / 1 Decode, eine Gruppe vorausladen.
-
-**Turing-Prefill-Attention** d=256 (`paged_prefill_attention_sm75.cu`, Weiche `_use_turing_prefill` im FLASH_ATTN-Backend
-ab `flash_attn_turing_prefill_min_query_len` = 65): 128 GQA-gepackte Zeilen je CTA, Q in Registern, K/V doppelt gepuffert,
-32-Bit-Offsets, Seitengröße als Template. 27B-Ranggrößen, ms FA2 → eigen: 2048 Token 150k 165,8 → 61,5 (61 TFLOPS),
-512 Token 52,5 → 20,0; bis 64 Token bleibt FA2. Fehler gegen fp32 gleich FA2. Diagnose per ncu: L2-Treffer 98 %, nicht
-bandbreiten-, sondern latenzgebunden (`scratchpad/turing/attn/`).
-
-**Volta-MoE** (7ee89582f): V100 µs alt → neu (`volta2_v100.log`): DSv4-512 w13 4979 → 4374, w2 2441 → 2395; GLM-512
-6878 → 5954, 3567 → 3218; Decode 0,80–0,97.
-
-**Profile** (`nsys_top.py` im Scratchpad):
-- DSv4 fm 150k (`nsys/ds-stages-turing-1021`): Prefill 55,7 s unter nsys (gestern 90,7 s, inkl. Indexer/Softmax/Grid),
-  alle fünf Stufen 53–55 s ausgeglichen, Aufteilung 10,8,8,8,9 bleibt optimal. RTX-Rest: FP8-QPN8 10 %, cuBLAS 20 %
-  (nativ), Indexer-Epilog 5 %, HC-Prenorm 5 %, gather_rows 4 %.
-- 27B fm 150k (`nsys/q27-stages-turing-1021`): 267,9 → 207,9 s (−22 %), Attention 110 → 46,8 s; jetzt Allreduce 46 %,
-  cuBLAS 20,6 %, NVFP4-Entpacken 4,8 %, FP8-Entpacken 1,2 %.
-- sm_75-Bau allein: DSv4 neutral (≤ 0,2 %, Texte bytegleich) — ist aber Voraussetzung der Turing-Kerne.
-
-## GLM-5.3-Flash: Fehlerkette (alle mit Test, auf `glm53-turing-2026-10-21`)
-
-1. 3856a7b67 MLA-Prefill-Auswahl band die Flash-V100-Laufzeit vor dem Binden (1Cat-Upstream-Code, `get_flash_dense_forward`).
-2. 434b350c2 Direct-I/O kannte safetensors-`U16`/`U32` nicht (CSF-Seitenbasen/Offsets).
-3. 5cc9779e1 CSF-Skalenteile wurden nach dem Umschreiben des Namens (`experts.N.down_proj.` → `experts.w2_`) nicht erkannt.
-4. 08fbcdf68 Ausgenommener/unquantisierter LM-Head bekam `UnquantizedLinearMethod` (braucht im Fork LinearBase-Attribute)
-   → jetzt `None`, LM-Head nutzt `UnquantizedEmbeddingMethod` wie bei compressed-tensors; upstream-Test angepasst.
-5. 7104b7d46 + 0cac9351d MLA-Kontextpuffer: „8 volle Anfragen“ bzw. „4 Seiten“ bei Hybrid-Seiten 8576 Token → 2,1 GiB
-   Profilierungspuffer je Stufe (Speicherschnappschuss Stufe 0: ein 2144-MiB-Block); jetzt ≤ max_num_seqs × max_model_len.
-- Vorbestehend rot (schon vor dem Merge identisch): `test_pp.py` (2), `test_sm70_glm53_modelopt_nvfp4.py` (1),
-  `test_sm70_modelopt_nvfp4.py` (3). GLM-Testliste: `~/.cache/bench-scripts/glm53_testfiles_2026-10-21.txt` (23 Dateien).
-- `test_compressed_tensors.py` (nur zur Gegenprobe gelaufen): 15 rot in 8 min — noch nicht geprüft, ob vorbestehend
-  (lädt echte Modelle); vor einem PR klären.
-- Speicherbilanz vor Fix 5 (GB, dezimal): V100-Stufen Gewichte 29,97 von 33,05, KV −1,65; PP4 47,96 von 49,23, KV −1,14;
-  PP0 45,51, KV +1,34. Ladezeit je Stufe 3:46–4:48 min.
+- Triton-Basis bleibt 3.6 (Torch-Pin), **kein Port auf Triton main**. Erst alles ausreizen, bis die eigenen Patches auf
+  Stand sind — dann sortieren und Triton upstream UND 1Cat anbieten (RFC zuerst, Texte vorher zeigen). Der Port-Zweig
+  `sm7x-upstream` im Worktree `triton-sm7x-upstream` liegt geparkt, ungebaut.
+- Leistungsangaben immer in ms und Token/s, nicht als Faktor.
 
 ## Offene Arbeit (Reihenfolge)
 
-1. GLM-Start zum Erfolg bringen (siehe oben), Speicher mit/ohne Bildteil an AIfred-Intelligence (Englisch nicht nötig, Peer;
-   Zahlen aus dem Log), danach nsys-Profil GLM (`profile_glm53_stages.sh` von 20.10. ist nsys-Variante des Eintrags) und
-   GLM-eigene Turing-Kerne nach Rangliste.
-2. 7ee89582f-Tests laufen lassen, GLM-Zweig nachziehen.
-3. FP8-QPN8-Turing-Kern (`fp8_qpn8_mma_sm75.cu`) wie den MoE per Variantendurchlauf tunen (10 % der DSv4-RTX-Stufe).
-4. Fused NVFP4-Prefill-GEMM für 27B statt Entpacken + cuBLAS (Vorlage `fp8_qpn8_mma_sm75.cu`).
-5. Kleinere Turing-Posten (Indexer-Epilog, HC-Prenorm TileLang, gather_rows); QPN2-Decode-Kerne auf Turing-Ordnung nur bei
-   Bedarf (Decode an der Bandbreitengrenze).
-6. Danach große A/B (DSv4 + 27B, mit Langprompts bis Max-Kontext, memory.used je Karte) Prod 79e07bfef gegen
-   `turing-kernels`; Texte sind auf den RTX nicht bytegleich (Summationsreihenfolge) → Qualitätsfragen lesen; Umstellung nur
-   mit Freigabe.
-7. 27B-Allreduce (46 % Prefill) ist Kommunikation — eigener Strang (Gedächtnis: Überlappung, 2-Rang-Host-Allreduce).
-8. Upstream-Angebote an 1Cat nur auf Peuquis Ansage: Flash-V100-Verfügbarkeitsprüfung, ModelOpt-LM-Head, MLA-Puffer,
-   Direct-I/O U16/U32, Turing-Kerne.
+1. Triton-A/B auswerten → Entscheidungsvorlage (Tempo je Modell, Qualität, Speicher). Davon hängen 2 und 4 ab.
+2. GLM Variante C: MXFP8-Gewichte in 8 Bit (KDA q/k/v/o, dichtes MLP, lm_head; spart ~5 GiB), Triton-Kern
+   `scratchpad/triton/mxfp8_w8a16.py` (GEMM korrekt, Prefill M 512 noch 1,6× langsamer als cuBLAS-fp16; neue GEMV-Variante
+   ohne tl.dot für M ≤ 8 geschrieben, noch ungetestet). Prefill braucht Tensorkern-Triton. Danach Schichtverteilung
+   umbauen (V100 mehr Schichten).
+3. GLM-A/B/A/B (s. o.) für belastbare ms/Token/s.
+4. DSv4: Triton-Indexer auf V100 (−25 % gegen cuBLAS-Route) — nur mit sm7x-Triton in Produktion.
+5. Volta-GEMM-Abstand (ncu; 8-Warp-Kacheln 256×128 in `bench_gemm.py` schon eingetragen).
+6. Fork-main: lokaler Commit 7d83b7032 (fusionierte Turing-Indexer-Scores, −54 bis −59 % im Mikrotest) ist **nicht gebaut
+   und nicht gepusht**; `run_ab_turing_2026-10-21.sh` (Turing-Kern-A/B 27B + DSv4 gegen Prod) wartet darauf.
+7. 27B-Allreduce (46 % Prefill) als eigener Strang.
 
 ## Werkzeuge und Fallen von heute
 
-- Mikrotests: `scratchpad/turing/moe_turing_bench.py` + `moe_bind.cu` (bindet die echte Quelldatei des Baubaums; Umgebung
-  `SWEEP=decode|prefill`, `VOLTA_SWEEP=1`; Anker = `_C` des Baubaums), `scratchpad/turing/attn/attn_bench.py`
-  (`CHECK=1`, `CHUNKS=…`), `scratchpad/turing/nsys_top.py`, `scratchpad/glm/memsnap_peak.py`
-  (Scratchpad = `/tmp/claude-1000/-home-mp-Projekte-vllm-research/508c7d38-9687-45d1-9c5d-79a5efeb3358/scratchpad`).
-- Bau: `~/.cache/bench-scripts/build_turing_2026-10-21.sh <commit>` (Baubaum muss sauber auf dem Commit stehen, setzt
-  den Prüfbaum `1Cat-vLLM-sm75` und kopiert die `.so`). fm-Profil: `profile_fm_2026-10-21.sh <Prod-Eintrag> <tag>`.
-- GLM-Boot: `glm53_boot_2026-10-21.sh text|image` mit `flock`, eindeutigem Backup, Signal-Trap, Abbruch ohne
-  Qualitätsfragen bei gescheitertem Boot, `ENTRY_EXTRA_ENV` für Zusatzumgebung.
-- **Config-Zwischenfall 14:45:** zwei Bootskripte gleichzeitig → llama-swap-Config 52 s leer (Gedächtnis
-  `feedback_config_scripts_one_at_a_time`). Folgelauf erst nach Prozessende, nie nach Journal-Fehler.
-- llama-swap hat `PrivateTmp=yes`, schreibbar u. a. `~/.cache` — Diagnosepfade dorthin.
-- bash führt einen Trap erst nach dem laufenden Kindprozess aus: hängendes `curl` gezielt beenden.
-- Jede Qualitätsanfrage an ein gescheitertes Modell startet es in llama-swap neu (5 min GPU je Versuch).
-- Register-Deckel: `__launch_bounds__(512)` → 128 Register; Laderinge mit Laufzeitindex wandern in lokalen Speicher;
-  Schleifen mit von äußeren Variablen abhängigen Grenzen nicht voll ausgerollt → Fragmente im lokalen Speicher (SASS auf
-  `LDL/STL` prüfen, `cuobjdump -res-usage`).
+- Scratchpad: `/tmp/claude-1000/-home-mp-Projekte-vllm-research/508c7d38-9687-45d1-9c5d-79a5efeb3358/scratchpad`
+  (`triton/`: bench_gemm/fa/fa_v100/idx/idx_v100/glm_sparse, check_dots_volta, check_loop_volta, check_fa_v100,
+  run_hoist.sh, sass_gemm_volta.py; `glm/`: nsys_top.py, csf_expand_bench.py, glm53_profile_copy.sh).
+- GLM-Profil: `glm53_profile_copy.sh <tag> 14000` (ENTRY_FILE für den sm7x-Eintrag), GLM-Qualität:
+  `glm53_boot_copy_sm7x.sh text` mit ENTRY_FILE — schreibt `quality_2026-09-27/glm53-text-quality.json` und
+  `gpu_glm53_boot_text_2026-10-21.csv` unter festen Namen (vorher sichern).
+- vLLM-AOT-Cache hat keinen Code-Hash: Varianten mit anderem Triton immer mit eigenem `VLLM_CACHE_ROOT`; Inductor-Schlüssel
+  enthalten `triton_key()` und sind sicher.
+- Mikrotests nur außerhalb gezählter Läufe (Kaltläufe zählen nicht), Kerne nur im CUDA-Graph messen.

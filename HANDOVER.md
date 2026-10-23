@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 02:55 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 02:40 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -158,7 +158,7 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   0,83–0,97, M 256 0,73–0,96, M 384 0,84–1,05 (wo_b/wq_a verlieren) — Gewinner wechseln BM 64/128, BN 64/128, BK 32/64,
   Split 1–4 → Route bräuchte Kacheltabelle je M-Bereich und N. Wiederaufnahme mit Split-K im Block (V100-Decode w2 +14 %, RTX-
   Decode) und Kachelregel nach N (N ≤ 1024: BM64 BN64 BK32 S4 w4 s3) + M-Bereich. Entwurf + Daten bleiben in bench-scripts.
-  **02:55 MoE-Familie (Gedächtnis `project_moe_skinny_roofline_2026-10-23.md`):** Karte der Pfade per Explore-Agent: DSv4
+  **02:20 MoE-Familie (Gedächtnis `project_moe_skinny_roofline_2026-10-23.md`):** Karte der Pfade per Explore-Agent: DSv4
   (MXFP4) + GLM-5.3 (NVFP4) laufen auf V100 UND RTX über den Skinny-QPN-Pfad (`skinny_moe_qpn_sm70`, je Projektion ein Aufruf,
   SiLU separat, Summe in Torch); kein MoE-Pfad liest `triton_sm7x_tensor_cores`. Roofline (`moe_roofline.py`, echte DSv4-
   Schicht): RTX 86–98 % Bandbreite bis 512 Token, V100-Prefill rechengebunden (512: 58–63 %, 2048: 18 %). Triton-Prototyp
@@ -172,7 +172,7 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   **Compiler, uncommittet, gebaut 02:15:** `LowerLoops.cpp` Dekodier-BEREICH statt Kette (Mehrfachergebnisse, join/split,
   Verzweigungen bis zu genau einem Wert für den Dot) + Nebenoperanden aus der Schleife (Gruppenskalen samt Dekodieren,
   `isStageableSideOperand`), Speicherschritt hinter das Bereichsende statt die Kette zu verschieben. Runde `region` (Prüfungen,
-  QPN8, Familie, Budget gegen `qpn8c`) läuft seit 02:55.
+  QPN8, Familie, Budget gegen `qpn8c`) lief 02:20–02:36: sauber (Prüfungen 0, Dot-Tests 0 neu, QPN8 390/390, Familie unverändert, Budget sm_70 + sm_75 PTX-gleich) → **committet cf50c58c44**. Split-K-im-Block-MoE (`moe_qpn_mxfp4_splitk`) korrekt (24 Fälle), Sweep läuft.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

@@ -13,6 +13,22 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 23.10. 21:25: 27B-Prefill-Zweig `tp-prefill-overlap` f21d1c564 abgenommen (A/B/A/B gegen Produktion a1ac0c89d). Produktion unverändert.**
+Vier Commits auf a1ac0c89d (Fork, gepusht): 88d25b8bd Überlappung (KernelConfig `tp_prefill_overlap_min_tokens`: reine Prefill-Batches
+als zwei verschränkte Hälften in Threads, Allreduce der einen Hälfte auf einem Comm-Stream; Align-Modus teilt 801/799, damit beide
+Hälften den GDN-Zustandsplatz des Chunk-Endes nutzen); c1816294c `host_reduce.copy_engine_max_bytes` (Allreduce großer Nachrichten
+über Kopier-Engines + cuStreamWrite/WaitValue32, bitgleich zu NCCL; NCCL-LL bremste daneben laufende Kerne um 5–37 %); afe87abd0
+Split-KV in `paged_prefill_attention_sm75` nach Wellen (1 CTA/SM: Hälften brauchten 4 statt 3 Wellen); f21d1c564 NVFP4-Entpackkachel
+auf Turing 16 Gruppen (2,2× schneller). Fork-Arm: `--kernel-config '{"triton_sm7x_tensor_cores":true,"tp_prefill_overlap_min_tokens":1024,
+"host_reduce":{"copy_engine_max_bytes":20971520}}'`, Caches als Kopien der Produktions-Caches (`*-tpo-2026-10-23`).
+Reihe `~/.cache/bench-scripts/ab_tpo_2026-10-23.log` (ab 20:14, fm-kalt + A/B/A/B), Prefill s (weniger ist besser) prod-a/fm-a/prod-b/fm-b:
+29k 33,02/19,20/33,05/19,20 (−42 %); 184k 269,05/174,34/269,21/174,38 (−35 %); 250k 402,27/269,06/402,47/269,29 (−33 %). Decode gleich
+(lang 29k 57,3–57,6 tok/s / 38 ms; 184k 54,3 ms = 50,7 tok/s; 250k 62,2–62,4 ms; Prosa 74,6–75,0, Code 114,8–115,6, Edit 119,1–119,9 tok/s),
+Annahme 2,18/2,19. Greedy in allen 5 Läufen identisch; Qualität 7/8 wortgleich zur Produktion, „zug“ ab Zeichen 909 anders formuliert,
+beide richtig (84 km/h), je Arm wortgleich (deterministisch). Speicher-Spitze je RTX 48 285 statt 47 979 MiB (+306).
+Profile: `nsys/q27-tpo-1023` (NCCL-Überlappung, 100k 118 s), `nsys/q27-tpo-ce-1023` (Kopier-Engines, 95,6 s, Leerlauf 0,4 s).
+Restposten: Gewichts-Entpacken je Hälfte doppelt (FP8-Entpacken ~400 GB/s), Umstellung offen (Peuqui).
+
 **Nachtrag 23.10. 18:05: PRODUKTION UMGESTELLT auf a1ac0c89d (Peuqui 17:3x „Ja, stell auf Produktion um“).**
 `1Cat-vLLM-work` prod-fork-main 79e07bfef → a1ac0c89d (Fast-Forward, 21 Commits); 12 native Bibliotheken aus `1Cat-vLLM-fork-main`
 (alte in `~/.cache/prod-switch-2026-09-29/so-vor-2026-10-23-routes/` mit MD5SUMS); sm7x-Triton als feste Kopie

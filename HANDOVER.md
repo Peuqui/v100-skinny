@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 02:40 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 02:47 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -173,6 +173,16 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   Verzweigungen bis zu genau einem Wert für den Dot) + Nebenoperanden aus der Schleife (Gruppenskalen samt Dekodieren,
   `isStageableSideOperand`), Speicherschritt hinter das Bereichsende statt die Kette zu verschieben. Runde `region` (Prüfungen,
   QPN8, Familie, Budget gegen `qpn8c`) lief 02:20–02:36: sauber (Prüfungen 0, Dot-Tests 0 neu, QPN8 390/390, Familie unverändert, Budget sm_70 + sm_75 PTX-gleich) → **committet cf50c58c44**. Split-K-im-Block-MoE (`moe_qpn_mxfp4_splitk`) korrekt (24 Fälle), Sweep läuft.
+  **02:50 MoE-Stand V100 (Triton/Hand, `moe_triton_v100_{e,f,g}.log`):** Split-K-im-Block-Variante verworfen (1,5–2,1×:
+  Triton puffert x für alle Warps gemeinsam = Barrieren je Iteration, Skala über Smem-Umweg, 3 Durchgänge bei 48 Zeilen;
+  aus dem Modul entfernt). Prototyp verbessert: k-Reihenfolge „erst alle niedrigen, dann alle hohen Nibbles“ + Byte-Paare
+  (0,2)/(1,3) direkt aus dem Verschiebe-Trick (Dekodierer ohne PRMT) → Schleife 276 → 239 Befehle/Warp-Iteration.
+  512 Token: W13 1,07–1,08 (BM16 BN128 BK32 w4 s1), W2 1,08 (BN256); 1024: 0,79/0,85; 2048: 0,68/0,69. ncu 512: Triton 1,18
+  gegen 1,02 Mrd. Befehle, DRAM 2,72 gegen 2,55 GB, Barrieren-Stall 1,29 gegen 0,31 (Einzelpuffer); `maxnreg` hilft nicht.
+  **Vorschlag an Peuqui (Entscheidung, V100-Speicher):** MoE je 512 Token W13+W2 je DSv4-Schicht: Chunk 512 V100-Hand 6,5 /
+  RTX-Hand 6,5 ms; Chunk 1024 V100-Triton 4,8 / RTX-Hand 3,9 ms; Chunk 2048 V100-Triton 3,6 / RTX-Hand 3,8 ms → mit 1024er-
+  Chunks MoE je Token RTX −40 %, V100 −26 % (MoE ~36 % der Stufe ≈ 10–15 % weniger DSv4-Prefill), wenn der Speicher reicht.
+  Dann MoE-Route V100 Triton ab ~1024 Token (in den Fork), RTX bleibt Handkern.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

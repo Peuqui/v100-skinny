@@ -1,10 +1,32 @@
-# Übergabe — Stand 23.10.2026, 03:45 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 03:46 (Projekt vllm-research; Morgen-Bericht ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
 Betriebsstand (SSOT): `STAND.md`, Nachträge 22.10. 04:25 bis 07:20 ganz oben unter „Laufzeitumgebung“.
 Vorige Übergabe (21.10. 15:55) liegt in der Git-Historie dieses Repos. Grund der Übergabe: Peuqui startet nur Claude neu
 (kein Rechner-Neustart). AIfred-Dienst bleibt gestoppt, kein anderer Dienst braucht die Karten (Peuqui 06:00).
+
+## Morgen-Bericht 23.10. ~03:50 — Ergebnis der Nacht und Entscheidungen für Peuqui
+
+**Entscheidungen, die bei Peuqui liegen (Begründung jeweils im Nachtrag darunter):**
+1. **Turing-Kerne bald in die Schlussmessung / Produktion:** frisches DSv4-Profil (03:44) zeigt die RTX-Stufen als Engpass
+   (V100 warten 16–17 s im NCCL-Empfang); 45 % der RTX-Stufe ist MoE mit dem ALTEN Kern — der m16n8k8-MoE-Kern 039c1b6af
+   (Fork, nicht in Produktion) senkt ihn um ~34 % ⇒ DSv4-Prefill grob −15 %. Größter einzelner Hebel im Moment.
+2. **DSv4-Chunks 512 → 1024 (V100-Speicher prüfen):** MoE je Token RTX −40 % (vorhandener Handkern), V100 −26 % (mit dem
+   Triton-MoE-Kern, der ab ~700 Token je Chunk gewinnt).
+3. **W8A16-Route:** Triton auf dem QPN8-Layout gewinnt RTX-Prefill M 512 (alle 6 Formen 0,84–0,95) und V100-Decode (5 von 6);
+   verlustfreie Regel bräuchte Kacheltabellen je M/N — Aufwand gegen ~1 % Gewinn, zurückgestellt.
+
+**Triton-Baum `sm7x-tensor-cores` (lokal), neu heute Nacht, alle mit Volta-Prüfungen, Dot-Tests V100/RTX und Budget-PTX-
+Vergleich:** b5633732c9 (Dekodier-Kette registergestuft), b919d9104e (reshape/trans in der Kette + Hoist nur für reine
+Umordnung), cf50c58c44 (Dekodier-Bereich mit Gruppenskalen aus eigenem Load). Verworfen nach A/B: lineares A-Layout für
+LDS.128 (konfliktfrei, aber 1–3 % langsamer), Split-K-im-Block-MoE in Triton (1,5–2,1×), RB-2-MoE.
+
+**Neue Werkzeuge (`~/.cache/bench-scripts/triton-sm7x/`):** `bench_timing.py` (SSOT Messfunktion mit Spin; CPU-Last verfälschte
+vorher 10–30 %), `moe_roofline.py` (echte DSv4-Schicht, `--triton`, `MOE_TILES=`), `moe_qpn_triton.py` (MoE-Prototyp
+Volta), `w8a16_qpn8.py`, `bench_w8a16_route.py`, `sweep_w8a16_tiles.py` (`W8A16_LAYOUT=qpn8|raw`), `sass_tools.py`/
+`sass_moe_mix.py` (SASS-Mix der innersten Schleife), `run_ncu_moe.sh`, `run_ncu_banks.sh`, `ab_builds.sh` (A/B über
+Baustände per Patch in `patches/`), `run_glm_once.py` (`GLM_TILE=`).
 
 ## Nachtrag 22.10. 20:50 — Abend: Volta-Compiler nach Handkern-Vorbild, Familie 2 (W8A16-Decode) läuft
 

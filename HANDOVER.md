@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 02:47 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 02:52 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -183,6 +183,13 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   RTX-Hand 6,5 ms; Chunk 1024 V100-Triton 4,8 / RTX-Hand 3,9 ms; Chunk 2048 V100-Triton 3,6 / RTX-Hand 3,8 ms → mit 1024er-
   Chunks MoE je Token RTX −40 %, V100 −26 % (MoE ~36 % der Stufe ≈ 10–15 % weniger DSv4-Prefill), wenn der Speicher reicht.
   Dann MoE-Route V100 Triton ab ~1024 Token (in den Fork), RTX bleibt Handkern.
+  **02:52 Umschaltpunkt V100 (`moe_triton_v100_{i,j}.log`):** 640 Token (≈ 15 Zeilen/Experte) Hand vorn (Triton 1,08–1,10),
+  768 (≈ 18) Triton 0,92–0,96, 896 0,82–0,87, 1024 0,80/0,85, 2048 0,68/0,69. Regel für eine spätere Route: Zeilen je
+  Experte (Token·top-k/E) > 16 → Triton, BM 32 bis 32 Zeilen, darüber BM 64 (BN 128, BK 32 W13 / 64–128 W2, 4 Warps,
+  stages 1); DSv4 also ab ~700 Token je Chunk. Versuch „zwei 16-Zeilen-Blöcke je dekodiertem Gewicht“ (RB 2) schlechter und
+  verschlechterte durch die Codestruktur auch den Einblock-Weg → verworfen, Kern zurückgestellt (Werte oben reproduziert).
+  Hinweis zu SASS-Vergleichen: stages 1 und 3 nehmen verschiedene Wege für das Gewicht (stages 1: convert per Warp-Shuffle,
+  32 SHFL + 32 SEL; stages 3: Ringpuffer über Smem) — nur gleiche Stufenzahl vergleichen.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

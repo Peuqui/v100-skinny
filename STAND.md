@@ -13,6 +13,21 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 23.10. 14:30: Routen-Zweig mit 1024er-Chunks speicherfest, Einzellauf Vollmodell. Produktion unverändert (79e07bfef).**
+Zweig `triton-sm7x-routes` = 1f9de3af9 (gepusht). Neu seit 08:15: 64009b8dd/00d06e31c/1f9de3af9 Volta-Triton-MoE (Lastausgleich
+über Zeilenblöcke in drei Stufen, Blockfindung im Kern), d77726c11 zwei seit e1cb50fd9 rote Workspace-Tests repariert,
+cb8272ee1 Indexer gibt die Logits jedes Teilstücks vor dem nächsten frei, 993f69f5d Testfall schiefes Routing, c80e83f8a PP-Send
+eines eager Schritts überlappt den nächsten Schritt.
+- **Konfiguration für die Schlussreihe:** `--max-num-batched-tokens 1024`, `--num-gpu-blocks-override 3500` (SWA braucht
+  Fenster + Chunk je Anfrage), `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=64` (Mini: −220 MiB V100, Tempo gleich).
+- **Einzellauf Vollmodell once1024e** (c80e83f8a, `~/.cache/bench-scripts/once1024e_2026-10-23.log`): Prefill 35,7k 7,18 s,
+  178k 41,98 s, 287k 74,92 s (once1024c mit alter MoE-Fassung: 8,50 / 44,90 / 78,11; Prod-A/B: 12,5 / 79,1 / 144,5); Decode
+  178k 81,0 ms (48,3 tok/s), 287k 86,7 ms (34,9 tok/s); V100-Spitze 32 098 MiB (Luft 396, Prod 336); Antworten in Ordnung.
+- **Stufenprofil** (`nsys/ds-routes1024e-1023/`, Auswertung `~/.cache/bench-scripts/nsys/stage_ops.py`): 150k 36,9 s, Rechenzeit
+  je Stufe 29,6–30,8 s, RTX-Stufen geben den Takt vor (MoE-Handkern 13,4 s, GEMMs 5,9, Sparse 3,4, Indexer 2,9, QPN8-Entpacken
+  1,2). Verworfen bzw. zurückgestellt (Messungen in `project_dsv4_stage_levers_2026-10-23` im Gedächtnis): Triton-MoE auf RTX,
+  Handkern-Blockliste/RB8/L2-Reihenfolge, FP8-Triton-GEMM, fp16-Prefill-Kopie auf Turing (S4-Speicher).
+
 **Nachtrag 23.10. 08:15: Routen-Zweig gegen Produktion — DSv4 abgenommen, 27B-A/B läuft. Produktion unverändert (79e07bfef).**
 Fork-Zweig `triton-sm7x-routes` = 7b8fb5387 (gepusht; Nachrichten-Korrektur per Force-Push, Inhalt = 3b20a9b82): Turing-MoE
 039c1b6af, Volta-MoE 7ee89582f, Turing-Prefill-Attention f9ac81b6b, Turing-Indexer 7d83b7032, Triton-Index-Scorer 7458c6257 und

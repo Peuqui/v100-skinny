@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 03:07 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 03:34 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -198,7 +198,13 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   bits {3} / {1,3} / {0,1,3} je 2 / 4 / ≥ 8 Stücke je Zeile), über `getDotOperandSharedEncoding` in `getSharedEncIfAllUsers-
   AreDotEnc` (Pipeliner) und `ReduceDataDuplication`; Rückgabetyp jetzt `SharedEncodingTrait`. ncu: Konflikte 43 528 (wie
   vec 4), Smem-Lesebefehle 33,6 → 25,2 Mio., Wavefronts gleich, Befehle −3,5 %; Zeit unter ncu 1,91 ms (Einzelmessung).
-  Runde `linearA` (Prüfungen + GEMM-Bench V100/RTX) läuft seit 03:08.
+  Runde `linearA`: Prüfungen 0, Dot-Tests 0 neu. **A/B/A/B über Baustände (03:21–03:33, `ab_builds.sh` + `cmd_gemm_v100.sh`,
+  Log `ab_linearA2.out`), V100 TFLOPS Basis → linear:** M16 10,5 → 10,6, M128 47,8 → 49,4 (+3 %), 512 71,9 → 71,0,
+  2048 76,4 → 74,0 (−3 %), 4096³ 82,5 → 81,2, 8192x2048x7168 83,2 → 81,6 → **verworfen** (Patch `patches/rejected/`).
+  Gleiche Wavefronts, weniger Befehle, trotzdem langsamer: die Smem-Bandbreite ist es nicht; vermutlich Latenz der breiten
+  Zugriffe / XOR-Adressen. Damit ist Punkt 1b (A-LDS.128) erledigt: kein Hebel. Baum sauber auf cf50c58c44.
+  Hinweis: Seit `bench_timing.py` (Spin) misst cuBLAS deutlich höher (4096³ 94,4 statt 83,8 TFLOPS) — GEMM-Zahlen vor/nach
+  23.10. 00:00 nicht vergleichen, nur A/B im selben Bench.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

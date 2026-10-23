@@ -13,6 +13,29 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 23.10. 08:15: Routen-Zweig gegen Produktion — DSv4 abgenommen, 27B-A/B läuft. Produktion unverändert (79e07bfef).**
+Fork-Zweig `triton-sm7x-routes` = 7b8fb5387 (gepusht; Nachrichten-Korrektur per Force-Push, Inhalt = 3b20a9b82): Turing-MoE
+039c1b6af, Volta-MoE 7ee89582f, Turing-Prefill-Attention f9ac81b6b, Turing-Indexer 7d83b7032, Triton-Index-Scorer 7458c6257 und
+heute 7ea6a683a (MoE-Top-k-Summe fusioniert), 5a11342ea (mHC-Prenorm auf Tensorkernen), dee5a6e48 (Dequant-Gather 2048 Worker,
+bitgleich), 7b8fb5387 (Sparse-Prefill: scores-/PV-GEMM lesen die Zeilen über die Indizes, V100 bitgleich zu cuBLAS). Laufzeit
+mit sm7x-Triton (`triton-sm7x/python` vorn im PYTHONPATH) und `--kernel-config '{"triton_sm7x_tensor_cores":true}'`.
+- **DSv4 A/B/A/B** (`~/.cache/bench-scripts/ab_routes_2026-10-23.log`, Skript `run_ab_routes_2026-10-23.sh`, Tabelle per
+  `scratchpad/ab_table.py`): Prefill 35,7k 12,53/12,50 → 8,45/8,45 s (2851 → 4225 tok/s, −32 %), 178k 79,10/79,01 → 49,66/49,65 s
+  (2256 → 3594 tok/s, −37 %), 287k 144,53/144,52 → 87,08/87,11 s (1986 → 3296 tok/s, −40 %); Decode-Schritt lang 68,2/68,0 →
+  66,0/66,4 ms (45,6/45,8 → 46,2/47,9 tok/s), 178k 83,6/82,9 → 81,6/81,6 ms, 287k 89,2/89,5 → 87,8/87,6 ms; Annahme/Runde
+  3,10/3,11 gegen 3,05/3,19; Speicherspitze je Karte −242 bis −284 MiB. Qualität: 8/8 in beiden Fork-Läufen von Hand richtig
+  (Zug 84 km/h, Kuanda zurückgewiesen), Greedy-Texte inhaltlich richtig, nur Wortwahl anders. Kaltboot-Prüfung: alle neuen
+  Triton-Kerne mit `mma.sync` im Cache (`mhc/check_tc_kernels_in_cache.py`).
+- **Stufenprofil Routen-Zweig** (`nsys/ds-routes-1023/`, Log `profile_stages_routes_2026-10-23.log`): 150k-Prefill 43,7 s
+  (Prod 03:44: 65,4 s). Stufen ausgeglichen, je 40,5–41,8 s Kernzeit; NCCL-Warten V100 4–5 s (vorher 16–17 s). Rangliste je
+  Stufe: MoE RTX 18,8 / V100 16,4 s (40–46 %), QPN8-FP8 RTX 5,9 s, GEMM-Familie V100 8,4 s (wo_a TurboMind 2,0, cuBLAS wq_b u. a.
+  2,1, wo_b u. a. 3,0, QPN8-Entpacken 1,35), Sparse-GEMMs 2,7–3,5 s, Indexer-Scores 2,9–3,6 s.
+- wo_a V100 Entpacken + gebatchtes cuBLAS statt TurboMind (`mhc/bench_wo_a_v100.py`): M 64–256 −48 bis −50 %, aber M 500–512
+  nur −8 bis −12 % (≈ 0,16 s je V100-Stufe), M 1024 −17 %. Nicht eingebaut, Entscheidung Peuqui (hängt an den 1024er-Chunks).
+- 122 Fehlschläge in `tests/quantization/test_sm70_fp4_mainflow.py` (119) und `test_sm70_mxfp4_moe.py` (3) sind 1Cat-seitig:
+  Dateien und geprüfter Code identisch zu 1Cat main dbc1f4f8f; 356b89b4b entfernte `_DFLASH_NVFP4_TRACE_ARMED`, das eingefrorene
+  Fixture nutzt es noch.
+
 **Nachtrag 22.10. 09:00: Handkerne in Triton vereinheitlichen (Peuqui 08:50) — Schalter eingebaut, Plan.**
 Vorgabe: Handkerne in Triton vereinheitlichen, möglichst wenig Parameter, Volta UND Turing, atomar, modular, wenig Irrwege;
 erst alles umsetzen, dann gemeinsam testen. Fork-Zweig `triton-sm7x-routes` (auf `turing-kernels-2026-10-21` 7d83b7032,

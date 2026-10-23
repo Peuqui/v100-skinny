@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 02:52 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 03:07 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -190,6 +190,15 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   verschlechterte durch die Codestruktur auch den Einblock-Weg → verworfen, Kern zurückgestellt (Werte oben reproduziert).
   Hinweis zu SASS-Vergleichen: stages 1 und 3 nehmen verschiedene Wege für das Gewicht (stages 1: convert per Warp-Shuffle,
   32 SHFL + 32 SEL; stages 3: Ringpuffer über Smem) — nur gleiche Stufenzahl vergleichen.
+  **03:08 A-Operand Volta mit LDS.128 konfliktfrei (Peuqui 22:55 „weiterverfolgen“), uncommittet, gebaut 03:07, Patch
+  `patches/volta_a_linear_shared.patch`:** ncu bestätigt die Ursache des avec8-Rückschritts (GEMM 4096³ 128x256x32 w8 s3:
+  vec 8 33,6 Mio. Bank-Konflikte, Wavefronts +50 %, 1,87 → 2,00 ms; `run_ncu_banks.sh`). Viertel-Warp liest Zeilen 0–3 und
+  8–11, die Swizzle-Phase (aufeinanderfolgende Zeilenbits) gibt r und r+8 dieselben Bänke; `swizzled_shared` kann es nicht
+  ausdrücken. Lösung: `Utility.cpp` `voltaAlongKSharedEncoding` = `shared_linear`-Layout (GF(2)-Basen: 16-B-Stück XOR Zeilen-
+  bits {3} / {1,3} / {0,1,3} je 2 / 4 / ≥ 8 Stücke je Zeile), über `getDotOperandSharedEncoding` in `getSharedEncIfAllUsers-
+  AreDotEnc` (Pipeliner) und `ReduceDataDuplication`; Rückgabetyp jetzt `SharedEncodingTrait`. ncu: Konflikte 43 528 (wie
+  vec 4), Smem-Lesebefehle 33,6 → 25,2 Mio., Wavefronts gleich, Befehle −3,5 %; Zeit unter ncu 1,91 ms (Einzelmessung).
+  Runde `linearA` (Prüfungen + GEMM-Bench V100/RTX) läuft seit 03:08.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder
   heutige Route nach dieser Tabelle; danach MoE-Familie (größter Anteil), dann A-LDS.128-Verschränkung (V100-Hauptschleife)
   und Turing-Befehlsmix (+32 % gegen cuBLAS) als Hebel für alle fusionierten Kerne.

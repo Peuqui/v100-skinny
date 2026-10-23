@@ -13,6 +13,20 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 23.10. 17:30: Schlussreihe bestanden — Routen-Zweig a1ac0c89d gegen Produktion 79e07bfef. Umstellung wartet auf Peuqui.**
+Reihe `~/.cache/bench-scripts/ab_final_2026-10-23.log` (Skript `run_ab_final_2026-10-23.sh`, Start `start_ab_final_2026-10-23.sh`,
+Tabelle `ab_table.py <log> fin-ds-|fin-q27-`), 15:11–17:22, Fork-Kaltlauf nur Boot + Greedy, dann Prod/Fork/Prod/Fork.
+- **DSv4** (Fork: 1024er-Chunks, Pool 3500, Logits-Budget 64): Prefill 35,7k 12,55/12,50 → 7,00/7,00 s (2851 → 5101 tok/s),
+  178k 79,16/79,14 → 41,08/41,06 s (2255 → 4346 tok/s, −48 %), 287k 144,74/144,64 → 73,57/73,55 s (1984 → 3902 tok/s, −49 %);
+  Decode-Schritt lang 69,0/68,4 → 66,6/66,6 ms (44,0/46,7 → 46,6/46,8 tok/s), Prosa/Code/Edit 61/63/69 → 59/62/67 ms, 178k
+  83,5/85,2 → 81,8/82,5 ms, 287k 90,0/90,3 → 88,7/88,1 ms; Annahme/Runde 3,04/3,19 → 3,11/3,11. Speicherspitze RTX +340/+380 MiB
+  (S4 47 625 MiB), V100 −20…−60 MiB. Qualität 8/8 von Hand (Zug 84 km/h, Kuanda zurückgewiesen), Fork a/b wortgleich.
+- **Qwen3.8-27B**: Prefill lange Prompts 35,40/35,42 → 33,05/33,05 s (−6,6 %), 184k 358,58/358,60 → 269,09/269,18 s (−25 %),
+  250k 566,01/565,83 → 402,41/402,34 s (−29 %); Decode und Annahme gleich (lang 37,9 → 38,0 ms, 184k 54,2 → 54,3 ms, 2,18 →
+  2,19); Greedy in allen Läufen identisch zur Referenz, alle 8 Antworten wortgleich zur Produktion; Speicher gleich.
+- Keine Fehler im Journal. Umstellung braucht: sm7x-Triton-Baum als stabile Kopie, PYTHONPATH + `--kernel-config
+  '{"triton_sm7x_tensor_cores":true}'` in den Einträgen, DSv4 1024/3500/Budget 64, native Bibliotheken aus `1Cat-vLLM-fork-main`.
+
 **Nachtrag 23.10. 14:30: Routen-Zweig mit 1024er-Chunks speicherfest, Einzellauf Vollmodell. Produktion unverändert (79e07bfef).**
 Zweig `triton-sm7x-routes` = 1f9de3af9 (gepusht). Neu seit 08:15: 64009b8dd/00d06e31c/1f9de3af9 Volta-Triton-MoE (Lastausgleich
 über Zeilenblöcke in drei Stufen, Blockfindung im Kern), d77726c11 zwei seit e1cb50fd9 rote Workspace-Tests repariert,

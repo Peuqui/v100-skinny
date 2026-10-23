@@ -13,6 +13,20 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 23.10. 22:50: PRODUKTION UMGESTELLT auf f21d1c564 (`tp-prefill-overlap`; Peuqui ~22:00: nach Abnahme selbst umstellen).**
+`1Cat-vLLM-work` prod-fork-main a1ac0c89d → f21d1c564 (Fast-Forward); `_C` cfd80940a7ba aus `1Cat-vLLM-fork-main` (übrige 11 Bibliotheken
+bytegleich; alte in `~/.cache/prod-switch-2026-09-29/so-vor-2026-10-24/` mit MD5SUMS); Config-Sicherung `config.yaml.vor-2026-10-24`;
+Skript `~/.cache/bench-scripts/prod_switch_2026-10-24.sh`. llama-swap: 27B `--kernel-config '{"triton_sm7x_tensor_cores":true,
+"tp_prefill_overlap_min_tokens":1024,"host_reduce":{"copy_engine_max_bytes":20971520}}'`; 27B und DSv4 (Haupt + Coding-K7) auf
+Produktionskopien der abgenommenen Compile-Caches (`vllm-/torchinductor-/triton-cache-prod-2026-10-24`, aus `*-tpo-2026-10-23`);
+DSv4-Kernel-Config unverändert. Kontrolle `prodcheck_2026-10-24_tpo.log`: 27B Greedy identisch, Prefill 29k 19,1–19,3 s, 184k
+174,24 s, 250k 269,16 s, Decode wie zuvor, Speicher 48 285 MiB je RTX; DSv4 Greedy identisch, 35,7k 7,0 s, 178k 41,15 s, 287k 73,82 s,
+Decode 59/62/67 ms; Qualitätsantworten beider Modelle wortgleich zur alten Produktion. Tag `verified-2026-10-24-tp-prefill-overlap`.
+Rücksprung: `verified-2026-10-23-routes` + Bibliotheken `so-vor-2026-10-24` + Config `config.yaml.vor-2026-10-24`.
+DSv4-wo_a-Zweig (`dsv4-wo-a-grouped` fd5e8a647): A/B `ab_woa_2026-10-23.log` Decode −4…−6 % (lang 67,1 → 63,4 ms, Code 72,7 → 80,8 tok/s),
+aber erste zwei 35,7k-Prefills nach dem Boot 9,2/8,4 statt 7,0 s (TurboMind misst FP8-Formen ≤ M 64 im Serving-Pfad) → nicht umgestellt;
+Fix „Messplan nach dem Aufwärmen einfrieren“ in Arbeit.
+
 **Nachtrag 23.10. 21:25: 27B-Prefill-Zweig `tp-prefill-overlap` f21d1c564 abgenommen (A/B/A/B gegen Produktion a1ac0c89d). Produktion unverändert.**
 Vier Commits auf a1ac0c89d (Fork, gepusht): 88d25b8bd Überlappung (KernelConfig `tp_prefill_overlap_min_tokens`: reine Prefill-Batches
 als zwei verschränkte Hälften in Threads, Allreduce der einen Hälfte auf einem Comm-Stream; Align-Modus teilt 801/799, damit beide

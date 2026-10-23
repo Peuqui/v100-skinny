@@ -13,7 +13,19 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
-**Nachtrag 23.10. 17:30: Schlussreihe bestanden — Routen-Zweig a1ac0c89d gegen Produktion 79e07bfef. Umstellung wartet auf Peuqui.**
+**Nachtrag 23.10. 18:05: PRODUKTION UMGESTELLT auf a1ac0c89d (Peuqui 17:3x „Ja, stell auf Produktion um“).**
+`1Cat-vLLM-work` prod-fork-main 79e07bfef → a1ac0c89d (Fast-Forward, 21 Commits); 12 native Bibliotheken aus `1Cat-vLLM-fork-main`
+(alte in `~/.cache/prod-switch-2026-09-29/so-vor-2026-10-23-routes/` mit MD5SUMS); sm7x-Triton als feste Kopie
+`~/.cache/triton-sm7x-prod-2026-10-23` (libtriton 81ff027de656 = Baum cf50c58c44); llama-swap: DSv4 (Haupt + Coding-K7) und 27B mit
+PYTHONPATH=Triton-Kopie, `--kernel-config '{"triton_sm7x_tensor_cores":true}'`, Caches `torchinductor-/triton-cache-routes-2026-10-23`,
+`vllm-routes1024-2026-10-23`; DSv4 zusätzlich 1024er-Chunks, Pool 3500, `VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=64` (Config-Sicherung
+`config.yaml.vor-2026-10-23-routes`, Skript `~/.cache/bench-scripts/prod_switch_2026-10-23.sh`). Kontrolle
+`prodcheck_2026-10-23_routes.log`: DSv4 178k 41,07 s, 287k 73,67 s, Decode 82,3/89,1 ms, Greedy und 8 Antworten wortgleich zum
+Fork-Arm; 27B 184k 268,9 s, 250k 402,2 s, Greedy identisch; keine Journal-Fehler. Tag `verified-2026-10-23-routes`; Greedy-Referenz
+DS ersetzt (`greedy_refs.sh`, alt `.vor-2026-10-23`). Rücksprung: `verified-2026-10-21-moegrid` + Libs + Config-Sicherung.
+Offen: Flash-Next (eingefroren) läuft ebenfalls auf dem neuen Baum (Handkerne, ohne Schalter), nicht probegestartet.
+
+**Nachtrag 23.10. 17:30: Schlussreihe bestanden — Routen-Zweig a1ac0c89d gegen Produktion 79e07bfef.**
 Reihe `~/.cache/bench-scripts/ab_final_2026-10-23.log` (Skript `run_ab_final_2026-10-23.sh`, Start `start_ab_final_2026-10-23.sh`,
 Tabelle `ab_table.py <log> fin-ds-|fin-q27-`), 15:11–17:22, Fork-Kaltlauf nur Boot + Greedy, dann Prod/Fork/Prod/Fork.
 - **DSv4** (Fork: 1024er-Chunks, Pool 3500, Logits-Budget 64): Prefill 35,7k 12,55/12,50 → 7,00/7,00 s (2851 → 5101 tok/s),

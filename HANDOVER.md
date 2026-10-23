@@ -1,4 +1,4 @@
-# Übergabe — Stand 23.10.2026, 03:34 (Projekt vllm-research; Abend-Nachtrag ganz oben)
+# Übergabe — Stand 23.10.2026, 03:45 (Projekt vllm-research; Abend-Nachtrag ganz oben)
 
 Claude Code startet in `/home/mp/Projekte/vllm-research` (Projektregeln `CLAUDE.md`, Gedächtnis unter
 `~/.claude/projects/-home-mp-Projekte-vllm-research/memory/`, AI-Connect-Peer `Mini:vllm-research`).
@@ -203,6 +203,15 @@ Stack bleibt gepinnt (torch 2.10 / Triton 3.6, CUDA 13 kann kein sm_70); 1Cat zu
   2048 76,4 → 74,0 (−3 %), 4096³ 82,5 → 81,2, 8192x2048x7168 83,2 → 81,6 → **verworfen** (Patch `patches/rejected/`).
   Gleiche Wavefronts, weniger Befehle, trotzdem langsamer: die Smem-Bandbreite ist es nicht; vermutlich Latenz der breiten
   Zugriffe / XOR-Adressen. Damit ist Punkt 1b (A-LDS.128) erledigt: kein Hebel. Baum sauber auf cf50c58c44.
+  **03:44 frisches DSv4-Stufenprofil auf Produktion 79e07bfef (`~/.cache/bench-scripts/nsys/ds-stages-1023/`, Log
+  `profile_stages_ds_2026-10-23.log`; 150k-Prefill 65,4 s, am 20.10. 90,7 s):** Kernzeit je Stufe (s) S0 RTX/S1–S3 V100/S4 RTX:
+  Skinny-MoE 29,0 / 17,3–17,4 / 25,6; GEMM (cuBLAS fp16) 11,9 / 15,7–16,0 / 13,2; NCCL 1,7 / **15,7–17,1** / 3,3; sonstige
+  10,1 / 7,6–7,9 / 12,2; QPN8-FP8 5,9 / 1,5 / 5,9; mHC 3,6 / 2,9–3,0 / 3,4. → **Engpass sind die RTX-Stufen** (V100 warten
+  16–17 s im NCCL-Empfang). MoE je Aufruf (Median): RTX W13 6,56 / W2 3,25 ms = die ALTEN Zahlen vor dem Turing-MoE-Kern —
+  **039c1b6af (m16n8k8-MoE, 21.10.) ist NICHT in Produktion** (bewusst, wartet auf die gesammelte Schlussmessung); er bringt
+  laut Notiz W13 → 4,30, W2 → 2,24 ms ⇒ RTX-MoE −34 %, RTX-Stufe ≈ −15 % ⇒ DSv4-Prefill ≈ −15 % (danach Stufen ausgeglichen).
+  V100 W13 4,92 / W2 2,44 ms (Mikrobench mit Gleichverteilung 4,22 / 2,29: echtes Routing +7–17 %). Für die Schlussreihe also
+  zuerst die Turing-Kerne; danach zählt die V100-Seite (MoE, GEMM-Familie 25 % der V100-Stufe).
   Hinweis: Seit `bench_timing.py` (Spin) misst cuBLAS deutlich höher (4096³ 94,4 statt 83,8 TFLOPS) — GEMM-Zahlen vor/nach
   23.10. 00:00 nicht vergleichen, nur A/B im selben Bench.
   **Nächstes:** W8A16-Route hybrid in den Fork (`triton-sm7x-routes`, Muster 7458c6257): je Karte und M-Bereich Triton oder

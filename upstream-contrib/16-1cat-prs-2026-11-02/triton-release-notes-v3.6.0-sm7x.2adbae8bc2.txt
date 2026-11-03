@@ -1,0 +1,45 @@
+Triton 3.6.0 plus the 26 commits of branch sm7x-tensor-cores, at commit 2adbae8bc2. Stock Triton lowers tl.dot to FMA on every NVIDIA GPU before sm_80; this build lowers it to tensor-core MMA on Volta (sm_70, mma.m8n8k4) and on Turing (sm_75, mma.m16n8k8), batched (3D) dots included. On both it double-buffers dot operands through registers into shared memory, since these GPUs have no cp.async, and on Turing it software-pipelines loops through registers. The changes are in the TritonGPU dialect and the NVIDIA backend; on other architectures the build compiles like Triton 3.6.0. Shown upstream in https://github.com/triton-lang/triton/discussions/12517.
+
+Performance, measured with this wheel: fp16 GEMM, the same Triton matmul kernel under stock Triton 3.6.0 and under this build, best of a small tile sweep per shape, timed in CUDA graphs. TFLOPS (higher is better) for M x N x K, stock Triton -> this build, cuBLAS (torch.matmul in the same process) in brackets:
+Tesla V100-PCIE-32GB: 16 x 4096 x 4096 3.9 -> 10.5 (8.2); 128 x 4096 x 4096 6.8 -> 47.7 (44.4); 512 x 4096 x 4096 8.0 -> 71.1 (78.3); 2048 x 4096 x 4096 8.6 -> 76.3 (82.2); 4096 x 4096 x 4096 8.6 -> 82.5 (94.4); 8192 x 2048 x 7168 8.7 -> 83.1 (91.8).
+Quadro RTX 8000: 16 x 4096 x 4096 3.8 -> 9.1 (7.7); 128 x 4096 x 4096 6.6 -> 51.7 (43.9); 512 x 4096 x 4096 6.8 -> 75.3 (92.7); 2048 x 4096 x 4096 7.4 -> 78.3 (94.0); 4096 x 4096 x 4096 7.5 -> 80.7 (94.4); 8192 x 2048 x 7168 7.5 -> 74.3 (91.0).
+The largest error against an fp32 reference is the same under both Tritons (2.6e-4 to 4.6e-4). Every tl.dot kernel compiled with this build takes the MMA path. In 1Cat-vLLM the tensor-core routes of https://github.com/1CatAI/1Cat-vLLM/pull/1282 (kernel_config.triton_sm7x_tensor_cores) build on it; that PR has their kernel and model numbers.
+
+File: triton-3.6.0+sm7x.2adbae8bc2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+SHA-256: 7b11b73c51d9cd8c7f494c001785ab0c1d78edb0db994dbfb82224b86d909bf1
+Platform: CPython 3.12, Linux x86_64. Built from this commit in the quay.io/pypa/manylinux_2_28_x86_64 image with the prebuilt LLVM that Triton 3.6 pins.
+
+Install in place of triton 3.6.0 (the version PyTorch 2.10 requires on Linux x86_64):
+uv pip install "https://github.com/Peuqui/triton/releases/download/v3.6.0-sm7x.2adbae8bc2/triton-3.6.0+sm7x.2adbae8bc2-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+The build shows in the package metadata, while triton.__version__ stays 3.6.0:
+python -c "import importlib.metadata as m; print(m.version('triton'))" prints 3.6.0+sm7x.2adbae8bc2.
+Back to stock Triton: uv pip install --reinstall triton==3.6.0 (without --reinstall the installed build already counts as 3.6.0).
+
+To check that tl.dot reaches the tensor cores, save the following as mma_check.py and run python mma_check.py. It prints the GPU name, then True on sm_70 and sm_75 with this build (False with stock Triton 3.6.0), then True if the result matches torch.
+
+import torch
+import triton
+import triton.language as tl
+
+
+def dot16(a_ptr, b_ptr, c_ptr):
+    offs = tl.arange(0, 16)
+    tile = offs[:, None] * 16 + offs[None, :]
+    tl.store(c_ptr + tile, tl.dot(tl.load(a_ptr + tile), tl.load(b_ptr + tile)))
+
+
+dot16 = triton.jit(dot16)
+a = torch.randn(16, 16, device="cuda", dtype=torch.float16)
+c = torch.empty(16, 16, device="cuda", dtype=torch.float32)
+ptx = dot16[(1,)](a, a, c).asm["ptx"]
+print(torch.cuda.get_device_name(), "mma.sync" in ptx, torch.allclose(c, a.float() @ a.float(), atol=1e-2))
+
+Fixed against earlier source builds of the branch:
+19567626db: since 9063e502c6, a dot operand computed from two loads in the loop (k * exp2(g) in the FLA kernel chunk_kda_scaled_dot_kkt_fwd_kernel_intra_sub_inter) took two register-staged buffers, and on sm_75 with num_stages 3 or 4 the dot read the tile of two iterations earlier or shared memory nobody had written. The operand is now staged once.
+2adbae8bc2: a loop whose staged buffers would exceed the shared memory per block of the target stays pipelined in registers as in Triton 3.6; before, test_indirect_matmul with num_stages 5 failed to compile on the V100.
+
+Checked with this wheel on a Tesla V100-PCIE-32GB and a Quadro RTX 8000:
+Triton's own tests at this commit, python/test/unit/language: test_pipeliner.py 41 passed, 7 skipped; test_core.py -k dot 287 passed, 2325 skipped; the same on both cards.
+Every autotune configuration of the FLA kernels behind the KDA layers of GLM-5.3, forced one at a time against the naive recurrence, each run also repeated with shared memory poisoned by a NaN GEMM: 85 configurations on the V100 and 145 on the RTX 8000, none wrong.
+1Cat-vLLM kernel tests, one pytest per file, on commit ae0d76216 of https://github.com/Peuqui/1Cat-vLLM (V100 / RTX 8000): tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py 35 passed / 35 passed; tests/kernels/test_deepseek_v4_sm70_indexer.py 59 passed, 3 skipped / 62 passed; tests/kernels/test_compressor_kv_cache.py 32 passed, 6 skipped / the same; tests/kernels/test_mhc_prenorm_tensor_cores.py 7 passed / 7 passed; tests/kernels/moe/test_skinny_moe_triton.py 6 passed / its cases skip on the RTX 8000; tests/kernels/test_kda.py 10 passed / 10 passed; tests/kernels/test_fla_delta_h_maxnreg.py 5 passed / 5 passed; tests/kernels/test_kernel_config_triton_sm7x.py 8 passed / 8 passed.
+GLM-5.3-Flash (NVFP4, DFlash2 speculative decoding, PP=5 over three V100 and two RTX 8000), A/B/A/B against an earlier source build of this branch (2026-10-22), the first boot with empty caches not counted: prefill of 8,687 tokens 4.17 / 4.21 s against 4.17 / 4.19 s (lower is better); short decode 41.83 / 41.82 tok/s against 41.83 / 41.82 tok/s (higher is better); first token at 516,196 tokens 244.7 / 244.3 s against 244.4 / 244.6 s; GSM8K-30 29/30 and an acceptance length of 5.43 in every boot; the eight fixed answers of the boot with empty caches byte-identical to the reference.

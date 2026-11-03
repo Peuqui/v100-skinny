@@ -1,0 +1,38 @@
+perf(dsv4): fused lightning-indexer prefill scores on Turing tensor cores
+
+The SM70-family relu route scores prefill chunks by stacking the heads into
+M for one cuBLAS GEMM, writing the [tokens * heads, keys] fp16 scores (64 MiB
+per 512-token chunk and 1024 keys) and reading them back in a second kernel
+for relu, head weights, head sum and key scales. On the DSv4 RTX stages that
+pair took 6.9 s of a 51 s 150k prefill (nsys, cuBLAS 4.07 s + head sum 2.80 s),
+and the RTX stages bound the pipeline (V100 stages 47-48 s).
+
+indexer_prefill_scores_sm75 does it in one pass: each warp holds one token's
+queries for 32 heads as m16n8k8 A fragments in registers, a CTA stages e4m3
+key tiles widened to fp16 in shared memory (double buffered), scores are
+rounded to fp16 as the cuBLAS route stores them, and relu, head weights and
+the head sum stay in registers with a shuffle reduce-scatter; only the
+[tokens, keys] result reaches memory. 32 or 64 heads (GLM pads 16 to 32).
+
+Microbench (RTX 8000, CUDA graphs, 512 tokens x 64 heads): 1024 keys
+0.326 -> 0.151 ms, 4096 keys 1.270 -> 0.586 ms, 18750 keys 5.551 -> 2.305 ms,
+37500 keys 11.018 -> 4.518 ms (57-70 TFLOPS); max error against fp64 equal
+to the cuBLAS route in all shapes, 32-51 % of values bit-identical (head-sum
+order).
+
+The chunk takes it when the indexer runs the relu route on an SM75
+device (the query's own) with 32 or 64 heads; other chunks keep the
+cuBLAS or per-head Triton route, and indexer_prefill_cublas decides only
+between those two. The source builds for sm_75 only, and the op checks
+the device, dtypes, strides and alignment it relies on. Each route logs
+its choice once per device.
+
+Tests: tests/kernels/test_deepseek_v4_sm70_indexer.py, 31 passed on an
+RTX 8000; 30 passed and 1 skipped (the fused-route case needs SM75) on a
+V100. The model-head-count cases (32 and 64 heads, 37 queries, 1100
+keys) compare with an fp64 reference that rounds the per-head scores to
+fp16 as every prefill route does.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019x3uEMYxiUMDKrA6E8o8sP
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

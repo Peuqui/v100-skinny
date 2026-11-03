@@ -5,7 +5,9 @@ Entwürfe und Diffs liegen in den Unterordnern. Regeln für neue Beiträge:
 PR-Text, KI-Einsatz deklarieren) — Verstoß kann eine Sperre nach sich ziehen.
 Jede Behauptung vor dem Senden gegen frisch gefetchtes Upstream-main prüfen
 (Lehre aus #455, das nur auf dem eigenen Fork verifiziert war und
-zurückgezogen wurde). **Nichts senden ohne Freigabe von Peuqui.**
+zurückgezogen wurde). **Freigabe:** PRs an 1Cat sendet die Sitzung seit 25.10.2026 selbst, nach Doppelcheck
+(Peuqui); Triton upstream, vllm-project/vllm und die Veröffentlichung des Repos nur mit ausdrücklichem Ja je Ziel.
+Entwürfe vom 25.10.: `14-1cat-prs-2026-10-25/` (gesendet als #1263 und #1264).
 
 ## 1Cat-vLLM: wo der Stand steht
 

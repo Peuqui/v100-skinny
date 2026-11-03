@@ -1,0 +1,6 @@
+Update 2026-11-02 (second): rebased onto the new #1282 head; this branch's 27 commits are unchanged (git range-diff). The stack below now keeps the prefill index scores in FP32 on the fused SM75 scorer (#1280) and the Triton scorer (#1282). For GLM-5.3 this matters: with our fork's production entry, PP=5 over three Tesla V100 and two Quadro RTX 8000, 3 % to 54 % of the prefill index scores per stage were non-finite for prompts above 2,048 tokens; with all three routes in FP32, 0 %. The third route, main's cuBLAS tile, which GLM-5.3 takes on the V100 stages without triton_sm7x_tensor_cores, is #1328's fix (not part of this stack), so GLM-5.3 on SM70 needs #1328 as well. Numbers and the A/B are in #1280's update.
+
+Tests on this head, native build, one pytest per file on a Quadro RTX 8000 and a Tesla V100 as device 0 (results as RTX 8000 / V100), @@TESTS_1286@@
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports moe_runner.py (platform coupling 37 -> 39) exactly as main 4d57473db does. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues apart from the three local flash_attn_v100 ones that main shows the same way.
+

@@ -1,0 +1,40 @@
+perf(moe): Volta skinny MoE on a Triton grouped GEMM for long chunks
+
+Volta's skinny hand kernel decodes every FP4 weight tile again for each
+8-row block of an expert group. With prefill chunks of about 1024 tokens
+the experts get more than 16 rows on average (24 at top-6 of 256), and a
+Triton grouped GEMM that decodes a tile once per 32- or 64-row block on
+the tensor cores is faster. With kernel_config.triton_sm7x_tensor_cores,
+E8M0-scaled weights in the M8N8K4 order and more than 16 rows per expert,
+both projections take it; otherwise the hand kernel runs as before
+(512-token chunks stay on it). The kernel reads the hand kernel's packed
+weights and scales unchanged and keeps its fp16 scale arithmetic.
+
+The route needs the reduction commit before it: without its FP32 copies
+of y2 the skinny chunk bound rises from 682 to 1365 tokens at DeepSeek-V4's
+shapes (top-6, 4096-wide projections), and 682-token chunks average at
+most 16 rows per expert (682 x 6 / 256), so without it no DeepSeek-V4
+prefill chunk would reach this route.
+
+DeepSeek-V4-Flash layer 5 on V100, CUDA graphs, ms per layer (less is
+better), hand kernel -> Triton, W13 / W2:
+  512 tokens    4.218 / 2.295 -> 4.555 / 2.647 (hand kernel kept)
+  1020 tokens   7.502 / 4.080 -> 5.967 / 3.466
+  2040 tokens  13.780 / 7.464 -> 9.302 / 5.080
+Per token, a 1020-token chunk on Triton costs 27 % less MoE time than a
+512-token chunk on the hand kernel.
+
+DSv4 8-layer mini checkpoint (PP2 V100 + RTX 8000), one run each,
+150k-token prefill, fork builds: without the routes of this series
+28.6 s, with all of them (and kernel_config.triton_sm7x_tensor_cores)
+at 512-token chunks 20.05 s, at 1024-token chunks 15.85 s; 16 greedy
+tokens equal, logprobs within 0.012.
+
+Tests: tests/kernels/moe/test_skinny_moe_triton.py (Triton against the
+hand kernel and an fp32 reference, both tile groups) 4 passed on V100
+with the sm7x Triton; test_skinny_sm70_moe.py 88 passed 44 skipped (V100)
+and 101 passed 31 skipped (RTX 8000). pre-commit and mypy-3.10 pass.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

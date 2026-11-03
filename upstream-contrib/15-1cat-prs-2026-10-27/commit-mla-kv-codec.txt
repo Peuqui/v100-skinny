@@ -1,0 +1,31 @@
+[Bugfix][KV] MLA specs carry the codec of their cache dtype
+
+Since #1251 the KV allocators of both runners reshape every carrier with
+the backend shape for AttentionSpec.layout_cache_dtype(cache_dtype), which
+falls back to "auto" when the spec's kv_quant_mode does not match the
+configured dtype. MLAAttention.get_kv_cache_spec, the DeepSeek-V4
+compressed attention, its sliding-window cache (DeepseekV4SWACache),
+SlidingWindowMLASpec.merge and the sliding-window-to-full conversion in
+kv_cache_utils build their MLA specs with cache_dtype_str only, so
+kv_quant_mode stays NONE for packed fp8 pages:
+
+- GLM-5.3 with fp8_e4m3 KV: the page holds 520-byte token rows, the
+  "auto" shape has 512, and the reshape fails at boot.
+- DeepSeek-V4 sliding-window cache (fp8_ds_mla): 584-byte rows inside a
+  576-aligned page; the "auto" shape of 512 still fits, so the reshape
+  succeeds as a strided view and the SM70 sparse decode leaves its BMM
+  path for the paged fallback.
+
+MLAAttentionSpec and SlidingWindowMLASpec now derive kv_quant_mode from
+cache_dtype_str in __post_init__ and reject a contradicting mode, so every
+construction site, including merges, gets the codec without repeating it.
+
+The padding-aware copy_with_new_block_size from #1256 moves from
+KVCacheSpec to AttentionSpec: only attention specs have a padded page
+whose payload grows with the block size, and on KVCacheSpec the method
+reads fields the base class does not declare (mypy attr-defined and
+call-arg).
+
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011k7FsBAcZ8Cw91wisiZxMf

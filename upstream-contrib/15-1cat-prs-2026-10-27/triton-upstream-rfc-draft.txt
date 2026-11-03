@@ -1,0 +1,31 @@
+Title: [RFC] Tensor cores on pre-Ampere NVIDIA GPUs again: Volta (MMAv1 via linear layouts) and Turing (MMAv2), patch series on 3.6
+
+Hello Triton maintainers,
+
+since the MMAv1 removal and the Turing gate of #5066, Triton 3.x compiles every tl.dot on Volta (sm_70) and Turing (sm_75) to FMA. We run large models on a mixed rig of three Tesla V100 and two Quadro RTX 8000 and wanted Triton kernels there to use the tensor cores again. The result is a series of 23 commits on top of v3.6.0 (the version our PyTorch pins):
+
+https://github.com/Peuqui/triton/tree/sm7x-tensor-cores
+
+What it does:
+- Turing: re-enables the maintained MMAv2 m16n8k8 lowering for sm_75 and software pipelining there through registers (no cp.async before sm_80). Batched (3D) dots go through MMAv2 as well.
+- Volta: MMAv1 (mma.m8n8k4) expressed through linear layouts, as the comment of 4480f86045 invited. The fragment bases live in the linear layout, the LLVM lowering reads register slots from it, row/col per operand follows the memory order, plus a 16-row shared-memory swizzle and an 8x32 tile for dots with at most 8 rows.
+- Two general fixes found on the way, which affect any layout whose lane bits along an axis are not contiguous (Volta has rows on lane bits 0/2/4): warp reductions and delinearize assumed contiguous bits, which broke online softmax. Also: FMA dots with an fp16/bf16 accumulator now sum in fp32, and FMA dots widen int8 operands as integers.
+- Pre-sm_80 performance passes: small loop-invariant dot operands kept in registers by a register budget, shared memory double-buffered through registers, decode chains (elementwise ops between load and dot) staged in the register buffer.
+
+Measurements (fp16, TFLOPS, higher is better; same machine, CUDA graphs where noted in the commits):
+- Quadro RTX 8000 GEMM: FMA 3.0-7.5; with the series 7.9 / 34.0 / 75.6 / 69.4 at M = 16 / 128 / 512 / 4096, cuBLAS 7.3 / 34.3 / 71.8 / 82.1.
+- Tesla V100 GEMM: FMA 3.9-8.6; with the series up to 74.1 at large M (cuBLAS 86.4); M = 128 equals cuBLAS.
+- Flash attention forward (head dim 256, 32k context): RTX 8000 40.4 TFLOPS against 31.8 for the hand-written FA2 Turing build; V100 32.5 TFLOPS against 1.4 (FMA) and 10.6 for a hand-written V100 kernel.
+- test_core.py -k dot: 287 passed / 0 failed on both cards with the series (unmodified 3.6.0: 70 failures on the RTX 8000, 97 on the V100; the series fixes the failures it could attribute to Triton, e.g. MMAv1 fragment slots for outputs below 8 rows).
+
+We use it in production in our vLLM fork (github.com/Peuqui/1Cat-vLLM) for MoE, attention and indexer kernels on both card types.
+
+The question for you: is there interest in upstreaming any of this, and in what form? We know main has moved a lot since 3.6 (CTA->CGA, blockTileSize, the verifier now rejects Volta), and that complex performance patches for old architectures are a maintenance burden. Possible scopes, smallest first:
+1. The two layout fixes for scattered lane bits (reduction, delinearize), which are architecture independent.
+2. Re-enabling Turing MMAv2 (the lowering is still maintained in main).
+3. Volta MMAv1 via linear layouts.
+We would port whichever part you want onto main and keep it small; the pre-sm_80 performance passes could stay in the fork.
+
+AI assistance (Claude) was used to write the patches and this text; every number above comes from our measurement logs.
+
+Thanks!

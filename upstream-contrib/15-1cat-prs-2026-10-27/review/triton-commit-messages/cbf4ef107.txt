@@ -1,0 +1,36 @@
+perf(dsv4): attend a whole prefill chunk in one sparse pass
+
+The tensor-core sparse MLA prefill attended 128 query tokens per pass,
+a bound sized for the gather route's key buffer. Its own buffers are
+only FP32 scores and FP16 probabilities, and one pass per 1024-token
+chunk uses the GPU better, with neighbouring tokens selecting mostly
+the same keys (DeepSeek-V4 top-k plus window). The route now takes up
+to 1024 tokens per pass on every card; the gather route keeps 128. No
+swept tile beat today's on either card with shared indices (a sweep on
+random indices pointed to a different scores tile that loses on shared
+ones), so the tiles stay constants.
+
+Whole 1020-token chunk, 64 heads, CUDA graph (ms, less is better),
+128-token passes -> one pass: RTX 8000 shared indices 640 slots
+2.448 -> 2.194, 1152 slots 4.209 -> 3.859, random 3.629 -> 3.270,
+6.085 -> 5.926; V100 640 slots 2.199 -> 1.919. Outputs bit-identical.
+The pass buffers grow to 432 MiB at 1152 slots (378 MiB more).
+
+DeepSeek-V4-Flash PP=5 (three V100, two RTX 8000), fork production with
+kernel_config.triton_sm7x_tensor_cores against the same plus this
+change and the fused Turing indexer scorer of the scorer commit,
+A/B/A/B, s (less is better): prefill of 178,480 tokens 41.40 / 41.34 ->
+41.18 / 41.17, of 287,039 tokens 74.04 / 74.02 -> 73.45 / 73.43;
+GSM8K-30 29 correct and the eight quality answers byte-identical in
+every boot. Peak memory.used of the V100 stages 32,048-32,108 ->
+32,488 MiB with the KV cache unchanged at 317,261 tokens.
+
+Tests: tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py 35 passed
+on the RTX 8000 and the V100 with the sm7x Triton, 17 passed 18 skipped
+with stock Triton (new: the tensor-core route over two full passes and a
+partial one against the BLAS route); test_deepseek_v4_sm70_routes.py 30
+passed with each.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

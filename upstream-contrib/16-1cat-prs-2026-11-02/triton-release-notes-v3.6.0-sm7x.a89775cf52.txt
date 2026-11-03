@@ -1,0 +1,11 @@
+Triton 3.6.0 plus the 24 commits of branch sm7x-tensor-cores, at commit a89775cf52: tl.dot lowers to mma.m8n8k4 on Volta (sm_70) and to mma.m16n8k8 on Turing (sm_75) instead of FMA. The changes are in the TritonGPU dialect and the NVIDIA backend; on other architectures the build compiles like Triton 3.6.0. Shown upstream in https://github.com/triton-lang/triton/discussions/12517.
+
+File: triton-3.6.0+sm7x.a89775cf52-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl
+SHA-256: f234abacf83058de7932fa1eece50d7fd422c75469df0c2554ec554b67978865
+Platform: CPython 3.12, Linux x86_64. Built from this commit in the quay.io/pypa/manylinux_2_28_x86_64 image with the LLVM that Triton 3.6 pins.
+
+Install in place of triton 3.6.0:
+uv pip install "https://github.com/Peuqui/triton/releases/download/v3.6.0-sm7x.a89775cf52/triton-3.6.0+sm7x.a89775cf52-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"
+python -c "import triton; print(triton.__version__)" then prints 3.6.0+sm7x.a89775cf52; uv pip install triton==3.6.0 goes back to stock Triton.
+
+Checked with 1Cat-vLLM (https://github.com/1CatAI/1Cat-vLLM/pull/1282, kernel_config.triton_sm7x_tensor_cores) on a Tesla V100 and a Quadro RTX 8000: the tensor-core route tests pass (test_dsv4_sparse_prefill_bmm.py 35 passed on both cards; test_deepseek_v4_sm70_indexer.py 56 passed and 1 skipped on the V100, 57 passed on the RTX 8000; test_compressor_kv_cache.py, test_mhc_prenorm_tensor_cores.py and test_kernel_config_triton_sm7x.py pass on both; test_skinny_moe_triton.py 6 passed on the V100, its cases skip on the RTX 8000). In an A/B/A/B of DeepSeek-V4-Flash, PP=5 over three V100 and two RTX 8000, against an earlier source build of the same branch (2026-10-23), prefill of 8,921 tokens (2.30 / 2.28 s against 2.28 / 2.28 s), short decode (55.89 / 55.89 tok/s against 55.89 / 55.88 tok/s), first token at 486,316 tokens (145.80 / 145.90 s against 145.87 / 145.91 s) and GSM8K-30 (29/30) were the same, and eight fixed answers were byte-identical.

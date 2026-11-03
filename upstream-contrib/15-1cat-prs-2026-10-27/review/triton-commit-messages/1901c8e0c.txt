@@ -1,0 +1,42 @@
+perf(dsv4): Triton prefill index scorer for the SM70-family relu route
+
+With kernel_config.triton_sm7x_tensor_cores the indexer prefill scores
+come from one Triton kernel instead of the cuBLAS route, on Volta and on
+Turing chunks that the fused SM75 scorer does not take. Turing keeps
+that native scorer for 32 and 64 heads: summed over long contexts it is
+faster there (below). The kernel stacks the heads of BLOCK_T tokens into
+one MMA operand that every key tile reuses, widens e4m3 keys bit-exactly
+to fp16 (value * 2^-8), rounds the products to fp16 as the cuBLAS route
+stores them, and keeps relu, head weights and head sum in registers. It
+replaces the per-head FMA kernel _contiguous_index_logits_relu_kernel,
+which indexer_prefill_cublas=False reaches without tensor-core Triton
+(now with an FMA-sized tile).
+
+SparseAttnIndexer and SparseAttnIndexerKpool decide the route once when
+they are built (KernelConfig.use_triton_sm7x_tensor_cores) and pass it
+to their custom op.
+
+Tiles are measured per card: a sweep of 216 tiles over 512-token chunks
+with 4.8k to 76.8k keys (76.8k = 307k context compressed 1:4). Turing
+takes 2048 score elements per warp for 64 and 32 heads alike; Volta's
+two model head counts keep their own tile.
+
+CUDA graphs, sum over 4.8k/19.2k/38.4k/57.6k/76.8k keys, ms (less is
+better), the route without the setting -> Triton:
+  V100      64 heads 46.94 -> 28.87 (-38.5 %), 32 heads 23.96 -> 17.18 (-28.3 %)
+  RTX 8000  64 heads 23.97 -> 24.21 (+1.0 %),  32 heads 12.53 -> 13.12 (+4.7 %)
+On Turing Triton is faster up to 19.2k keys and 2-7 % slower beyond,
+hence the fused scorer stays there. Max error against the fp64
+reference equals the cuBLAS route on each card (1.33e-4 RTX, 2.34e-4
+V100, relative to the largest score).
+
+Tests (tensor-core cases need a Triton that emits MMA):
+tests/kernels/test_deepseek_v4_sm70_indexer.py with the sm7x Triton: 39
+passed (RTX 8000), 38 passed 1 skipped (V100); with stock Triton 31
+passed 8 skipped (RTX 8000). A new case checks per card and head count
+that the setting keeps the fused Turing scorer for 32 and 64 heads and
+never takes the cuBLAS route.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XK1cybCqwFCSEV5qqHmpjn
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

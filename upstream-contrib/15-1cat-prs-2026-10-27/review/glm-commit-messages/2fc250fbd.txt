@@ -1,0 +1,31 @@
+feat(glm53): load GLM-5.3-Flash-FP4-Local on SM70 and SM75
+
+NVIDIA's GLM-5.3-Flash-FP4-Local checkpoint (ModelOpt MIXED_PRECISION)
+stores the routed-expert NVFP4 block scales as csf_32x2_v1 (compressed
+scale format). Unpacked to E4M3 they add 8.1 GiB and the model no longer
+fits five 32/48 GiB cards, so the scales stay compressed on the GPU:
+
+- csf32_scales / csf32_expand: decoder of the format (with an encoder
+  whose output matches the reference implementation in TensorFold byte for
+  byte) and a Triton expander that fills a shared QPN scale raster with
+  the routed experts before each grouped skinny call (fixed launch shape,
+  CUDA-graph safe). Experts that accept compressed planes implement the
+  CsfScaleConsumer protocol; the skinny SM70 experts do, qpn_prepack
+  permutes codes without scales for them. A backend whose experts cannot
+  take compressed scales is rejected when the MoE method is built.
+- ModelOpt MIXED_PRECISION: weight_scale_encoding detection, a CSF loader
+  for the expert scales (TP1 per expert, PP free), FP8_PB_WO linears through
+  w8a8_block_fp8_linear, MXFP8 attention dequantized to FP16 at load.
+- GLM loader: MLA block scales, gate_up -> gate/up mapping, CSF parts.
+- KDA binds its chunk kernels (the attribute was unbound).
+- Turing: the FP16 sparse-MLA, KPool (software E4M3 below SM89), indexer,
+  mHC and KDA FP32 recurrent-output paths now admit capability 7.5; every
+  gate reads the capability of the worker's own device.
+
+Tests: test_csf32_scales.py 13, test_skinny_sm70_moe.py 77, mHC/KDA/KPool/
+glm5next/modelopt suites passed on V100 and RTX 8000. Failing before
+this change as well, unchanged here: test_pp.py (2), test_sm70_glm53_
+modelopt_nvfp4.py (1), test_sm70_modelopt_nvfp4.py (3). pre-commit passed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019x3uEMYxiUMDKrA6E8o8sP

@@ -1,0 +1,10 @@
+Update 2026-11-02: rebased with #1279 onto main 4d57473db; this branch now holds 21 commits (the 15 of #1279, see its update, and 6 new, unchanged apart from the regenerated reference). It also merges cleanly into main 6db9c816c.
+
+Tests on this head, one pytest per file with stock Triton 3.6, a Quadro RTX 8000 / a Tesla V100 as device 0: @@TESTS_1280@@
+
+A note for anyone who already runs the sm7x Triton of #1282: with that build on the path but without #1282's changes, tests/kernels/test_deepseek_v4_sm70_indexer.py::test_prefill_matches_the_reference_scoring_function[False] does not compile on a V100 (PassManager::run failed in _contiguous_index_logits_relu_kernel). This branch is meant for stock Triton, with which the test passes, and on #1282's head the same file passes with the sm7x build on both cards.
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports moe_runner.py (platform coupling 37 -> 39) exactly as main 4d57473db does. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues.
+
+Full-model boot from the top of the stack (#1286 at 53a6f0973, which contains this branch and #1282, built in place): DeepSeek-V4-Flash, PP=5 over three Tesla V100 and two Quadro RTX 8000, without DSpark (Model Runner V2 on main refuses it), max_model_len 343,000, --num-gpu-blocks-override 3600, fp8 KV cache, the setting of #1282 on. Route lines: indexer prefill through the Triton scorer on the three V100 stages and the fused SM75 scorer on the two RTX 8000 stages. Prefill of 8,921 tokens 2.28 / 2.27 s (3,900 / 3,929 tok/s); first token at 178,480 / 287,039 / 336,216 tokens 45.45 / 79.35 / 92.94 s; one decode step 41.1 / 41.3 / 41.4 ms there (24.3 / 24.2 / 24.2 tok/s, no speculation). Robustness 5/5; I read all eight fixed answers, all correct.
+

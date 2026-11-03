@@ -1,0 +1,22 @@
+fix(mxfp8): choose the kernel per layer shape; QPN8 declines what it cannot pack
+
+Qpn8Mxfp8LinearKernel comes first for every MXFP8 linear on SM70 and
+SM75, but the kernel choice saw no shape: a layer with N % 32 != 0, K %
+16 != 0 or a K whose 16-element groups no split-K of the launch table
+divides failed when its weights loaded, where Marlin (SM75) or the
+emulation (SM70) would have served it. Mxfp8LinearLayerConfig now
+carries the partition's (N, K), the ModelOpt, online and
+compressed-tensors MXFP8 methods choose their kernel in create_weights,
+and the QPN8 kernel declines those shapes through
+fp8_qpn8_shape_reason, the check its weight preparation also uses. The
+E8M0 exponent range (95..134, exact in QPN8's FP16 group scales) depends
+on the weights and stays a load-time error naming the range.
+
+Tests: tests/kernels/quantization/test_sm70_qpn8_mxfp8_linear.py, 24 passed on a
+Tesla V100 and on a Quadro RTX 8000, each with stock Triton and with the sm7x
+Triton build.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0172gtUiymppDzziDqKfy78Q
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>
+

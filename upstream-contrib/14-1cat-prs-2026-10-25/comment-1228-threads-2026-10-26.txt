@@ -1,0 +1,5 @@
+Added a commit for an interaction with current main. Since 8a3c030b6, main gives tilelang_fused_chunk_gdr_fwd_sm70 a threads argument (128 or 256), and fused_gdr_fwd passes it to whichever original kernel it selects. With this PR merged into main 6a143197e, that is the sm75 variant on Turing, which did not accept the argument, so every original FlashQLA GDN prefill on Turing failed with "unexpected keyword argument 'threads'". GitHub still reports the PR as mergeable because the conflict is not textual. The sm75 kernel now takes the same argument and launches with it. main's thread selection returns 256 only on device capability 7.0, so Turing keeps 128.
+
+Tests on a Quadro RTX 8000: in our integration branch, whose flash_qla package and test file are identical to this branch merged into main 6a143197e, tests/kernels/test_flashqla_turing_fused_fwd.py went from 6 failed to 6 passed, and tests/config/test_gdn_original_threads.py passed 18. On this branch itself, test_flashqla_turing_fused_fwd.py passed 6 and tests/model_executor/layers/test_gdn_prefill_backend_resolve.py passed 5.
+
+AI assistance was used to find and fix this.

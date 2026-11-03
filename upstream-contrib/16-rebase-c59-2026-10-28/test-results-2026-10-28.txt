@@ -1,0 +1,240 @@
+== draftmap-v100
+ok tests/lora/test_layers.py  77 passed, 63 skipped
+ok tests/v1/spec_decode/test_ddtree_payload.py  8 passed
+ok tests/v1/spec_decode/test_dspark.py  15 passed
+FAIL tests/v1/spec_decode/test_sm70_mtp_head_scope.py  1 failed, 8 passed
+ok tests/v1/worker/test_gpu_draft_vocab.py  12 passed
+== dsv4-rtx
+ok tests/kernels/attention/test_dsv4_sm70_sparse_bmm.py  12 skipped
+ok tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py  17 passed
+ok tests/kernels/test_compressor_kv_cache.py  32 passed, 6 skipped
+ok tests/kernels/test_deepseek_v4_sm70_indexer.py  31 passed
+ok tests/kernels/test_deepseek_v4_sm70_qnorm_rope_kv_insert.py  4 passed
+ok tests/models/test_deepseek_v4_sm70_routes.py  30 passed
+ok tests/v1/attention/test_sparse_indexer_decode_seq_lens.py  11 passed
+ok tests/v1/cudagraph/test_cudagraph_dispatch.py  51 passed
+== dsv4-v100
+ok tests/kernels/attention/test_dsv4_sm70_sparse_bmm.py  12 passed
+ok tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py  17 passed
+ok tests/kernels/test_compressor_kv_cache.py  32 passed, 6 skipped
+ok tests/kernels/test_deepseek_v4_sm70_indexer.py  30 passed, 1 skipped
+ok tests/kernels/test_deepseek_v4_sm70_qnorm_rope_kv_insert.py  4 passed
+ok tests/models/test_deepseek_v4_sm70_routes.py  30 passed
+ok tests/v1/attention/test_sparse_indexer_decode_seq_lens.py  11 passed
+ok tests/v1/cudagraph/test_cudagraph_dispatch.py  51 passed
+== hostreduce-pair
+ok tests/distributed/test_host_reduce.py  1 passed
+== lookahead-2gpu
+ok tests/v1/core/test_async_scheduler.py  14 passed
+ok tests/v1/core/test_scheduler.py  107 passed
+== lookahead-v100
+FAIL tests/v1/core/test_async_scheduler.py  1 failed, 13 passed
+ok tests/v1/core/test_kv_cache_utils.py  71 passed
+ok tests/v1/core/test_lookahead_block_hashes.py  24 passed
+ok tests/v1/core/test_mamba_align_chunk_split.py  37 passed
+ok tests/v1/core/test_mamba_sparse_retention.py  131 passed
+ok tests/v1/core/test_prefix_caching.py  91 passed
+FAIL tests/v1/core/test_scheduler.py  1 failed, 106 passed
+== main-rtx
+ok tests/kernels/test_sm70_gdn_mixed_spec_verify.py  8 skipped
+FAIL tests/quantization/test_sm70_fp4_mainflow.py  168 failed, 55 passed
+FAIL tests/quantization/test_sm70_native_policy.py  1 failed, 90 passed
+FAIL tests/v1/core/test_async_scheduler.py  2 failed, 12 passed
+FAIL tests/v1/core/test_scheduler.py  1 failed, 106 passed
+FAIL tests/v1/spec_decode/test_dflash_mrv2_config.py  4 failed, 17 passed
+FAIL tests/v1/spec_decode/test_sm70_mtp_head_scope.py  1 failed, 8 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2_greedy.py  9 failed, 1 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2.py  2 failed, 5 passed
+== main-v100
+FAIL tests/kernels/test_sm70_gdn_mixed_spec_verify.py  8 failed
+== main-v100b
+FAIL tests/kernels/quantization/test_sm70_qpn8_block_fp8.py  1 failed, 95 passed
+FAIL tests/quantization/test_sm70_fp8_kernel_selection.py  1 failed, 14 passed
+FAIL tests/quantization/test_sm70_warmup.py  14 failed, 11 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py  1 failed, 38 passed
+FAIL tests/v1/worker/test_sm70_long_attention_graphs.py  6 failed, 38 passed
+== pleoverlap-v100
+ok tests/compile/test_sm70_decode_graph.py  46 passed
+ok tests/kernels/ple/test_host_result.py  6 passed
+ok tests/models/qwen4_exp/test_gguf_pinned_policy.py  17 passed
+ok tests/models/qwen4_exp/test_ple.py  107 passed
+ok tests/v1/worker/test_early_model_inputs.py  9 passed
+ok tests/v1/worker/test_ple_offload_worker.py  58 passed, 1 skipped
+ok tests/v1/worker/test_ple_prefill_early_request.py  13 passed
+== plewindow-rtx
+ok tests/config/test_ple_cascade_capabilities.py  21 passed
+ok tests/config/test_runtime_default_ownership.py  31 passed
+ok tests/kernels/ple/test_gguf_packed_embedding.py  8 passed, 4 skipped
+ok tests/kernels/ple/test_gguf_row_dequantize.py  17 passed
+ok tests/kernels/ple/test_gguf_rows.py  10 passed
+ok tests/kernels/ple/test_host_result_gpu.py  2 passed
+ok tests/kernels/ple/test_host_result.py  6 passed
+ok tests/kernels/test_ple_disk_rows.py  58 passed
+ok tests/models/qwen4_exp/test_ple.py  104 passed, 3 skipped
+ok tests/tools/test_architecture_reference.py  13 passed
+== plewindow-v100
+ok tests/config/test_ple_cascade_capabilities.py  21 passed
+ok tests/config/test_runtime_default_ownership.py  31 passed
+ok tests/kernels/ple/test_gguf_packed_embedding.py  12 passed
+ok tests/kernels/ple/test_gguf_row_dequantize.py  17 passed
+ok tests/kernels/ple/test_gguf_rows.py  10 passed
+ok tests/kernels/ple/test_host_result_gpu.py  2 passed
+ok tests/kernels/ple/test_host_result.py  6 passed
+ok tests/kernels/test_ple_disk_rows.py  58 passed
+ok tests/models/qwen4_exp/test_ple.py  107 passed
+ok tests/tools/test_architecture_reference.py  13 passed
+== probe1187-v100
+ok tests/config/test_sm70_provider_lifecycle.py  25 passed
+FAIL tests/quantization/test_sm70_fp8_kernel_selection.py  1 failed, 14 passed
+FAIL tests/quantization/test_sm70_warmup.py  14 failed, 12 passed
+ok tests/tools/test_check_env_metadata.py  21 passed
+== probe1221-v100
+FAIL tests/v1/spec_decode/test_dflash_mrv2_config.py  4 failed, 17 passed
+ok tests/v1/spec_decode/test_dspark.py  15 passed
+ok tests/v1/worker/test_gpu_cudagraph_memory_reserve.py  3 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2_greedy.py  9 failed, 1 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py  1 failed, 38 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2.py  2 failed, 5 passed
+ok tests/v1/worker/test_mrv2_dspark_context_buckets.py  5 passed
+FAIL tests/v1/worker/test_sm70_long_attention_graphs.py  6 failed, 38 passed
+== probe1228-rtx
+ok tests/config/test_flashqla_policy_lifecycle.py  10 passed
+ok tests/kernels/core/test_sm70_flashqla_runtime_compiler.py  4 passed
+ok tests/kernels/mamba/test_flashqla_bound_policy.py  4 passed, 16 skipped
+ok tests/kernels/mamba/test_sm70_flashqla_extension.py  3 passed
+ok tests/kernels/test_flashqla_turing_fused_fwd.py  6 passed
+ok tests/kernels/test_gdn_execution_stages.py  12 skipped
+ok tests/kernels/test_gdn_prefill_stages.py  20 skipped
+ok tests/kernels/test_sm70_gdn_mixed_spec_verify.py  8 skipped
+ok tests/model_executor/layers/test_gdn_execution_plan.py  27 passed
+ok tests/model_executor/layers/test_gdn_prefill_backend_resolve.py  5 passed
+ok tests/model_executor/layers/test_gdn_stage_lifecycle.py  19 passed
+== probe1228-v100
+ok tests/config/test_flashqla_policy_lifecycle.py  10 passed
+ok tests/kernels/core/test_sm70_flashqla_runtime_compiler.py  4 passed
+ok tests/kernels/mamba/test_flashqla_bound_policy.py  20 passed
+ok tests/kernels/mamba/test_sm70_flashqla_extension.py  3 passed
+no tests tests/kernels/test_flashqla_turing_fused_fwd.py  1 skipped
+ok tests/kernels/test_gdn_execution_stages.py  12 passed
+ok tests/kernels/test_gdn_prefill_stages.py  20 passed
+FAIL tests/kernels/test_sm70_gdn_mixed_spec_verify.py  8 failed
+ok tests/model_executor/layers/test_gdn_execution_plan.py  27 passed
+ok tests/model_executor/layers/test_gdn_prefill_backend_resolve.py  5 passed
+ok tests/model_executor/layers/test_gdn_stage_lifecycle.py  19 passed
+== probe1236-rtx
+ok tests/kernels/attention/test_sm70_qsa_grouped_page4.py  2 passed
+ok tests/kernels/attention/test_sm70_qsa_page4_head_groups.py  8 passed
+ok tests/kernels/test_qsa_dense_decode.py  10 skipped
+ok tests/kernels/test_sm70_qsa_page4_plan.py  38 passed
+ok tests/models/qwen4_exp/test_e4m3_mtp_capture_gpu.py  3 skipped
+ok tests/models/qwen4_exp/test_e4m3_mtp_gpu.py  7 skipped
+ok tests/models/qwen4_exp/test_host_kv.py  108 passed
+ok tests/models/qwen4_exp/test_qsa_dcp_attention.py  4 passed
+ok tests/models/qwen4_exp/test_qsa_dcp_local_width.py  11 passed
+ok tests/models/qwen4_exp/test_qsa_e4m3.py  1 passed, 8 skipped
+ok tests/models/qwen4_exp/test_qsa_ops.py  26 passed
+ok tests/models/qwen4_exp/test_qsa_xqa_page4_workspace_cpu.py  7 passed
+ok tests/models/qwen4_exp/test_qsa_xqa_page4_workspace.py  5 passed
+== probe1236-v100
+ok tests/kernels/attention/test_sm70_qsa_grouped_page4.py  2 passed
+ok tests/kernels/attention/test_sm70_qsa_page4_head_groups.py  8 passed
+ok tests/kernels/test_qsa_dense_decode.py  10 passed
+ok tests/kernels/test_sm70_qsa_page4_plan.py  38 passed
+ok tests/models/qwen4_exp/test_e4m3_mtp_capture_gpu.py  3 passed
+ok tests/models/qwen4_exp/test_e4m3_mtp_gpu.py  7 passed
+ok tests/models/qwen4_exp/test_host_kv.py  108 passed
+ok tests/models/qwen4_exp/test_qsa_dcp_attention.py  4 passed
+ok tests/models/qwen4_exp/test_qsa_dcp_local_width.py  11 passed
+ok tests/models/qwen4_exp/test_qsa_e4m3.py  9 passed
+ok tests/models/qwen4_exp/test_qsa_ops.py  26 passed
+ok tests/models/qwen4_exp/test_qsa_xqa_page4_workspace_cpu.py  7 passed
+ok tests/models/qwen4_exp/test_qsa_xqa_page4_workspace.py  5 passed
+== tp-pair
+ok tests/distributed/test_host_reduce.py  3 passed
+== tp-rtx
+no tests tests/kernels/attention/test_flash_attn_packed_gqa_verify.py  1 skipped
+ok tests/kernels/attention/test_paged_prefill_attention_sm75.py  21 passed
+ok tests/kernels/quantization/test_nvfp4_qpn2_dequant.py  11 passed
+ok tests/v1/attention/test_flash_v100_dense_prefill_availability.py  2 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2.py  2 failed, 5 passed
+ok tests/v1/worker/test_prefill_overlap.py  14 passed
+== tp-v100
+no tests tests/kernels/attention/test_flash_attn_packed_gqa_verify.py  1 skipped
+ok tests/kernels/attention/test_paged_prefill_attention_sm75.py  5 passed, 16 skipped
+ok tests/kernels/quantization/test_nvfp4_qpn2_dequant.py  11 passed
+ok tests/v1/attention/test_flash_v100_dense_prefill_availability.py  2 passed
+FAIL tests/v1/worker/test_gpu_model_runner_v2.py  2 failed, 5 passed
+ok tests/v1/worker/test_prefill_overlap.py  14 passed
+== triton-sm7x-rtx
+ok tests/kernels/attention/test_dsv4_sm70_sparse_bmm.py  12 skipped
+ok tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py  35 passed
+ok tests/kernels/moe/test_skinny_moe_triton.py  6 skipped
+ok tests/kernels/moe/test_skinny_sm70_moe.py  103 passed, 33 skipped
+ok tests/kernels/test_deepseek_v4_sm70_indexer.py  39 passed
+ok tests/kernels/test_kernel_config_triton_sm7x.py  8 passed
+ok tests/kernels/test_mhc_prenorm_tensor_cores.py  7 passed
+ok tests/kernels/test_mhc_sm70_post_schedule.py  43 skipped
+ok tests/kernels/test_mhc_sm70_prenorm_staging.py  42 skipped
+ok tests/models/test_deepseek_v4_sm70_routes.py  30 passed
+ok tests/quantization/test_sm70_modelopt_mixed_nvfp4.py  64 passed, 6 skipped
+== triton-sm7x-v100
+ok tests/kernels/attention/test_dsv4_sm70_sparse_bmm.py  12 passed
+ok tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py  35 passed
+ok tests/kernels/moe/test_skinny_moe_triton.py  6 passed
+ok tests/kernels/moe/test_skinny_sm70_moe.py  89 passed, 47 skipped
+ok tests/kernels/test_deepseek_v4_sm70_indexer.py  38 passed, 1 skipped
+ok tests/kernels/test_kernel_config_triton_sm7x.py  8 passed
+ok tests/kernels/test_mhc_prenorm_tensor_cores.py  7 passed
+ok tests/kernels/test_mhc_sm70_post_schedule.py  43 passed
+ok tests/kernels/test_mhc_sm70_prenorm_staging.py  42 passed
+ok tests/models/test_deepseek_v4_sm70_routes.py  30 passed
+ok tests/quantization/test_sm70_modelopt_mixed_nvfp4.py  70 passed
+== triton-stock-rtx
+ok tests/kernels/attention/test_dsv4_sm70_sparse_bmm.py  12 skipped
+ok tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py  17 passed, 18 skipped
+ok tests/kernels/moe/test_skinny_moe_triton.py  6 skipped
+ok tests/kernels/moe/test_skinny_sm70_moe.py  103 passed, 33 skipped
+ok tests/kernels/test_deepseek_v4_sm70_indexer.py  31 passed, 8 skipped
+ok tests/kernels/test_kernel_config_triton_sm7x.py  8 passed
+ok tests/kernels/test_mhc_prenorm_tensor_cores.py  7 skipped
+ok tests/kernels/test_mhc_sm70_post_schedule.py  43 skipped
+ok tests/kernels/test_mhc_sm70_prenorm_staging.py  42 skipped
+ok tests/models/test_deepseek_v4_sm70_routes.py  30 passed
+ok tests/quantization/test_sm70_modelopt_mixed_nvfp4.py  64 passed, 6 skipped
+== triton-stock-v100
+ok tests/kernels/attention/test_dsv4_sm70_sparse_bmm.py  12 passed
+ok tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py  17 passed, 18 skipped
+ok tests/kernels/moe/test_skinny_moe_triton.py  6 skipped
+ok tests/kernels/moe/test_skinny_sm70_moe.py  89 passed, 47 skipped
+ok tests/kernels/test_deepseek_v4_sm70_indexer.py  30 passed, 9 skipped
+ok tests/kernels/test_kernel_config_triton_sm7x.py  8 passed
+ok tests/kernels/test_mhc_prenorm_tensor_cores.py  7 skipped
+ok tests/kernels/test_mhc_sm70_post_schedule.py  43 passed
+ok tests/kernels/test_mhc_sm70_prenorm_staging.py  42 passed
+ok tests/models/test_deepseek_v4_sm70_routes.py  30 passed
+ok tests/quantization/test_sm70_modelopt_mixed_nvfp4.py  70 passed
+== turing-rtx
+ok tests/kernels/moe/test_skinny_sm70_moe.py  103 passed, 33 skipped
+ok tests/kernels/quantization/test_sm70_qpn8_block_fp8.py  113 passed, 10 skipped
+ok tests/quantization/test_block_fp8_qpn8_capabilities.py  24 passed
+FAIL tests/quantization/test_sm70_fp4_mainflow.py  168 failed, 55 passed
+ok tests/quantization/test_sm70_moe_mainflow.py  55 passed
+FAIL tests/quantization/test_sm70_native_policy.py  1 failed, 90 passed
+ok tests/quantization/test_turing_qpn_kernel_selection.py  34 passed
+ok tests/tools/test_sm70_path_explanations.py  29 passed
+== turing-v100
+ok tests/kernels/moe/test_skinny_sm70_moe.py  89 passed, 47 skipped
+FAIL tests/kernels/quantization/test_sm70_qpn8_block_fp8.py  1 failed, 95 passed, 27 skipped
+ok tests/quantization/test_block_fp8_qpn8_capabilities.py  24 passed
+FAIL tests/quantization/test_sm70_fp4_mainflow.py  168 failed, 55 passed
+ok tests/quantization/test_sm70_moe_mainflow.py  55 passed
+FAIL tests/quantization/test_sm70_native_policy.py  1 failed, 90 passed
+ok tests/quantization/test_turing_qpn_kernel_selection.py  34 passed
+ok tests/tools/test_sm70_path_explanations.py  29 passed
+== woa-v100
+ok tests/config/test_runtime_default_ownership.py  31 passed
+ok tests/config/test_unused_kernel_policy_hash.py  6 passed
+ok tests/quantization/test_sm70_fp8_prefill_exact_dense.py  24 passed
+ok tests/quantization/test_sm70_native_cache.py  3 passed
+ok tests/quantization/test_sm70_native_policy.py  91 passed
+ok tests/quantization/test_sm70_warmup.py  29 passed

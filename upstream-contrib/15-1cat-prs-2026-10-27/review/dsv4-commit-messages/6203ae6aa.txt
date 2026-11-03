@@ -1,0 +1,26 @@
+perf(dsv4): vectorize the sm70 indexer prefill epilogue loads
+
+The relu -> weight -> head-sum epilogue of the cuBLAS prefill scoring ran
+BLOCK_K 256 over 4 warps, two fp16 keys (4 bytes) per thread and load. On
+the [508 tokens * 64 heads, 1024 keys] score tile of a 150k-token prefill
+it read 66.6 MB in 632 us on RTX 8000 (105 GB/s) and 362 us on V100
+(184 GB/s); BLOCK_K 512 over 2 warps (eight keys, 16-byte loads) takes
+118.6 us (562 GB/s) and 85.1 us (782 GB/s), the cards' plain read rate of
+that tile (565 / 780 GB/s). Measured in CUDA graphs, 20 launches each.
+
+In a per-stage nsys profile of the DSv4 PP5 entry (150k-token prefill)
+this epilogue took 14.0 s and 17.6 s of the two RTX stages, the
+pipeline's slowest, and 7.7 s of each V100 stage.
+
+The head sum is fp32 either way; the different thread layout changes its
+reduction order in the last bits (up to 1.5e-5 on unit-scale scores), so the
+selected top-k can differ only at near ties. Prompts up to index_topk * 4
+tokens select every key and are unaffected. The fp32 decode scores already
+load 8 bytes per thread; their launch is unchanged.
+
+Tests: tests/kernels/test_deepseek_v4_sm70_indexer.py 26 passed on RTX
+8000 and V100; pre-commit and mypy-3.10 passed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01YaG8VjXn5eN3Aq7eZrA3dp
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

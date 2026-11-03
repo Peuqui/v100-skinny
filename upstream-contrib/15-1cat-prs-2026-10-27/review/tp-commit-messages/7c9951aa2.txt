@@ -1,0 +1,30 @@
+perf(turing): split-KV in the paged prefill attention by waves
+
+One CTA of paged_prefill_attention_sm75 fills a Turing SM (64 KB of
+shared memory), so its grid loses up to a whole wave to the last one: a
+1600-token chunk of Qwen3.8-27B per TP rank is 150 CTAs on the RTX
+8000's 72 SMs, three waves for 2.1 waves of work, and an 800-token half
+of the TP prefill overlap is 76 CTAs, two waves for 1.06.
+
+Each CTA's key range can now be split into whole-tile ranges; the
+splits write unnormalized fp32 partial outputs with their row maxima and
+sums, and merge_splits_kernel combines them by log-sum-exp. The launcher
+picks the split count (up to 4) that finishes the CTAs in the fewest
+full-CTA times on this device (SMs times the kernel's occupancy); the op
+takes num_kv_splits, 0 for that choice, for tests and benchmarks.
+
+RTX 8000, 12 query and 2 KV heads, head dim 256, CUDA graph, ms per call
+(without split-KV / automatic): 1600 tokens after 30k 12.40 / 9.71,
+after 100k 40.42 / 31.75, after 184k 75.59 / 58.47; 801 tokens after
+100k 27.08 / 17.14, after 184k 49.65 / 32.07. One forced split keeps
+the time without split-KV (40.41 at 100k); 1600 after 1600 is
+1.28 / 1.08.
+
+Tests: tests/kernels/attention/test_paged_prefill_attention_sm75.py,
+21 passed on an RTX 8000 (the fp32 reference cases with 0, 1, 2 and 4
+splits, including splits without visible keys, and the selection
+cases).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

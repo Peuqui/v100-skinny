@@ -1,0 +1,38 @@
+perf(moe): find each Triton MoE program's row block inside the kernel
+
+The balanced Triton skinny MoE built its row-block lists with Torch
+before every launch: three tiers and two projections cost about 80
+small kernels per layer and chunk, 1.6 s of a 150k-token prefill on a
+DeepSeek-V4 V100 stage (PP5 profile, 1024-token chunks), half of what
+the balancing had gained. Every program now loads the group offsets,
+sums the block counts of its tier with tl.cumsum and takes its group
+and first row from that, a few hundred instructions instead of the
+launches. The grid capacity also tightens: a tier whose groups fit one
+block needs one program per group, without the full-block reserve.
+
+V100, DeepSeek-V4-Flash layer 5, W13 + W2 per layer in a CUDA graph
+(ms, less is better), lists -> in-kernel:
+  1020 tokens Zipf 0 / 0.8 / 1.2: 9.623 / 10.383 / 10.806
+                               -> 9.085 /  9.900 / 10.332
+  2040 tokens Zipf 0 / 0.8 / 1.2: 15.039 / 15.503 / 15.861
+                               -> 14.673 / 15.092 / 15.335
+Errors against FP32 unchanged (RMS 2.07e-4 / 2.08e-4).
+DeepSeek-V4 mini checkpoint (8 layers, PP2), 1024-token chunks,
+A/B/A/B prefill (s): 8k 0.825 / 0.818 -> 0.791 / 0.807, 32k 3.052 /
+3.034 -> 2.985 / 2.973, 150k 15.451 / 15.425 -> 15.355 / 15.348;
+greedy tokens identical.
+
+The threshold, measured again with this kernel (V100, layer 5, W13 + W2,
+Zipf 0 / 0.8 / 1.2, Triton against the hand kernel): 12.0 rows per
+expert +2.8 / +6.0 / +2.8 %, 12.9 rows +1.5 / +1.5 / +0.3 %, 13.4 rows
+-1.3 / +0.5 / -1.1 %, 13.8 rows -1.7 / -0.7 / -5.9 %, 16.0 rows -9.2 /
+-1.9 / -6.3 %. It was set on the first kernel version;
+TRITON_MIN_ROWS_PER_EXPERT drops from 16 to 13.
+
+Tests: tests/kernels/moe/test_skinny_moe_triton.py 6 passed (V100, sm7x
+Triton); test_skinny_sm70_moe.py 89 passed 47 skipped (V100) and 103
+passed 33 skipped (RTX 8000).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

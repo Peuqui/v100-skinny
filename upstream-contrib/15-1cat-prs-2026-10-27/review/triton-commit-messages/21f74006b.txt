@@ -1,0 +1,35 @@
+perf(moe): reduce skinny expert rows with the batched Triton kernel
+
+The skinny QPN path summed its top-k expert rows in Torch: widen y2 to
+FP32, multiply by the weights, sum, narrow and copy - five kernels that
+write and re-read two FP32 copies of y2. _mtp_weighted_reduce, which the
+FP4 stages already use and which matches moe_unpermute bit for bit, does
+it in one pass straight into the output. The chunk bound no longer
+reserves the FP32 copies.
+
+CUDA graphs, DSv4 shape (hidden 4096, top-k 6), us per call (less is
+better), Torch chain -> fused:
+  tokens        1      8     64    508   1024   2048
+  RTX 8000   13.3   14.8   67.6  469.7  944.9 1873.6
+          ->  1.4    1.6    6.8   54.2  108.4  217.8
+  V100       11.8   13.7   52.1  352.2  703.4 1388.8
+          ->  1.5    1.9    5.8   44.5   95.7  198.7
+The DSv4 150k-prefill profile spends 1.5 s per RTX stage and 0.9 s per
+V100 stage in the Torch chain.
+
+Error against an fp64 reference (8/508/2048 tokens, both cards): max
+|error| / sum|v*w| identical (4.7e-4 to 4.9e-4, the final fp16
+rounding), mean error in fp16 ulps 0.18032-0.18088, fused lower at all
+six points; 0.02-0.04 % of the outputs differ by one fp16 step (one
+FMA rounding instead of a product and a sum rounding). The reduction
+serves every skinny QPN MoE (DeepSeek-V4, GLM-5.3 and the other NVFP4 and
+MXFP4 checkpoints on this path) and does not depend on
+kernel_config.triton_sm7x_tensor_cores, so it changes their default
+outputs by that fp16 step.
+
+Tests (RTX 8000 and V100): tests/kernels/moe/test_skinny_sm70_moe.py and
+tests/quantization/test_sm70_modelopt_mixed_nvfp4.py pass.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

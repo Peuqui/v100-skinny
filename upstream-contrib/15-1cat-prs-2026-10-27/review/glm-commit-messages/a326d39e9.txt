@@ -1,0 +1,14 @@
+test(mla): check that sparse MLA reserves no up-projected context
+
+Dense MLA implementations reserve the up-projected context output in
+the profile run, sparse implementations do not: they only run
+forward_mqa, and kv_b_proj never sees the cached context. Removing the
+condition of the previous commit makes the sparse case fail.
+
+Tests: tests/v1/attention/test_mla_sparse_profile_budget.py, 6 passed
+(CPU).
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0172gtUiymppDzziDqKfy78Q
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

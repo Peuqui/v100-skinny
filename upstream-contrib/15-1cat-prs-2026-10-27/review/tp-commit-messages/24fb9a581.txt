@@ -1,0 +1,17 @@
+fix(flash_v100): check the dense prefill entry without binding it
+
+MLA prefill backend selection asks
+flash_v100_dense_prefill_lse_available() while the model is built,
+before the engine binds its Flash-V100 runtime. The check went through
+get_flash_dense_forward(), which binds the operation and raised
+"Flash-V100 resources must be bound before execution": the first
+GLM-5.3-Flash boot failed with it. The loader is now separate from the
+bound accessor; availability only loads, execution still binds.
+
+Tests: tests/v1/attention/test_flash_v100_dense_prefill_availability.py,
+2 passed (availability without a bound runtime; execution still
+requires it).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019x3uEMYxiUMDKrA6E8o8sP
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

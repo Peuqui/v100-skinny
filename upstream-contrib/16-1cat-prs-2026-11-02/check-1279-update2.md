@@ -1,0 +1,222 @@
+Update 2026-11-03: one commit added, 4a95e6bea "test(v2): give two more runner stand-ins the prefill-overlap slot". Since this PR, GPUModelRunner reads self.prefill_overlap in load_model and initialize_kv_cache and passes num_metadata_builders to init_attn_backend. The PR updated the runner stand-ins of tests/v1/worker/test_gpu_model_runner_v2.py for that, but two other files build a runner with GPUModelRunner.__new__ as well, and four of their tests failed on this branch while main passes them: the three load_model tests of tests/v1/worker/test_gpu_model_runner_v2_eplb.py and tests/v1/worker/test_qwen4_exp_v2.py::test_qsa_circular_group_uses_one_block_and_custom_slot_mapping. Both stand-ins now set prefill_overlap = None and accept keyword arguments, as in test_gpu_model_runner_v2.py. Nothing outside tests changes. The branch now holds 16 commits.
+
+How I found it: every test file that imports a module changed anywhere in the stack (#1279, #1280, #1282, #1286 and two follow-up branches on top), 294 files without the compile, distributed and end-to-end directories, ran on the whole stack, one pytest per file on a Tesla V100 and on a Quadro RTX 8000 as device 0 with stock Triton 3.6, and every file that failed or hit the time limit there ran again on main 4d57473db built from source with the same native libraries; then I compared the failing test ids. Apart from failures that main shows the same, the stack failed only these four tests and one test of #1286 (see its update). Nine files on the V100 and ten on the RTX 8000, among them tests/kernels/attention/test_cache.py and tests/v1/attention/test_mla_backends.py, did not finish within 15 minutes on either side.
+
+Tests on this head, one pytest per file with stock Triton 3.6, a Quadro RTX 8000 / a Tesla V100 as device 0: test_gpu_model_runner_v2_eplb.py 5 passed / 5 passed; test_qwen4_exp_v2.py 1 failed, 22 passed, 2 skipped / 1 failed, 24 passed. The failure, test_qwen4_exp_v2.py::test_mtp_target_hooks_fall_back_to_normal_sampling, fails the same on main 4d57473db.
+
+pre-commit run --from-ref 4d57473db --to-ref HEAD: every hook passes except check-layering, which reports moe_runner.py (platform coupling 37 -> 39) exactly as main 4d57473db does. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues apart from three in vllm/v1/attention/backends/flash_v100/runtime.py that come from a local flash_attn_v100 checkout and that main 4d57473db shows the same way.
+
+Update 2026-11-02: rebased onto main 4d57473db; the only conflict was the generated docs/design/architecture/runtime_reference.md, regenerated per commit. The branch also merges cleanly into main 6db9c816c. One commit is new: cat_ubatch_outputs now fans out over tuple and list components at any depth and keeps the container type of the model output. A target model that returns (hidden_states, [aux tensors]) for a DFlash or EAGLE3 drafter failed in torch.cat ("expected Tensor as element 0 in argument 0, but got list") as soon as a prefill of at least tp_prefill_overlap_min_tokens ran as two halves; Qwen3.8-27B with DFlash2 and --max-num-batched-tokens 2048 hit it on the first long prompt (chunks of 1,664 tokens after the Mamba block alignment). Two new tests in tests/v1/worker/test_prefill_overlap.py cover it. The branch now holds 15 commits (7 of #1278, 1 of #1216, 7 new); the other six are unchanged apart from the regenerated reference.
+
+Tests on this head, one pytest per file with stock Triton 3.6, a Quadro RTX 8000 / a Tesla V100 as device 0: test_host_reduce.py 3 passed / 3 passed; test_flash_attn_packed_gqa_verify.py skips as a module on both, as before; test_paged_prefill_attention_sm75.py 21 passed / 5 passed, 16 skipped; test_skinny_sm70_moe.py 103 passed, 33 skipped / 89 passed, 47 skipped; test_nvfp4_qpn2_dequant.py 11 passed / 11 passed; test_sm70_qpn8_block_fp8.py 113 passed, 10 skipped / 1 failed, 95 passed, 27 skipped; test_block_fp8_qpn8_capabilities.py 24 passed / 24 passed; test_turing_qpn_kernel_selection.py 34 passed / 34 passed; test_flash_v100_dense_prefill_availability.py 2 passed / 2 passed; test_gpu_model_runner_v2.py 2 failed, 5 passed / 2 failed, 5 passed; test_prefill_overlap.py 16 passed / 16 passed. The failures are the same on main 4d57473db built from source: in test_gpu_model_runner_v2.py test_sm70_v2_mtp_profile_reports_from_last_pp_stage[pp2-last-stage-tp1] and [pp2-first-stage] on both cards, and test_sm70_qpn8_block_fp8.py::test_volta_medium_prefill_keeps_original_turbomind_output[64] on the V100.
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39) exactly as main 4d57473db does. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues.
+
+Full-model boots from the top of the stack (#1286 at 53a6f0973, which contains this branch, built in place), through our server entry with fresh compile caches:
+- Qwen3.8-27B NVFP4 with DFlash2 (7 speculative tokens), TP2 on two Quadro RTX 8000, tp_prefill_overlap_min_tokens 1024, --max-num-batched-tokens 2048, the configuration that failed before the new commit: the route line reports the overlap, and prompts of 33,208, 184,134, 249,992 and 259,552 tokens run through the halves without an error. First token 25.23 / 284.55 / 472.82 / 503.85 s, our fork's production entry 25.31 / 285.65 / 473.2 / 504.25 s. Robustness probe 5/5 (reasoning field, tool call, two concurrent requests, abort, thinking off); seven of eight fixed greedy answers byte-identical to our fork's production.
+- Qwen3.8-27B NVFP4 with MTP, same cards and overlap setting: prefill of 8,490 tokens 5.71 / 5.68 s (1,487 / 1,494 tok/s); prompts up to 259,552 tokens without an error, first token at 259,552 tokens 282.23 s; robustness 5/5; seven of eight fixed answers byte-identical to our fork's production.
+
+Update 2026-10-28: rebased onto main c59b3c4cb, which contains #1227; its two commits are no longer part of this branch, which now holds 14 commits (7 of #1278, 1 of #1216, 6 new). The six are unchanged apart from the regenerated reference (git range-diff). Test Plan files on this head, Quadro RTX 8000 / Tesla V100: test_prefill_overlap.py 14 / 14, test_paged_prefill_attention_sm75.py 21 / 5 passed (16 skipped), test_nvfp4_qpn2_dequant.py 11 / 11 and test_flash_v100_dense_prefill_availability.py 2 / 2 passed; test_gpu_model_runner_v2.py 5 passed with the two failures described below on both cards, which fail the same way on main c59b3c4cb; test_flash_attn_packed_gqa_verify.py skips as a module as before; tests/distributed/test_host_reduce.py 3 passed on the RTX 8000 pair with NCCL_P2P_DISABLE=1. pre-commit run --from-ref origin/main --to-ref HEAD on this head: every hook passes except check-layering, which now reports vllm/config/speculative.py (model coupling 142 -> 144) next to vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39); main c59b3c4cb reports the same two counts, so this PR adds none. pre-commit run mypy-3.10 --hook-stage manual: passed.
+
+## Purpose
+
+Tensor-parallel prefill on GPUs without peer access is bound by attention and by all-reduces. On two Quadro RTX 8000 (Turing, PCIe, no P2P), an nsys profile of a 150,033-token Qwen3.8-27B NVFP4 prefill with TP=2 (fork build 4da0bcfa4) spent, per card, 108 s in FA2's attention kernels and 96 s in NCCL all-reduce kernels out of 268 s. NCCL moves the data through host memory; a two-rank FP16 all-reduce of 8,192,000 B reaches 2.08 GB/s there. This PR gives Turing its own prefill attention, which brings that prefill to 208 s (attention 47 s, all-reduce still 96 s). It then hides the all-reduces behind compute: the batch runs as two interleaved halves, the all-reduces go through the copy engines instead of SMs, the attention splits its key range so that the halves fill the GPU, and the NVFP4 weight dequantization gets a Turing tile.
+
+Stacked PR. The branch sits on main c59b3c4cb plus two open PRs: #1278 (Turing tensor-core paths, 7 commits) and #1216 (two-rank host all-reduce, 1 commit, which the copy-engine mode extends); #1227 (packed GQA verify for FA2, same attention backend file), on which it was built, is merged. Only the last six commits are new here, so please review those (git log e4127aa5a..3f483154e, where e4127aa5a is the copy of #1216). The copy of #1278 is identical to the open PR; the copy of #1216 differs from it only in the anchors of the generated docs/design/architecture/runtime_reference.md.
+
+The six commits:
+
+1. Turing paged prefill attention for head dim 256 (40831e96a).
+   - FA2's Turing split-KV kernel keeps Q in shared memory next to K and V, so one CTA fills the SM's 64 KB, and without cp.async every tile load stalls the math. On a 2048-token chunk after 150k tokens of context it takes 165.8 ms (about 23 TFLOPS).
+   - The new kernel holds 128 GQA-packed query rows per CTA in registers, double-buffers K/V tiles of 32 keys and fetches the next tile in two register-staged halves while the current one computes: 61.5 ms (61 TFLOPS) on the same chunk.
+   - FLASH_ATTN takes it on SM75, by the capability of the query's own device, when all of these hold: causal, head dim 256, fp16 query, non-quantized paged cache with pages of 16, 32 or 64 tokens, cache offsets below 2^31, no sliding window, ALiBi, sinks or softcap, no batch invariance, and a request in the batch brings at least attention_config.flash_attn_turing_prefill_min_query_len (65) query tokens. Everything else stays on FA2; below 65 tokens FA2 splits the context and stays faster. The kernel builds for sm_75 only.
+2. Flash-V100 dense prefill availability (9db824d54). This fix is independent of the rest and is not part of any measurement here; I can move it to its own PR if preferred (see #1260 below).
+   - MLA prefill backend selection calls flash_v100_dense_prefill_lse_available() while the model is built, before the engine binds its Flash-V100 runtime.
+   - The check went through get_flash_dense_forward(), which binds the operation and raised "Flash-V100 resources must be bound before execution" at the first GLM-5.3-Flash boot.
+   - Availability now only loads the entry; execution still binds.
+3. Overlap of TP prefill all-reduces with compute (4ce181c53), behind kernel_config.tp_prefill_overlap_min_tokens (0 = off, the default).
+   - Eager prefill batches of at least that many tokens, without draft tokens or padding, run as two token-range halves on one compute stream in two threads, using the DBO micro-batch contexts. Each all-reduce (GroupCoordinator._all_reduce_out_place and all_reduce_sum2) runs on a comm stream while the other half computes its layer.
+   - A request cut at the split continues in the second half as a following chunk would, so the second half's attention reads the first half's KV writes. In mamba align mode the split moves so that both halves use the recurrent state slot of the chunk end (801 + 799 tokens for a 1600-token chunk of 800-token blocks). Each half builds its attention metadata with its own builder; builder 0 keeps the whole batch's metadata for the speculator.
+   - Scope is dense models; only Qwen3.8-27B with TP=2 was measured. Rejected at startup with a ValueError:
+     - TP below 2, PP or DP above 1, decode context parallelism, encoder-decoder models, LoRA, KV transfer, PLE offload and mamba cache mode "all";
+     - models with FusedMoE layers (their modular kernel asserts outside DBO when prepare/finalize is not async);
+     - models with deepstack visual features (deepstack_num_level > 0 in the Qwen3-VL family, _ds_layer_indices in Granite 4 Vision), which sit in a model buffer that each half would read from token 0.
+   - Raised at the first overlapped batch instead:
+     - the SM70 fused all-reduce + RMSNorm ops raise a RuntimeError, because they would run a collective on the compute stream beside the other half's all-reduce on the comm stream;
+     - model inputs other than input_ids, inputs_embeds and positions raise NotImplementedError.
+   - An exception in one half now stops the other half at its next yield and is re-raised in the caller. Before, the other thread and the caller waited forever; this also applied to the existing DBO micro-batches, which share the contexts.
+   - The field stays out of the compile hash: the compiled graph is the same, called twice.
+4. Copy-engine mode of the host all-reduce (1c2d22880), behind kernel_config.host_reduce.copy_engine_max_bytes (0 = off, the default; otherwise larger than max_bytes and a multiple of 16).
+   - With the overlap alone, NCCL's SM-driven transfers slowed the kernels running beside them. In the nsys profiles (Test Result) the weight dequantization kernels ran 7 to 37 % longer per call and the largest cuBLAS GEMM 22 % longer per tile row than without overlap. In single boots the overlap alone shortened the prefill by 13 % at 29k, 3 % at 184k and 0.5 % at 250k tokens.
+   - The new mode serves FP16 payloads above max_bytes up to copy_engine_max_bytes. The copy engines move this rank's tensor into its host slot and the peer's tensor back in up to 16 pieces, ordered by cuStreamWriteValue32 and cuStreamWaitValue32. One FP16 add then gives the same bits as the kernel mode and NCCL's two-rank sum.
+   - It pins four slots of copy_engine_max_bytes in shared host memory per channel.
+   - The call sequence lives on the host, so the mode cannot be captured. While a stream is capturing, payloads above max_bytes are rejected ("copy_engine_mode_not_capturable") and the next all-reduce in the chain (NCCL) serves them, as without this mode. Decode payloads up to max_bytes (256 KiB by default) stay on the kernel mode of #1216.
+5. Split-KV for the Turing prefill attention (e8f5c6e00).
+   - One CTA fills a Turing SM, so a 1600-token chunk per TP rank (150 CTAs on 72 SMs) takes three waves for 2.1 waves of work, and an 800-token half (76 CTAs) takes two waves for 1.06.
+   - Each CTA's key range can now be split into whole-tile ranges, merged by log-sum-exp. The launcher picks the split count (up to 4) that finishes in the fewest full-CTA times on this device (SMs times the kernel's occupancy).
+6. Turing tile for the NVFP4 prefill dequantization (0d83b1b95).
+   - The Triton kernel _nvfp4_qpn2_dequant_kernel, which dequantizes NVFP4 weights into fp16 for cuBLAS, took 64 groups per program, Volta's fastest tile. On Turing that reaches about 200 GB/s.
+   - Turing now takes 16 groups, 2.2 to 2.3x faster and bit-identical; the tile is chosen per device, and Volta keeps 64.
+
+Not a duplicate. I checked against main 899e9ed33 and all 81 open PRs in four ways:
+- Full file lists (gh api --paginate repos/1CatAI/1Cat-vLLM/pulls/N/files).
+- The added and removed lines of every open PR, searched for this PR's functions (_all_reduce_out_place, all_reduce_sum2, UBatchContext, make_ubatch_contexts, host_reduce, paged_prefill_attention, nvfp4_qpn2_dequant, get_flash_dense_forward, flash_v100_dense_prefill_lse_available, cuStreamWriteValue).
+- A three-way merge of every open PR with this branch.
+- Searches for all-reduce, allreduce, overlap, host memory, copy engine, P2P, prefill attention, Turing, SM75, split-KV, NVFP4 dequant, micro-batch, DBO, ubatch, Flash-V100 and "bound before execution".
+
+Findings:
+- #1260 (Serve GLM 5.3 Flash and Qwen3.8 Flash Next GGUF across seven heterogeneous GPUs; already conflicting with main) fixes the same Flash-V100 error as 9db824d54, in a different way: it prepares the engine's attention runtime inside get_flash_dense_forward() before binding. 9db824d54 keeps the availability check free of runtime setup. Both change that function; whichever lands second drops its change. #1260 also gains a conflict in vllm/v1/worker/gpu/model_runner.py with this branch.
+- #1245 (topology-aware all-reduce selection, conflicting with main) needs peer access and targets decode-sized all-reduces (its table uses 5 KiB per rank). This PR serves GPUs without peer access and prefill-sized payloads. Both edit vllm/config/kernel.py and the generated reference, without a new conflict.
+- #1217 (mine, PLE gather overlap) also uses cuStreamWriteValue32, for the PLE row gather; it shares no code with the all-reduce path. #822 edits vllm/model_executor/layers/quantization/utils/nvfp4_qpn2_dequant.py, not the dequantization tile in vllm/model_executor/kernels/linear/qpn/nvfp4_dequant.py.
+- Other open PRs touch the same files (model_runner.py, parallel_state.py, kernel.py, mamba_hybrid.py, CMakeLists.txt, ops.h, torch_bindings.cpp) in other functions. Apart from #1260 and the stacked #1216 and #1227 (merged since), the merge shows no new conflict with any open PR.
+
+AI assistance was used for this change. I reviewed every line and ran the tests and measurements below.
+
+## Test Plan
+
+Native build of this branch in place (paged_prefill_attention_sm75.cu builds for sm_75 only, like fp8_qpn8_mma_sm75.cu of #1278).
+
+One pytest process per file on a Quadro RTX 8000 (SM75) and on a Tesla V100 (SM70):
+python -m pytest tests/v1/worker/test_prefill_overlap.py
+python -m pytest tests/v1/worker/test_gpu_model_runner_v2.py
+python -m pytest tests/kernels/attention/test_paged_prefill_attention_sm75.py
+python -m pytest tests/kernels/quantization/test_nvfp4_qpn2_dequant.py
+python -m pytest tests/v1/attention/test_flash_v100_dense_prefill_availability.py
+python -m pytest tests/kernels/attention/test_flash_attn_packed_gqa_verify.py (#1227's test, same backend file)
+
+On the two Quadro RTX 8000 with peer access off, as on the measured machine:
+NCCL_P2P_DISABLE=1 python -m pytest tests/distributed/test_host_reduce.py
+
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+
+## Path coverage
+
+| Path / provider | Format | Key conditions (shape, TP/EP, graph, capability) | Expected selection / fallback | Evidence (source / static / executed / measured) | Unverified scope |
+| --- | --- | --- | --- | --- | --- |
+| FLASH_ATTN prefill on SM75 | fp16 paged KV (non-quantized), head dim 256, causal | a request with at least 65 query tokens; pages of 16/32/64 tokens; cache offsets below 2^31; no window, ALiBi, sinks, softcap or batch invariance; capability of the query's device | paged_prefill_attention_sm75 with split-KV by waves; otherwise FA2 | executed: test_paged_prefill_attention_sm75.py (fp32 reference with 0/1/2/4 splits; selection keeps pages of 128 and 800 and caches beyond 32-bit offsets on FA2); measured: nsys single boots, model A/B (both arms) | other head dims, fp8 KV, SM8x+ (never selected there); CUDA graph capture only in the split-KV microbenchmark |
+| TP prefill overlap | dense models (measured: NVFP4) | TP >= 2, PP = DP = DCP = 1; eager prefill batch without draft tokens or padding, >= tp_prefill_overlap_min_tokens; mamba cache mode none or align | two halves, all-reduces on a comm stream; off by default; startup ValueError for the configurations and models listed in Purpose | executed: test_prefill_overlap.py (token ranges, M-RoPE positions, align split, rejections incl. DCP, encoder-decoder, MoE and the deepstack features of Qwen3-VL and Granite 4 Vision, halves on a GPU bit-identical to the whole batch, a failing half stops both); measured: Qwen3.8-27B TP=2 A/B | TP > 2; other dense models; multimodal models with token-indexed side buffers other than the deepstack features of Qwen3-VL and Granite 4 Vision; collectives other than all-reduce (for example sequence parallelism) are not routed |
+| host all-reduce, copy-engine mode | FP16 | two ranks without P2P; payload above max_bytes and up to copy_engine_max_bytes; not capturing | copy engines + stream memory operations; while capturing, NCCL; off by default | executed: test_host_reduce.py on the RTX pair (bit-identical to NCCL for 0.3 to 21 MB, back to back on a side stream beside GEMMs, mixed with the kernel mode; captured 655,360 B payload rejected without failing the capture; copy_engine_max_bytes at or below max_bytes rejected by the config); measured: nsys route hit, model A/B | more than two ranks (two-rank only, like #1216); devices without stream memory operations (not probed when the channel opens) |
+| NVFP4 prefill dequantization | NVFP4 (QPN2) | SM75 | 16 groups per program; SM70 keeps 64 | executed: test_nvfp4_qpn2_dequant.py on RTX 8000 and V100; measured: model A/B | none |
+| Flash-V100 dense prefill availability | MLA | model build before runtime binding | availability loads without binding; execution binds | executed: test_flash_v100_dense_prefill_availability.py | no model run on this branch |
+
+## Acceleration and benchmark contract (required for performance changes)
+
+- Default enabled or opt-in:
+  - On by default on the matching capability, per device: the Turing prefill attention (attention_config.flash_attn_turing_prefill_min_query_len = 65; 0 disables it), its split-KV choice and the NVFP4 tile.
+  - Opt-in, 0 by default: the overlap (kernel_config.tp_prefill_overlap_min_tokens) and the copy-engine mode (kernel_config.host_reduce.copy_engine_max_bytes).
+- Required CLI options and environment switches:
+  - Changed arm of the model A/B: --kernel-config '{"triton_sm7x_tensor_cores":true,"tp_prefill_overlap_min_tokens":1024,"host_reduce":{"copy_engine_max_bytes":20971520}}'. Reference arm: --kernel-config '{"triton_sm7x_tensor_cores":true}'.
+  - triton_sm7x_tensor_cores belongs to a later PR of this series (Triton tensor-core routes) and does not exist on this branch. Here the switches are '{"tp_prefill_overlap_min_tokens":1024,"host_reduce":{"copy_engine_max_bytes":20971520}}'.
+  - Entry: Qwen3.8-27B NVFP4, TP=2 on the two Quadro RTX 8000, --dtype float16, --block-size 16, --max-num-batched-tokens 2048, --max-model-len 262144, --enable-prefix-caching, --disable-custom-all-reduce, MTP with 3 speculative tokens, cudagraph_capture_sizes [1, 2, 4, 8], VLLM_USE_V2_MODEL_RUNNER=1, NCCL_P2P_DISABLE=1.
+- KV cache dtype used for the benchmark: auto (fp16).
+- Wheel SHA or source commit:
+  - All measurements used fork builds of github.com/Peuqui/1Cat-vLLM, named per measurement under Test Result.
+  - The model A/B compares reference a1ac0c89d with changed f21d1c564. f21d1c564 = a1ac0c89d plus the fork versions of commits 3 to 6. The reference already contains commit 1 (as fork commit f9ac81b6b), #1216 and #1227. Commit 2 is in neither arm.
+  - This branch carries the same changes rebased onto main c59b3c4cb and #1278, plus the changes after review that the measured builds did not have: startup rejections of DCP, encoder-decoder, MoE and deepstack models (Qwen3-VL and Granite 4 Vision); all_reduce_sum2 through the comm stream and the fused all-reduce + RMSNorm error; stopping both halves on an exception; the capture rule of the copy-engine mode and the copy_engine_max_bytes check; the page-size and offset conditions of the attention selection; and the halves set their device and stream through torch.accelerator instead of torch.cuda.
+  - On the measured path (dense model, pages of 16, captured batches of at most 8 tokens = 81,920 B, below max_bytes) these changes select the same routes. The branch was built and unit-tested, not booted with a full model.
+- PYTHONPATH, source overlays, or external native libraries used:
+  - Both arms of the model A/B ran with a patched Triton 3.6 build (tensor cores on sm_70 and sm_75, from a later PR of this series) first on PYTHONPATH. The changed arm also had its fork source tree on PYTHONPATH and ran on copies of the reference arm's compile caches; the overlap leaves the compiled graph unchanged.
+  - Commit 6 changes the tile of a Triton kernel. Its sweep numbers come from the commit message, and which Triton build the sweep ran on was not recorded.
+  - The commit 1 profiles ran the environment's stock Triton 3.6.0. Unit tests: in-place build, stock Triton 3.6.0, no overlays.
+- User-entry route-hit, speed, and output-quality evidence:
+  - The changed boots logged "TP prefill overlap: prefill batches of at least 1024 tokens run as two interleaved halves." Their engine config showed host_reduce copy_engine_max_bytes=20971520 and tp_prefill_overlap_min_tokens=1024.
+  - In the nsys profiles the Turing attention replaced FA2's prefill kernels, and the copy-engine mode replaced almost all NCCL kernels (Test Result).
+  - Speed and quality: Test Result.
+- Existing kernel/backend registry and capability-rejection reasons:
+  - The Turing prefill attention is chosen inside FLASH_ATTN's forward (FlashAttentionImpl._use_turing_prefill).
+  - The host all-reduce's rejection_reason gains copy_engine_mode_not_capturable; a rejected payload goes to the next all-reduce in the chain.
+  - The overlap rejects unsupported configurations and models at startup with a ValueError naming the field.
+- Per-engine configuration and deprecated-variable compatibility:
+  - Three new fields: attention_config.flash_attn_turing_prefill_min_query_len, kernel_config.tp_prefill_overlap_min_tokens and kernel_config.host_reduce.copy_engine_max_bytes. No environment variables.
+  - tp_prefill_overlap_min_tokens and host_reduce are outside the compile hash.
+- New/changed environment metadata and generated reference check: no environment metadata. docs/design/architecture/runtime_reference.md is regenerated (HostReduceConfig __post_init__, KernelConfig and AttentionConfig anchors) and checked by the check-architecture-reference hook (Test Result).
+- Route snapshot command and intentional changed rows: none. No selector registry changes: the Turing attention is chosen inside the FLASH_ATTN forward and the NVFP4 tile inside the dequantization op.
+- SM70 registered variables / unregistered reads / model-parameter restrictions, before -> after: no change.
+
+## Test Result
+
+Model A/B/A/B, commits 3 to 6. Fork builds: reference a1ac0c89d, changed f21d1c564 (Purpose). Qwen3.8-27B NVFP4, TP=2 on two Quadro RTX 8000 (PCIe, no P2P).
+- Order: one uncounted cold boot of the changed build, then reference a, changed a, reference b, changed b; two counted boots per arm.
+- Prefill time in s, lower is better, and throughput in tok/s, higher is better (reference a / changed a / reference b / changed b):
+  - four prompts of 29,167 to 29,243 tokens per boot: 33.0-33.1 / 19.1-19.3 / 33.0-33.1 / 19.1-19.3 s, -41.9 % in the mean (881-886 -> 1,515-1,528 tok/s)
+  - 184,134 tokens: 269.05 / 174.34 / 269.21 / 174.38 s, -35.2 % (684 -> 1,056 tok/s)
+  - 249,992 tokens: 402.27 / 269.06 / 402.47 / 269.29 s, -33.1 % (621-622 -> 928-929 tok/s)
+- Decode unchanged. tok/s, higher is better, reference -> changed:
+  - short prompts: prose 74.6-75.0 -> 74.8-75.2, code 114.3-115.1 -> 115.4-115.9, edit 119.1-119.9 -> 119.8-120.1, at 33-34 ms per step in both;
+  - MTP acceptance per round equal (2.47 / 3.82 / 3.99);
+  - at 184,134 tokens of context 54.3-54.4 ms per step (50.6-50.7 tok/s) -> 54.3 ms (50.7 tok/s);
+  - at 249,992 tokens 62.3 ms (40.8 tok/s) -> 62.2-62.4 ms (41.0-41.1 tok/s).
+- Output:
+  - Greedy output of three fixed prompts was identical to the stored reference in all five boots.
+  - Eight quality answers per boot, compared byte for byte: seven are identical between the arms. The eighth (a speed calculation) is worded differently from character 909 on; both versions follow the same correct derivation and stop at the 600-token limit. Each arm is byte-identical across its two boots.
+  - Outputs of the long prompts were not compared text by text.
+- Memory: peak memory.used per RTX 8000 during the measurements was changed 48,285 / reference 47,979 MiB (+306 MiB), and 47,867 MiB in both during boot and greedy. The startup memory profile runs whole dummy batches, never the halves, so it does not see the overlap's extra allocations: the KV cache was 1,038,640 tokens in both arms.
+
+Contribution of the steps, on the same entry; not A/B. The middle three columns are single boots, each the first boot of its fork build; the outer columns are boot a of the A/B arms. Prefill time in s, lower is better. Columns: reference arm boot a / + overlap (fork build 88d25b8bd, kernel config without copy_engine_max_bytes) / + copy-engine mode (c1816294c) / + split-KV (afe87abd0) / + NVFP4 tile (changed arm boot a, f21d1c564):
+- 29k: 33.0-33.1 / 28.5-29.0 / 21.7-21.9 / 21.1-21.2 / 19.1-19.3
+- 184k: 269.05 / 260.28 / 216.81 / 185.25 / 174.34
+- 250k: 402.27 / 400.14 / 341.66 / 283.50 / 269.06
+
+Commit 1 (Turing prefill attention). The model A/B has it in both arms, so its own evidence is:
+- Two nsys single boots on the same entry, not A/B. Fork builds: reference 4da0bcfa4, changed f9ac81b6b.
+  - f9ac81b6b also carries eight further commits: MoE and DeepSeek-V4 kernels, the M <= 8 decode split-K, and a native sm_75 build of the SM70 kernel family, which #1278 measured without gain on this model. The kernel times below put the difference in the attention.
+  - Prefill of 150,033 tokens took 267.91 -> 207.87 s (lower is better).
+  - Kernel time per card: FA2 attention 108.0-108.1 s (1,995 calls) -> FA2 0.1 s plus paged_prefill_attention 46.8-47.0 s (1,615 calls); NCCL 95.7 -> 96.3-96.4 s; all other kernels 63.6-63.8 -> 64.0 s.
+- Output quality in a bundled A/B/A/B. Fork builds: reference 79e07bfef, changed a1ac0c89d. The changed build has 21 more commits, including commit 1, and a patched Triton; its speed cannot be attributed to commit 1 and is not reported here.
+  - Greedy output and all eight quality answers were byte-identical between the arms in all counted boots.
+  - The greedy prompts are 18 to 52 tokens long, below the 65-token threshold. The quality prompts are 65 to 132 tokens with the chat template; whether prefix caching kept some of them below the threshold was not traced.
+- Unit test against an fp32 reference (Test Plan).
+
+nsys profiles behind commit 4: single boots, kernel time per call on one RTX 8000, lower is better.
+- Builds:
+  - without overlap: fork build a1ac0c89d, 150k-token prompt;
+  - overlap with NCCL: fork build 88d25b8bd, 100k-token prompt, prefill 118.22 s;
+  - overlap with the copy-engine mode: fork build c1816294c, 100k-token prompt, prefill 95.85 s.
+  The dequantization work per call does not depend on the prompt length.
+- Dequantization kernels per call, without overlap / with NCCL / with the copy-engine mode, in us:
+  - NVFP4 1081.4 / 1412.0 / 1138.3 and 569.9 / 611.2 / 631.7;
+  - FP8 285.0 / 389.9 / 316.1, 280.4 / 377.4 / 291.0 and 118.0 / 139.5 / 123.4.
+  That is +7 to +37 % beside NCCL and +4 to +11 % beside the copy engines.
+- The largest cuBLAS GEMM tile per tile row: +21.8 % beside NCCL, +0.3 % beside the copy engines.
+- Route hit of the copy-engine mode: NCCL kernels per card 16,832 (75.6 s) -> 448 (0.3 s); 260,166 host-to-device and 260,164 device-to-host copies of 135 GB each, and 16,384 FP16 add kernels.
+
+Kernel microbenchmarks, from the commit messages. Time per call, lower is better.
+- Turing prefill attention (40831e96a), Quadro RTX 8000, Qwen3.8-27B per-rank shapes (12 query heads, 2 KV heads), causal chunk at the end of the context; whether the timing used CUDA graphs is not recorded. FA2 -> new kernel:
+  - 2048 tokens after 32k context 35.3 -> 13.1 ms; after 150k 165.8 -> 61.5 ms (about 23 -> 61 TFLOPS);
+  - 512 tokens after 150k 52.5 -> 20.0 ms;
+  - 96 tokens after 150k 24.6 -> 19.8 ms;
+  - 64 tokens after 150k 5.3 ms (FA2) against 19.9 ms, hence the threshold of 65.
+  Errors against an fp32 reference equal FA2's in every case.
+- Split-KV (e8f5c6e00), RTX 8000, same heads, captured in CUDA graphs. Without split-KV (the kernel of commit 1) / with the automatic split:
+  - 1600 tokens after 30k 12.40 / 9.71 ms, after 100k 40.42 / 31.75 ms, after 184k 75.59 / 58.47 ms;
+  - 801 tokens after 100k 27.08 / 17.14 ms, after 184k 49.65 / 32.07 ms;
+  - 1600 tokens after 1600 1.28 / 1.08 ms;
+  - one forced split 40.41 ms at 100k, the time without split-KV.
+- Copy-engine all-reduce (1c2d22880), RTX 8000 pair, 8,192,000 B per call (800 tokens x 5120 x 2 B), eager calls (the mode refuses capture):
+  - 3.15 ms (2.60 GB/s) against NCCL's 3.93 ms (2.08 GB/s);
+  - a GEMM loop running beside it changed its time by -2.8 % against +18.2 % beside NCCL, and a memory-bound loop by +1.8 % against +6.0 %.
+- NVFP4 dequantization (0d83b1b95), RTX 8000, Qwen3.8-27B TP2 shapes per rank; whether the timing used CUDA graphs is not recorded. 64 -> 16 groups per program:
+  - 17408 x 5120 1.090 -> 0.496 ms (460 GB/s);
+  - 5120 x 8704 0.580 -> 0.250 ms;
+  - 5120 x 2560 0.166 -> 0.075 ms;
+  - 8192 x 5120 0.525 -> 0.230 ms.
+  Every swept configuration is bit-identical. On a V100, 64 groups stay the fastest (17408 x 5120 0.930 ms).
+
+Unit tests on this branch, native build in place (TORCH_CUDA_ARCH_LIST=7.0; _C carries 73 sm_70 and 3 sm_75 cubins), one process per file:
+- Quadro RTX 8000: test_prefill_overlap.py 14 passed; test_gpu_model_runner_v2.py 5 passed, 2 failed; test_paged_prefill_attention_sm75.py 21 passed; test_nvfp4_qpn2_dequant.py 11 passed; test_flash_v100_dense_prefill_availability.py 2 passed; test_flash_attn_packed_gqa_verify.py 1 skipped.
+- Tesla V100: test_prefill_overlap.py 14 passed; test_gpu_model_runner_v2.py 5 passed, 2 failed; test_paged_prefill_attention_sm75.py 5 passed, 16 skipped (the kernel cases need SM75; the selection cases run); test_nvfp4_qpn2_dequant.py 11 passed; test_flash_v100_dense_prefill_availability.py 2 passed; test_flash_attn_packed_gqa_verify.py 1 skipped.
+- Two Quadro RTX 8000 with NCCL_P2P_DISABLE=1: test_host_reduce.py 3 passed.
+
+Known failures and skips to read these results against:
+- The two failures in test_gpu_model_runner_v2.py are test_sm70_v2_mtp_profile_reports_from_last_pp_stage[pp2-last-stage-tp1] and [pp2-first-stage]. They fail the same way on main 899e9ed33 (in-place build of main on the same RTX 8000; the tree also carried the Python-only #1272, which does not touch the runner).
+- test_flash_attn_packed_gqa_verify.py (#1227) skips as a module with "needs FlashAttention 2" on both cards. fa_version_unsupported_reason(2) gives "no FA2 library is installed for this GPU's architecture" on the RTX 8000 (this build has no SM75 FA2 library) and "FA2 is only supported on devices with compute capability >= 7.5" on the V100. This branch does not change the verify path that test covers; #1227 reports its own run.
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39); this PR does not touch that file and main reports the same. pre-commit run mypy-3.10 --hook-stage manual: passed. The pre-commit CI job fails on main's own run at 899e9ed33 (run 40532180681) with mypy errors in vllm/v1/kv_cache_interface.py:156-158 and the same check-layering count; none of these files is touched here.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUiymppDzziDqKfy78Q
+
+
+
+

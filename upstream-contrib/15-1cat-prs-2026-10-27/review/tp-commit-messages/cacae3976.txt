@@ -1,0 +1,44 @@
+perf(host_reduce): copy-engine mode for prefill-sized all-reduces
+
+Without peer access, NCCL moves TP all-reduces through host memory with
+SM copies (LL protocol), and so does the host reduce's kernel mode.
+Their polling of host memory slows the kernels running beside them. In
+an nsys profile of a 100k-token Qwen3.8-27B prefill with the TP prefill
+overlap on two Quadro RTX 8000, the NVFP4 weight dequantization kernels
+ran 31 and 7 % longer per call, the FP8 ones 18 to 37 %, and the
+largest cuBLAS GEMM 22 % longer per tile row than in the baseline
+profile without overlap, so overlapping gained little.
+
+host_reduce.copy_engine_max_bytes (0 = off; otherwise above max_bytes)
+adds a mode for payloads above max_bytes: the copy engines move this
+rank's tensor into its host slot and the peer's back in up to 16
+pieces, ordered by stream memory operations (cuStreamWriteValue32 once
+a piece landed, cuStreamWaitValue32 before reading the peer's), then
+one FP16 add gives the same bits as the kernel mode and NCCL's
+two-rank sum. Sending runs on the channel's own copy stream, receiving
+and the add on the caller's stream; slots alternate by call parity and
+are reused only after the peer acknowledged reading them. The mode
+pins four slots of copy_engine_max_bytes in shared host memory.
+
+The call sequence lives on the host, so the mode cannot be captured:
+while a stream is capturing, payloads above max_bytes are rejected
+(copy_engine_mode_not_capturable) and the next all-reduce in the chain
+serves them, as before. Decode payloads stay on the kernel mode.
+
+RTX 8000 pair, 8,192,000 B per call, eager: 3.15 ms (2.60 GB/s)
+against NCCL's 3.93 ms (2.08 GB/s); a GEMM loop beside it changed its
+time by -2.8 % against +18.2 % beside NCCL, a memory-bound loop by
++1.8 % against +6.0 %. In the 100k-token profile with this mode the
+prefill took 95.85 s instead of 118.22 s, the dequantization kernels
+ran 4 to 11 % and the largest GEMM tile 0.3 % longer than without
+overlap.
+
+Tests: tests/distributed/test_host_reduce.py on the RTX pair with
+NCCL_P2P_DISABLE=1, 2 passed (new: copy-engine mode bit-identical to
+NCCL for 0.3 to 21 MB, back to back on a side stream beside GEMMs and
+mixed with the kernel mode; a captured payload above max_bytes is
+rejected without failing the capture).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

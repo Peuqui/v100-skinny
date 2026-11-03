@@ -1,0 +1,15 @@
+perf(glm53): decode reads the expert scales as five-bit planes, no raster round trip
+
+csf_32x2_v1 scales are re-encoded at load as base + 4-bit nibble + 1 high bit
+per scale in the raster's positions (s5_scales.py): one block in six has a csf
+exception record, which a kernel cannot look up in its loop, but outside layers
+36 and 40 to 44 the scales of a row span at most 31, which five bits carry (the
+next commit keeps the csf planes where a row spans more). The decode kernels
+(m16n8k8 and m8n8k4) decode the planes in place; prefill and every other launch
+get the raster of the routed experts written from them. Real GLM-5.3 layer 10,
+decode of 8 tokens, ms per layer W13 + W2: RTX 8000 1.512 (csf expansion +
+raster) -> 1.203, V100 1.166 -> 1.034; outputs bit-identical to the raster
+kernels.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011k7FsBAcZ8Cw91wisiZxMf

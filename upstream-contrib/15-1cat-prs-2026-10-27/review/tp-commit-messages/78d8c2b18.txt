@@ -1,0 +1,40 @@
+perf(attention): Turing paged prefill attention for head dim 256
+
+FA2's Turing build runs causal head-dim-256 prefills over an fp16
+paged cache slowly: its split-KV kernel keeps Q in shared memory next
+to K and V, a CTA fills the SM's 64 KB, and without cp.async every
+tile's loads stall the math. A 2048-token chunk after 150k tokens of
+context takes 165.8 ms there, about 23 TFLOPS.
+
+The new kernel holds 128 packed query rows per CTA in registers
+(eight warps of 16; the query heads of a KV head share each loaded
+key), double-buffers K/V tiles of 32 keys in shared memory, and
+fetches the next tile in two register-staged halves while the
+current one computes. 32-bit cache offsets and a compile-time page
+size keep the MMA loop free of spills; the O rescale is skipped while
+every factor of the warp is 1. The source is built for sm_75 only.
+
+Quadro RTX 8000, Qwen3.8-27B per-rank shapes (12 query heads, 2 KV
+heads), causal chunk at the end of the context, ms per call:
+  2048 tokens  32k ctx  35.3 -> 13.1   150k ctx 165.8 -> 61.5 (61 TFLOPS)
+  512 tokens   150k ctx  52.5 -> 20.0
+  96 tokens    150k ctx  24.6 -> 19.8
+  64 tokens    150k ctx   5.3 vs 19.9  (FA2 splits the context there)
+Errors against an fp32 reference equal FA2's on every case.
+
+The FLASH_ATTN backend takes the kernel on SM75, by the capability of
+the query's own device, once a request in the batch brings at least
+attention_config.flash_attn_turing_prefill_min_query_len (65) query
+tokens: causal FA2 attention with an fp16 query over a non-quantized
+cache, without sliding window, ALiBi, sinks, softcap or batch
+invariance. The launcher takes pages of 16, 32 or 64 tokens and forms
+32-bit cache offsets, so the selection keeps other page sizes and
+cache views of 2^31 elements or more on FA2.
+
+Tests: tests/kernels/attention/test_paged_prefill_attention_sm75.py
+(fp32 reference cases on an SM75 GPU; the selection keeps pages of
+128 and 800 tokens and a cache beyond 32-bit offsets on FA2).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019x3uEMYxiUMDKrA6E8o8sP
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

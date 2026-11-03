@@ -1,0 +1,8 @@
+Update 2026-11-02: rebased with the stack below onto main 4d57473db; this branch now holds 57 commits (the 30 of #1282 and 27 new, unchanged apart from the regenerated reference). It also merges cleanly into main 6db9c816c. check-layering now reports only moe_runner.py (platform coupling 37 -> 39), the same as main 4d57473db; the vllm/config/speculative.py count named below came from the older main.
+
+Tests on this head, one pytest per file, on a Quadro RTX 8000 and a Tesla V100 as device 0 (results as RTX 8000 / V100), @@TESTS_1286@@
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering as above. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues.
+
+Full boot of this head (53a6f0973, built in place) through our server entry with fresh compile caches, the same configuration as the boot described under Test Result: ready after 753 s; the eight fixed greedy answers are byte-identical to that boot's. Prefill of 8,687 tokens 6.27 s on the first request and 4.34 s on the second (1,984 tok/s); the KDA kernels autotune on their first prefill-sized call, which I take to be the difference (not measured separately here). Decode 38.89 tok/s (25.7 ms per token) short and 49.89 tok/s (20.0 ms per token) after the 8,687-token prompt. Prompts of 169,693, 283,230 and 516,196 tokens: first token 78.29 / 133.02 / 249.77 s, 91.7 / 93.3 / 95.0 ms per round (56.5 / 40.7 / 30.7 tok/s). Robustness 5/5 (reasoning field, tool call, two concurrent requests, abort, thinking off). KV cache 645,277 tokens.
+

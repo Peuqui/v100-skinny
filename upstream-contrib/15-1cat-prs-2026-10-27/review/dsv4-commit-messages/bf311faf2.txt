@@ -1,0 +1,28 @@
+perf(dsv4): gather the compressed KV cache with 2048 workers
+
+Every prefill chunk dequantizes its request's whole compressed cache
+(18.75k rows on average over a 150k prefill at ratio 4, 37.5k at its
+end) into the workspace the sparse attention gathers from. The kernel
+gave each request 128 workers that walk their rows one by one, which
+left most SMs idle. 2048 two-warp workers keep the kernel and its
+arithmetic and only spread the rows; the output is bit-identical.
+
+CUDA graphs, us per call (less is better), 128 x 4 warps -> 2048 x 2:
+  rows          2048    18750    37500
+  RTX 8000  47.2 -> 7.2   532.3 -> 107.3   1061.9 -> 215.6
+  V100      45.8 -> 7.7   616.4 ->  87.4   1229.3 -> 167.7
+The DSv4 150k-prefill profile spends 0.76 s per RTX stage and 0.82 s
+per V100 stage in this kernel.
+
+The Triton gather also serves the ROCm backend and NVIDIA GPUs without
+CuteDSL (dequantize_and_gather_k_cache); only V100 and RTX 8000 were
+measured.
+
+Tests: tests/kernels/test_deepseek_v4_sm70_qnorm_rope_kv_insert.py and
+tests/kernels/test_compressor_kv_cache.py on an RTX 8000 and a V100, 2
+and 32 passed (6 skipped) each; the microbenchmark above compared every
+grid bit for bit with the 128-worker launch.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

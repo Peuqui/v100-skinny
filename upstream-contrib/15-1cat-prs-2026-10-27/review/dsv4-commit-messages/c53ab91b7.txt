@@ -1,0 +1,25 @@
+fix(indexer): free each prefill sub-chunk's logits before the next
+
+The prefill loop rebinds `logits` per sub-chunk, so the previous
+chunk's scores stay alive until the next scorer has allocated its own:
+under VLLM_SPARSE_INDEXER_MAX_LOGITS_MB the peak was two sub-chunks,
+while the profiling run reserves one. Freeing them after the top-k
+bounds the peak by the budget. SparseAttnIndexerKpool runs the same
+loop and gets the same release; it was not measured.
+
+DeepSeek-V4 mini checkpoint (8 layers, PP2), 1024-token chunks, one
+280k-token prompt, V100 stage, torch allocator in MiB:
+  budget 512 (one sub-chunk of 273 MiB): allocated peak 16759
+  budget 160 before this change:         allocated peak 16759 (160 + 113)
+  budget 160 with this change:           allocated peak 16646
+Prefill time, A/B/A/B, budget 512 vs 64 (s, less is better): 8k
+0.854/0.843 vs 0.845/0.837, 150k 15.593/15.593 vs 15.596/15.599,
+280k 32.849/32.758 vs 32.888/32.871.
+
+Tests: tests/models/test_deepseek_v4_sm70_routes.py, 30 passed on an
+RTX 8000 and a V100; the mini runs exercised the loop with 1, 2 and 5
+sub-chunks per step.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

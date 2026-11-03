@@ -1,0 +1,21 @@
+perf(glm53): keep MLA q_b_proj, kv_b_proj and o_proj as block FP8 in QPN8
+
+The MLA layers never received the quant config; the loader unpacked the
+block-FP8 projections to BF16 (fp16 GEMVs, o_proj 181 us, q_b 100 us per layer
+in decode). Now q_b_proj, kv_b_proj and o_proj follow the checkpoint config
+(declared_quant_config in glm5next/nvidia/quant.py, shared with the KDA layer):
+named -> block FP8 (QPN8), not named -> BF16. fused_qkv_a_proj stays BF16
+(NoPE pad: 2624 rows are not on the 128 grid), the MTP layers load through
+their own path.
+
+GLM-5.3-Flash PP5, chunk 512, one boot, not an A/B: the boot also carried
+the two commits before this one (CSF expansion over more programs, the
+grouped skinny MoE Triton kernel), and the reference is a boot of the
+MXFP8 series before all three (fork build c213a336e). Decode of 192
+tokens after a 30-token prompt 19.96 -> 23.58 tok/s (50.1 -> 42.4
+ms/token), prefill of an 8,687-token prompt 4.34 s in both, KV pool
+119,057 -> 139,810 tokens, weights on the RTX 8000 stages 40.84 / 43.75
+-> 40.58 / 43.49 GiB. Eight quality questions read by hand: all correct.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_011k7FsBAcZ8Cw91wisiZxMf

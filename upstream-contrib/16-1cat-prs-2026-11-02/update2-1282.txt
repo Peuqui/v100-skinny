@@ -1,0 +1,12 @@
+Update 2026-11-02 (second): rebased onto the new #1280 head (fused SM75 index scores in FP32, see its update), and two commits added.
+
+779240e1e "keep the Triton prefill index scores in FP32": the Triton prefill scorer of this PR rounded each head product to fp16 before the ReLU, while main's Triton route computes in FP32. With the keys entering unscaled (e4m3 up to 448) a product can pass fp16's 65,504, the overflow #1327 describes; on GLM-5.3 the query norms reach about 99 against a threshold near 13. This was a regression of this PR against main. The scorer now keeps FP32; new test test_prefill_triton_scores_survive_unscaled_key_magnitudes (with and without tensor cores).
+
+bf1dbb215 "give the sparse policy test layer its tensor-core flag": the sparse prefill workspace reads layer.sparse_tensor_cores since this PR's tensor-core route, and the layer stand-in of tests/models/test_deepseek_v4_sm70_sparse_policy.py::test_prefill_bmm_follows_the_layer_policy_without_config_context lacked it; the file passes on main and failed on this branch for prefill_bmm=True. I found it while testing a follow-up branch; the earlier test runs of this PR covered only the files it touches and its test plan.
+
+The branch now holds 33 commits (the 22 of #1280, the 9 of this PR, unchanged apart from one added argument in a test that #1280's new test needs here, and the two above).
+
+Tests on this head, native build, one pytest per file on a Quadro RTX 8000 and a Tesla V100 as device 0 (results as RTX 8000 / V100), @@TESTS_1282@@
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports moe_runner.py (platform coupling 37 -> 39) exactly as main 4d57473db does. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues apart from the three local flash_attn_v100 ones that main shows the same way.
+

@@ -1,0 +1,113 @@
+## Purpose
+
+Serve NVIDIA's GLM-5.3-Flash-FP4-Local checkpoint (ModelOpt MIXED_PRECISION: NVFP4 routed experts with csf_32x2_v1 compressed block scales, MXFP8 KDA and dense projections, block-FP8 MLA projections) on SM70 and SM75 without converting the checkpoint. Unpacked to E4M3 the expert scales add 8.1 GiB and the model no longer fits five 32/48 GiB cards, so the scales stay compressed on the GPU, and the 8-bit projections stay 8-bit in QPN8 instead of being widened to fp16 at load. Our deployment: PP=5 over three Tesla V100 and two Quadro RTX 8000 with DFlash2, 524,288 tokens of context (docs/design/sm70_glm53_pp5_dflash2_mixed.md, added here).
+
+Stacked PR. The branch sits on #1282 (Triton routes, itself on #1280, #1279, #1278, #1222, #1216 and #1227). Above it come copies of #1274 (2 commits) and #1275 (4 commits), identical to the open PRs, which the boot needs, then three commits that #1274 and #1275 do not carry because #1260 changes the same places (see the duplicate paragraph): a full-precision LM head left to its embedding method with ModelOpt (09c90a573), no up-projected context reserved for sparse MLA in the profile run (a05561ab7) and its test (c10fedda2). Then the GLM commits. Please review from 09c90a573 on (git log 09c90a573~1..63cae149f).
+
+Groups of the GLM commits:
+
+1. Loading and correctness (aa12a4bc0, e48771501, 929031e41, fc574142e, 2a67f308e): csf_32x2_v1 decoder (with an encoder whose output matches the reference implementation in TensorFold byte for byte) and an expander that fills a shared QPN scale raster with the routed experts before each grouped skinny call (fixed launch shape, CUDA-graph safe; experts opt in through the CsfScaleConsumer protocol, other experts are rejected when the method is built); ModelOpt MIXED_PRECISION detection of weight_scale_encoding and a CSF loader for the expert scales; FP8_PB_WO linears through w8a8_block_fp8_linear (in modelopt.py, so for every architecture); block scales held next to their weights across AutoWeightsLoader calls (before, a scale that preceded its FP8 weight in the shards was silently dropped, the MLA projections stayed zero and the output was garbled); csf32 parts routed by their checkpoint name; the indexer query built in fp16 on Turing like the indexer op; Turing admitted on the FP16 sparse-MLA, KPool, indexer, mHC and KDA paths, each gate reading the capability of the worker's own device. Three GLM/ModelOpt test files that failed on main as well follow the current code.
+2. Sparse MLA prefill with FP8 KV on cuBLAS blocks (757d48582): the Triton kernel (tl.dot as FMA before SM80, 78-87 % of the prefill compute) is replaced by the decode's gather/dequantize + cuBLAS GEMM route in blocks of 16 tokens. In an nsys profile of a 14,038-token prefill this part took 68.72 s before and 10.75 s after.
+3. 8-bit projections in QPN8 (4512c1836, a4e536ecf, cc8fc3598, 753564206): a third QPN8 scale mode [K/32, N] for MXFP8 (prepare, dequantization bit-identical to load-time unpacking, GEMV for M <= 8; accepts E8M0 exponents 95..134, which are exact in fp16); MXFP8 KDA q/k/v, KDA o_proj and the dense MLPs kept as MXFP8 linears (the KDA layer keeps its quant config and splits in_proj into a quantized qkv and a BF16 b/f_a/g_a part; all KDA layers of a pipeline stage must agree, a mixed checkpoint stops at load with an error); a Turing m16n8k8 path for the row-group scales at M 9..512; MLA q_b_proj, kv_b_proj and o_proj kept as block FP8 when the checkpoint names them. The MXFP8 kernel choice now sees the layer's shape (f99c8a0bc): Mxfp8LinearLayerConfig carries the partition's (N, K), the ModelOpt, online and compressed-tensors MXFP8 methods choose their kernel in create_weights, and the QPN8 kernel declines shapes it cannot pack (N % 32, K % 16, no split-K for K), so such a layer keeps Marlin (SM75) or the emulation (SM70) as before. This kernel comes first for every MXFP8 linear on SM70/SM75, not only for this checkpoint.
+4. CSF expansion speed (e0f257b5f, 5c7dac2ff, 09e18bf06, 4832c8e98, 3f964cd18): grid bounded by the expert count (same bound as the skinny MoE grid), more programs for decode, a CUDA kernel (plain CUDA, four raster positions per thread, exception records written in the same pass) called through a _custom_ops wrapper.
+5. Five-bit scale planes (c3d1d21ce, a68b842bb, 123597aaa, 0c04f7028): at load the csf scales are re-encoded as base + 4-bit nibble + 1 high bit per scale in the raster's positions (one block in six has a csf exception record, which a kernel cannot look up in its loop, but the scales of a row span at most 31 in all but the last layers). Decode and prefill read the planes in place; on a stage whose projections are all packed the shared raster is freed. Projections whose rows span more than five bits (layers 36 and 40-44) keep their csf planes and the raster expansion.
+6. Memory and deployment (cbc61cc72, 01a8350ad, ea0771ff7): skinny MoE routing groups built by one Triton program up to 128 slots (19 small torch kernels before; the torch version stays the reference) — this applies to every skinny MoE model; the embedding table can live in pinned host memory through the existing UVA offloader, only when --cpu-offload-params names embed_tokens (--cpu-offload-gb alone keeps its budget for the layers), which frees 1.18 GiB on the first stage and on the DFlash replica of the last stage for the KV pool; the PP5 + DFlash2 layout document.
+7. Two commits close the series: the per-shape MXFP8 kernel choice above (f99c8a0bc), and a clang-format pass (397f73f51) over the native lines of this series (whitespace, comment wrapping and macro line continuations only).
+
+Not a duplicate. I compared the changed files with those of all 84 open PRs (complete file lists through the API), ran a three-way merge with every PR that shares a file (new conflicts counted against #1282), and searched the open PRs for GLM, glm5, GLM-5.3, csf, ModelOpt, MXFP8, KDA, "sparse MLA" and EXL3. Findings:
+- #1125 (rivetphilbot) replaces the same _sm70_glm5_sparse_paged_fp8_kernel prefill route with an FP32-softmax tensor-core kernel, and #1092 (rivetphilbot) argues that the fp16 QK scores of the decode route lose precision and can overflow for GLM-5.3. Group 2 moves exactly that decode route (fp16 scores and probabilities from cuBLAS, which accumulates in fp32) to prefill. In our runs the quality answers and GSM8K-60 showed no loss, but I did not check the score range. The two approaches should be measured against each other; both conflict with this PR in vllm/models/glm5next/sm70/sparse.py and its test.
+- #1260 (threhan, conflicting with main) serves GLM-5.3 GGUF and gets new conflicts in 10 files: the full-precision LM head and the sparse-MLA profile reservation (#1260 makes equivalent changes, which is why #1274 and #1275 left them out and this PR carries them as 09c90a573 and a05561ab7), GLM5NextSM70SparseBackend's capability check, the CUDA platform's attention backend priority, the KPool software-E4M3 condition, GLM attention, KDA, the kpool compressor and two GLM tests. Whichever lands second drops the duplicated parts.
+- #1102 and #1243 (rivetphilbot, EXL3 experts) change Glm5NextModel.load_weights for another checkpoint format and conflict with this PR's loader changes there.
+- #1159, #1165 and #1166 (rivetphilbot) change GLM's KDA and mHC decode kernels, #1030 and #1031 the skinny MoE, #822, #1069 and #1157 the QPN8 decode, #1271 vllm/platforms/cuda.py: they share files with this PR and merge without a new conflict. #828 lists shared files only because of its old base.
+
+AI assistance was used for this change. I reviewed every line and ran the tests and measurements below.
+
+## Test Plan
+
+Native build of this branch in place (TORCH_CUDA_ARCH_LIST=7.0; the m16n8k8 sources of #1278 and this series build for sm_75 as well).
+
+One pytest process per file on a Quadro RTX 8000 (SM75) and on a Tesla V100 (SM70), each with stock Triton 3.6.0 and with the sm7x Triton build of #1282 first on PYTHONPATH, for every test file the branch adds or changes and for the three KPool test files (the branch changes kpool_compress.py):
+python -m pytest tests/kernels/moe/test_skinny_sm70_moe.py
+python -m pytest tests/kernels/moe/test_sm70_group_routing.py
+python -m pytest tests/kernels/quantization/test_csf32_scales.py
+python -m pytest tests/kernels/quantization/test_s5_scales.py
+python -m pytest tests/kernels/quantization/test_sm70_qpn8_mxfp8_linear.py
+python -m pytest tests/kernels/test_mhc_sm70_fp16.py
+python -m pytest tests/model_executor/model_loader/test_direct_io.py
+python -m pytest tests/model_executor/model_loader/test_safetensors_index_filter.py
+python -m pytest tests/models/glm5next/test_fp8_attention_loader.py
+python -m pytest tests/models/glm5next/test_mxfp8_held_modules.py
+python -m pytest tests/models/glm5next/test_pp.py
+python -m pytest tests/models/glm5next/test_sm70_sparse.py
+python -m pytest tests/quantization/test_modelopt.py
+python -m pytest tests/quantization/test_mxfp8_weight_pairs.py
+python -m pytest tests/quantization/test_sm70_glm53_modelopt_nvfp4.py
+python -m pytest tests/quantization/test_sm70_modelopt_mixed_nvfp4.py
+python -m pytest tests/quantization/test_sm70_modelopt_nvfp4.py
+python -m pytest tests/v1/attention/test_mla_chunked_prefill_workspace.py
+python -m pytest tests/v1/attention/test_mla_sparse_profile_budget.py
+python -m pytest tests/kernels/test_kpool_decode_update_batched.py
+python -m pytest tests/v1/attention/test_kpool_tail_slot_mapping.py
+python -m pytest tests/v1/attention/test_sparse_indexer_decode_seq_lens.py
+
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+
+Model measurements: the deployment entry of the contract below through an OpenAI-compatible client (prefill of an 8,687-token prompt, decode of 192 tokens after a 30-token prompt and of 128 tokens after the 8,687-token prompt, GSM8K with thinking on at temperature 0, eight quality questions read by hand, a long-context probe), one boot per arm, the first boot after a compile change not counted.
+
+One full-model boot of this branch in place: GLM-5.3-Flash-FP4-Local PP=5 with DFlash2 as in the contract below (Model Runner V2 on main admits 'dflash'), the sm7x Triton first on PYTHONPATH without kernel_config.triton_sm7x_tensor_cores as in our deployment, without the fork's MXFP8 LM head over QPN8 and therefore with --gpu-memory-utilization 0.98; fresh compile caches. Per boot: prefill and decode client, eight quality questions (1500 tokens, read by hand), a long-context probe up to the entry's maximum length, and the route lines (MXFP8 kernel, KV cache) from the log.
+
+## Path coverage
+
+| Path / provider | Format | Key conditions (shape, TP/EP, graph, capability) | Expected selection / fallback | Evidence (source / static / executed / measured) | Unverified scope |
+| --- | --- | --- | --- | --- | --- |
+| ModelOpt MIXED_PRECISION loader | NVFP4 experts with csf_32x2_v1 scales, MXFP8, block FP8 | weight_scale_encoding present | CSF loader for expert scales (TP1 per expert, PP free); experts without CsfScaleConsumer rejected with an error | executed: test_csf32_scales.py, test_mxfp8_weight_pairs.py, test_sm70_glm53_modelopt_nvfp4.py (rejection), test_modelopt.py; measured: full boots | expert TP > 1 (rejected with an error); TP > 1 for the whole model was never run |
+| skinny SM70 MoE with compressed scales | NVFP4 + csf / five-bit planes | SM70 and SM75 | five-bit planes in place; projections spanning more than 31 keep csf + raster expansion | executed: test_skinny_sm70_moe.py, test_s5_scales.py, class test csf against planes (bit-identical); measured: model A/B | other checkpoints with csf scales |
+| QPN8 MXFP8 linear | MXFP8 [K/32, N] scales | shape packable by QPN8; E8M0 exponents 95..134; M <= 8 GEMV (both cards); M 9..512 m16n8k8 on SM75; dequant + cuBLAS above | as listed; unpackable shapes: Marlin (SM75) or emulation (SM70) | executed: test_sm70_qpn8_mxfp8_linear.py on both cards (including the shape check) | MXFP8 checkpoints other than this one; one whose E8M0 scales leave 95..134 stops at load with an error naming the range |
+| KDA projections | MXFP8 q/k/v + BF16 b/f_a/g_a, or one BF16 GEMM | per KDA layer from the checkpoint config | split or merged mapping; mixed layers on one stage: error | executed: test_pp.py (both mappings and the rejection) | none |
+| GLM sparse MLA prefill | FP8 KV | SM70 family | gather/dequantize + cuBLAS in 16-token blocks | executed: test_glm53_sm70_fp8_kv_prefill_blocks_match_reference; measured: nsys, full boots | none |
+| skinny MoE routing groups | any skinny MoE | up to 128 slots | one Triton program; torch reference above | executed: test_sm70_group_routing.py on both cards | other skinny MoE models not booted on this branch |
+| embedding in host memory | BF16 table | --cpu-offload-params names embed_tokens | UVA offloader; otherwise the table stays on the card | measured: full boots with the deployment entry; the smoke test (bit-identical, also in a CUDA graph) is not part of the repository | other models (the wrapper is GLM's) |
+
+## Acceleration and benchmark contract (required for performance changes)
+
+- Default enabled or opt-in: enabled for this checkpoint format on SM70/SM75 (per device); the QPN8 MXFP8 kernel for every MXFP8 linear on SM70/SM75; the embedding offload opt-in through --cpu-offload-params embed_tokens.
+- Required CLI options and environment switches: deployment as in docs/design/sm70_glm53_pp5_dflash2_mixed.md: PP=5 (CUDA_VISIBLE_DEVICES=0,1,4,3,2, VLLM_PP_LAYER_PARTITION=14,7,7,7,10), DFlash2 with 7 speculative tokens, --max-model-len 524288, --max-num-batched-tokens 512, --kv-cache-dtype fp8_e4m3, --cpu-offload-gb 1.4 --cpu-offload-params embed_tokens, VLLM_USE_V2_MODEL_RUNNER=1, NCCL_P2P_DISABLE=1.
+- KV cache dtype used for the benchmark: fp8_e4m3.
+- Wheel SHA or source commit: fork builds of github.com/Peuqui/1Cat-vLLM, named per series under Test Result; each changed arm is the reference plus the measured commits in their fork form. The fork's versions differ from this branch where review followed (the per-shape MXFP8 kernel choice, the embedding offload only when named, the KDA layer check, the copies of #1274 and #1275 as sent).
+- PYTHONPATH, source overlays, or external native libraries used: every GLM series below ran with the sm7x Triton build of #1282 first on PYTHONPATH (without kernel_config.triton_sm7x_tensor_cores; that Triton still lowers every existing tl.dot kernel to MMA) and the changed arm with its fork source tree on PYTHONPATH. The full boot of this branch: the sm7x Triton build first on PYTHONPATH, then this branch's tree (built in place).
+- User-entry route-hit, speed, and output-quality evidence: see Test Result.
+- Existing kernel/backend registry and capability-rejection reasons: the checkpoint format selects the CSF loader; experts without CsfScaleConsumer are rejected with an error naming the requirement; the QPN8 MXFP8 kernel declines shapes it cannot pack with a reason.
+- Per-engine configuration and deprecated-variable compatibility: no setting added. Mxfp8LinearLayerConfig gains the partition shape, and init_mxfp8_linear_kernel takes the config.
+- New/changed environment metadata and generated reference check: no environment metadata; docs/design/architecture/runtime_reference.md as regenerated by the stacked PRs, checked by the check-architecture-reference hook.
+- Route snapshot command and intentional changed rows: none.
+- SM70 registered variables / unregistered reads / model-parameter restrictions, before -> after: no change.
+
+## Test Result
+
+GLM-5.3-Flash-FP4-Local, PP=5 over three Tesla V100 and two Quadro RTX 8000, 512-token chunks, one request. Decode is measured on 192 tokens after a 30-token prompt and on 128 tokens after an 8,687-token prompt, prefill on the 8,687-token prompt. tok/s higher is better, s lower is better; with DFlash2 the tok/s come from the log, not from step times.
+
+A/B series:
+- MXFP8 projections in QPN8 (the first part of group 3), without draft model, order B A B, fork builds reference 0b8b98c4f (A) and c213a336e (B): decode 17.39 / 17.38 -> 19.97 / 19.96 tok/s (+14.8 %); prefill 4.25 / 4.21 -> 4.33 / 4.34 s, 2.5 % slower; KV pool 41,506 -> 119,057 tokens.
+- CUDA CSF expansion kernel (group 4), DFlash2 deployment, A/B/A/B, the fork tree with the Triton expansion against the same plus the CUDA kernel: decode 32.32 / 32.28 -> 33.64 / 33.61 tok/s (+4.1 %); prefill 4.59 / 4.53 -> 4.43 / 4.43 s (-2.8 %); the eight quality texts (1500 tokens) byte-identical, all 60 GSM8K answers with the same token count and result (59 of 60), acceptance length identical (5.5109).
+- Five-bit scale planes (group 5), DFlash2 deployment, A/B/A/B, fork builds reference 31f961300 and changed 5fef3ad60: prefill 4.49 -> 4.30 s (-4.2 %, means of two boots); decode 33.48 -> 35.36 tok/s (+5.6 %); after the 8,687-token prompt 45.30 -> 48.35 tok/s (+6.7 %); the eight quality texts byte-identical, GSM8K-60 59 of 60, acceptance length 5.5109; KV pool 667,683 -> 645,277 tokens (-3.4 %).
+
+Single boots, not A/B:
+- MLA block FP8 (the last part of group 3), without draft model: one boot of the fork tree with this commit and the two before it (CSF expansion over more programs, grouped skinny MoE Triton kernel) against the B arm of the MXFP8 series (c213a336e): decode 19.96 -> 23.58 tok/s; prefill 4.34 s in both; KV pool 119,057 -> 139,810 tokens; the eight quality questions read by hand: all correct.
+- DFlash2 deployment against the same build without draft model, one boot without and two with DFlash2, with different layouts (without draft: partition 13,7,7,7,11 and CUDA graphs for one token; DFlash2: 14,7,7,7,10 and graphs for eight tokens): GSM8K-60 59 of 60 in both, 53.35 against 23.26 tok/s (x2.29); prefill 4.26 -> 4.56 / 4.54 s (6.6-7.0 % slower); KV pool 1,167,414 against 667,683 tokens (the draft model and its state live on the last stage).
+- Sparse MLA prefill on cuBLAS blocks (group 2): nsys profile of a 14,038-token prefill, 68.72 s before and 10.75 s after in this part.
+- Long context in the deployment: a 516,196-token prompt took 251.63 s to its first token on the five-bit build (about 2,051 tok/s, one run).
+
+BOOT_RESULT_PLACEHOLDER
+
+Kernel microbenchmarks, from the commit messages (CUDA graphs, lower is better):
+- CSF expansion, layer 13, w13 + w2, ms per expansion, Triton -> CUDA with exceptions in the same pass: V100 1 / 8 / 512 tokens 0.065 / 0.417 / 1.759 -> 0.047 / 0.247 / 1.074.
+- Five-bit planes, layer 10, decode of 8 tokens, ms per layer W13 + W2: RTX 8000 1.512 (csf expansion + raster) -> 1.203, V100 1.166 -> 1.034; bit-identical.
+- MXFP8 row-group GEMM on the RTX 8000, o_proj M 512: 0.561 ms against 0.627 ms (unpack + cuBLAS).
+
+TESTS_PLACEHOLDER
+
+PRECOMMIT_PLACEHOLDER
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUiymppDzziDqKfy78Q

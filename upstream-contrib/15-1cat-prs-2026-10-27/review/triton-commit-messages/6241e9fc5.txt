@@ -1,0 +1,25 @@
+feat(triton): one setting for tensor-core Triton on Volta and Turing
+
+Stock Triton lowers tl.dot to FMA before SM80, so the SM70-family routes
+use cuBLAS or hand-written kernels on Volta and Turing. A Triton built
+with the sm_70 (mma.m8n8k4) and sm_75 (mma.m16n8k8) lowering makes
+Triton kernels competitive there.
+
+kernel_config.triton_sm7x_tensor_cores (default off) states that such a
+Triton is installed; the field is part of the compilation hash.
+KernelConfig.use_triton_sm7x_tensor_cores(device_index=None) is the one
+place routes ask. It answers for the device's own architecture and, on
+first use per architecture, compiles a 16x16 fp16 tl.dot without
+launching it and requires mma.sync in the PTX (vllm/triton_utils/
+mma_probe.py, generic). With the setting on and a Triton that lowers
+tl.dot to FMA there, the engine stops with the compiler's path instead
+of running FMA kernels.
+
+Checked on this machine: stock Triton 3.6 raises on the RTX 8000 and the
+V100, the sm7x build passes on both. Tests (no GPU needed):
+tests/kernels/test_kernel_config_triton_sm7x.py, 8 passed with each
+Triton.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01XK1cybCqwFCSEV5qqHmpjn
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

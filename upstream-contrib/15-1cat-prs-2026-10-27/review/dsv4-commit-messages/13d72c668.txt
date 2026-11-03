@@ -1,0 +1,16 @@
+test(dsv4): match the sparse BMM workspace tests to the fused softmax
+
+The previous commit fused the sink softmax: decode and prefill keep
+FP32 scores and FP16 probabilities of the selection width, with no
+extra sink column and no separate logits buffer. The two workspace
+tests still expected four buffers with width + 1 and failed since then.
+The decode test now takes the last three BMM arguments; the prefill
+test expects the gathered keys, the FP32 scores and the FP16
+probabilities.
+
+Tests: tests/models/test_deepseek_v4_sm70_routes.py, 30 passed on an
+RTX 8000 and a V100.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

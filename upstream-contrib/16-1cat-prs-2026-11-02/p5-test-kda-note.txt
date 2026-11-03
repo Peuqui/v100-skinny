@@ -1,0 +1,11 @@
+Satz für den P5-Testabsatz (tests/kernels/test_kda.py, KDA-Code im ganzen Stapel gegenüber main unverändert):
+
+tests/kernels/test_kda.py: 10 passed on the Tesla V100 with a fresh Triton cache (2:45 to 3:40 min). On the Quadro RTX 8000 the file with a fresh Triton cache did not finish within 12 minutes, and in a second run on this branch and on main 4d57473db built from source it did not finish within 30 minutes either (nine cases passed in both, the tenth was still running); almost all of that time is Triton compilation on sm_75. With the Triton cache of that run, 10 passed on the RTX 8000 in 2:30 min, 142 s of it in test_chunk_kda_fused_gate_cumsum_matches_unfused[cu_seqlens1-dtype1], whose kernels were not yet cached; every other case took at most 1.3 s.
+
+Belege (~/.cache/bench-scripts/):
+- V100 frisch: pr_verify_2026-11-02/pr-glm53-prefill-head-rs-v100{stock,sm7x}/summary.log (180 s, 175 s), -p5-v100{stock,sm7x} (231 s, 228 s)
+- RTX 12 min: pr_verify_2026-11-02/pr-glm53-prefill-head-{rs,p5}-rtx{stock,sm7x}/summary.log (HANG rc=124, 7 Punkte)
+- RTX 30 min: kda_full_probe_p5_2026-11-02.log und kda_full_probe_main_2026-11-02.log (je 9 Punkte, rc=124 19:27:54)
+- Einzelfall auf main: kda_bf16_probe_main_2026-11-02.log (bf16 test_chunk_kda 308 s), kda_fusedgate_probe_main_2026-11-02.log (80 s)
+- RTX warm: kda_full60_probe_p5_2026-11-02.log (10 passed in 150.05 s, Zeiten je Fall)
+- Alle RTX-Läufe liefen neben dem Test-Sweep auf denselben Karten (Zeiten nur als Größenordnung).

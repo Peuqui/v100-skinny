@@ -1,0 +1,49 @@
+perf(mhc): prefill mHC projection on tensor cores for the sm7x route
+
+The mHC pre stage projects every token's 4 x 4096 residual onto 24 mix
+logits in FP32. Above 16 tokens the SM70 Triton kernel gave each (token,
+column, split) its own program and re-read x 24 times; the TileLang
+kernel on Turing read the 786 KB weight tile once per token. Both took
+~450 us per 508-token chunk where reading x takes ~25 us.
+
+With kernel_config.triton_sm7x_tensor_cores the projection runs on FP16
+tensor cores: x is FP16, so the products are exact once the FP32 weight
+is split into FP16 hi + lo * 2^-11 (22 of 24 mantissa bits). Tensor
+cores truncate their FP32 accumulation, so every 16-wide K block starts
+from zero and block sums add round-to-nearest in two levels; 32 K splits
+are summed in FP64 and rounded once, and the consumers see one split.
+One tile for both architectures. DSv4 decoder layers decide the route
+when they are built; decode (<= 16 tokens) keeps its kernels.
+
+CUDA graphs, us per call (less is better), today's route -> new:
+  projection    tokens     17     64    508   1024   2048   4096
+  RTX 8000 (TileLang)    28.9   74.7  428.6  460.4  877.4 1723.5
+                     ->  26.8   30.8   78.0  145.6  263.8  506.7
+  V100 (SM70 Triton)     21.3   55.0  467.5 1012.7 1988.5 3969.3
+                     ->  17.7   24.5   64.1  113.0  201.8  378.2
+  whole fused post+pre op, 508 tokens: RTX 546.3 -> 197.9,
+  V100 597.4 -> 188.8; 2048 tokens: RTX 1336.4 -> 718.8,
+  V100 2510.0 -> 716.0.
+The DSv4 150k-prefill profile spends 2.8 s per RTX stage and 2.1 s per
+V100 stage in this projection (20 and 16 calls per chunk).
+
+Error of the logits against fp64, max |err| / sum|x*w| over 20 inputs
+with the layer-10 hc_attn_fn of the checkpoint (508 tokens, consumer
+split order): RTX 1.26e-8 -> 1.01e-8 (new lower on 20 of 20 inputs),
+V100 1.09e-8 -> 1.05e-8 (16 of 20), mean RTX 1.69e-9 -> 1.26e-9, V100
+1.65e-9 -> 1.48e-9. Fused op against today's route: residual equal,
+post/comb mixes within 3.2e-6 relative, 0.004-0.016 % of the layer inputs
+differ, by at most one FP16 step of their row.
+
+The tensor-core skip marker moves from the indexer tests to
+tests/kernels/utils.py for both test files.
+
+Tests with the sm7x Triton (RTX 8000 and V100):
+tests/kernels/test_mhc_prenorm_tensor_cores.py 7 passed each,
+test_deepseek_v4_sm70_indexer.py 39 passed / 38 passed 1 skipped;
+test_mhc_sm70_prenorm_staging.py and test_mhc_sm70_post_schedule.py pass
+with stock Triton on both. pre-commit and mypy-3.10 pass.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

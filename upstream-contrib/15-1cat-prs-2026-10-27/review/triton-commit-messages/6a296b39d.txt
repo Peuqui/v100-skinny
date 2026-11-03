@@ -1,0 +1,34 @@
+perf(dsv4): sparse prefill matmuls read their rows on tensor cores
+
+With kernel_config.triton_sm7x_tensor_cores the DSv4 sparse MLA prefill
+no longer gathers every token's selected rows into a [T, W, 512]
+workspace that two cuBLAS BMMs then read twice. A scores GEMM and a PV
+GEMM read the selected kv rows through the indices themselves, each
+program covering all heads of its token (cuBLAS ran these M=64 batches
+in 128-row tiles). The sink softmax kernel is shared; FP32 scores and
+FP16 probabilities into PV are kept. One tile pair serves V100 and
+RTX 8000. Fewer than 16 heads are padded for tl.dot and masked.
+
+Whole 508-token chunk, CUDA graphs, ms per call (less is better),
+today's route -> tensor cores:
+  width 640 random indices   RTX 8000 3.064 -> 1.733  V100 2.452 -> 1.352
+  width 640 shared indices            2.632 -> 1.228       2.206 -> 1.104
+  width 1152 random indices           5.232 -> 3.047       4.287 -> 2.379
+The workspace per pass shrinks from 110 to 30 MiB (width 640) and from
+198 to 54 MiB (width 1152). The DSv4 150k-prefill profile spends 8.3 s
+per RTX stage and 6.9 s per V100 stage in gather, BMMs and softmax.
+
+Outputs: bit-identical to today's route on V100; on RTX 8000 0.97-1.25 %
+of the FP16 outputs differ by one step, and the error against an fp64
+reference equals today's route (max 4.87e-4 / mean 2.57e-4 relative,
+128 tokens, width 640).
+
+Tests: tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py runs both
+routes against the fp64 reference (8/64 heads, width 128/640, stale
+tails, 300 tokens in three passes, FP32 score range): 34 passed on RTX
+8000 and V100 with the sm7x Triton, 17 passed 17 skipped with stock
+Triton. pre-commit and mypy-3.10 pass.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

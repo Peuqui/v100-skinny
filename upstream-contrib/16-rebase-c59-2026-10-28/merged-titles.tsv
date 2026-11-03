@@ -1,0 +1,17 @@
+715	[Bugfix][DeepSeek-V4] Keep hc_head finite under float16 for attention-sink rows
+1183	[Bugfix][DeepSeek-V4] Restore DSpark decode on SM70 after the per-engine policy migration
+1213	[Bugfix][GDN] Keep the traced prefill output projection on the custom-op norm
+1214	[Test] Repair stale fakes in PLE offload and SM70 decode-graph tests
+1219	[Bugfix][Distributed] Verify P2P before provisioning compact collectives without custom all-reduce
+1222	[Perf][SM70][DeepSeek-V4] Keep the cuBLAS decode indexer above 131,072 tokens of context
+1226	[Perf][FLA] Let the delta_h autotuner lift the ptxas register cap
+1227	[Perf][Attention] Pack GQA heads for FA2 multi-token decode verification
+1229	[Perf][Qwen4Exp] Admit the cuBLAS QSA indexer and exact top-k on Turing
+1234	[Bugfix][Qwen4Exp] Decide the PLE cascade merge when the layer is built
+1237	[Bugfix][Qwen4Exp] Reduce the PLE offload config to DP1 before it is built
+1240	[Bugfix][Core] Align Mamba replay boundaries without an EAGLE block drop
+1263	[Perf] Do not send a request's token history to the V2 runner every decode step
+1264	[Perf] Run the fused GDN speculative metadata launch on Turing too
+1272	[Bugfix][KV] MLA specs carry the codec of their cache dtype
+1274	[Bugfix][Loader] Load index shards in subfolders; read U16 and U32 through direct I/O
+1275	[Bugfix][MLA] Size the chunked-prefill workspace and the indexer prefill buffer by max_num_seqs

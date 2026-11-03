@@ -1,0 +1,35 @@
+perf(dsv4): fuse the sparse MLA softmax and zero unused keys in the gather
+
+The batched-matmul sparse MLA attention ran six elementwise torch ops
+around its two BLAS calls: a broadcast masked_fill over the gathered
+keys, then scale, copy into the sink-padded logits, mask, sink column,
+softmax and the fp16 cast of the probabilities. On a 128-token pass with
+64 heads and 640 keys they took 820 of 1434 us on RTX 8000 in the
+per-stage nsys profile of the DSv4 PP5 entry (150k-token prefill); the
+masked_fill alone, a non-vectorized broadcast kernel, took 395 us, twice
+the gather.
+
+Now the gather writes zeros for unused slots and never reads their indices
+(a Triton row gather for prefill; the decode dequantizing gather takes the
+same mask), and one Triton kernel reads the fp32 scores once and writes fp16
+probabilities: scale, mask, sink column and the fp32 softmax with libdevice
+exp, the same expf torch's softmax uses. The fp32 logits and probs buffers
+go away (140 -> 110 MiB per 128-token pass at 640 keys).
+
+Old against new in CUDA graphs (us per call, 10 calls per graph):
+  prefill pass T128 H64 W640:  RTX 8000 1438.3 -> 755.7, V100 1178.7 -> 632.0
+  prefill pass T128 H64 W2176: RTX 8000 4666.8 -> 2367.7, V100 3760.3 -> 1983.5
+  decode T6 H64 C4 (128 + 512 keys): V100 146.5 -> 96.5
+  decode T6 H64 SWA only (128 keys): V100 55.1 -> 36.6
+Error against a float64 reference is unchanged (max and mean equal to three
+digits); 99.2-99.8 % of the outputs are bit-identical, the rest differ by at
+most 3e-5 (softmax reduction order).
+
+Tests: tests/kernels/attention/test_dsv4_sparse_prefill_bmm.py and
+test_dsv4_sm70_sparse_bmm.py 29 passed on V100; on RTX 8000 17 passed, 12
+skipped (the decode reference kernel is Volta-only); pre-commit and
+mypy-3.10 passed.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01YaG8VjXn5eN3Aq7eZrA3dp
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

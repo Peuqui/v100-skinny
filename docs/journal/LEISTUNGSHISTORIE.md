@@ -681,3 +681,19 @@ Nicht vergleichbar bzw. Vorbehalte:
 - **Speicherdruck PP4:** 03.10. Endstand 361 / 405 memory.high-Treffer bei 736 / 785 MiB von der Platte; 17.10. Produktionsarme 3.504 / 2.620 Treffer bei 10.927 / 8.642 MiB. Die Läufe vom 17.10. enthalten die Lang-Kontext-Sonde, die Zähler gelten je Lauf und sind deshalb nicht vergleichbar. Der 29k-Prefill liegt vor der Sonde und ist in beiden PP4-Armen vom 17.10. gleich (11,6 s, ~2.510–2.520 tok/s).
 - **Lange Kontexte:** M-sonde gibt es erst seit 16.10.; für 03.10. fehlen Werte über 35,7k. Die Ausgangswerte vom 16.10. sind keine Messung des Stands 03.10.
 - **Je ein Boot:** DSv4 an beiden Tagen sowie 27B und TP2×PP2 am 03.10.
+
+## 31.10.2026: prod-v5b (Baum `1Cat-vLLM-v5b`, 9bc45c663, FA2 802051016046)
+
+Belege `ab_v5b_{dsv4,dflash2,glm}_2026-10-31*.log`, `ab_fa2wave_q27_2026-10-31a.log`, Kontrolle `validate_prod_v5b_*_2026-10-31.log`; ms je Runde (weniger besser), tok/s (mehr besser), gegen prod-v5/v5a.
+
+| Eintrag | Kontext | vorher ms | prod-v5b ms | vorher tok/s | prod-v5b tok/s |
+|---|---|---|---|---|---|
+| DSv4 | 287 039 | 73,0 | 64,3 | 42,5 | 50,2 |
+| DSv4 | 336 216 | 74,4 | 65,0 | 43,5 | 52,3 |
+| 27B MTP | 249 992 | 60,4 | 57,1 | 42,1 | 44,9 |
+| 27B MTP | 259 552 | 61,7 | 58,0 | 42,6 | 45,3 |
+| 27B DFlash2 | 249 992 | 66,3 | 63,1 | 39,4 | 41,3 |
+| 27B DFlash2 | 259 552 | 66,8 | 63,8 | 38,1 | 40,1 |
+| GLM | 516 196 | 94,2 | 94,7 | 35,8 | 41,5 |
+
+GLM gleich innerhalb der Streuung (tok/s folgen der je Lauf schwankenden Annahme). Kurzer Kontext, Prefill, Pools, Betriebsspeicher gleich; Texte gleich.

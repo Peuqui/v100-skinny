@@ -1,0 +1,56 @@
+perf(v2): overlap TP prefill all-reduces with the other half's compute
+
+Without peer access, a TP2 all-reduce goes through host memory: on two
+Quadro RTX 8000, NCCL's all-reduce kernels took 96 of 208 s of a
+150k-token Qwen3.8-27B prefill that already ran the Turing prefill
+attention. kernel_config.tp_prefill_overlap_min_tokens (0 = off) now
+runs eager prefill batches of at least that many tokens, without draft
+tokens or padding, as two interleaved halves, after the DBO
+micro-batch mechanics: both halves run the model on one compute stream
+in two threads, and each all-reduce (GroupCoordinator's
+_all_reduce_out_place and all_reduce_sum2) runs on a comm stream while
+the other half computes its layer. The field stays out of the compile
+hash: the compiled graph is the same, only called twice.
+
+A half is a token range of the batch (prefill_overlap.token_range_batch):
+a request cut at the split ends there in the first half and continues
+in the second, as a following chunk would, so the second half's
+attention reads the first half's KV writes of the same layer. Each half
+builds its attention metadata with its own builder (builders 1 and 2;
+builder 0 keeps the whole batch's metadata for the speculator). In
+mamba align mode both halves must use the recurrent state slot of the
+chunk end: align_ubatch_split moves the split so that the first half
+also ends inside that state block (801 + 799 tokens for a 1600-token
+chunk of 800-token blocks), and the second half continues the state the
+first half wrote in place. The output concatenation moved to ubatching
+(cat_ubatch_outputs) for both runners.
+
+Needs TP without PP, DP or decode context parallelism. Errors at
+startup reject LoRA, KV transfer, PLE offload, mamba cache mode "all",
+encoder-decoder models, models with FusedMoE layers (their modular
+kernel asserts outside DBO when prepare/finalize is not async), and
+models with deepstack visual levels, whose features sit in a model
+buffer that each half would read from token 0. Inside the halves the
+SM70 fused all-reduce + RMSNorm ops raise, since they would run a
+collective on the compute stream beside the other half's all-reduce on
+the comm stream, and model inputs other than input_ids, inputs_embeds
+and positions raise.
+
+A failing micro-batch now sets a shared abort flag before it wakes the
+next one, which raises MicroBatchAborted at its next yield instead of
+waiting forever for the failed thread; PrefillOverlap re-raises the
+original error. The existing DBO micro-batches use the same contexts.
+
+Tests: tests/v1/worker/test_prefill_overlap.py, 14 passed on an RTX
+8000 (token ranges, M-RoPE input split, align-mode split, rejection of
+DCP, encoder-decoder, MoE and deepstack models, and on a GPU: two
+halves with a slow stand-in all-reduce on the comm stream equal the
+whole batch bit for bit, and a failure in either half stops both and
+reports its error); tests/v1/worker/test_gpu_model_runner_v2.py, 5
+passed (its two failing
+test_sm70_v2_mtp_profile_reports_from_last_pp_stage cases fail the
+same on main).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>

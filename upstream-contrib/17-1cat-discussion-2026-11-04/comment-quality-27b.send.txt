@@ -1,0 +1,25 @@
+Follow-up: quality of the two Qwen3.8-27B checkpoints against the unquantized model
+
+After this post I compared the NVFP4 checkpoint (RadixArk/Qwen3.8-27B-NVFP4) and the official FP8 checkpoint with the unquantized Qwen/Qwen3.8-27B as reference. All three ran on the same stack: prod-v5d (ae0d76216), TP2 on the two RTX 8000, fp16 compute, fp16 KV cache, MTP k=3. On these cards the NVFP4 GEMM runs with fp16 activations (TuringQpn2NvFp4LinearKernel) rather than the W4A4 of the checkpoint recipe, and the checkpoint's FP8 KV cache directive is ignored on Volta and Turing.
+
+Token level
+
+All three models scored the same token ids with prompt_logprobs (top 20): 163,840 tokens of text (German documentation, WikiText-2, recent English text, Python code, GSM8K solutions, one German document of 32k tokens) plus 11,946 tokens of greedy answers written by the unquantized model. Over all 175,721 positions, compared with the unquantized model:
+KL divergence (top-20 approximation): NVFP4 0.0199, FP8 0.0023 nats per token (95% intervals 0.0188 to 0.0211 and 0.0021 to 0.0024). Per text type the NVFP4 value is 6.9 to 12.2 times the FP8 value.
+Perplexity: unquantized 3.610, NVFP4 3.675 (+1.8%), FP8 3.616 (+0.15%).
+A different top-1 token than the unquantized model: NVFP4 at 6.74% of the positions, FP8 at 1.99%.
+Neither deviation grows with the position up to 32k tokens.
+
+Tasks, temperature 0
+
+MMLU-Pro, 1,400 questions (100 per category), no thinking: unquantized 870, NVFP4 849, FP8 880 correct. Paired NVFP4 against FP8: 35 questions only NVFP4 got right, 66 only FP8, exact McNemar p = 0.003. FP8 against the unquantized model: 23 against 13, p = 0.13.
+GSM8K, all 1,319 test questions with thinking and max_tokens 16384: NVFP4 1,277 (96.82%), FP8 1,288 (97.65%), paired 5 against 16, p = 0.027. I read the 21 questions where only one of the two failed. Among the 16 NVFP4 misses are five plain arithmetic or reading slips (for example 7 - 1 = 8). Two of the five FP8 misses are not real errors: question 1038 carries a wrong label in the dataset, and in question 753 the answer gives 86 glasses and 42 plates instead of their sum.
+Needle test with ten facts in German text at 60k, 120k and 240k tokens: all three models answered 30 of 30 single questions. Asked to list all ten at 240k, the unquantized model and FP8 named 9, NVFP4 named 10.
+
+Speed with parallel requests
+
+A/B/A/B with fixed 384-token outputs (the repeated arms agree within 0.05 tok/s): with one request NVFP4 decodes 75.23 tok/s and FP8 55.35 tok/s (+35.9%); with three requests at once the totals are 126.92 and 120.58 tok/s (+5.3%). Three requests with MTP k=3 are 12 rows per step. FP8 then uses the Turing m16n8k8 kernel for M 9 to 512, while the NVFP4 path logs "QPN2 native M=9..16 two-row-tile candidate enabled". I have not profiled this, so it is only where I would look first.
+
+For our use I moved the 27B to the FP8 checkpoint.
+
+This comment was written with the help of an AI assistant (Claude Code). Every number comes from the measurement files of these runs, and I checked them against those files.

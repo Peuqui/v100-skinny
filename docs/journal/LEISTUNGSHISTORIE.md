@@ -792,7 +792,7 @@ Prozent gegen fp8rtx; mehr ist besser bei tok/s und Pool, weniger bei s und ms.
 | KV-Pool (Tok) | 1 040 933 | 876 615 | 444 804 |
 | GSM8K-30 / Coding / Texte | 28/30 / 6/6 / richtig | 27/30 / 6/6 / richtig | 27/30 / 6/6 / richtig |
 
-Eine Qualitätsdifferenz zwischen NVFP4 und FP8 zeigt keiner unserer Tests; die Rangfolge BF16 > FP8 > NVFP4 folgt aus der Quantisierung, nicht aus einer Messung hier. fp8v100 ist in jeder Tempokennzahl langsamer als fp8rtx und hat den halben Pool.
+Eine Qualitätsdifferenz zwischen NVFP4 und FP8 zeigt keiner unserer Tests; die Rangfolge BF16 > FP8 > NVFP4 folgt aus der Quantisierung, nicht aus einer Messung hier. **Überholt am selben Abend:** Der Qualitätsvergleich gegen das unquantisierte Original (Abschnitt „04.11.2026: Qualitätsvergleich 27B“) misst den Unterschied. fp8v100 ist in jeder Tempokennzahl langsamer als fp8rtx und hat den halben Pool.
 
 ### Gesamtbild seit August je Modell
 
@@ -818,3 +818,62 @@ Die Messarten wechselten über die Monate (Abschnitt 1–9); die Spalte „Vergl
 | GLM PP5 | Prefill 8.687 Tok (s; tok/s) | 25.10.: ohne Entwurf 4,26 (2 038), DFlash2 4,56 (1 906) | 4,27 (2 034) | vergleichbar |
 | GLM PP5 | KV-Pool (Tok) | 25.10. DFlash2: 667.683 (ohne Entwurf 1.167.414) | 676.645 | |
 | GLM PP5 | Boot bis bereit | 25.10.: 9:53 min (BS/ab_glm_dflash2_j_2026-10-24.log:11, Swap-Sturm) | 6:36 min | eingeschränkt |
+
+## 04.11.2026: Qualitätsvergleich 27B NVFP4 gegen FP8 gegen das Original
+
+Anlass: Peuqui nach dem Sweep: „besserer Test der NVFP4 gegen FP8. Qualität muss herausgearbeitet werden.“ Bezug ist das unquantisierte Qwen/Qwen3.8-27B (BF16-Gewichte, Revision 1d4bf0f2ff = Quellrevision e13a4f0e35 von RadixArks NVFP4 bis auf die README), auf unseren Karten wie die Produktion in fp16 gerechnet. Alle drei Modelle laufen aus `1Cat-vLLM-v5d` (ae0d76216) auf den zwei RTX 8000, TP2, MTP k=3, KV fp16 (die FP8-KV-Anweisung des NVFP4-Checkpoints ignoriert der Stack auf Volta/Turing). RadixArks Rezept ist W4A4 (MLP und `lm_head` NVFP4 Gruppe 16, Attention FP8, MTP und Bildteil BF16); unser `TuringQpn2NvFp4LinearKernel` rechnet die Aktivierungen in fp16.
+
+Werkzeuge in `~/.cache/bench-scripts/`: Kette `qref_chain_2026-11-04.sh` (Log `qref_chain_2026-11-04.log`), Ergebnisse `qref_2026-11-04/` (`report.md`, `report.json`). Teil 1 auf Testeinträgen `*-qref-vllm` (Produktionseintrag mit GMU 0,90, sonst gleich), Teil 2 auf den unveränderten Produktionseinträgen. Ein erster Lauf (11:35–11:56) ist verworfen (Fehler in meinem Antwort-Generator, STAND 04.11. 11:40).
+
+### Teil 1: Token für Token gegen das Original
+
+Alle Modelle bewerten dieselben Token-IDs (prompt_logprobs, Top-20): 163 840 Token Korpus (deutsche AIfred-Doku, Wikitext-2, frische englische PR-Texte, eigener Code, GSM8K-Lösungswege, ein 32k-Dokument Deutsch) plus 11 946 Token aus 24 Antworten des Originals (greedy mit Denken, alle 24 von Hand gelesen: inhaltlich richtig, drei an der Grenze von 1 536 Token im Denkteil abgeschnitten). Kontrolle der Sonde: Das Original wählt bei der Nachbewertung seiner eigenen Antworten an 99,8–99,9 % der Stellen dasselbe Top-Token. KL über die Top-20 des Originals plus Restmasse genähert (liegt unter der vollen KL, für beide Modelle gleich). 95-%-Intervalle per Bootstrap über Blöcke zu 512 Positionen.
+
+| Bereich (Positionen) | Perplexität Original / NVFP4 / FP8 (weniger ist besser) | KL zum Original NVFP4 / FP8 (Nats, weniger ist besser) | anderes Top-Token als das Original NVFP4 / FP8 (weniger ist besser) |
+|---|---|---|---|
+| alle (175 721) | 3,610 / 3,675 (+1,8 %) / 3,616 (+0,15 %) | 0,0199 [0,0188; 0,0211] / 0,0023 [0,0021; 0,0024] | 6,74 % / 1,99 % |
+| deutsche Prosa (32 752) | 5,414 / 5,514 / 5,418 | 0,0187 / 0,0021 | 7,14 % / 2,21 % |
+| Wikitext-2 (32 752) | 5,688 / 5,838 / 5,699 | 0,0247 / 0,0020 | 8,50 % / 2,02 % |
+| frische englische Texte (16 376) | 7,112 / 7,270 / 7,123 | 0,0221 / 0,0025 | 9,95 % / 2,88 % |
+| eigener Code (32 752) | 2,546 / 2,580 / 2,548 | 0,0152 / 0,0019 | 4,75 % / 1,52 % |
+| GSM8K-Lösungswege (16 376) | 2,338 / 2,381 / 2,351 | 0,0384 / 0,0052 | 5,81 % / 1,91 % |
+| 32k-Dokument Deutsch (32 767) | 2,807 / 2,841 / 2,810 | 0,0116 / 0,0017 | 6,18 % / 1,96 % |
+| Antworten des Originals: Deutsch (2 930) | 1,313 / 1,342 / 1,317 | 0,0236 / 0,0028 | 5,49 % / 1,95 % |
+| Antworten des Originals: Englisch/Code (6 681) | 1,310 / 1,327 / 1,309 | 0,0174 / 0,0019 | 5,36 % / 1,65 % |
+| Antworten des Originals: Mathe (2 335) | 1,126 / 1,133 / 1,126 | 0,0067 / 0,0008 | 1,97 % / 0,56 % |
+
+Mehrverlust gegen das Original (ΔNLL, Nats je Token, weniger ist besser) über alle Positionen: NVFP4 0,0177 [0,0163; 0,0190], FP8 0,0015 [0,0011; 0,0020]. KL des schlechtesten Prozents der Stellen (99. Perzentil): NVFP4 0,190, FP8 0,026. Die KL des NVFP4 liegt je Bereich beim 6,9- bis 12,2-Fachen der FP8-KL. Mit der Position im 32k-Dokument wächst keine der beiden Abweichungen (KL NVFP4 0,0187 / 0,0132 / 0,0096 / 0,0123, FP8 0,0022 / 0,0018 / 0,0014 / 0,0018 für die Positionen 1–1k / 1k–4k / 4k–16k / 16k–32k).
+
+### Teil 2: Aufgaben
+
+| Test | Original | NVFP4 | FP8 | gepaart NVFP4 gegen FP8 (McNemar exakt, zweiseitig) |
+|---|---|---|---|---|
+| MMLU-Pro, 1 400 Fragen (je Fachgebiet 100, fester Startwert), ohne Denken, richtig (mehr ist besser) | 870 (62,1 %) | 849 (60,6 %) | 880 (62,9 %) | nur FP8 richtig 66, nur NVFP4 35, p = 0,003 |
+| dasselbe, Zahlenantworten gegen die Optionen abgeglichen | 873 | 851 | 881 | 64 zu 34, p = 0,003 |
+| gleiche MMLU-Antwort wie das Original | – | 1 187 (84,8 %) | 1 327 (94,8 %) | Original gegen FP8: 13 zu 23, p = 0,13; gegen NVFP4: 61 zu 40, p = 0,046 |
+| GSM8K, alle 1 319 Fragen, Denken xhigh, max_tokens 16 384, richtig (mehr ist besser) | – | 1 277 (96,82 %) | 1 288 (97,65 %) | nur FP8 richtig 16, nur NVFP4 5, p = 0,027 |
+| Nadeltest 60k/120k/240k: Einzelfragen; „alle zehn auflisten“ | 30/30; 10, 10, 9 | 30/30; 10, 10, 10 | 30/30; 10, 10, 9 | kein Unterschied (fehlend bei 240k jeweils „Otter“) |
+
+GSM8K, die 21 abweichenden Fälle gelesen: Unter den 16 nur beim NVFP4 falschen sind fünf klare Rechen- oder Lesefehler (7 − 1 = 8; −6 − 12 + 4 = −4; Wochensumme 42 statt 48; April mit 6 Wochen; „doppelt so viele Jungen“ umgekehrt), eine Denkschleife bis 16 384 Token, zehn Auslegungen unklaren Wortlauts. Von den 5 nur bei FP8 falschen sind zwei keine Fehler: Frage 1038 ist im Datensatz falsch beschriftet (Lösungsweg 6 Jahre, Label „#### 4“; FP8 antwortet 6), Frage 753 beantwortet FP8 mit „86 glasses and 42 plates“ statt der Summe 128. RadixArk nennt für das NVFP4 97,27 % (Sampling mit Temperatur 1,0, SGLang, B300). MMLU-Pro verliert das NVFP4 vor allem in Chemie (Original/NVFP4/FP8: 38/31/35), Engineering (52/49/55), Business (47/43/47) und Philosophie (64/61/66).
+
+### Befund und Entscheidung
+
+Das NVFP4 weicht rund neunmal so stark vom Original ab wie FP8 und verliert das messbar bei Wissensfragen (−2,2 Punkte gegen FP8) und bei Rechenaufgaben (−0,8 Punkte, typisch kleine Rechenpatzer). FP8 ist in keinem Test vom Original zu unterscheiden. Im langen Kontext (Auffinden, Abweichung über die Position) gibt es keinen Unterschied. Peuqui (04.11. abends): beim 27B auf FP8 konzentrieren, die anderen Fassungen löschen und aus den Profilen nehmen.
+
+### Tempo mit einer und mit drei gleichzeitigen Anfragen (A/B/A/B, 19:40–20:15)
+
+Anlass: Im Qualitätslauf (GSM8K, drei Anfragen parallel) lag FP8 je Anfrage gleichauf mit NVFP4 (53,6 gegen 51,5 tok/s auf 189 gleichen Fragen), obwohl NVFP4 einzeln ein Drittel schneller ist. Nachmessung `~/.cache/bench-scripts/ab_concurrency_27b_2026-11-04.sh` (Log `ab_concurrency_27b_2026-11-04.log`, Dateien `ab_concurrency_27b_2026-11-04/`), Arme N F N F auf den unveränderten Produktionseinträgen, je Arm Boot und Aufwärmen mit einem Dreierstapel (zählt nicht). Aufsätze: 12 feste deutsche Aufgaben ohne Denken, min_tokens = max_tokens = 384, also exakt 4 608 Token je Stufe (`concurrency_probe_2026-11-04.py`). GSM8K-30 mit Denken, max_tokens 4 096. Mehr tok/s ist besser; je Arm einzeln, die Arme 1/3 und 2/4 sind Wiederholungen.
+
+| Messung | NVFP4 (N1 / N3) | FP8 (F2 / F4) | NVFP4 gegen FP8 |
+|---|---|---|---|
+| Aufsätze, eine Anfrage (tok/s = ms/Token) | 75,23 / 75,24 = 13,3 | 55,35 / 55,37 = 18,1 | +35,9 % |
+| Aufsätze, drei parallel, gesamt (tok/s) | 126,92 / 126,95 | 120,58 / 120,58 | +5,3 % |
+| Aufsätze, drei parallel, je Anfrage (tok/s) | 43,90 / 43,91 | 42,04 / 41,99 | +4,5 % |
+| Steigerung von einer auf drei Anfragen (gesamt) | ×1,69 | ×2,18 | |
+| Annahme je Runde (Aufsätze, eine / drei) | 2,385 / 2,366 | 2,381 / 2,354 | |
+| GSM8K-30, eine Anfrage (tok/s) | 97,81 / 97,82 | 73,79 / 73,82 | +32,5 % |
+| GSM8K-30, drei parallel, je Anfrage (tok/s) | 56,59 / 56,59 | 55,56 / 55,95 | +1,5 % |
+| GSM8K-30, drei parallel, gesamt (tok/s) | 165,40 / 165,38 | 160,22 / 141,63 | (F4: eine Antwort lief bis 4 096 Token allein weiter) |
+
+Befund: Einzeln ist NVFP4 ein Drittel schneller, mit drei gleichzeitigen Anfragen bleiben 1,5–5,3 %. Die Beobachtung aus dem Qualitätslauf („FP8 dann sogar schneller“) bestätigt sich nicht; sie war ungesteuert (andere Antwortlängen, max_tokens 16 384). Die Annahme je Runde ist bei beiden gleich, der Unterschied liegt also im Rechnen je Runde: Drei Anfragen mit MTP k=3 sind 12 Zeilen je Schritt; FP8 nutzt dort den Turing-Kern m16n8k8 für M 9–512, NVFP4 ab M 9 die Zweizeilen-Kachel (`QPN2 native M=9..16 two-row-tile`). Diese Zuordnung ist nicht per Profil belegt. Speicherspitze je RTX: NVFP4 47 895 MiB, FP8 46 173–46 183 MiB.
+

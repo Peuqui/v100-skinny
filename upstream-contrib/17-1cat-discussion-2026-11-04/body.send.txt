@@ -1,0 +1,37 @@
+Hello 1Cat team and everyone running older cards,
+
+this is a short history of what 1Cat-vLLM does on one mixed Volta and Turing machine, with the numbers from a final sweep on 2026-11-04. Thank you for the project and for reviewing and merging so much of this work.
+
+Setup
+
+Five cards in one machine: three Tesla V100-PCIE-32GB (SM70) and two Quadro RTX 8000 48 GB (SM75). One user, one request at a time. The code is my fork Peuqui/1Cat-vLLM, branch prod-v5d (ae0d76216): 1Cat main plus my patches. 60 of my PRs here are merged and 23 are open as of today.
+
+Production entries
+
+DeepSeek-V4-Flash 284B, the original release (FP4 experts, FP8 for the rest), PP5 over all five cards, DSpark k=5, 500,000 tokens context. A second entry with k=7 and 307,200 tokens is used for coding.
+GLM-5.3-Flash NVFP4, PP5 over all five cards, DFlash2 k=7, 524,288 tokens.
+Qwen3.8-27B, TP2, MTP k=3, 262,144 tokens: the NVFP4 checkpoint on the two RTX 8000, and the official FP8 checkpoint on the two RTX 8000 or on two V100.
+
+How it was measured on 2026-11-04
+
+One boot per entry through llama-swap, temperature 0. Prefill: a prompt of 8,490 to 8,921 tokens depending on the tokenizer, median of 3. Decode: 192 tokens after a short prompt, median of 3; tok/s counts the tokens after the first one over the time after it. GSM8K: the first 30 test questions with thinking on and max_tokens 1024. Coding: six small Python tasks, each answer run against hidden asserts in a separate interpreter. Long context: real repository text up to near the maximum length of each entry, 400 output tokens, time per engine round. Higher is better for tok/s and tokens per round, lower is better for seconds and ms.
+
+Results
+
+DeepSeek-V4-Flash, k=5: prefill 8,921 tokens in 2.28 s (3,918 tok/s), decode 55.86 tok/s, GSM8K 29/30 at 69.32 tok/s with 4.10 accepted tokens per round, coding 6/6. With a 486,316 token prompt: prefill 2:26 min, 69.2 ms per round, 45.4 tok/s.
+DeepSeek-V4-Flash, k=7: prefill 2.28 s, decode 52.59 tok/s, GSM8K 29/30 at 68.84 tok/s with 4.45 tokens per round, coding 6/6 at a median of 94.18 tok/s (k=5: 89.07 tok/s).
+GLM-5.3-Flash: prefill 8,687 tokens in 4.27 s (2,034 tok/s), decode 41.81 tok/s, GSM8K 29/30 at 61.94 tok/s with 5.43 tokens per round, coding 6/6. With a 516,196 token prompt: prefill 4:04 min, 94.0 ms per round, 39.7 tok/s.
+Qwen3.8-27B NVFP4 on the RTX 8000 pair: prefill 8,490 tokens in 5.60 s (1,517 tok/s), decode 78.11 tok/s, GSM8K 28/30 at 99.73 tok/s with 3.35 tokens per round, coding 6/6. With a 259,552 token prompt: prefill 4:45 min, 57.1 ms per round, 46.3 tok/s.
+Qwen3.8-27B FP8 on the RTX 8000 pair: prefill 5.55 s, decode 54.66 tok/s, GSM8K 27/30 at 75.00 tok/s, coding 6/6. With 259,552 tokens: prefill 4:46 min, 68.3 ms per round, 38.7 tok/s.
+Qwen3.8-27B FP8 on the V100 pair: prefill 6.63 s, decode 47.44 tok/s, GSM8K 27/30 at 63.80 tok/s, coding 6/6. With 259,552 tokens: prefill 8:06 min, 86.9 ms per round, 30.8 tok/s.
+
+Every wrong GSM8K answer is either question 12 (12 or 13 years, the wording allows both) or an answer that reached the 1024 token limit while still thinking. Eight fixed quality prompts per entry were compared byte by byte with the control runs of 2026-11-02 and 2026-11-03: 46 of 48 answers are identical, the other two give the same correct result in other words. The decode speed of every entry is within 0.2 percent of those control runs.
+
+How it started
+
+The early numbers were taken with other scripts and settings, so read them as orders of magnitude.
+DeepSeek-V4-Flash on 2026-08-25, the first run that generated text: 0.07 to 0.36 tok/s, eager mode with reference kernels (llama.cpp did 21 to 26 tok/s on the same prompts then). On 2026-09-11 the context limit was 65,536 tokens and a 64,349 token prompt took 9:01 min to the first token (about 119 tok/s). Today a 178,480 token prompt takes 40.8 s (about 4,380 tok/s). Decode with a 287k token prompt went from 241 to 242 ms per round (about 13 tok/s) on 2026-10-16 to 68.2 ms per round (47.2 tok/s) today.
+GLM-5.3-Flash on 2026-10-25 without a draft model: decode 24.02 tok/s, GSM8K 23.26 tok/s, 14.4 tok/s with a 516,196 token prompt. Today with DFlash2: 41.81, 61.94 and 39.7 tok/s.
+Qwen3.8-27B NVFP4 on 2026-10-16 with a 249,950 token prompt: prefill 615.6 s, 182.4 ms per round, 14.2 tok/s. Today with 249,992 tokens: 270.0 s, 56.2 ms per round, 45.2 tok/s. The FP8 checkpoint on the V100 pair went from 155.8 ms per round (17.2 tok/s) on 2026-10-31 to 84.8 ms (31.0 tok/s) at the same length.
+
+This report was written with the help of an AI assistant (Claude Code). Every number comes from the measurement logs of the sweep and of the earlier runs, and I checked them against those files.

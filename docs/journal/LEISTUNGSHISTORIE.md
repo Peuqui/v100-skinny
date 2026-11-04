@@ -1,4 +1,6 @@
-# Leistungshistorie der Produktionsmodelle auf dem Mini (Stand 18.10.2026, spätabends)
+# Leistungshistorie der Produktionsmodelle auf dem Mini (Stand 04.11.2026, Abschluss-Sweep)
+
+**Neuester Stand: Abschnitt „04.11.2026: Abschluss-Sweep“ am Ende** (alle sechs Produktionseinträge gemessen, dazu der Verlauf seit August je Modell). Die Abschnitte 1 bis 9 sind die Historie bis 18.10.; Qwen3.8-Flash-Next (Abschnitt 2) ist seit 21.10. eingefroren und seit 04.11. gelöscht.
 
 Zusammengestellt am 02.10. abends aus STAND, Journal, Memory und Messlogs (nur gelesen, nichts neu gemessen); Abschnitt 8 ergänzt am 03.10. die Abschlussmessung und die Produktionsumstellung; Abschnitt 9 ergänzt am 17.10. den Zeitraum vom 03.10. bis 17.10.2026 (Nachtrag 18.10.: Umstellungen 17.10. abends, 18.10. vormittags, mittags und abends) (Produktionsumstellungen, Meilensteine, Verworfenes, Vergleich 03.10. → 17.10. in 9d). Jede Zahl hat Datum, Bedingungen und Datei:Zeile; in Abschnitt 9 stattdessen den STAND-Block nach seiner Überschrift und die Logdatei, weil sich die STAND-Zeilen mit jedem neuen Block verschieben. Richtung: Zeiten (s, ms, min:s) – weniger ist besser; tok/s und Annahme – mehr ist besser. Zeiten über 60 s stehen als min:s.
 
@@ -180,7 +182,9 @@ Coding-K7-Eintrag (k=7, Fenster 65.536):
 - Produktionsabnahme: 20,2 s / 80 ms (Q/prod_sm70route_accept.log:42).
 - Sonst keine Historie: Peuqui hält den Eintrag aus den Messreihen heraus.
 
-## 2. Qwen3.8-Flash-Next 180B-A4B (NVFP4, MTP k=4)
+## 2. Qwen3.8-Flash-Next 180B-A4B (NVFP4, MTP k=4) — eingefroren seit 21.10., gelöscht am 04.11.2026
+
+Historie. Gewichte, HF-Links und die acht llama-swap-Einträge sind seit 04.11. entfernt (Peuqui; Config-Sicherung `config.yaml.vor-flashnext-loeschen-2026-11-04`). Fork-Code und PRs bleiben.
 
 Wechsel von Checkpoint und Topologie:
 - Bis 14.09.: RadixArk-MTPQ-Transplantat, TP2×PP2.
@@ -697,3 +701,120 @@ Belege `ab_v5b_{dsv4,dflash2,glm}_2026-10-31*.log`, `ab_fa2wave_q27_2026-10-31a.
 | GLM | 516 196 | 94,2 | 94,7 | 35,8 | 41,5 |
 
 GLM gleich innerhalb der Streuung (tok/s folgen der je Lauf schwankenden Annahme). Kurzer Kontext, Prefill, Pools, Betriebsspeicher gleich; Texte gleich.
+
+## 04.11.2026: Abschluss-Sweep aller Produktionseinträge (prod-v5d)
+
+Peuqui 04.11.: „abschlussmäßig einen Sweep … mit GSM8K-30 und ein bisschen Coding, eine vernünftige Benchmark-Tabelle“. Gemessen 05:41–07:48 nach dem Neustart um 05:30, AIfred-Dienst aus, ein Boot je Eintrag über llama-swap, Baum `1Cat-vLLM-v5d` (Zweig `prod-v5d` ae0d76216, 0 geänderte Dateien), Kette BS/sweep_2026-11-04/run_chain.sh, Einzelskript BS/sweep_entry_2026-11-04.sh.
+
+**Belege:** Log BS/sweep_2026-11-04.log, Rohdaten BS/sweep_2026-11-04/<Eintrag>/ (client, gsm8k, coding, quality, prefix, reasoning, robustness, gpu-mem), Langkontext Q/longctx-sweep-2026-11-04-<Eintrag>-max.json. Die Tabellen erzeugt BS/sweep_table_2026-11-04.py aus diesen Dateien (Ausgabe BS/sweep_2026-11-04/table.md und table.json).
+
+**Messverfahren**
+- **Prefill / Decode (BS/glm_ab_client.py):** temperature 0, Median aus 3 Prefill-Läufen (Fülltext 8.490–8.921 Tok je Tokenizer, max_tokens 1), 3 kurzen Decodes zu 192 Tok und 2 Decodes nach dem Fülltext; Decode = Token nach dem ersten / Zeit danach, „tok/s = ms/Token“ aus derselben Messung.
+- **GSM8K-30 (BS/gsm8k_api_client.py):** die ersten 30 Testfragen, temperature 0, Denken an, max_tokens 1.024 (wie in allen früheren Kontrollen); Annahme = Token je Prüfrunde.
+- **Coding (BS/coding_probe.py, neu):** sechs kleine Aufgaben (römische Zahlen, Intervalle, Dauer-Parser, Fehler in einer Binärsuche, häufigste Wörter, LRU-Cache), temperature 0, Standard-Denkmodus des Eintrags; der letzte Python-Block läuft mit verdeckten Asserts in eigenem Interpreter (`python3 -I`, 20 s). DeepSeek und Qwen antworten ohne Denken, GLM denkt immer (sein Median enthält die Denkphase).
+- **Langkontext (M-sonde, BS/longctx_decode_probe.py mit `LONGCTX_MAX=1`):** greedy, 400 Ausgabetoken, echter Text bis nahe an die maximale Länge des Eintrags; Schritt = Decode-Zeit / Engine-Runden.
+- **Texte:** acht Qualitätsfragen byteweise gegen `validate_v5d_<Eintrag>_2026-10-31/quality.json`; Abweichungen von Hand gelesen.
+- **Boot:** „bereit nach“ = erste Anfrage bis Server bereit (ohne Antwortzeit, anders als b+g in Abschnitt 1–9).
+
+Richtung: Zeiten (s, ms, min:s) – weniger ist besser; tok/s, Annahme, richtige Antworten, KV-Pool – mehr ist besser.
+
+### Ergebnis je Eintrag
+
+Einträge: dsv4 = DeepSeek-V4-Flash 284B PP5 DSpark k=5 (500.000 Tok), k7 = derselbe als Coding-Eintrag k=7 (307.200 Tok), glm = GLM-5.3-Flash NVFP4 PP5 DFlash2 (524.288 Tok), q27 = Qwen3.8-27B NVFP4 TP2 RTX MTP k=3, fp8rtx = Qwen3.8-27B FP8 TP2 RTX MTP k=3, fp8v100 = dasselbe auf dem V100-Paar (alle 27B 262.144 Tok).
+
+| Eintrag | Prefill (s @ Tok; tok/s) | Decode kurz (tok/s = ms/Token) | Decode nach Prompt (tok/s = ms/Token) | GSM8K-30 richtig | GSM8K Decode (tok/s) | Annahme (Tok/Runde) | Coding (bestanden; Median tok/s) | Texte gleich | Boot bis bereit |
+|---|---|---|---|---|---|---|---|---|---|
+| dsv4 | 2,28 @ 8921 (3 918) | 55,86 = 17,9 | 56,38 = 17,8 @ 8921 | 29/30 (3 abgeschnitten) | 69,32 | 4,103 | 6/6; 89,07 | 8/8 | 4:23 min |
+| k7 | 2,28 @ 8921 (3 917) | 52,59 = 19,0 | 56,44 = 17,8 @ 8921 | 29/30 (3 abgeschnitten) | 68,84 | 4,449 | 6/6; 94,18 | 8/8 | 4:00 min |
+| glm | 4,27 @ 8687 (2 034) | 41,81 = 23,9 | 45,57 = 22,0 @ 8687 | 29/30 (0 abgeschnitten) | 61,94 | 5,430 | 6/6; 56,34 (mit Denken) | 8/8 | 6:36 min |
+| q27 | 5,60 @ 8490 (1 517) | 78,11 = 12,8 | 79,52 = 12,6 @ 8490 | 28/30 (3 abgeschnitten) | 99,73 | 3,348 | 6/6; 120,93 | 7/8 (zug) | 1:36 min |
+| fp8rtx | 5,55 @ 8490 (1 530) | 54,66 = 18,3 | 63,95 = 15,7 @ 8490 | 27/30 (3 abgeschnitten) | 75,00 | 3,326 | 6/6; 88,32 | 7/8 (zug) | 2:34 min |
+| fp8v100 | 6,63 @ 8490 (1 280) | 47,44 = 21,1 | 55,30 = 18,1 @ 8490 | 27/30 (4 abgeschnitten) | 63,80 | 3,298 | 6/6; 76,32 | 8/8 | 2:18 min |
+
+Langkontext (Prefill-Durchsatz mit „~“ gerechnet als Prompttoken / Prefill-Zeit):
+
+| Eintrag | Stufe | Prompt (Tok) | Prefill (s bzw. min:s; ~tok/s) | Schritt je Runde (ms) | Decode (tok/s) |
+|---|---|---|---|---|---|
+| dsv4 | warmup | 32668 | 7,1 s (~4 610) | 57,6 | 62,4 |
+| dsv4 | ctx150k | 178480 | 40,8 s (~4 380) | 62,1 | 58,9 |
+| dsv4 | ctx250k | 287039 | 1:13 min (~3 930) | 68,2 | 47,2 |
+| dsv4 | ctxmax | 486316 | 2:26 min (~3 340) | 69,2 | 45,4 |
+| k7 | warmup | 32668 | 7,1 s (~4 630) | 62,3 | 63,4 |
+| k7 | ctx150k | 178480 | 40,9 s (~4 370) | 69,7 | 52,1 |
+| k7 | ctx250k | 287039 | 1:13 min (~3 940) | 70,4 | 42,0 |
+| k7 | ctxmax | 302833 | 1:18 min (~3 880) | 70,4 | 45,4 |
+| glm | warmup | 31320 | 14,6 s (~2 140) | 82,3 | 44,1 |
+| glm | ctx150k | 169693 | 1:17 min (~2 190) | 86,0 | 36,5 |
+| glm | ctx250k | 283230 | 2:11 min (~2 170) | 91,6 | 50,1 |
+| glm | ctxmax | 516196 | 4:04 min (~2 110) | 94,0 | 39,7 |
+| q27 | warmup | 33208 | 22,8 s (~1 460) | 34,5 | 89,0 |
+| q27 | ctx150k | 184134 | 2:55 min (~1 050) | 49,5 | 55,6 |
+| q27 | ctx250k | 249992 | 4:30 min (~926) | 56,2 | 45,2 |
+| q27 | ctxmax | 259552 | 4:45 min (~910) | 57,1 | 46,3 |
+| fp8rtx | warmup | 33208 | 22,9 s (~1 450) | 45,7 | 66,2 |
+| fp8rtx | ctx150k | 184134 | 2:56 min (~1 050) | 60,8 | 43,2 |
+| fp8rtx | ctx250k | 249992 | 4:31 min (~923) | 67,4 | 39,2 |
+| fp8rtx | ctxmax | 259552 | 4:46 min (~907) | 68,3 | 38,7 |
+| fp8v100 | warmup | 33208 | 29,0 s (~1 150) | 53,7 | 56,3 |
+| fp8v100 | ctx150k | 184134 | 4:44 min (~648) | 75,3 | 35,1 |
+| fp8v100 | ctx250k | 249992 | 7:37 min (~546) | 84,8 | 31,0 |
+| fp8v100 | ctxmax | 259552 | 8:06 min (~534) | 86,9 | 30,8 |
+
+Die tok/s im Langkontext folgen der Annahme je Runde (bei glm ctx250k 50,1 über ctx150k 36,5); vergleichbar ist der Schritt in ms.
+
+| Eintrag | KV-Pool (Tok) | Spitze memory.used je Karte (MiB, PCI 0–4; 0 und 2 RTX 8000, 1, 3, 4 V100) |
+|---|---|---|
+| dsv4 | 509 292 | 0=39885 1=30818 2=47089 3=30818 4=30818 |
+| k7 | 317 261 | 0=39885 1=30394 2=46627 3=30394 4=30394 |
+| glm | 676 645 | 0=48139 1=30746 2=47517 3=30502 4=30748 |
+| q27 | 1 040 933 | 0=48331 1=0 2=48331 3=0 4=0 |
+| fp8rtx | 876 615 | 0=46925 1=0 2=46925 3=0 4=0 |
+| fp8v100 | 444 804 | 0=1 1=32342 2=1 3=32342 4=0 |
+
+**Befunde**
+- **Tempo gleich zum Kontrolllauf** (BS/validate_v5d_<Eintrag>_2026-11-03.log, GLM BS/validate_v5d_glm_2026-11-02.log), Decode kurz: dsv4 55,86 gegen 55,88, k7 52,59 gegen 52,58, glm 41,81 gegen 41,83, q27 78,11 gegen 78,02, fp8rtx 54,66 gegen 54,76, fp8v100 47,44 gegen 47,45 tok/s (höchstens 0,2 % Abstand). GSM8K-Treffer gleich bis auf q27 (28 statt 29, eine Antwort mehr an der Längengrenze).
+- **Texte:** 46 von 48 byteweise gleich. Die zwei abweichenden (Zugfrage bei q27 und fp8rtx) von Hand gelesen: beide rechnen 9:40–13:05 = 41/12 h und 287 km zu genau 84 km/h, nur der Rechenweg ist anders formuliert. Dieselbe Frage schwankte schon am 03.11. zwischen Boots (fp8rtx 754 gegen 741 Tok, q27 782 gegen 760).
+- **GSM8K-Fehler sind keine Rechenfehler:** Falsch sind nur Frage 12 und bei allen drei 27B-Fassungen die Fragen 2 und 16. Frage 12 (Zitronenbaum, 12 oder 13 Jahre) ist mehrdeutig: GLM antwortet fertig gerechnet 12, die übrigen brechen beim Abwägen an der Grenze von 1.024 Token ab und werden mit der letzten Zahl im Text gewertet, q27 dabei zufällig mit der richtigen 13. Die Fragen 2 und 16 brechen ebenfalls an der Grenze mitten im Abwägen ab (dsv4 falsch: 12; k7: 12; glm: 12; q27: 2, 16; fp8rtx und fp8v100: 2, 12, 16). GSM8K-30 mit 1.024 Token trennt NVFP4 und FP8 deshalb nicht in der Qualität.
+- **Coding 6/6 bei allen Einträgen.** k7 gegen dsv4: Coding-Median 94,18 gegen 89,07 tok/s (+5,7 %), Decode kurz 52,59 gegen 55,86 (−5,9 %), KV-Pool 317 261 gegen 509 292 Tok.
+- **27B-FP8 von der SSD:** Boot bis bereit fp8rtx 5:29 → 2:34 min, fp8v100 5:27 → 2:18 min (03.11. von `/mnt/speicher`, jetzt `/home/mp/models`); Texte und Tempo gleich. Die HDD-Kopie ist danach gelöscht.
+
+### 27B: NVFP4 gegen FP8 (Grundlage für Peuquis Entscheidung)
+
+Prozent gegen fp8rtx; mehr ist besser bei tok/s und Pool, weniger bei s und ms.
+
+| Kennzahl | q27 NVFP4 (RTX) | fp8rtx FP8 (RTX) | fp8v100 FP8 (V100) |
+|---|---|---|---|
+| Decode kurz (tok/s = ms/Token) | 78,11 = 12,8 (+42,9 %) | 54,66 = 18,3 | 47,44 = 21,1 (−13,2 %) |
+| GSM8K Decode (tok/s) | 99,73 (+33,0 %) | 75,00 | 63,80 (−14,9 %) |
+| Coding Median (tok/s) | 120,93 (+36,9 %) | 88,32 | 76,32 (−13,6 %) |
+| Prefill 8.490 Tok (s) | 5,60 | 5,55 | 6,63 |
+| 250k: Prefill (min:s); Schritt (ms = tok/s) | 4:30; 56,2 = 45,2 | 4:31; 67,4 = 39,2 | 7:37; 84,8 = 31,0 |
+| KV-Pool (Tok) | 1 040 933 | 876 615 | 444 804 |
+| GSM8K-30 / Coding / Texte | 28/30 / 6/6 / richtig | 27/30 / 6/6 / richtig | 27/30 / 6/6 / richtig |
+
+Eine Qualitätsdifferenz zwischen NVFP4 und FP8 zeigt keiner unserer Tests; die Rangfolge BF16 > FP8 > NVFP4 folgt aus der Quantisierung, nicht aus einer Messung hier. fp8v100 ist in jeder Tempokennzahl langsamer als fp8rtx und hat den halben Pool.
+
+### Gesamtbild seit August je Modell
+
+Die Messarten wechselten über die Monate (Abschnitt 1–9); die Spalte „Vergleichbarkeit“ sagt, wie weit die Zahlen nebeneinander taugen.
+
+| Modell | Kennzahl | Anfang (Datum; Quelle) | 04.11.2026 | Vergleichbarkeit |
+|---|---|---|---|---|
+| DSv4 PP5 | Decode kurz (tok/s) | 25.08.: 0,07–0,36 (eager, Emulation); 04.09.: 27,4 / 28,0 (temp 0) (Abschnitt 1b) | 55,86 = 17,9 ms | eingeschränkt: Messart wechselt; llama.cpp-Referenz 25.08. 40,4 / 42,8 tok/s (M-bench) |
+| DSv4 PP5 | Prefill | 11.09.: 64.349 Tok in 9:01 min (~119 tok/s) (1a) | 32.668 Tok in 7,1 s (~4 610), 178.480 in 40,8 s (~4 380), 486.316 in 2:26 min (~3 340) | grob ~37× bei größerem Prompt |
+| DSv4 PP5 | Decode bei 287k (ms = tok/s) | 16.10. vor dem Indexer-Fix: 241,4–242,4 = 12,6–13,1 (9b) | 68,2 = 47,2 (287.039 Tok) | vergleichbar (M-sonde) |
+| DSv4 PP5 | Kontext / KV-Pool (Tok) | 11.09.: 65.536 / 93.622 (1d) | 500.000 / 509.292, gemessen bis 486.316 | |
+| DSv4 PP5 | Boot | 12./13.09.: 8:07 / 8:39 min b+g (1d) | 4:23 min bis bereit | eingeschränkt: b+g enthält Antwortzeit |
+| 27B NVFP4 TP2 RTX | Decode kurz (tok/s) | 09.09.: 73,35 (M-speed, MTP k=3) (3b) | 78,11 = 12,8 ms | eingeschränkt: M-speed schließt TTFT ein; 26.09. temp 1,0 Prosa 48,6–55,8 |
+| 27B NVFP4 TP2 RTX | Prefill | 26.09.: 14,7k in 27,4–27,8 s (~530 tok/s) (3a) | 8.490 in 5,60 s (1 517), 33.208 in 22,8 s (~1 460) | vergleichbar in der Größenordnung |
+| 27B NVFP4 TP2 RTX | 250k: Prefill; Schritt (ms = tok/s) | 16.10.: 615,5 s (~406 tok/s); 182,4–182,6 = 14,2 (9d) | 270,0 s (~926); 56,2 = 45,2 | vergleichbar (M-sonde) |
+| 27B NVFP4 TP2 RTX | Kontext / KV-Pool (Tok) | 07.09.: 32.768 / 661.796 (3c) | 262.144 / 1.040.933 | |
+| 27B NVFP4 TP2 RTX | Boot | 07.09.: 6:30 min (probe.sh) (3c) | 1:36 min bis bereit | eingeschränkt |
+| 27B FP8 TP2 RTX | 184k / 250k: Prefill; Schritt (ms = tok/s) | 20.10. (erste Messung, BS/ab_q27fp8turing_2026-10-20.log:83-84): 351,7 s (~524) / 556,4 s (~449); 67,1 = 39,4 / 75,0 = 35,2 | 176,0 s (~1 046) / 270,9 s (~923); 60,8 = 43,2 / 67,4 = 39,2 | vergleichbar (M-sonde) |
+| 27B FP8 TP2 V100 | 184k / 250k: Schritt (ms = tok/s) | 31.10. (BS/validate_prod_v5b_fp8v100_2026-10-31.log:69-70): 126,7 = 20,9 / 155,8 = 17,2 | 75,3 = 35,1 / 84,8 = 31,0 | vergleichbar (M-sonde); Hebel V100-Verify 01.11. |
+| GLM PP5 | Decode kurz (tok/s = ms/Token) | 25.10. ohne Entwurf: 24,02 = 41,6 (BS/ab_glm_dflash2_m_2026-10-25.log:13); erste DFlash2-Fassung: 32,28 = 31,0 (BS/ab_glm_dflash2_j_2026-10-24.log:20) | 41,81 = 23,9 | vergleichbar (gleicher Client); ×1,74 gegen ohne Entwurf |
+| GLM PP5 | GSM8K Decode (tok/s) | 25.10. ohne Entwurf: 23,26, 59/60 (BS/ab_glm_dflash2_m_2026-10-25.log:36-40); DFlash2: 53,35, 59/60, Annahme 5,511 (BS/ab_glm_dflash2_j_2026-10-24.log:35-40) | 61,94, 29/30, Annahme 5,430 | eingeschränkt: GSM8K-60 gegen -30; ×2,66 gegen ohne Entwurf |
+| GLM PP5 | 516.196 Tok: Prefill; Schritt (ms = tok/s) | 25.10. ohne Entwurf: 254,8 s; 69,6 = 14,4 (Q/longctx-glm53-dflash2m-1-D512.json); DFlash2: 273,1 s; 129,9 = 24,8 (Q/longctx-glm53-dflash2j-2-E512.json) | 244,4 s; 94,0 = 39,7 | vergleichbar (M-sonde); ×2,76 gegen ohne Entwurf |
+| GLM PP5 | Prefill 8.687 Tok (s; tok/s) | 25.10.: ohne Entwurf 4,26 (2 038), DFlash2 4,56 (1 906) | 4,27 (2 034) | vergleichbar |
+| GLM PP5 | KV-Pool (Tok) | 25.10. DFlash2: 667.683 (ohne Entwurf 1.167.414) | 676.645 | |
+| GLM PP5 | Boot bis bereit | 25.10.: 9:53 min (BS/ab_glm_dflash2_j_2026-10-24.log:11, Swap-Sturm) | 6:36 min | eingeschränkt |

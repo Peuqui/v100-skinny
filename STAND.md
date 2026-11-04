@@ -13,6 +13,27 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 04.11. 08:15 (CET): Abschluss-Sweep aller sechs Produktionseinträge bestanden; das 27B-FP8 liegt jetzt auf der SSD.**
+- **27B-FP8 auf die SSD (Peuqui: „hol die siebenundzwanzig-B-FP8-Fassung auf die SSD“, in den normalen Models-Ordner):**
+  - **Kopie:** `~/.cache/bench-scripts/move_fp8_27b_to_ssd_2026-11-04.sh` kopierte 05:34:54–05:39:49 nach `/home/mp/models/Qwen3.8-27B-Dense-FP8-Block128-MTP-Qwen`, 163 Dateien, alle Größen gleich (Log `move_fp8_27b_to_ssd_2026-11-04.log`).
+  - **CRC32:** 74 von 77 stimmten. Die drei Abweichungen (`chat_template.jinja`, `generation_config.json`, `tokenizer_config.json`) zeigt schon das Original gegen seine `crc32.txt`. Die Kopie ist per `cmp` bytegleich.
+  - **Umstellung:** `switch_fp8_27b_ssd_2026-11-04.sh` stellte um 05:41 die beiden FP8-Einträge um (Sicherung `config.yaml.vor-fp8-ssd-2026-11-04`).
+  - **Aufräumen:** Beide Sweep-Boots lasen nachweislich von der SSD. Danach ist die HDD-Kopie gelöscht. Auf `/mnt/speicher` liegt nur noch Qwen3VL-30B, dort sind 2,3 T frei, auf `/` 121 G.
+- **Sweep 05:41–07:48:**
+  - **Ablauf:** Peuqui stieß ihn an, AIfred war aus, `GPU_WINDOW_RELEASED=1`. Unit `sweep-2026-11-04`, Kette `sweep_2026-11-04/run_chain.sh`, Log `sweep_2026-11-04.log`.
+  - **Tabelle:** `sweep_table_2026-11-04.py` → `sweep_2026-11-04/table.md`, Ergebnisse in `docs/journal/LEISTUNGSHISTORIE.md`, Abschnitt „04.11.2026: Abschluss-Sweep“.
+  - **Neue Werkzeuge:** `coding_probe.py` (sechs Aufgaben mit verdeckten Asserts) und `glm_ab_client.stream()`.
+- **Ergebnis:**
+  - **Decode kurz** (tok/s, mehr ist besser) liegt höchstens 0,2 % neben den Kontrollläufen vom 02. und 03.11.: DeepSeek 55,86, K7 52,59, GLM 41,81, 27B-NVFP4 78,11, FP8-RTX 54,66, FP8-V100 47,44.
+  - **GSM8K-30:** 29, 29, 29, 28, 27 und 27 richtig. Falsch sind nur die mehrdeutige Frage 12 und Antworten, die an der Grenze von 1 024 Token abbrechen.
+  - **Coding:** 6/6 bei allen Einträgen.
+  - **Texte:** 46 von 48 bytegleich. Die zwei Varianten der Zugfrage sind richtig (84 km/h).
+  - **FP8-Boot von der SSD:** 5:29 → 2:34 min auf den RTX, 5:27 → 2:18 min auf den V100.
+- **Offen bei Peuqui:**
+  - **27B-NVFP4 behalten?** Gegen FP8-RTX ist es beim Decode +42,9 %, beim GSM8K-Tempo +33,0 % und beim Coding +36,9 % schneller, mit einem Pool von 1,04 Mio. statt 877k Token. Kein Test zeigt einen Qualitätsunterschied.
+  - **FP8-V100-Eintrag weglassen?** Er ist in jeder Tempokennzahl langsamer als FP8-RTX (Decode −13,2 %, Prefill bei 250k 7:37 statt 4:31 min) und hat den halben Pool.
+- **Nächstes:** Verlaufsbericht für 1Cat als Discussion „Show and tell“ (Peuqui einverstanden), Entwurf in `upstream-contrib/`.
+
 **Nachtrag 04.11. 04:55 (CET): Testmodelle aus dem HF-Cache und ihre drei llama-swap-Einträge entfernt (Peuqui); DFlash2 auf dem FP8-27B endgültig ohne Zusatzeintrag.**
 - **Ursache der Mini-Modelle in AIfreds Menü:** AIfreds `scripts/llama-swap-autoscan.py` (ExecStartPre von llama-swap) sät für jedes Checkpoint-Verzeichnis mit Chat-Template im HF-Cache einen `-vllm`-Eintrag, und die 1Cat-/vLLM-Tests laden ihre Modelle in denselben Cache. So entstanden `Qwen3-0.6B-vllm`, `Qwen3-0.6B-FP8-BLOCK-vllm` und `tinysmokeqwen3moe-W4A16-first-only-CTstable-vllm`; dazu 51 Links in `~/models` auf GGUF-Testdateien (alle 51 in `autoscan-skip.json`).
 - **Entfernt** mit `~/.cache/bench-scripts/aufraeumen_testmodelle_2026-11-04.sh --apply` (04:51): 102 HF-Repos und ein gemeinsamer Blob (6,37 GB, `/` 143 → 149 G frei), die 3 Einträge samt Gruppenzeilen (34 → 31, übrige strukturell unverändert geprüft), 51 Links, 51 Sperreinträge. Sicherungen `~/.cache/prod-switch-2026-09-29/{config.yaml,autoscan-skip.json}.vor-testmodelle-2026-11-04`. llama-swap lud die Config per `--watch-config` neu und meldet 31 Modelle.

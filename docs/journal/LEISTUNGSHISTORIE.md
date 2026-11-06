@@ -877,3 +877,151 @@ Anlass: Im Qualitätslauf (GSM8K, drei Anfragen parallel) lag FP8 je Anfrage gle
 
 Befund: Einzeln ist NVFP4 ein Drittel schneller, mit drei gleichzeitigen Anfragen bleiben 1,5–5,3 %. Die Beobachtung aus dem Qualitätslauf („FP8 dann sogar schneller“) bestätigt sich nicht; sie war ungesteuert (andere Antwortlängen, max_tokens 16 384). Die Annahme je Runde ist bei beiden gleich, der Unterschied liegt also im Rechnen je Runde: Drei Anfragen mit MTP k=3 sind 12 Zeilen je Schritt; FP8 nutzt dort den Turing-Kern m16n8k8 für M 9–512, NVFP4 ab M 9 die Zweizeilen-Kachel (`QPN2 native M=9..16 two-row-tile`). Diese Zuordnung ist nicht per Profil belegt. Speicherspitze je RTX: NVFP4 47 895 MiB, FP8 46 173–46 183 MiB.
 
+
+## 05.11.2026: GLM-Lader liest fehlende Randmodule nicht mehr (prod-v5e, Baum `1Cat-vLLM-v5e`, f0a168c29)
+
+Anlass (Peuqui 04.11. 22:25): Jeder GLM-Boot lagerte 13–16 GB aus. Ursache: Die Stufen PP0–PP3 haben keinen `lm_head`, entpackten den MXFP8-Kopf ([154880, 4096]) aber trotzdem auf der CPU nach BF16 (≈ 6 GiB je Stufe) und verwarfen ihn; dazu lasen PP1–PP3 die Einbettung (1,2 GB) umsonst. Korrektur im allgemeinen Lader (`default_loader._missing_module_filter`, `direct_io.missing_module_filter`): Tensoren von Modulen, die eine Stufe als `PPMissingLayer` führt, werden vor dem Lesen übersprungen. Befund-Boot mit Mitschrift: STAND Nachtrag 04.11. 22:55, `~/.cache/bench-scripts/glm_load_memtrace_2026-11-04/`.
+
+A/B/A/B 04.11. 23:15–00:46 (`ab_variant_2026-11-04.sh ppskip pp-skip glm 2026-11-04a T T P T P`, Log `~/.cache/bench-scripts/ab_ppskip_glm_2026-11-04a.log`, Daten `ab_ppskip_glm_2026-11-04a/`). T = Baum `1Cat-vLLM-pp-skip` (f0a168c29) mit Kopien der Produktions-Caches, P = Produktion prod-v5d; vor jedem Boot Seiten-Cache beider Checkpoints geräumt, Host-Speicher je Boot mit `load_memtrace.py`. T1 zählt nicht (erster Boot der Reihe).
+
+| Messung | T2 / T4 (neu) | P3 / P5 (prod-v5d) | Änderung |
+|---|---|---|---|
+| Gewichte laden PP0 (s, weniger ist besser) | 192,6 / 192,3 | 263,1 / 258,6 | −26 % |
+| Model loading PP0 gesamt (s, weniger ist besser) | 207,0 / 206,6 | 283,1 / 273,3 | −25 % |
+| bereit nach (s, weniger ist besser) | 301 / 306 | 397 / 346 | −18 % |
+| Swap-Spitze der Gruppe llama-swap beim Boot (GiB, weniger ist besser) | 5,00 / 4,68 | 14,94 / 10,66 | −62 % |
+| Swap des Rechners: vorher → Spitze (GiB, weniger ist besser) | 2,45 → 7,39 / 2,45 → 7,07 | 2,45 → 17,39 / 2,46 → 13,06 | |
+| Prefill 8 687 Token (s; tok/s, mehr ist besser) | 4,28 (2 029) / 4,25 (2 042) | 4,26 (2 041) / 4,40 (1 975) | gleich |
+| Decode kurz (tok/s = ms/Token) | 41,82 = 23,9 / 41,82 = 23,9 | 41,81 = 23,9 / 41,80 = 23,9 | gleich |
+| GSM8K-30: richtig; Decode (tok/s, aus dem Log); Annahme je Runde | 29; 61,85; 5,430 / 29; 61,87; 5,430 | 29; 61,87; 5,430 / 29; 61,84; 5,430 | gleich |
+| Langer Kontext 516 196 Token: TTFT (s); ms/Schritt; tok/s (Log) | 244,3; 95,1; 47,7 / 244,2; 93,8; 34,3 | 244,2; 96,0; 38,1 / 244,0; 92,3; 33,8 | gleich (tok/s folgt der Annahme) |
+| GPU-Speicherspitze je Karte 0/1/2/3/4 (MiB) | 48 139 / 30 746 / 47 517 / 30 502 / 30 748 (T4: Karte 2 47 519) | dasselbe | gleich |
+| KV-Pool (Token) | 676 645 | 676 645 | gleich |
+| Qualitätsfragen (8, je 1 500 Token), T1 gegen P3 | – | – | alle 8 Texte zeichengleich |
+
+„Decode lang“ (zwei Einzelanfragen nach 8 687 Token) streut schon innerhalb eines Arms um bis zu ±13 % (T1: 64,46 und 49,93 tok/s) und trägt keinen Vergleich; T2/T4 59,63 und 49,90 / 55,11 und 46,91, P3/P5 59,72 und 55,49 / 53,34 und 49,82 tok/s.
+
+Befund: Laden ein Viertel schneller, Boot-Swap um zwei Drittel kleiner, Tempo und Texte unverändert. Rest-Swap ~5 GiB: GLM liegt auch nach dem Laden knapp über MemoryHigh 16 GiB (offen). Umstellung 05.11. 00:47 (`install_prod_entry_2026-11-03.sh`, Sicherung `config.yaml.vor-prod-v5e-glm-2026-11-05`, Rücksprung `rollback_prod_v5e_glm_2026-11-05.sh` → v5d); Kontrolllauf `validate_v5e_glm_2026-11-05.log`.
+
+## 05.11.2026: GLM mit Bildteil (prod-v5f, Baum `1Cat-vLLM-v5f`, d81d54535, `image:12`)
+
+Anlass (Peuqui 05.11. 06:00 „Ich will, dass GLM funktioniert“): Der Bildteil ließ sich nicht starten. Sechs Commits auf prod-v5e (STAND Nachtrag 05.11. 07:45): Bildteil mit der Quantisierung des Checkpoints (MXFP8-Attention, W4A16-NVFP4-MLP über QPN8/QPN2), Türme nur auf PP0 (Port vllm#60238), V2-Encoder-Profilierung (vllm#47985), begrenzte Dummy-Video-Frame-Suche (vllm#48729), Lader überspringt fehlende Türme, Bildteil in 4096-Zeilen-Stücken (Aktivierung größtes Bild 1338 → 720 MiB). Eintrag zusätzlich `--limit-mm-per-prompt '{"image":12,"video":0}' --mm-processor-cache-gb 1`.
+
+A/B/A/B 05.11. 07:48–09:17 (`ab_variant_2026-11-04.sh vision v5f glm 2026-11-05a T T P T P`, Log `~/.cache/bench-scripts/ab_vision_glm_2026-11-05a.log`, Daten `ab_vision_glm_2026-11-05a/`). T = Eintrag mit Bildteil auf v5f, P = Produktion prod-v5e (`image:0`); vor jedem Boot Seiten-Cache beider Checkpoints geräumt, Host-Speicher je Boot mitgeschrieben. T1 zählt nicht (erster Boot, Download und Gewichtsvergleich liefen parallel).
+
+| Messung | T2 / T4 (mit Bildteil) | P3 / P5 (prod-v5e) | Änderung |
+|---|---|---|---|
+| bereit nach (s, weniger ist besser) | 317 / 311 | 307 / 290 | +3…+9 % |
+| Model loading PP0 (s, weniger ist besser) | 218,7 / 220,6 | 205,3 / 206,3 | +7 % (Druck an MemoryHigh, s. u.) |
+| init engine (s, weniger ist besser) | 36,0 / 26,3 | 32,2 / 23,0 | +3,5 s (Encoder-Profilierung 3,6 s) |
+| Swap-Spitze der Gruppe llama-swap (GiB, weniger ist besser) | 5,36 / 5,53 | 5,59 / 4,44 | gleich |
+| Prefill 8 687 Token (s; tok/s, mehr ist besser) | 4,27 (2 032) / 4,27 (2 035) | 4,29 (2 026) / 4,17 (2 081) | gleich |
+| Decode kurz (tok/s = ms/Token) | 41,81 = 23,9 / 41,81 = 23,9 | 41,82 = 23,9 / 41,81 = 23,9 | gleich |
+| GSM8K-30: richtig; Decode (tok/s, aus dem Log); Annahme je Runde | 29; 61,69; 5,423 / 29; 61,74; 5,423 | 29; 61,78; 5,430 / 29; 61,84; 5,430 | gleich |
+| Langer Kontext 516 196 Token: TTFT (s); ms/Schritt; tok/s (Log) | 245,6; 95,9; 42,5 / 245,4; 95,8; 42,9 | 244,4; 95,5; 44,9 / 244,6; 94,0; 31,0 | gleich (tok/s folgt der Annahme) |
+| GPU-Speicherspitze je Karte 0/1/2/3/4 (MiB) | 48 313 / 30 646 / 46 997 / 30 502 / 30 828 | 48 139 / 30 746 / 47 517 / 30 502 / 30 748 | Karte 0 +174 |
+| KV je Stufe (GiB) / KV-Pool (Token) | 1,85 / 2,78 / 2,77 / 2,78 / 3,51; 578 061 | 2,35 / 2,78 / 2,77 / 2,78 / 3,51; 676 645 | PP0 −0,50, Pool ≥ 524 288 |
+| Qualitätsfragen (8, je 1 500 Token), T1 gegen P3 | – | – | alle 8 tokengleich |
+
+Bootzeit: T erreicht MemoryHigh (16 GiB) schon beim Gewichteladen (Grenzereignisse im Ladefenster T 669 / 1 180 gegen P 0 / 610, Lesen 850 gegen 900–912 MB/s); der Seiten-Cache, den der vorige Arm in der Gruppe lässt, schwankt 0,9–2,7 GiB und überlagert das. Mit angehobener Grenze entfällt dieser Teil. Bilder (Testläufe c/d, gleicher Code): erstes Token 2,8–4,6 s bei ~3 662 Bild-Token, größtes Bild im Encoder 3,6 s; Beschreibungen händisch geprüft (STAND).
+
+Umstellung 05.11. 09:20 (`install_prod_v5f_glm_2026-11-05.sh`, Sicherung `config.yaml.vor-prod-v5f-glm-2026-11-05`, Caches `*-glm-prod-v5f-2026-11-05`, Rücksprung `rollback_prod_v5f_glm_2026-11-05.sh` → v5e ohne Bildteil); Kontrolllauf `validate_v5f_glm_2026-11-05.log`.
+
+
+## 05.11.2026: GLM mit geteilter Einbettung (prod-v5g, Baum `1Cat-vLLM-v5g`, 1f17e135f)
+
+Anlass (Peuqui 05.11. 10:00 „nimm dir den doppelten RAM-Verbrauch vor“): Der UVA-Offloader pinnte jede ausgelagerte Tabelle mit `Tensor.pin_memory()`, das über den Caching-Host-Allocator auf die nächste Zweierpotenz aufrundet; GLM lagert die BF16-Einbettung (1,18 GiB) auf PP0 und ihre DFlash-Kopie auf PP4 aus, jede belegte 2,00 GiB Shmem, zusammen 4,0 GiB für eine Tabelle. 1f17e135f (Zweig `glm-vision-pp`, eingefroren als `prod-v5g`): genau bemessene memfd-Abbildung mit `cudaHostRegister`, Einbettungstabellen gleichen Namens, gleicher Form und gleichen Rangs teilen sich die Abbildung über den torch.distributed-Store (nur der Erzeuger kopiert die Werte).
+
+A/B/A/B 05.11. 10:32–12:00 (`ab_variant_2026-11-04.sh shared v5g glm 2026-11-05b T T P T P`, Log `~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log`, Daten `ab_shared_glm_2026-11-05b/`). T = Eintrag auf v5g, P = Produktion prod-v5f (Bildteil, `image:12`); Kommandozeile gleich, vor jedem Boot Seiten-Cache beider Checkpoints geräumt, Host-Speicher je Boot mitgeschrieben. T1 zählt nicht.
+
+| Messung | T2 / T4 (geteilte Einbettung) | P3 / P5 (prod-v5f) | Änderung |
+|---|---|---|---|
+| bereit nach (s, weniger ist besser) | 318 / 280 | 322 / 315 | −1…−11 % |
+| Model loading PP0 (s, weniger ist besser) | 207,1 / 202,9 | 211,0 / 211,2 | −2…−4 % |
+| init engine (s, weniger ist besser) | 35,5 / 23,2 | 37,4 / 37,7 | bis −14 s |
+| Shmem-Spitze der Gruppe llama-swap (GiB, weniger ist besser) | 1,29 / 1,30 | 4,12 / 4,12 | −2,8 GiB |
+| Swap-Spitze der Gruppe (GiB, weniger ist besser) | 3,76 / 1,06 | 4,70 / 5,00 | −1,0…−3,9 GiB |
+| MemoryHigh-Ereignisse im Boot (weniger ist besser) | 1 845 / 1 059 | 3 012 / 2 476 | −40 % |
+| Prefill 8 687 Token, Median aus drei Läufen (s; tok/s, mehr ist besser) | 4,18 (2 078) / 4,18 (2 077) | 4,29 (2 026) / 4,27 (2 035) | −2,4 % Zeit, nur in den ersten Läufen nach dem Boot |
+| Prefill, Läufe 1 / 2 / 3 nach dem Boot (s, weniger ist besser) | 4,18 / 4,25 / 4,16 und 4,18 / 4,24 / 4,17 | 4,32 / 4,29 / 4,17 und 4,27 / 4,28 / 4,17 | dritter Lauf gleich |
+| Decode kurz (tok/s = ms/Token) | 41,79 = 23,9 / 41,78 = 23,9 | 41,58 = 24,1 / 41,61 = 24,0 | gleich (+0,5 %) |
+| GSM8K-30: richtig; Decode (tok/s, aus dem Log); Annahme je Runde | 29; 61,73; 5,423 / 29; 61,77; 5,423 | 29; 61,74; 5,423 / 29; 61,67; 5,423 | gleich |
+| Langer Kontext 516 196 Token: TTFT (s); ms/Schritt; tok/s (Log) | 245,4; 94,8; 44,3 / 245,7; 94,6; 41,0 | 245,7; 95,4; 45,5 / 245,9; 94,2; 49,8 | gleich (tok/s folgt der Annahme) |
+| GPU-Speicherspitze je Karte 0/1/2/3/4 (MiB) | 48 311 / 30 646 / 47 015 / 30 502 / 30 848 | 48 313 / 30 646 / 46 999 / 30 502 / 30 828 | ±20 |
+| KV je Stufe (GiB) / KV-Pool (Token, mehr ist besser) | 1,85 / 2,78 / 2,77 / 2,78 / 3,51; 582 542 | 1,85 / 2,78 / 2,77 / 2,78 / 3,51; 578 061 | +4 481 Token |
+| Qualitätsfragen (8, je 1 500 Token), T1 gegen P3 | – | – | alle 8 zeichengleich |
+
+Der Seiten-Cache, den der vorige Arm in der Gruppe lässt (0,9–2,7 GiB beim Bootbeginn), überlagert Swap und Bootzeit weiter; der Abstand T gegen P ist trotzdem in jedem Paar da. Der Prefill-Median ist bei T niedriger, im eingeschwungenen Zustand aber gleich: Der dritte Lauf liegt in allen fünf Armen bei 4,16–4,17 s, langsamer sind nur die ersten beiden Läufe nach dem Boot, bei P mehr als bei T. Vermutlich holen die ersten Anfragen ausgelagerte Seiten zurück (nicht geprüft); kein Rechentempo-Gewinn.
+
+Umstellung 05.11. 12:01 (`install_prod_v5g_glm_2026-11-05.sh`, Sicherung `config.yaml.vor-prod-v5g-glm-2026-11-05`, Caches `*-glm-prod-v5g-2026-11-05`, Rücksprung `rollback_prod_v5g_glm_2026-11-05.sh` → v5f). Kontrolllauf `validate_v5g_glm_2026-11-05.log` (12:02–12:29, Skript `validate_prod_v5f_2026-11-05_run.sh` mit `VALIDATE_TREE=v5g`) bestanden: bereit 297 s, Prefill 4,48 / 4,37 / 4,18 s (Median 1 989 tok/s; wieder nur die ersten Läufe langsamer), Decode kurz 41,81 tok/s (23,9 ms/Token), Präfix-Cache 55 296 von 62 372 Token (erstes Token 29,1 → 4,4 s), Robustheit 5/5, 8 Qualitätstexte = A/B-T1, GSM8K 29/30 (Annahme 5,423), Langkontext 516 196 Token 96,0 ms/Schritt, GPU-Spitzen 48 311 / 30 646 / 47 015 / 30 502 / 30 848 MiB, KV-Pool 582 542 Token. Bildfälle (7, `reasoning_effort` max, 4 000 Token): Beschreibungen von Hand gelesen, inhaltlich richtig; der handschriftliche Medikationsplan las alle Zeilen richtig, kreiste dann aber bis zur Grenze um „1A Ph“ (Hersteller 1A Pharma) und gab keine Antwort (im v5f-Lauf 2 183 Token mit Antwort, in Testlauf f 2 468). Der gedruckte Medikationsplan läuft mit max in jedem Lauf in die Grenze; lange Prompts sind über Boots nicht bitgleich (Altbefund).
+
+## 05.11.2026: 1Cat main b2b6b3bb9 nachgezogen (`fork-main-v6`, Baum `1Cat-vLLM-main-v6`, 33a070e99)
+
+`fork-main-v6` = glm-vision-pp 49be961c1 (= prod-v5g + Stückelungstest) + Merge von 1Cat main b2b6b3bb9 (43 Commits seit 6a143197e, davon 17 unsere als Squash) + zwei Nahtstellen-Commits; nativ neu gebaut (`build_v6merge_2026-11-05.sh`, FA2 mit dem fünften V100-Patch von #1298). Einzelheiten STAND Nachtrag 05.11. 14:50. A/B-Kette `v6merge_ab_chain_2026-11-05.log` (je T T P T P, T = Eintrag auf v6, P = installierte Produktion, Seiten-Cache vor jedem Boot geräumt, Speicherspur, T1 zählt nicht, Texte T1 gegen P3).
+
+**GLM** (`ab_v6_glm_2026-11-05a.log`, 14:37–16:03, P = prod-v5g):
+
+| Messung | T2 / T4 (v6) | P3 / P5 (v5g) | Änderung |
+|---|---|---|---|
+| bereit nach (s, weniger ist besser) | 277 / 265 | 283 / 273 | gleich |
+| Model loading PP0 (s, weniger ist besser) | 206,9 / 202,7 | 203,9 / 201,7 | gleich |
+| init engine (s, weniger ist besser) | 22,7 / 22,1 | 22,5 / 22,4 | gleich |
+| Shmem / Swap-Spitze der Gruppe (GiB, weniger ist besser) | 1,29 / 1,29; 0,83 / 0,12 | 1,29 / 1,29; 0,87 / 0,58 | gleich |
+| Prefill 8 687 Token, Median aus drei (s; tok/s, mehr ist besser) | 4,23 (2 054) / 4,17 (2 085) | 4,23 (2 056) / 4,18 (2 080) | gleich |
+| Decode kurz (tok/s = ms/Token) | 41,81 = 23,9 / 41,81 = 23,9 | 41,80 = 23,9 / 41,81 = 23,9 | gleich |
+| GSM8K-30: richtig; Annahme je Runde | 29; 5,423 / 29; 5,423 | 29; 5,423 / 29; 5,423 | gleich |
+| Langer Kontext 516 196 Token: TTFT (s); ms/Schritt | 245,9; 94,8 / 245,7; 94,8 | 245,6; 92,6 / 245,6; 95,9 | gleich |
+| GPU-Speicherspitze je Karte 0/1/2/3/4 (MiB) | 48 311 / 30 646 / 47 015 / 30 502 / 30 848 | dieselben | gleich |
+| KV-Pool (Token, mehr ist besser) | 582 542 | 582 542 | gleich |
+| Qualitätsfragen (8, je 1 500 Token), T1 gegen P3 | – | – | alle 8 zeichengleich |
+
+**DeepSeek-V4** (`ab_v6_dsv4_2026-11-05a.log`, 16:03–17:10, P = prod-v5d):
+
+| Messung | T2 / T4 (v6) | P3 / P5 (v5d) | Änderung |
+|---|---|---|---|
+| bereit nach (s, weniger ist besser) | 267 / 270 | 267 / 262 | gleich |
+| Model loading PP0 (s, weniger ist besser) | 198,5 / 198,4 | 196,2 / 193,8 | gleich |
+| Swap-Spitze der Gruppe (GiB, weniger ist besser) | 0,12 / 0,12 | 0,12 / 0,12 | gleich |
+| Prefill 8 921 Token, Median aus drei (s; tok/s, mehr ist besser) | 2,28 (3 909) / 2,29 (3 898) | 2,28 (3 905) / 2,29 (3 901) | gleich |
+| Decode kurz, Läufe 1 / 2 / 3 (tok/s, mehr ist besser) | 51,67 / 57,53 / 55,90 und 51,75 / 57,61 / 56,05 | 51,69 / 57,52 / 55,88 und 57,50 / 57,51 / 55,87 | gleich (Median P5 57,50 durch den ersten Lauf) |
+| GSM8K-30: richtig; Decode (tok/s, aus dem Log); Annahme je Runde | 29; 69,35; 4,103 / 29; 69,32; 4,103 | 29; 69,35; 4,103 / 29; 69,34; 4,103 | gleich |
+| Langer Kontext 486 316 Token: TTFT (s); ms/Schritt | 146,5; 69,2 / 146,7; 69,7 | 146,3; 68,9 / 146,4; 68,9 | gleich (+0,4 % in T4, s. u.) |
+| GPU-Speicherspitze je Karte 0/1/2/3/4 (MiB) | 39 885 / 30 778 / 47 089 / 30 818 / 30 818; T4 Karte 0 42 583 | 39 885 / 30 778 / 47 089 / 30 818 / 30 818 | gleich |
+| KV-Pool (Token, mehr ist besser) | 509 292 | 509 292 | gleich |
+| Qualitätsfragen (8), T1 gegen P3 | – | – | alle 8 zeichengleich |
+
+Karte 0 in T4: Um 16:52:10 lud der GPU-Worker der STT-Suite für eine Diktat-Anfrage (`device=auto`, Mundwerk) Parakeet auf Karte 0 (3 516 MiB, `docker logs stt-suite`); `memory.used` zählt alle Prozesse der Karte. Kein v6-Effekt; die Langkontext-Probe von T4 lief danach mit dem Fremdprozess auf der Karte.
+
+**Qwen3.8-27B-FP8-RTX** (`ab_v6_fp8rtx_2026-11-05a.log` 17:11–18:48 T T P T P, dazu `ab_v6_fp8rtx_2026-11-05b.log` 18:51–20:08 T P T P; P = prod-v5d):
+
+| Messung | T (v6): a-T2 / a-T4 / b-T1 / b-T3 | P (v5d): a-P3 / a-P5 / b-P2 / b-P4 | Änderung |
+|---|---|---|---|
+| bereit nach (s, weniger ist besser) | 110 / 110 / 112 / 110 | 109 / 112 / 109 / 110 | gleich |
+| Prefill 8 490 Token, Median aus drei (s; weniger ist besser) | 5,57 / **6,83** / 5,55 / 5,57 | 5,56 / 5,55 / 5,56 / 5,55 | gleich bis auf a-T4 (+23 %) |
+| Decode kurz (tok/s = ms/Token) | 54,74 / 54,74 / 54,73 / 54,74 = 18,3 | 54,68 / 54,67 / 54,67 / 54,67 = 18,3 | gleich |
+| GSM8K-30: richtig; Annahme je Runde | 26; 3,296 in allen | 26; 3,296 in allen | gleich |
+| Langer Kontext 259 552 Token: TTFT (s); ms/Schritt | 287,1; 68,4 / **317,6**; 68,3 / 287,3; 68,6 / 288,8; 69,2 | 287,1; 68,7 / 287,1; 68,5 / 287,1; 68,6 / 289,2; 68,7 | gleich bis auf a-T4 (TTFT +11 %) |
+| GPU-Speicherspitze Karte 0 / 2 (MiB) | 46 911 / 46 911 | 46 925 / 46 925 | −14 |
+| KV-Pool (Token) | 876 615 | 876 615 | gleich |
+| Qualitätsfragen (8), T1 gegen P3 und T1 gegen P2 | – | – | alle 8 zeichengleich |
+
+a-T4 lief über den ganzen Arm langsamer im Prefill (alle drei Läufe 6,83–6,85 s, Langkontext-TTFT +11…13 %), Decode gleich; Takt, Temperatur, Leistung und CPU-Last unauffällig, Routen im Journal gleich, keine STT-Last auf den Karten 0/2. In früheren 27B-FP8-Reihen nie gesehen. Ab Reihe b schreibt `pcie-log-0511` die PCIe-Linkgeneration der Karten 0/2 mit (b: unter Last durchgehend Gen 3 x4). Das 27B bleibt deshalb vorerst auf v5d; kurze Bootreihe T/P `ab_v6_fp8rtx_2026-11-05c.log`.
+
+**Umstellung 05.11. 20:09–21:03** (`make_prod_v6_2026-11-05.sh`: Baum `1Cat-vLLM-v6`, Zweig `prod-v6` = 33a070e99, Tag `verified-2026-11-05-prod-v6`; `chain_v6_2026-11-05.sh glm dsv4 k7`: Eintrag aus dem A/B-T-Eintrag, Caches = Kopien der T-Caches als `*-<key>-prod-v6-2026-11-05`, Sicherungen `config.yaml.vor-prod-v6-<key>-2026-11-05`; Rücksprung je Eintrag `rollback_prod_v6_2026-11-05.sh <key>`). Kontrollläufe `validate_v6_{glm,dsv4,k7}_2026-11-05.log` bestanden:
+- GLM: bereit 293 s, Prefill 4,18 s (2 080 tok/s), Decode kurz 41,81 tok/s, Präfix-Cache 55 296 von 62 372 Token (29,2 → 4,5 s), Robustheit 5/5, 8 Texte = A/B-T1, GSM8K 29/30 (61,84 tok/s, Annahme 5,423), 516k 94,7 ms/Schritt, 7 Bildfälle (Handschrift-Plan diesmal mit Antwort, gedruckter Plan wie immer bis zur Grenze im Denken). Karte 3 +1,9 GiB: STT-Worker (Whisper, 2 100 MiB) während des Laufs.
+- DeepSeek: bereit 263 s, Prefill 2,28 s (3 918 tok/s), Decode kurz 55,88 tok/s, Präfix-Cache 66 560 von 66 761 Token (14,1 → 0,6 s), Robustheit 5/5, 8 Texte = A/B-T1, GSM8K 29/30 (Annahme 4,103), 486k 69,1 ms/Schritt, GPU-Spitzen wie im A/B.
+- K7 (kein A/B, Kontrolllauf gegen den v5d-Kontrolllauf vom 03.11.): Prefill 2,29 gegen 2,29 s, Decode kurz 52,59 gegen 52,58 tok/s, GSM8K 29 gegen 29 (68,82 gegen 68,21 tok/s, Annahme 4,449), 303k 69,7 gegen 69,7 ms/Schritt, 8 Texte gleich.
+
+**27B-Ausreißer, Nachmessung 21:03–21:47** (nur Boot + Client, `AB_ONLY_CLIENT`): Reihe c `ab_v6_fp8rtx_2026-11-05c.log` T P T P T P T P: Prefill T 5,54 / **6,83** / 5,54 / 5,55 s, P 5,55 / 5,55 / 5,55 / 5,54 s; Reihe d `ab_v6_fp8rtx_2026-11-05d.log` sechs T-Boots, alle 5,55 s. Der langsame Boot c-T3 trifft auf die Hundertstel den Wert von a-T4 (6,83–6,85 s je Lauf), also ein fester zweiter Zustand, gewählt beim Boot. PCIe der Karten 0/2 unter Last in jeder Probe Gen 3 x4 (`pcie-link.csv`), Initialisierung, Allreduce-Backends (`HOST_REDUCE`, `PYNCCL`) und Überlappungs-Meldung gleich. Bilanz v6 2 von 15 Boots langsam, v5d 0 von 8 (mit den älteren v5b/v5d-Läufen etwa 0 von 16). Ursache offen; das 27B bleibt auf v5d. Thread-Kern-Mitschnitt `ab_v6_fp8rtx_2026-11-05d/threads.csv` nur aus normalen Boots (kein Vergleich möglich).
+
+**27B-Ausreißer, Ursachensuche 22:10–23:10** (Peuqui 22:10: „dem sollten wir nachgehen … alle Modelle in der neuesten Version“):
+- nsys je Boot (`q27_slowboot_hunt_2026-11-05.log`, Aufnahmen `~/.cache/nsys-runs/q27-v6-hunt-{1,2}-1105/`): Lauf 1 langsam (8 490 Token 7,17 s unter nsys, 30k-Aufwärmen 23,9 s), Lauf 2 schnell (5,70 s; 19,7 s). Vergleich je Karte (`scratchpad/tools/nsys_compare.py`): Kernelzeit gleich (4 568 gegen 4 577 ms je Karte), aber alle Kopien langsamer: Host-Reduce-Kopier-Engine H2D/D2H je 10 920 MiB in 4 067 / 4 047 ms (2,82 GB/s) gegen 5 452 / 5 232 ms (2,10 GB/s), Gerät→Gerät 143 gegen 82 GB/s. Gleiche Streams, gleiche Stückgrößen (512 KB), gleiche Gleichzeitigkeit beider Richtungen (~80 %).
+- Ausgeschlossen: PCIe (Gen 3 x4 unter Last, Replays 0 auf allen Karten), Seitenlage des `/dev/shm`-Puffers und Kopiermuster (`hostreg_dma_probe_2026-11-05.py`: 16 frische Prozesse mit großen Kopien je 3,31 GB/s, 12 mit 512-KB-Stücken in beiden Richtungen je 5,53 GB/s = 2,77 je Richtung, kein zweiter Zustand), Host-Reduce-Code (zwischen v5d und v6 gleich; tmpfs ohne große Seiten, IOMMU aktiv).
+- v5d-Gegenprobe `ab_v6_fp8rtx_2026-11-05e.log`: 12 Boots alle 5,53–5,55 s. Bilanz v6 3 von 17 langsam, v5d 0 von 20 (Zufall ≈ 2 %) → der Zustand hängt am v6-Stand. Bisektion: 16 Boots auf v5g (unsere Linie ohne main-Merge), `ab_v5gq_fp8rtx_2026-11-05f.log`.
+- Bisektion 23:12–23:52 `ab_v5gq_fp8rtx_2026-11-05f.log`: 16 Boots auf v5g (unsere Linie, ohne main-Merge) alle 5,54–5,56 s → Ursache im main-Merge. In den nsys-Aufnahmen trifft die Verlangsamung nur die Host-Reduce-Ströme (Stream 33 H2D 3 721 → 5 100 ms, Stream 145 D2H 4 047 → 5 232 ms), gewöhnliche H2D aus dem PyTorch-Pinned-Speicher auf dem Rechenstrom kaum (345 → 352 ms); NCCL-Allgather gleich (42 Aufrufe, 29 gegen 30 ms).
+- Versuch `hostreduce-sequential-open` 531806ca6 (lokal, nicht gepusht: Rang 0 öffnet und pinnt den `/dev/shm`-Puffer allein, dann Rang 1), `ab_v6_fp8rtx_2026-11-05g.log` 00:05–00:41: wieder 1 von 16 langsam (T5 6,83 s) → Wettlauf der Ränge beim Anlegen widerlegt. Bilanz v6 4 von 33, v5g 0 von 16, v5d 0 von 20. Nächste Schritte: v6-Python mit v5g-Bibliotheken (nativ gegen Python trennen), dann main-Commits einzeln; Durchsatz des Puffers direkt nach dem Öffnen im Worker messen (Diagnose), um zu sehen, ob der Zustand beim Öffnen schon feststeht.
+- 06.11. 02:44–03:34: Tauschversuch v6-Python mit v5g-Bibliotheken (`1Cat-vLLM-v6py5gso`) nicht verwertbar (`host_reduce_open` auf Rang 1: `CUDA error: invalid argument`, Bibliotheken und Python passen nicht zusammen). Neuer Verdacht: Im langsamen Zustand wird auch die Gerät→Gerät-Kopie des Rechenstroms langsamer → Streams teilen sich eine Hardware-Warteschlange (CUDA-Standard 8, `CUDA_DEVICE_MAX_CONNECTIONS`; je Kontext 590 Streams). Reihe `ab_v6cmc_fp8rtx_2026-11-06b.log` (v6-Eintrag + `CUDA_DEVICE_MAX_CONNECTIONS=32`): **16 von 16 schnell**, Prefill einheitlich 5,52–5,53 s (normale v6-Boots 5,54–5,56 s), Decode 54,73–54,75 tok/s. Zweite Reihe `…2026-11-06c.log` zur Absicherung.
+- Zweite Reihe `ab_v6cmc_fp8rtx_2026-11-06c.log` (03:35–04:21, wieder `CUDA_DEVICE_MAX_CONNECTIONS=32`): T11 langsam (6,83 s), sonst 5,52–5,54 s → Hardware-Warteschlangen als Ursache widerlegt (allenfalls seltener: 1 von 32 gegen 4 von 33). Bilanz über alle v6-Varianten 6 von 81 langsam (≈ 7 %), v5g + v5d 0 von 36 (Zufall bei 7 % ≈ 7 %, mit den älteren v5b/v5d-Boots ≈ 2 %). Weitere v5d-Reihe `ab_v6_fp8rtx_2026-11-06d.log` (16 Boots).
+- v5d-Reihe `ab_v6_fp8rtx_2026-11-06d.log` (04:23–05:07): 16 von 16 schnell (5,54–5,55 s). **Endbilanz der Nacht: v6 6 von 81 langsam (≈ 7,4 %, unabhängig von sequenziellem Öffnen und 32 Hardware-Warteschlangen), v5g + v5d 0 von 52** (Zufall ≈ 2 %) → Ursache im main-Merge, Mechanismus: nur die Host-Reduce-Kopien über den `/dev/shm`-Puffer laufen ~25 % langsamer, Kerne gleich. Das 27B bleibt auf v5d.
+- 06.11. ~06:00: Öffnungsprobe ohne Modell (`hostreduce_open_probe_2026-11-06.py`, Log `hostreduce_open_probe_v6_2026-11-06.log`): 40 frische Prozesspaare mit der Umgebung des v6-Eintrags öffnen ohne Modell je Rang zwei Host-Reduce-Kanäle (den der TP-Gruppe und einen zusätzlichen) und messen je Kanal 20 Austausche à 10 MiB, 160 Werte 2,45–2,53 GB/s je Richtung (mehr ist besser), kein zweiter Zustand → der langsame Zustand entsteht erst im vollen Boot.
+- 06.11. 06:43–07:30, Reihe `ab_v6_fp8rtx_2026-11-06e.log` (Zweig `q27-hostreduce-probe` 1f9fbd3bc im Baum `1Cat-vLLM-main-v6`: Durchsatzprobe des Kanals direkt nach dem Öffnen und nach der Graph-Aufnahme, je Rang geloggt; Auswertung `hostreduce_probe_summary_2026-11-06.py`): **16 von 16 Boots schnell**, Prefill 8 490 Token 5,54–5,55 s (1 530–1 534 tok/s, weniger Zeit ist besser), Probe beim Öffnen 2,48–2,53 GB/s, nach der Aufnahme 2,49–2,53 GB/s (mehr ist besser). Bei 7,4 % Ausreißerquote ist 0 von 16 mit ≈ 29 % Zufall, also noch kein Befund; denkbar ist aber, dass die Probe den Zustand verhindert, weil sie den Kopier-Stream des Kanals zum ersten Mal in ruhiger Lage benutzt (ohne Probe geschieht das erst im Profil- bzw. Aufwärmlauf, neben den anderen Strömen). Nächste Reihe: nur die Probe nach der Aufnahme.

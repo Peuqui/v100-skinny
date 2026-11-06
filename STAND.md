@@ -13,6 +13,11 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 06.11. 22:58 (CET): DeepSeek-V4, DeepSeek-Coding-K7 und GLM laufen seit 22:04 / 22:18 / 22:33 aus dem eingefrorenen Baum `1Cat-vLLM-v6e` (Zweig `prod-v6e` = 5f1c557fb = prod-v6c + Port vllm#60472). Tag `verified-2026-11-06-prod-v6e`. Das 27B-FP8-RTX bleibt auf v5d.**
+- **A/B DeepSeek** `ab_v6e_dsv4_2026-11-06a.log` (T = v6e gegen P = v6b, T T P T P): Prefill 8 921 Token 2,28/2,29 gegen 2,28/2,29 s, Decode kurz 55,91/55,89 gegen 55,85/55,84 tok/s (17,9 ms/Token), GSM8K 29 / Annahme 4,103 überall, erstes Token 486k 145,84/145,94 gegen 145,79/145,97 s, Decode 486k 69,4/69,2 gegen 69,0/69,1 ms/Schritt, Texte 8/8 zeichengleich, GPU-Spitzen gleich (39 885/30 778/47 089/30 818/30 818 MiB). Damit ist auch e7e4c7f82 (DSpark-Kopf teilt die Laufzeitressourcen) für DeepSeek abgenommen.
+- **Kontrollläufe** `validate_v6e_{dsv4,k7,glm}_2026-11-06.log` (Kette `chain_v6e_2026-11-06.sh`): DeepSeek und K7 Texte 8/8 gleich, K7 Decode kurz 52,56 gegen 52,57 tok/s (v6b), erstes Token 303k 78,01 gegen 78,09 s; GLM Texte 8/8 gleich mit dem v6c-Kontrolllauf, Decode kurz 40,43 tok/s, erstes Token 516k 197,75 s, Präfix-Cache trifft, 7 Bildfälle inhaltlich richtig (Bildtexte sind wie schon zwischen v6a/v6b/v6c über Boots nicht zeichengleich, Temperatur 0), GPU-Spitzen unverändert (48 351/30 886/46 347/30 542/30 906 MiB).
+- **Rücksprung** `rollback_prod_v6e_2026-11-06.sh <dsv4|k7|glm>` (DeepSeek/K7 → v6b, GLM → v6c). Baum `1Cat-vLLM-v6d` (6fad70ad4) ist überholt.
+
 **Abschlussplan Optimierung (Peuqui 06.11.2026 22:20).** Prüfstufen und Schwellen in der Projekt-CLAUDE.md (Abschnitt Messen und Abnahme).
 - **Eine letzte Runde je Modell:** frisches Profil, nur Hebel ab 3 % (modellspezifisch) bzw. ab 1,5 % (generisch, nützt mehreren Modellen und dem nächsten Modell), gemessen an Decode, erstem Token und Prefill, ausdrücklich auch bei langen Prompts (RAG). Generisch vor modellspezifisch. Kleinere Hebel werden notiert, nicht gemacht.
 - **Upstream-Bündel** (Backports aus der Durchsicht vom 06.11., `~/.cache/upstream-backport-scan-2026-11-06/review_*.md`) in dieselbe Runde: Stufe 0 ohne A/B, Stufe 1 mit einer verkürzten A/B je Modell; jeder Backport auch als PR an 1Cat.

@@ -1,0 +1,1 @@
+[Bugfix][Core] Backport vllm-project/vllm#60472: close MessageQueue zmq resources via finalizer to avoid exit hang

@@ -17,7 +17,8 @@ so", nicht „wie ist es".
 - **Wirkung** (A/B `ab_draft8b_glm_2026-11-06b.log`): je Decode-Runde −2,0 ms (−2,6 %) bei gleicher Annahme, Decode kurz +2,7 %, GSM8K-Decode +1,9 %, Decode bei 516k −3,1 %, Prefill gleich, Texte zeichengleich; S4 1,35 GiB weniger belegt (KV S4 3,37 → 4,34 GiB; Pool bleibt 550 502, S0 begrenzt).
 - **Fork-Fehler gefunden und behoben** (e7e4c7f82): abgeleitete Entwurfs-Configs verloren per `replace()` die Laufzeitressourcen, quantisierte Entwürfe mit nativen SM70-Kernen scheiterten („requires an active runtime owner“). `share_runtime_resources()` an allen vier Stellen.
 - **MemoryHigh** der llama-swap-Gruppe seit 17:47 auf 20 G (Peuqui); Kontrollboot ohne Gruppen-Swap und Drosselung.
-- **Offen:** Schichtverlagerung S0 → S4 (Aufteilung 13,7,7,7,11), Testboot läuft.
+- **Hebel 2 verworfen:** Aufteilung 13,7,7,7,11 scheitert beim Laden auf S4 (46,16 von 47,27 GiB belegt, 1,18 GiB fehlen, dazu ≈ 1,4 GiB KV für 524k). Damit sind alle fünf GLM-Hebel vom 05.11. erledigt oder geprüft.
+- **Neuer Befund (offen):** Scheitert ein Boot in der Worker-Initialisierung (hier CUDA-OOM beim Laden), bleibt die EngineCore schlafend am Leben, der API-Server mit ihr; llama-swap meldet „starting“ bis zum Health-Timeout (2 400 s). Im Profil-Lauf scheiternde Boots melden sich dagegen sofort.
 
 **Nachtrag 06.11. 17:20 (CET): DeepSeek-V4 und Coding-K7 laufen seit 16:51 bzw. 17:05 ebenfalls aus `1Cat-vLLM-v6b` (a8244aad8) mit der Stückgrößen-Regel `--short-prompt-chunk-tokens 512 --short-prompt-threshold 6144` (Budget bleibt 1024). Tag `verified-2026-11-06-prod-v6b-dsv4-k7`.** Einzelheiten LEISTUNGSHISTORIE 06.11. (Abschnitt DeepSeek).
 - **Kurve** `ab_adachunk_dsv4_2026-11-06a.log`: Gleichstand bei DeepSeek ≈ 6,3k Token (früher als GLM, die Stücke sind billiger).

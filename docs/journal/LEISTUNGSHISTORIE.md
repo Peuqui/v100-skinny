@@ -1089,3 +1089,22 @@ Umstellung 06.11. 14:43 (`switch_prod_v6b_glm_2026-11-06.sh`: Eintrag = A/B-T-Ei
 ## 06.11.2026: Dieselbe Regel für DeepSeek-V4 (PP5, Budget 1024)
 
 TTFT-Kurve `ab_adachunk_dsv4_2026-11-06a.log` (T = Produktionseintrag v6 + `--short-prompt-chunk-tokens 512 --short-prompt-threshold 16384` aus `1Cat-vLLM-main-v6` a8244aad8, P = Produktion; je ein Boot, Kurzclient + `ttft_curve_probe_2026-11-06.py`; s, weniger ist besser): 1 037 Token 0,66 gegen 0,87 (−24 %), 2 063 Token 0,89 gegen 1,05 (−15 %), 4 115 Token 1,34 gegen 1,43 (−6 %), 8 219 Token 2,25 gegen 2,17 (+3,7 %), 8 921 Token (Client) 2,41 gegen 2,28 (+5,7 %); 16 427 / 33 059 Token (über der Schwelle, beide 1024er) 3,69 / 6,85 gegen 3,69 / 6,84. Gleichstand ≈ 6,3k Token, früher als bei GLM (DeepSeeks Stücke sind billiger, die Pipeline-Blase wiegt bei kurzen Prompts schwerer). A/B T T P T P mit Schwelle 6 144 ab 15:24 (`ab_adachunk_dsv4_2026-11-06b.log`).
+
+A/B/A/B 06.11. 15:24–16:38 (`ab_adachunk_dsv4_2026-11-06b.log`; T = Produktion v6 + `--short-prompt-chunk-tokens 512 --short-prompt-threshold 6144` aus `1Cat-vLLM-main-v6` a8244aad8, P = Produktion; Seiten-Cache geräumt, Speicherspur, TTFT-Kurve je Arm):
+
+| Messung (s, weniger ist besser) | T2 / T4 | P3 / P5 | Änderung |
+|---|---|---|---|
+| TTFT 1 037 Token | 0,66 / 0,66 | 0,87 / 0,87 | −24 % |
+| TTFT 2 063 Token | 0,89 / 0,89 | 1,05 / 1,05 | −15 % |
+| TTFT 4 115 Token | 1,34 / 1,34 | 1,43 / 1,43 | −6 % |
+| TTFT 8 219 / 16 427 / 33 059 Token | 2,18 / 3,68 / 6,83 und 2,19 / 3,70 / 6,84 | 2,17 / 3,68 / 6,83 und 2,17 / 3,69 / 6,84 | gleich |
+| Prefill 8 921 Token (Median aus drei) | 2,28 / 2,28 | 2,28 / 2,28 | gleich |
+| TTFT 486 316 Token; Decode dort (ms/Schritt) | 146,1; 69,1 / 146,2; 69,3 | 146,2; 69,5 / 146,1; 69,1 | gleich |
+| Decode kurz (tok/s, mehr ist besser) | 55,89 / 55,88 | 55,88 / 55,90 | gleich |
+| GSM8K-30: richtig; Decode (tok/s); Annahme | 29; 69,35; 4,103 (beide) | 29; 69,38; 4,103 / 29; 69,42; 4,103 | gleich |
+| Qualitätsfragen (8), T1 gegen P3 | – | – | alle 8 zeichengleich (alle kürzer als ein Stück) |
+| KV-Pool; GPU-Spitzen 0/1/2/3/4 (MiB) | 509 292; 39 885 / 30 780–30 820 / 47 091 / 30 820 / 30 820 | gleich | gleich (Budget bleibt 1024) |
+
+Plattenstörungen 16:10:57–16:11:59 (Boot T4, zählt nicht) und 16:37:23–16:37:57 (nach dem 486k-Lauf von P5); Messwerte deckungsgleich. Mittellange Prompts (von den Qualitätsfragen nicht abgedeckt): `mid_prompt_text_probe_2026-11-06.py` (Zusammenfassung eines Doku-Ausschnitts, 2 229 und 4 702 Token, greedy 300 Token) in `ab_adachunk_dsv4_2026-11-06c.log`: Texte T gegen P verschieden formuliert (erste Abweichung nach 27 bzw. 372 Zeichen), beide inhaltlich richtig und gleichwertig (Umgebungsvariablen: Kommunikations-SMs für DBO, DeepEP, CUDA-Graphen, Compile-Caches; Architektur-Doku: Selektoren, Tests/Snapshots, `KV_CODECS`, `MODELS_CONFIG_MAP`, `GDNSpecDecodeStateContract`).
+
+Umstellung DeepSeek und Coding-K7 06.11. 16:51 und 17:05 (`chain_v6b_dsv4_2026-11-06.sh dsv4 k7`: Produktionseintrag mit Baum v6 → v6b, Caches `*-<key>-prod-v6b-2026-11-06` als Kopie der installierten, Schalter `--short-prompt-chunk-tokens 512 --short-prompt-threshold 6144`, Sicherungen `config.yaml.vor-prod-v6b-{dsv4,k7}-2026-11-06`), Rücksprung `rollback_prod_v6b_dsv4_2026-11-06.sh <dsv4|k7>` (→ v6). K7 ist dasselbe Modell auf denselben Karten, deshalb wie am 05.11. nur mit Kontrolllauf. Tag `verified-2026-11-06-prod-v6b-dsv4-k7`. Kontrollläufe bestanden: DeepSeek (`validate_v6b_dsv4_2026-11-06.log`, 16:51–17:05) Prefill 2,28 s (3 916 tok/s), Decode kurz 55,89 tok/s, Präfix-Cache 66 560 von 66 761 Token (14,08 → 0,60 s), Robustheit 5/5, GSM8K 29/30, 8 Texte zeichengleich zum A/B-T1, Langkontext 178 480 / 287 039 / 486 316 Token 40,9 / 73,4 / 146,2 s (62,1 / 68,1 / 69,0 ms/Schritt), KV-Pool 509 292; K7 (`validate_v6b_k7_2026-11-06.log`, 17:05–17:18) Prefill 2,29 s, Decode kurz 52,57 tok/s, Präfix-Cache wie DeepSeek, Robustheit 5/5, GSM8K 29/30 (68,81 tok/s, Annahme 4,449 wie im v6-Kontrolllauf), 8 Texte zeichengleich zum v6-Kontrolllauf, Langkontext bis 302 833 Token 78,1 s, KV-Pool 317 261.

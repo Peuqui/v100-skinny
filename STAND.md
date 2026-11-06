@@ -13,6 +13,11 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 06.11. 17:20 (CET): DeepSeek-V4 und Coding-K7 laufen seit 16:51 bzw. 17:05 ebenfalls aus `1Cat-vLLM-v6b` (a8244aad8) mit der Stückgrößen-Regel `--short-prompt-chunk-tokens 512 --short-prompt-threshold 6144` (Budget bleibt 1024). Tag `verified-2026-11-06-prod-v6b-dsv4-k7`.** Einzelheiten LEISTUNGSHISTORIE 06.11. (Abschnitt DeepSeek).
+- **Kurve** `ab_adachunk_dsv4_2026-11-06a.log`: Gleichstand bei DeepSeek ≈ 6,3k Token (früher als GLM, die Stücke sind billiger).
+- **A/B/A/B** `ab_adachunk_dsv4_2026-11-06b.log`: TTFT 1k/2k/4k −24/−15/−6 % (0,66/0,89/1,34 gegen 0,87/1,05/1,43 s), ab 8k alles gleich (bis 486k, Decode, GSM8K, Texte), Speicher und KV-Pool unverändert. Mittellange Prompts (2,2k und 4,7k) per `mid_prompt_text_probe_2026-11-06.py` von Hand gelesen: anders formuliert, gleichwertig.
+- **Umstellung** `chain_v6b_dsv4_2026-11-06.sh dsv4 k7`, Rücksprung `rollback_prod_v6b_dsv4_2026-11-06.sh <dsv4|k7>` (→ v6). Kontrollläufe `validate_v6b_{dsv4,k7}_2026-11-06.log` bestanden. Damit laufen GLM, DeepSeek und K7 aus v6b; das 27B-FP8-RTX bleibt auf v5d.
+
 **Nachtrag 06.11. 15:10 (CET): GLM läuft seit 14:43 aus dem eingefrorenen Baum `1Cat-vLLM-v6b` (Zweig `prod-v6b` = a8244aad8 = prod-v6a + Stückgröße nach Promptlänge), Eintrag `--max-num-batched-tokens 1024 --short-prompt-chunk-tokens 512 --short-prompt-threshold 12288`. Tag `verified-2026-11-06-prod-v6b`.** Einzelheiten LEISTUNGSHISTORIE 06.11. (Abschnitt Prefill-Stücke).
 - **Befund:** Feste 1024er-Stücke sparen bei langen Prompts 14 % (MoE liest die Expertengewichte seltener je Token), kosten aber bei kurzen bis +41 % (1k), weil wenige große Stücke Füllen und Leeren der fünfstufigen Pipeline verlängern; Gleichstand ≈ 11,7k Token (`ttft_curve_probe_2026-11-06.py`).
 - **Lösung** a8244aad8 (Zweig `prefill-short-prompt-chunks`, jetzt auch `fork-main-v6`): `SchedulerConfig.short_prompt_chunk_tokens` / `short_prompt_threshold` (`--short-prompt-chunk-tokens`, `--short-prompt-threshold`, Vorgabe aus). Maßgeblich ist der ungecachte Promptteil beim Verlassen der Warteschlange (`Request.prefill_chunk_cap`).

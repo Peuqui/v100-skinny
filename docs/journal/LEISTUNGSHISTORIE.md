@@ -1112,3 +1112,25 @@ Umstellung DeepSeek und Coding-K7 06.11. 16:51 und 17:05 (`chain_v6b_dsv4_2026-1
 ## 06.11.2026: llama-swap MemoryHigh 16 → 20 GiB (Peuqui, 17:47)
 
 Kontrollboot GLM-Produktion v6b (`ab_memhigh_glm_2026-11-06m.log`, Speicherspur `ab_adachunk_glm_2026-11-06m/1-P-memtrace/`) gegen die Boots desselben Eintrags unter 16 GiB (`ab_adachunk_glm_2026-11-06a` T2/T4): Gruppe im RAM Spitze 17,82 gegen 15,5/16,0 GiB, Gruppen-Swap Spitze 0,09 gegen 1,02/1,35 GiB (weniger ist besser), Drosselereignisse im Boot 0 gegen 29 491/31 407, init engine 22,3 gegen 22,7/176 s, Rechner frei bei „bereit“ 7,24 gegen 6,6/8,5 GiB, Rechner-Swap im Boot +0,37 GiB; Prefill 3,87 s und Decode unverändert. Bedarf der Gruppe zur Spitze: anon 13,99, shmem 1,29, Datei 3,65 GiB.
+
+## 06.11.2026: GLM-Entwurf (DFlash2) in Block-FP8 (prod-v6c, Baum `1Cat-vLLM-v6c`, e7e4c7f82)
+
+Hebel 5 der GLM-Liste. Der DFlash2-Entwurf (2,18 GiB BF16; Linear-Gewichte 2,0 GiB: MLP 1,44, Attention 0,40, `fc` 0,16) rechnet je Decode-Runde 8 Zeilen auf S4 und liest dabei alle Linear-Gewichte. `quantize_dflash2_drafter_fp8_2026-11-06.py` schreibt ihn als Block-FP8 (E4M3, Skala je 128×128-Block, Format wie Qwen3.8-FP8) nach `/home/mp/models/GLM-5.3-Flash-DFlash2-Drafter-1.2B-FP8-Block128` (1,21 GiB, relativer Fehler je Tensor 2,64–2,65 %); Faltungs- und Selektor-Projektionen, Normen und Codebücher bleiben BF16. vLLM lädt ihn mit dem Block-FP8-Weg (QPN8 auf SM75, wie das 27B-FP8). Greedy-Verifizieren hält die Ausgabe des Zielmodells.
+
+Erster Boot (`ab_draft8_glm_2026-11-06a.log`) scheiterte im Profil-Lauf: „Engine SM70 policy requires an active runtime owner“. Ursache: `get_parallel_draft_model` baut die Entwurfs-Config per `dataclasses.replace()`; das private `_runtime_resources` geht dabei verloren, die FP8-Schichten binden ihren nativen Laufzeit-Kontext an eine eigene Tabelle, der Entwurf läuft aber im Vorwärtskontext des Zielmodells. Fix e7e4c7f82 (Zweig `draft-shares-runtime-resources`): `share_runtime_resources()` in `vllm/runtime_resources.py`, an allen vier abgeleiteten Entwurfs-Configs (DFlash-Modellbau und -Attention, V1-Proposer, Qwen4Exp-MTP); Test `tests/config/test_runtime_resources_derived.py`, die Spec-Decode-Tests der Stellen scheitern mit und ohne Fix an denselben 11 main-Attrappen.
+
+A/B/A/B 06.11. 18:22–19:40 (`ab_draft8b_glm_2026-11-06b.log`, T = Produktion v6b mit FP8-Entwurf auf e7e4c7f82, P = Produktion v6b; Rundenmessung je Arm):
+
+| Messung | T2 / T4 | P3 / P5 | Änderung |
+|---|---|---|---|
+| Zeit je Runde, drei Texte (ms, weniger ist besser) | 76,0 / 74,5 / 74,9 und 76,0 / 74,6 / 74,9 | 77,8 / 76,5 / 76,9 (beide) | −2,0 ms (−2,6 %) |
+| Runden / angenommen je Runde | 58 / 68 / 63; 2,36 / 1,84 / 2,05 | gleich | gleich |
+| Decode kurz (tok/s, mehr ist besser) | 40,48 / 40,46 | 39,42 / 39,42 | +2,7 % |
+| GSM8K-30: richtig; Decode (tok/s); Annahme | 29; 64,32; 5,511 / 29; 64,28; 5,511 | 29; 63,10; 5,533 (beide) | +1,9 % |
+| Decode bei 516k (ms/Schritt) | 91,2 / 91,2 | 94,2 / 94,1 | −3,1 % |
+| Prefill 8 687 Token (s); TTFT 150k / 250k / 516k (s) | 3,88; 62,2 / 105,3 / 197,3 und 3,86; 62,2 / 105,4 / 197,5 | 3,87; 62,2 / 105,3 / 197,5 (beide) | gleich |
+| Qualitätsfragen (8), T1 gegen P3 | – | – | alle 8 zeichengleich |
+| GPU-Spitze Karte 2 (S4) (MiB); KV S4 (GiB) | 46 347; 4,34 | 47 725; 3,37 | −1,35 GiB belegt, +0,97 GiB KV |
+| KV-Pool (Token) | 550 502 | 550 502 | gleich (S0 setzt die Grenze) |
+
+Umstellung 06.11. 19:41 (`switch_prod_v6c_glm_2026-11-06.sh`: Baum `1Cat-vLLM-v6c` aus `make_prod_v6c_2026-11-06.sh`, bytegleiche Bibliotheken, Caches `*-glm-prod-v6c-2026-11-06`, Sicherung `config.yaml.vor-prod-v6c-glm-2026-11-06`, einzige cmd-Änderung der Entwurfspfad), Rücksprung `rollback_prod_v6c_glm_2026-11-06.sh` (→ v6b). Tag `verified-2026-11-06-prod-v6c`. Kontrolllauf `validate_v6c_glm_2026-11-06.log` (19:41–20:04) bestanden: Prefill 3,87 s, Decode kurz 40,46 tok/s, Präfix-Cache 55 296 von 62 372 Token (23,03 → 3,67 s), Robustheit 5/5, GSM8K 29/30, 8 Texte zeichengleich zum A/B-T1, Langkontext 150k / 250k / 516k 62,2 / 105,4 / 197,4 s (87,3 / 86,9 / 92,5 ms/Schritt), KV-Pool 550 502, GPU-Spitzen 48 351 / 30 886 / 46 347 / 30 542 / 30 906 MiB; Bildfälle mit allen Kernfakten (Medikationsplan wie seit v6 im Denken vollständig gelesen, Abbruch an der 4 000-Token-Grenze). Plattenstörung 19:41–19:42 im Boot, ohne Wirkung auf die Werte. DeepSeek und K7 bleiben auf v6b.

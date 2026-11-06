@@ -13,6 +13,12 @@ so", nicht „wie ist es".
 
 ## Laufzeitumgebung (seit 10.09. abends; Nachträge 13.09. und 14.09.)
 
+**Nachtrag 06.11. 20:10 (CET): GLM läuft seit 19:41 aus `1Cat-vLLM-v6c` (prod-v6c = e7e4c7f82 = v6b + Korrektur der Entwurfs-Ressourcen) mit dem DFlash2-Entwurf in Block-FP8 (`/home/mp/models/GLM-5.3-Flash-DFlash2-Drafter-1.2B-FP8-Block128`). Tag `verified-2026-11-06-prod-v6c`.** DeepSeek und K7 bleiben auf v6b, das 27B auf v5d.
+- **Wirkung** (A/B `ab_draft8b_glm_2026-11-06b.log`): je Decode-Runde −2,0 ms (−2,6 %) bei gleicher Annahme, Decode kurz +2,7 %, GSM8K-Decode +1,9 %, Decode bei 516k −3,1 %, Prefill gleich, Texte zeichengleich; S4 1,35 GiB weniger belegt (KV S4 3,37 → 4,34 GiB; Pool bleibt 550 502, S0 begrenzt).
+- **Fork-Fehler gefunden und behoben** (e7e4c7f82): abgeleitete Entwurfs-Configs verloren per `replace()` die Laufzeitressourcen, quantisierte Entwürfe mit nativen SM70-Kernen scheiterten („requires an active runtime owner“). `share_runtime_resources()` an allen vier Stellen.
+- **MemoryHigh** der llama-swap-Gruppe seit 17:47 auf 20 G (Peuqui); Kontrollboot ohne Gruppen-Swap und Drosselung.
+- **Offen:** Schichtverlagerung S0 → S4 (Aufteilung 13,7,7,7,11), Testboot läuft.
+
 **Nachtrag 06.11. 17:20 (CET): DeepSeek-V4 und Coding-K7 laufen seit 16:51 bzw. 17:05 ebenfalls aus `1Cat-vLLM-v6b` (a8244aad8) mit der Stückgrößen-Regel `--short-prompt-chunk-tokens 512 --short-prompt-threshold 6144` (Budget bleibt 1024). Tag `verified-2026-11-06-prod-v6b-dsv4-k7`.** Einzelheiten LEISTUNGSHISTORIE 06.11. (Abschnitt DeepSeek).
 - **Kurve** `ab_adachunk_dsv4_2026-11-06a.log`: Gleichstand bei DeepSeek ≈ 6,3k Token (früher als GLM, die Stücke sind billiger).
 - **A/B/A/B** `ab_adachunk_dsv4_2026-11-06b.log`: TTFT 1k/2k/4k −24/−15/−6 % (0,66/0,89/1,34 gegen 0,87/1,05/1,43 s), ab 8k alles gleich (bis 486k, Decode, GSM8K, Texte), Speicher und KV-Pool unverändert. Mittellange Prompts (2,2k und 4,7k) per `mid_prompt_text_probe_2026-11-06.py` von Hand gelesen: anders formuliert, gleichwertig.

@@ -1,0 +1,169 @@
+{
+ "glm-kpool": [
+  {
+   "upstream_pr": 57477,
+   "sha": "697c113ceadd57d59e604305aa70c51c43333305",
+   "subject": "[Bugfix] Seed kpool tail by stride (backport of vllm-project/vllm#57477)"
+  },
+  {
+   "upstream_pr": 58454,
+   "sha": "fc157d9d6445299675c6b975612da84d1f14e4a1",
+   "subject": "[Bugfix] Fit kpool ring to drafts (backport of vllm-project/vllm#58454)"
+  }
+ ],
+ "persistent-topk": [
+  {
+   "upstream_pr": 63475,
+   "sha": "49f4a4140aed4a6c8f2718dee4cf485f836f74d7",
+   "subject": "[Bugfix] Sync CTA at radix arrival (backport of vllm-project/vllm#63475)"
+  },
+  {
+   "upstream_pr": 62936,
+   "sha": "ddb5d5640a494a1e3b010e3ebc15c21b020fc648",
+   "subject": "[Bugfix] Sync CTA at radix row end (backport of vllm-project/vllm#62936)"
+  },
+  {
+   "upstream_pr": 62467,
+   "sha": "33b278488b8ef6bd4c4a46dfadda7a334ed1b96f",
+   "subject": "[Bugfix] Mask float4 tail in topk (backport of vllm-project/vllm#62467)"
+  },
+  {
+   "upstream_pr": 49139,
+   "sha": "9e32111675fa6e115a112bf289fc57b1ef29aae1",
+   "subject": "[Bugfix] Count radix rows for ring (backport of vllm-project/vllm#49139)"
+  }
+ ],
+ "spec-core": [
+  {
+   "upstream_pr": 66048,
+   "sha": "bcdc5e1ddae768852e93f89f6203963f26b10be4",
+   "subject": "[Bugfix] Fix insert_resampled race (backport of vllm-project/vllm#66048)"
+  },
+  {
+   "upstream_pr": 45224,
+   "sha": "b0f90250a1243d5ed589d046176db7338d695f1a",
+   "subject": "[Bugfix] Fix shm reader stalls (backport of vllm-project/vllm#45224)"
+  },
+  {
+   "upstream_pr": 44490,
+   "sha": "119d19999baf6bdc4c661d6b8efb0b3e3bc894e3",
+   "subject": "[Bugfix] Fix new_block_ids leak (backport of vllm-project/vllm#44490)"
+  },
+  {
+   "upstream_pr": 54436,
+   "sha": "c483c516cb6c14e145caaadfb6d1b06fb89e46a7",
+   "subject": "[Bugfix] Fix PP sampled broadcast (backport of vllm-project/vllm#54436)"
+  },
+  {
+   "upstream_pr": 51694,
+   "sha": "21ae0e3dbe2cc3855ece5ffdca1f5ed120869196",
+   "subject": "[Bugfix] Fix MM block hashing (backport of vllm-project/vllm#51694)"
+  },
+  {
+   "upstream_pr": 47911,
+   "sha": "fff69f93ae3d0b70c2e730d891ce18741a0a20ec",
+   "subject": "[Bugfix] Hash draft model config (backport of vllm-project/vllm#47911)"
+  },
+  {
+   "upstream_pr": 52142,
+   "sha": "b850741d5df697008f1d2232d6d328a1d9dbb04c",
+   "subject": "[Bugfix] Load moved compile cache (backport of vllm-project/vllm#52142)"
+  }
+ ],
+ "dsv4-renderer-parser": [
+  {
+   "upstream_pr": 51856,
+   "sha": "dcf3f9da6a1b3c782da8115aaec6341ef0637860",
+   "subject": "[Bugfix] DSv4 tools on system msg (backport of vllm-project/vllm#51856)"
+  },
+  {
+   "upstream_pr": 51262,
+   "sha": "faabc7402676d16a0d7de1f3807905bc3ff13e2c",
+   "subject": "[Bugfix] DSv4 turn after system (backport of vllm-project/vllm#51262)"
+  },
+  {
+   "upstream_pr": 54838,
+   "sha": "ae98ee45bb2ce110f1e1acb437f46a4d8edeb41d",
+   "subject": "[Bugfix] DSML implicit param close (backport of vllm-project/vllm#54838)"
+  },
+  {
+   "upstream_pr": 55954,
+   "sha": "ce89a583cd51e9465de28dfd521d83845c21d29c",
+   "subject": "[Bugfix] DSML call without wrapper (backport of vllm-project/vllm#55954)"
+  },
+  {
+   "upstream_pr": 56141,
+   "sha": "55a2fc46ff12a7ca1927c4851047b400a487632d",
+   "subject": "[Bugfix] Misspelled DSML opener (backport of vllm-project/vllm#56141)"
+  },
+  {
+   "upstream_pr": 56271,
+   "sha": "0b342e7b5f88db12a68ba6d3f41109f912b80142",
+   "subject": "[Bugfix] DSML param w/o string= (backport of vllm-project/vllm#56271)"
+  }
+ ],
+ "openai-frontend-tools": [
+  {
+   "upstream_pr": 46303,
+   "sha": "17ccf26e0e6399108485022b3b14766c54701b86",
+   "subject": "[Bugfix] Keep length on cut tools (backport of vllm-project/vllm#46303)"
+  },
+  {
+   "upstream_pr": 40986,
+   "sha": "a318a4374d185d7e92ee6dc6104364d75a686e3d",
+   "subject": "[Bugfix] Report stream error early (backport of vllm-project/vllm#40986)"
+  },
+  {
+   "upstream_pr": 43984,
+   "sha": "df9d0b6fb81d4190d57a5f15bccbace15050b81e",
+   "subject": "[Bugfix] Non-finite tool numbers (backport of vllm-project/vllm#43984)"
+  },
+  {
+   "upstream_pr": 55743,
+   "sha": "3c861c10f4a613e2ebce5f6aca1697cc1cb6a493",
+   "subject": "[Bugfix] Exact large tool integers (backport of vllm-project/vllm#55743)"
+  },
+  {
+   "upstream_pr": 61297,
+   "sha": "ede40b7dd576cdb403a333e82ae47c2822abaf3f",
+   "subject": "[Bugfix] Whole-number tool ints (backport of vllm-project/vllm#61297)"
+  },
+  {
+   "upstream_pr": 44383,
+   "sha": "107579514d54c09ced4e0da4cb2062b437388739",
+   "subject": "[Bugfix] Report zero cached tokens (backport of vllm-project/vllm#44383)"
+  },
+  {
+   "upstream_pr": 42752,
+   "sha": "1ad9286f4cbb32e8889ecb756a25b768298d26a7",
+   "subject": "[Bugfix] Honor none tool_choice (backport of vllm-project/vllm#42752)"
+  },
+  {
+   "upstream_pr": 46091,
+   "sha": "bb3d6fc23cdaffb6b92425cd355c80d207000613",
+   "subject": "[Bugfix] Empty Qwen3 tool block (backport of vllm-project/vllm#46091)"
+  }
+ ],
+ "multimodal-images": [
+  {
+   "upstream_pr": 44974,
+   "sha": "de3c1b004a70ea5e7253062c68f3a2c1b07c3136",
+   "subject": "[Bugfix] EXIF orientation and tRNS (backport of vllm-project/vllm#44974)"
+  },
+  {
+   "upstream_pr": 56576,
+   "sha": "03392c75ec11a5b84bc2c8c8815e3f167387bef4",
+   "subject": "[Bugfix] Hash broken-EXIF images (backport of vllm-project/vllm#56576)"
+  },
+  {
+   "upstream_pr": 59565,
+   "sha": "b6583fb19e1ce433d780286064a71897c1965560",
+   "subject": "[Bugfix] Fix GLM image cache size (backport of vllm-project/vllm#59565)"
+  },
+  {
+   "upstream_pr": 59126,
+   "sha": "a3bc96809c6ad2539b64385bf518136bbd327568",
+   "subject": "[Bugfix] Size GLM ViT rope table (backport of vllm-project/vllm#59126)"
+  }
+ ]
+}

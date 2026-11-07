@@ -1,0 +1,1 @@
+[Bugfix][Frontend] Backport vllm-project/vllm#61297, #44383, #46091: whole-number integer tool arguments, zero cached tokens, empty qwen3_coder tool blocks

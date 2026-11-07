@@ -1,0 +1,1 @@
+[Bugfix][Core] Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample race, shm reader stalls, new_block_ids leak, PP broadcast, MM block hashing, compile cache

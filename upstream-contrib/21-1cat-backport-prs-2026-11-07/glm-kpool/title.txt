@@ -1,0 +1,1 @@
+[Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded stride, size the tail ring for speculative drafts

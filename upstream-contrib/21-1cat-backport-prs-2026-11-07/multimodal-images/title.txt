@@ -1,0 +1,1 @@
+[Bugfix][Multimodal] Backport vllm-project/vllm#56576, #59565, #59126: broken-EXIF image hashing, GLM-5.3-Flash image budget and vision rope table

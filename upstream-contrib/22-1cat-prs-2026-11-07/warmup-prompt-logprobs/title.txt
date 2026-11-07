@@ -1,0 +1,1 @@
+[Bugfix][Core] MRV2 warmup: no prompt logprobs on the full-chunk and kernel prefill profiles

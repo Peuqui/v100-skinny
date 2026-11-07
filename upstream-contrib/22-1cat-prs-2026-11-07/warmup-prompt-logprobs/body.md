@@ -1,0 +1,55 @@
+## Purpose
+
+#1402 added warmup cycles to Model Runner V2, among them a single-request prefill of a full chunk (min(max_num_batched_tokens, max_model_len - 1 - num_spec_steps) tokens). All warmup cycles run with SamplingParams.for_sampler_warmup(), and those ask for prompt logprobs (prompt_logprobs=1). For the full chunk that makes the last pipeline rank compute FP32 logits for every prompt token of the chunk: 1024 tokens x 154,880 vocabulary entries are 605 MiB for GLM-5.3-Flash, plus the log-softmax copy. The caching allocator keeps that memory reserved after warmup, outside the startup budget that the KV cache was sized from.
+
+Measured on our fork (github.com/Peuqui/1Cat-vLLM), GLM-5.3-Flash NVFP4 with DFlash2, PP=5 on 3 Tesla V100 + 2 Quadro RTX 8000, --max-num-batched-tokens 1024: the card of the last stage holds 47,433 to 47,445 MiB for the whole run after warmup with #1402, against 45,505 to 45,975 MiB with a build before #1402. The startup budget lines of that stage are byte-identical in both builds (weights, activation peak, KV 4.34 GiB, graphs 0.12 GiB), and the KV pool is the same (550,502 tokens); the extra memory appears in the two seconds between the graph capture and the end of warmup, where only the new cycles run. On the build before #1402, prompts of 13,312 and 14,336 tokens, whose last prefill chunk is a full 1024-token chunk, leave that card at 46,113 MiB, so serving without prompt logprobs never needs the memory. DeepSeek-V4-Flash (129,280-token vocabulary) on the same cards: 47,293 to 47,353 MiB on its last stage with #1402, 47,133 MiB before.
+
+The fix gives SamplingParams.for_sampler_warmup a prompt_logprobs argument (default 1, unchanged for every other caller) and runs the kernel-advertised and full-chunk profiles with prompt_logprobs=None. Those profiles exist to reach the model's long-row and divisible-by-16 kernel variants (#1402); every other sampler feature stays on, and the default batch and the request-count cycles still exercise prompt logprobs. SamplingParams derives skip_reading_prefix_cache from prompt_logprobs in __post_init__, so the value is passed at construction instead of being set afterwards.
+
+With the fix on our fork, the last stage is back at 46,445 MiB for GLM-5.3-Flash (46,345 MiB on the build before #1402) and at 47,133 MiB for DeepSeek-V4-Flash.
+
+Not a duplicate: I searched the open and closed PRs and issues of this repository for warmup prompt_logprobs, for_sampler_warmup, warmup memory, warmup full chunk, MRV2 warmup and 1402. #1225 (open) bounds the memory of prompt logprobs that requests ask for at run time (input processor limits, vllm/v1/worker/gpu/sample/prompt_logprob.py) and does not touch the warmup. #903 (open) changes other parts of vllm/v1/worker/gpu/warmup.py; this branch merges cleanly with it (git merge-tree). Issue #1403 (a 1.5.2 start failure on 16 GB V100) has a different cause (profile=None, Marlin instead of TurboMind, weights 12.87 GiB per GPU).
+
+AI assistance (Claude) was used for this change. I reviewed every changed line and ran the tests below.
+
+## Test Plan
+
+CUDA_VISIBLE_DEVICES="" python -m pytest tests/v1/worker/test_gpu_warmup_blocks.py, on this branch and with main's vllm/v1/worker/gpu/warmup.py in place of this branch's
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+GLM-5.3-Flash and DeepSeek-V4-Flash through the OpenAI API server on our fork, memory.used per card during the whole run (below).
+
+## Path coverage
+
+| Path / provider | Format | Key conditions (shape, TP/EP, graph, capability) | Expected selection / fallback | Evidence (source / static / executed / measured) | Unverified scope |
+| --- | --- | --- | --- | --- | --- |
+| MRV2 warmup, default batch and request-count cycles (warmup_kernels) | any | not a pooling model | unchanged: all sampler features including prompt logprobs | executed: test_kernel_prefill_warmup_runs_default_batch_and_extra_profile (prompt_logprobs 1 on these cycles) | none |
+| MRV2 warmup, kernel-advertised and full-chunk profiles | any | not a pooling model; full chunk = min(max_num_batched_tokens, max_model_len - 1 - num_spec_steps) | all sampler features except prompt logprobs | executed: the same test (prompt_logprobs None on these cycles, fails with main's warmup.py); measured: memory.used of the last stage on our fork | Model Runner V1 (does not run this warmup) |
+| pooling models | - | is_pooling_model | unchanged (no sampling params) | source | none |
+| SamplingParams.for_sampler_warmup() without argument | - | other callers | unchanged (prompt_logprobs=1) | source | none |
+
+## Acceleration and benchmark contract (required for performance changes)
+
+- Default enabled or opt-in: always on; bug fix for warmup memory, not a performance change.
+- Required CLI options and environment switches: none.
+- KV cache dtype used for the benchmark: n/a (memory check, no benchmark). The GLM-5.3-Flash entry uses its default cache dtype, the DeepSeek-V4-Flash entry fp8.
+- Wheel SHA or source commit: this branch on main c98a8d664. On our fork the same change is 525327866 on fork-main-v6 (our build with main c98a8d664 merged), against the same build without it (8cbf9c145).
+- PYTHONPATH, source overlays, or external native libraries used: our fork tree and a patched Triton 3.6 build (tensor cores on sm_70/sm_75) on PYTHONPATH for the model runs.
+- User-entry route-hit, speed, and output-quality evidence: OpenAI API server entry. With the fix, the eight fixed questions of our control runs are token-identical to the runs without it, GSM8K-30 29/30 for both models with the same acceptance length (GLM-5.3-Flash 5.511, DeepSeek-V4-Flash 4.103), prefill and decode unchanged (GLM-5.3-Flash 3.86 s for 8,687 tokens and 40.35 tok/s short decode; DeepSeek-V4-Flash 2.29 s for 8,921 tokens and 55.90 tok/s).
+- Existing kernel/backend registry and capability-rejection reasons: not touched.
+- Per-engine configuration and deprecated-variable compatibility: no setting added or changed.
+- New/changed environment metadata and generated reference check: none.
+- Route snapshot command and intentional changed rows: none.
+- SM70 registered variables / unregistered reads / model-parameter restrictions, before -> after: no change.
+
+## Test Result
+
+On this branch (main c98a8d664 + this commit), CUDA_VISIBLE_DEVICES="": tests/v1/worker/test_gpu_warmup_blocks.py 16 passed. With main's vllm/v1/worker/gpu/warmup.py in place of this branch's: 1 failed, 15 passed; the new check sees prompt logprobs on all three prefill profiles ([{1}, {1}, {1}] instead of [{1}, {None}, {None}]).
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/fused_moe.py (platform coupling 25 -> 32) and vllm/model_executor/layers/fused_moe/runner/moe_runner.py (37 -> 39); this PR touches neither file, and main c98a8d664 reports the same. pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD: passed.
+
+Memory peak per card on our fork (MiB, cards 0 to 4, lower is better; for both models card 2 is the last pipeline stage, a Quadro RTX 8000):
+GLM-5.3-Flash, runs with prompts up to 516,196 tokens: build before #1402 48,351 / 30,886 / 46,345 / 30,542 / 30,906; with #1402, without this fix 48,351 / 30,886 / 47,445 / 30,542 / 30,906; with this fix 48,351 / 30,886 / 46,445 / 30,542 / 30,906. Runs with prompts up to 8,687 tokens: 48,351 / 30,562 / 45,975 / 30,542 / 30,560 before #1402, 48,351 / 30,562 / 47,445 / 30,542 / 30,560 with #1402 without this fix.
+DeepSeek-V4-Flash, build before #1402: 39,885 / 30,862 / 47,133 / 30,862 / 30,862. With #1402, without this fix: 39,885 / 30,822 / 47,353 / 30,862 / 30,862. With this fix: 39,885 / 30,862 / 47,133 / 30,862 / 30,862.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUn2th65t88H9KvYkwK

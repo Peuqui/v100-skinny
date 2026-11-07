@@ -1,0 +1,63 @@
+## Purpose
+
+With pipeline parallelism, a prompt prefilled in n chunks over S stages takes about n + S - 1 chunk times, because the pipeline fills and drains around it. Larger chunks cost less per token (the MoE layers read their expert weights fewer times per token), so long prompts gain from them; a short prompt then has only a few large chunks, and filling and draining the pipeline dominates. A single max_num_batched_tokens cannot serve both. On our fork, GLM-5.3-Flash on PP=5 (3 Tesla V100 + 2 Quadro RTX 8000), time to first token with 1,024-token chunks against 512-token chunks, one run each, lower is better: 1,007 tokens 1.38 against 0.98 s (+41 %), 2,072 tokens 1.79 against 1.43 s (+25 %), 4,124 tokens 2.50 against 2.20 s (+14 %), 8,297 tokens 3.94 against 3.80 s (+3.7 %), 16,784 tokens 6.89 against 7.10 s (-3.0 %), 33,796 tokens 12.91 against 13.85 s (-6.8 %); at 169,693 to 516,196 tokens about 14 % less (A/B below).
+
+This PR adds two SchedulerConfig fields, short_prompt_chunk_tokens and short_prompt_threshold (--short-prompt-chunk-tokens, --short-prompt-threshold), off by default and only set together. When the scheduler takes a request from the waiting queue, it compares the request's uncached prompt part with the threshold: below it, the request is prefilled in chunks of short_prompt_chunk_tokens; otherwise it keeps the whole max_num_batched_tokens per chunk. The decision is stored on the request (Request.prefill_chunk_cap) and applies to its later chunks while it runs, so a prefix-cache hit with a short new part counts as a short prefill, and a preempted request decides again when it is resumed. The cap is applied after long_prefill_token_threshold and before the token budget, so the smaller of the two caps wins. The config rejects a chunk size that is not smaller than max_num_batched_tokens and requires chunked prefill.
+
+Not a duplicate: I searched the open and closed PRs of this repository with gh pr list --state all --search for short prompt, short_prompt, prefill chunk size, chunk size prompt length, pipeline fill, prefill_chunk_cap and max_num_batched_tokens chunk; none changes the chunk size by prompt length. The existing options do something else: long_prefill_token_threshold caps prompts longer than the threshold so that they do not starve other requests (and, as its docstring says, not when the request is alone in the batch), and mixed_prefill_step_latency_ms / mixed_prefill_min_tokens adapt the prefill budget while prefill shares a step with resident decode; neither shortens the chunks of a short prompt in a pure prefill. #1290 (piecewise graphs for short mixed prefills) and #1287 (4,096-token prefill chunks) change kernels and graphs, not the scheduler's chunk size.
+
+AI assistance (Claude) was used for this change. I reviewed every changed line and ran the tests and measurements below.
+
+## Test Plan
+
+CUDA_VISIBLE_DEVICES="" python -m pytest tests/v1/core/test_short_prompt_chunks.py tests/v1/core/test_scheduler.py tests/engine/test_arg_utils.py
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+GLM-5.3-Flash and DeepSeek-V4-Flash through the OpenAI API server on our fork, A/B below.
+
+## Path coverage
+
+| Path / provider | Format | Key conditions (shape, TP/EP, graph, capability) | Expected selection / fallback | Evidence (source / static / executed / measured) | Unverified scope |
+| --- | --- | --- | --- | --- | --- |
+| V1 scheduler, request taken from the waiting queue (Scheduler.schedule) | any | short_prompt_chunk_tokens and short_prompt_threshold set, chunked prefill on; uncached prompt part below the threshold | prefill chunks of short_prompt_chunk_tokens; otherwise max_num_batched_tokens as before | executed: test_short_prompt_chunks.py (short and long prompt, off by default, config checks); measured: GLM-5.3-Flash PP=5 and DeepSeek-V4-Flash PP=5 on our fork | max_num_seqs > 1 and mixed batches (our runs use max_num_seqs 1) |
+| running request with a cap (later chunks) | any | prefill_chunk_cap set at admission | the cap holds until the prompt is done | executed: the 1,500-token case schedules 512, 512, 476 | none |
+| settings off (default) | any | fields 0 | unchanged scheduling | executed: test_off_by_default; test_scheduler.py, test_arg_utils.py | none |
+
+## Acceleration and benchmark contract (required for performance changes)
+
+- Default enabled or opt-in: opt-in (both fields default to 0).
+- Required CLI options and environment switches: --short-prompt-chunk-tokens N --short-prompt-threshold T, with N smaller than --max-num-batched-tokens. Benchmark entries: GLM-5.3-Flash NVFP4 with DFlash2, PP=5, --max-model-len 524288 --max-num-seqs 1; changed --max-num-batched-tokens 1024 --short-prompt-chunk-tokens 512 --short-prompt-threshold 12288, reference --max-num-batched-tokens 512. DeepSeek-V4-Flash with DSpark (5 draft tokens), PP=5, --max-model-len 500000 --max-num-seqs 1 --max-num-batched-tokens 1024; changed with --short-prompt-chunk-tokens 512 --short-prompt-threshold 6144, reference without. Thresholds near the measured crossings of the two chunk sizes (about 11.7k tokens for GLM-5.3-Flash, about 6.3k for DeepSeek-V4-Flash).
+- KV cache dtype used for the benchmark: fp8 (DeepSeek-V4-Flash); the GLM-5.3-Flash entry's default cache dtype.
+- Wheel SHA or source commit: our fork (github.com/Peuqui/1Cat-vLLM), branch fork-main-v6 at a8244aad8 (this commit on our build) against the same build without the setting.
+- PYTHONPATH, source overlays, or external native libraries used: the fork tree and a patched Triton 3.6 build (tensor cores on sm_70/sm_75) on PYTHONPATH in both arms; native libraries identical in both arms.
+- User-entry route-hit, speed, and output-quality evidence: OpenAI API server entry; speed and output below.
+- Existing kernel/backend registry and capability-rejection reasons: not touched.
+- Per-engine configuration and deprecated-variable compatibility: two new SchedulerConfig fields with CLI flags; no environment variable.
+- New/changed environment metadata and generated reference check: docs/design/architecture/runtime_reference.md updated for the moved SchedulerConfig line numbers.
+- Route snapshot command and intentional changed rows: none.
+- SM70 registered variables / unregistered reads / model-parameter restrictions, before -> after: no change.
+
+## Test Result
+
+On this branch (main c98a8d664 + this commit), CUDA_VISIBLE_DEVICES="": tests/v1/core/test_short_prompt_chunks.py 6 passed; tests/engine/test_arg_utils.py 89 passed; tests/v1/core/test_scheduler.py 108 passed, 1 failed, the same on main c98a8d664: test_async_scheduling_pp_allows_rescheduling_with_output_placeholders needs two visible GPUs. With two Tesla V100 visible: tests/v1/core/test_scheduler.py 109 passed on this branch and 109 passed on main c98a8d664; tests/v1/core/test_short_prompt_chunks.py 6 passed.
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/fused_moe.py (platform coupling 25 -> 32) and vllm/model_executor/layers/fused_moe/runner/moe_runner.py (37 -> 39); this PR touches neither file, and main c98a8d664 reports the same. pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD: passed.
+
+Model A/B on our fork, PP=5 on 3 Tesla V100 + 2 Quadro RTX 8000, runs T T P T P through the same server entry, counted T#2 + T#4 against P#3 + P#5; for the prompts from 1k to 34k tokens two runs per length, the faster one counts. Lower is better unless noted.
+
+GLM-5.3-Flash, changed (1,024-token budget, 512-token chunks below 12,288 tokens) against reference (512-token budget):
+First token at 1,007 / 2,072 / 4,124 / 8,297 tokens: 0.98 / 1.43 / 2.20 / 3.80 s and 0.98 / 1.42 / 2.19 / 3.80 s changed, 0.98 / 1.42 / 2.20 / 3.80 s in both reference runs.
+First token at 16,784 tokens: 6.90 / 6.91 s changed, 7.07 / 7.08 s reference (-2.4 %).
+First token at 33,796 tokens: 12.92 / 12.95 s changed, 13.84 / 13.87 s reference (-6.7 %).
+First token at 169,693 tokens: 62.17 / 62.21 s changed, 72.52 / 72.43 s reference; at 283,230 tokens 105.41 / 105.67 s against 122.80 / 123.11 s; at 516,196 tokens 197.53 / 197.93 s against 230.06 / 230.25 s (-14.1 %).
+Unchanged: prefill of an 8,687-token prompt (median of three) 3.89 / 3.87 s changed, 3.88 / 3.88 s reference; short decode 39.42 / 39.41 tok/s changed, 39.43 / 39.44 tok/s reference; decode round at 516,196 tokens 94.7 / 95.1 ms changed, 94.3 / 93.2 ms reference. GSM8K-30 29/30 in all runs with the same acceptance length (5.533); the eight fixed questions byte-identical between the arms.
+The price is activation memory for the larger budget: KV pool 550,502 tokens changed, 582,542 reference (still above the 524,288 of --max-model-len); memory peak per card (MiB) 48,351 / 30,886 / 47,725 / 30,542 / 30,926 changed, 48,311 / 30,522 / 47,017 / 30,502 / 30,520 reference. The KV pool and memory cost come from --max-num-batched-tokens 1024, not from this PR: the same budget without the new fields costs the same and makes short prompts slower.
+
+DeepSeek-V4-Flash, changed (1,024-token budget, 512-token chunks below 6,144 tokens) against reference (1,024-token budget):
+First token at 1,037 tokens: 0.66 / 0.66 s changed, 0.87 / 0.87 s reference (-24 %); at 2,063 tokens 0.89 / 0.89 s against 1.05 / 1.05 s (-15 %); at 4,115 tokens 1.34 / 1.34 s against 1.43 / 1.43 s (-6 %).
+From 8,219 tokens on unchanged: 2.18 / 2.19 s against 2.17 / 2.17 s at 8,219 tokens, 6.83 / 6.84 s against 6.83 / 6.84 s at 33,059 tokens, 146.08 / 146.18 s against 146.18 / 146.11 s at 486,316 tokens. Short decode 55.89 / 55.88 tok/s changed, 55.88 / 55.90 tok/s reference (17.9 ms per token). GSM8K-30 29/30 in all runs; the eight fixed questions byte-identical between the arms. KV pool 509,292 tokens in all runs; memory peak per card unchanged (39,885 / 30,780 / 47,091 / 30,820 / 30,820 MiB, T#2 30,820 on card 1).
+Two prompts between the chunk sizes (2.2k and 4.7k tokens) were read by hand in both builds: worded differently, equally correct.
+
+Both settings have run on our fork since these A/Bs.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUn2th65t88H9KvYkwK

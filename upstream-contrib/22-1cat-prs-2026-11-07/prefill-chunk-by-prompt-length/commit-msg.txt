@@ -1,0 +1,22 @@
+perf(scheduler): prefill short prompts in smaller chunks
+
+With pipeline parallelism a prompt of few chunks spends much of its
+prefill filling and draining the pipeline, while long prompts gain from
+large chunks that read the weights less often per token. GLM-5.3-Flash
+on PP=5 (RTX 8000 + V100): 1024-token chunks take 13.8 to 14 % less time
+to the first token at 170k to 516k tokens but 41 % more at 1k and 3.7 %
+more at 8.3k than 512-token chunks.
+
+SchedulerConfig.short_prompt_chunk_tokens / short_prompt_threshold
+(--short-prompt-chunk-tokens / --short-prompt-threshold, off by default):
+a request whose uncached prompt part is shorter than the threshold when
+it leaves the waiting queue is prefilled in chunks of that size, every
+other one keeps max_num_batched_tokens. The decision is stored on the
+request (prefill_chunk_cap), so a prefix-cache hit with a short new part
+counts as a short prefill.
+
+Test: tests/v1/core/test_short_prompt_chunks.py.
+
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0172gtUn2th65t88H9KvYkwK

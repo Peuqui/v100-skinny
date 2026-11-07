@@ -1,0 +1,80 @@
+## Purpose
+
+On SM70-family GPUs, the speculative and single-row decode graphs of DeepSeek-V4 are bucketed by context (#874), with a last bucket at max_model_len (#1222), so the sparse indexer keeps its cuBLAS decode route. A decode round replays the graph of the smallest bucket that covers its context, and the decode indexer in that graph scores the bucket's key bound, not the context; the A/B below shows the decode round following the bucket. A context just above a bucket therefore pays for the whole gap to the next one.
+
+GraphModelContract.compressed_context_buckets derives the automatic list from short = index_topk * min(compress_ratios), 2,048 for DeepSeek-V4-Flash, as short * (1, 2, 8, 32, 64) below max_model_len plus max_model_len. Above 131,072 tokens every context pays for max_model_len: at --max-model-len 307200 a context of 178,480 tokens runs in the 307,200 bucket, at 500000 in the 500,000 bucket.
+
+This PR keeps short * (1, 2) and, from 8 * short on, places the buckets a step apart that starts at 8 * short and doubles each time the bucket passes four times the bucket where the step last changed. For DeepSeek-V4-Flash that is 16,384 apart up to 65,536, 32,768 apart up to 262,144, then 65,536 apart, and still a last bucket at max_model_len. The gap a context can pay for grows with about the square root of the context instead of in proportion to it. The lists:
+--max-model-len 131072: 2048, 4096, 16384, 32768, 49152, 65536, 98304, 131072 (before: 2048, 4096, 16384, 65536, 131072)
+--max-model-len 307200: 2048, 4096, 16384, 32768, 49152, 65536, 98304, 131072, 163840, 196608, 229376, 262144, 307200 (before: 2048, 4096, 16384, 65536, 131072, 307200)
+--max-model-len 500000: the same up to 262144, then 327680, 393216, 458752, 500000 (before: 2048, 4096, 16384, 65536, 131072, 500000)
+Up to 16,384 tokens of max_model_len the list is unchanged. An explicit compilation_config.runtime.dsv4_context_buckets (or VLLM_SM70_DSV4_DECODE_CONTEXT_BUCKETS) still replaces the automatic list. Only models with index_topk and compress_ratios get these buckets, i.e. DeepSeek-V4; GLM-5.3-Flash has no compress_ratios and no compressed buckets.
+
+The price is one more decode graph per bucket (the single-request uniform decode descriptor, as for the existing buckets): on our fork, boot +3 to +5 s and +44 to +84 MiB on four of the five cards at 500,000 tokens (16 instead of 7 buckets), no measurable boot change and +32 to +92 MiB on three of the five cards at 307,200 (13 instead of 6); the KV pool is unchanged.
+
+Not a duplicate: I searched the open and closed PRs of this repository with gh pr list --state all --search for context bucket, context buckets, dsv4_context_buckets, compressed_context_buckets, DECODE_CONTEXT_BUCKETS, graph_contract and decode bucket. The bucket mechanism comes from my merged #874 and #1222; my open #1221 adds the buckets to Model Runner V2 and does not change the list. None of the open PRs these searches return (#1221, #1243, #1347, #1379, #903) touches vllm/model_executor/models/graph_contract.py, vllm/platforms/sm70/graph_policy.py or the dispatcher's bucket policy.
+
+AI assistance (Claude) was used for this change. I reviewed every changed line and ran the tests and measurements below.
+
+## Test Plan
+
+python -m pytest tests/v1/cudagraph/test_cudagraph_dispatch.py, on this branch and with main's graph_contract.py in place of this branch's
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+DeepSeek-V4-Flash through the OpenAI API server on our fork, A/B below.
+
+## Path coverage
+
+| Path / provider | Format | Key conditions (shape, TP/EP, graph, capability) | Expected selection / fallback | Evidence (source / static / executed / measured) | Unverified scope |
+| --- | --- | --- | --- | --- | --- |
+| automatic compressed-index decode buckets (GraphModelContract.compressed_context_buckets via resolve_graph_plan) | any KV cache dtype | SM70 family (is_device_capability_family(70)), index_topk and compress_ratios in the HF config, no explicit dsv4_context_buckets | the list above; one bucketed graph per bucket for the single-request uniform decode descriptor | executed: test_dsv4_decode_context_buckets_end_at_the_model_length for 4096, 8192, 131072, 307200 and 500000; measured on our fork with the same lists set explicitly (A/B below) | Model Runner V1 with MTP on main (our runs use Model Runner V2 with DSpark, #1221) |
+| explicit dsv4_context_buckets or VLLM_SM70_DSV4_DECODE_CONTEXT_BUCKETS | - | set by the user, empty disables | unchanged: the explicit list wins | source; existing dispatcher tests | none |
+| models without index_topk or compress_ratios, max_model_len up to 16,384, non-SM70-family GPUs | - | - | unchanged | source; test cases 4096 and 8192 | none |
+
+## Acceleration and benchmark contract (required for performance changes)
+
+- Default enabled or opt-in: default enabled wherever the automatic buckets are (SM70 family, DeepSeek-V4 geometry, no explicit list).
+- Required CLI options and environment switches: none. Benchmark entries, the same in both arms apart from the bucket list: DeepSeek-V4-Flash (MXFP4 experts, FP8 dense), --pipeline-parallel-size 5 --kv-cache-dtype fp8 --max-num-seqs 1 --max-num-batched-tokens 1024, speculative method dspark (#1221), prompt-length-dependent prefill chunks --short-prompt-chunk-tokens 512 --short-prompt-threshold 6144 (#1416, only in our fork so far), --kernel-config '{"triton_sm7x_tensor_cores":true,"sm70_fp8":{"native":{"fp8_tune_small_shapes":true}},"sm70_runtime":{"freeze_tuning_after_warmup":true}}', VLLM_USE_V2_MODEL_RUNNER=1, VLLM_PP_LAYER_PARTITION=10,8,8,8,9. Entry 1: 7 speculative tokens, CUDA graph capture sizes 7 and 8, --max-model-len 307200 --num-gpu-blocks-override 3500. Entry 2: 5 speculative tokens, capture sizes 5 and 6, --max-model-len 500000 --num-gpu-blocks-override 4220 (500,000 tokens need #1344).
+- KV cache dtype used for the benchmark: fp8.
+- Wheel SHA or source commit: our fork (github.com/Peuqui/1Cat-vLLM), branch fork-main-v6 at 0b342e7b5 in both arms; the lists were set through compilation_config.runtime.dsv4_context_buckets. Entry 1: changed = this PR's list for 307,200, reference = no explicit list, i.e. main's automatic list (graph_contract.py of the fork is main's). Entry 2: changed = this PR's list for 500,000, reference = 2048,4096,16384,65536,131072,262144,500000, main's automatic list plus one bucket at 262,144 that the entry already set explicitly.
+- PYTHONPATH, source overlays, or external native libraries used: the fork tree and a patched Triton 3.6 build (tensor cores on sm_70/sm_75) on PYTHONPATH in both arms; native libraries identical in both arms.
+- User-entry route-hit, speed, and output-quality evidence: OpenAI API server entry; speed and output below.
+- Existing kernel/backend registry and capability-rejection reasons: not touched.
+- Per-engine configuration and deprecated-variable compatibility: no setting added or changed.
+- New/changed environment metadata and generated reference check: none.
+- Route snapshot command and intentional changed rows: none; more decode graphs, no route change.
+- SM70 registered variables / unregistered reads / model-parameter restrictions, before -> after: no change.
+
+## Test Result
+
+On this branch (main c98a8d664 + this commit), CUDA_VISIBLE_DEVICES="": tests/v1/cudagraph/test_cudagraph_dispatch.py -k context_bucket 16 passed. With main's vllm/model_executor/models/graph_contract.py in place of this branch's, -k end_at_the_model_length: 3 failed, 2 passed (131072, 307200 and 500000 fail with main's rule; for 4096 and 8192 both rules give the same list).
+tests/v1/cudagraph/test_cudagraph_dispatch.py on a Quadro RTX 8000 and on a Tesla V100: 53 passed on each; main c98a8d664 with the same native build: 51 passed on each (the two added cases are 8192 and 500000).
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/fused_moe.py (platform coupling 25 -> 32) and vllm/model_executor/layers/fused_moe/runner/moe_runner.py (37 -> 39); this PR touches neither file, and main c98a8d664 reports the same. pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD: passed.
+
+Model A/B on our fork, PP=5 on 3 Tesla V100 + 2 Quadro RTX 8000 (stages 0 and 4 on the RTX 8000), runs T T P T P through the same server entry, counted T#2 + T#4 against P#3 + P#5. Decode round in ms, lower is better; the tok/s of a round follow the acceptance of the run, so the ms per round are the number to compare.
+
+Entry 1 (--max-model-len 307200, this list against main's automatic list), changed / reference:
+32,668 tokens: 62.1 / 62.4 against 62.2 / 62.7 (bucket 32,768 against 65,536)
+91,790 tokens: 64.0 / 63.9 against 64.1 / 63.8 (98,304 against 131,072)
+178,480 tokens: 68.1 / 68.3 against 69.9 / 69.5 (196,608 against 307,200), -2.2 %
+248,418 tokens: 67.8 / 68.1 against 69.6 / 69.4 (262,144 against 307,200), -2.2 %
+251,371 tokens: 68.4 / 67.9 against 70.4 / 70.0 (262,144 against 307,200), -2.9 %
+287,039 tokens: 69.6 / 69.6 against 69.5 / 69.9 (307,200 in both)
+302,833 tokens: 70.1 / 69.6 against 69.6 / 69.8 (307,200 in both)
+First token unchanged, e.g. 78.25 / 78.32 s against 78.13 / 78.25 s at 302,833 tokens. Prefill of an 8,921-token prompt 2.28 / 2.29 s (3,907 / 3,903 tok/s) changed, 2.28 / 2.28 s (3,914 / 3,914 tok/s) reference; short decode 52.58 / 52.57 tok/s changed, 53.37 / 52.57 tok/s reference. GSM8K-30 29/30 in all four counted runs, the eight fixed questions token-identical between the arms. Ready after 259 / 259 s changed, 267 / 260 s reference. Memory peak per card (MiB): 39,885 / 30,366 and 30,426 / 46,627 / 30,426 / 30,426 changed, 39,885 / 30,334 / 46,627 / 30,394 / 30,394 reference. KV pool 317,261 tokens in all runs.
+
+Entry 2 (--max-model-len 500000, this list against main's automatic list plus 262,144), changed / reference:
+32,668 tokens: 57.4 / 57.6 against 57.4 / 57.6
+91,790 tokens: 58.8 / 58.6 against 58.9 / 58.6
+178,480 tokens: 62.1 / 62.4 against 63.1 / 62.1 (196,608 against 262,144)
+248,418 tokens: 62.3 / 62.4 against 62.6 / 62.0 (262,144 in both)
+287,039 tokens: 65.7 / 65.3 against 68.3 / 68.2 (327,680 against 500,000), -4.0 %
+323,199 tokens: 65.4 / 65.5 against 68.6 / 68.9 (327,680 against 500,000), -4.8 %
+456,810 tokens: 67.8 / 67.9 against 69.1 (P#5; 458,752 against 500,000), -1.8 %
+486,316 tokens: 68.9 / 69.1 against 69.5 (P#5; 500,000 in both)
+In P#3 the host's system disk reset three times during the two longest prompts, so P#3 does not count there. Prefill of an 8,921-token prompt 2.28 s in all counted runs; short decode 55.90 / 55.88 tok/s changed, 55.84 / 55.88 tok/s reference (17.9 ms per token); first token at 486,316 tokens 146.39 / 146.44 s changed, 146.57 s reference (P#5). GSM8K-30 29/30 in all counted runs with the same acceptance length (4.103), the eight fixed questions token-identical between the arms. Ready after 264 / 267 s changed, 261 / 262 s reference. Memory peak per card (MiB): 39,885 / 30,822 and 30,862 / 47,133 / 30,862 / 30,862 changed, 39,885 / 30,778 / 47,089 / 30,818 / 30,818 reference. KV pool 509,292 tokens in all runs.
+
+Both lists have run on our fork since these A/Bs, set explicitly; with this PR the automatic list gives the same buckets.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUn2th65t88H9KvYkwK

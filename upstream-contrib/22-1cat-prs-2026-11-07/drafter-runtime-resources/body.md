@@ -1,0 +1,54 @@
+## Purpose
+
+Worker-local runtime resources (vllm/runtime_resources.py) live in a private _runtime_resources map on the VllmConfig, outside the declared fields. Drafter configs are derived from the target's config with replace() (vllm.config.utils.replace, which, like dataclasses.replace, builds the new instance from the declared fields), so the copy does not carry that map, and runtime_resources_for() creates a fresh one for it. A drafter whose layers bind native SM70 owners while they are built therefore registers them in the copy's map, but the draft forward runs inside the target's forward context, which activates only the target's map. The first draft forward then fails.
+
+We hit this with a block-FP8 (128 x 128) quantization of the GLM-5.3-Flash DFlash2 drafter on PP=5 (Model Runner V2): the drafter's QPN8 projections bind their owner while the model is built, and the first draft forward, already in the dummy run at engine startup (GPUModelRunner._dummy_run -> DFlashSpeculator.propose), failed on the last pipeline stage (a Quadro RTX 8000) in fp8_qpn8_gemm_sm70_out with "RuntimeError: Engine SM70 policy requires an active runtime owner", so the engine did not start. A BF16 drafter binds no native owner and is not affected, which is why this has not shown up before.
+
+The first commit adds share_runtime_resources(derived, parent), which lets a config derived from parent for the same worker borrow parent's map and returns it, and uses it where drafter configs are derived: the DFlash drafter build (load_dflash_model) and the DFlash speculator's attention config in Model Runner V2, the Qwen4Exp MTP draft config, and the V1 proposers. The second commit moves the V1 sharing from SpecDecodeBaseProposer._create_draft_vllm_config to the two _get_model implementations (SpecDecodeBaseProposer and DraftModelProposer): the DFlash, draft-model, Gemma4 MTP and Step3.5 MTP proposers derive the base config once more with replace(), which would drop the map again, so the sharing sits on the config the drafter is actually built from.
+
+The map is the same private attribute that runtime_resources_for() already sets; it is never serialized or hashed (_RuntimeResources.__reduce__ drops it), so the change does not touch compile hashes or config transfers.
+
+Not a duplicate: I searched the open and closed PRs of this repository with gh pr list --state all --search for runtime resources, runtime owner, _runtime_resources, share_runtime_resources, active runtime owner, drafter quantized and draft config replace. #1153 (merged) shares proven native runtime contexts between owners, not between a target config and its derived drafter config; my merged #1183 fixed other causes of the DSpark regression after the per-engine policy migration; my closed #791 replaced the DFlash/DSpark draft config copy with vLLM's pydantic-aware replace, which is what main uses now and what drops the map. The open #903 (MTP optimizations with upstream runtime owners) changes other files (vllm/v1/worker/gpu/spec_decode/eagle/ and sm70_greedy_verify.py). No open PR touches vllm/runtime_resources.py or the replace() calls changed here.
+
+AI assistance (Claude) was used for this change. I reviewed every changed line and ran the tests below.
+
+## Test Plan
+
+CUDA_VISIBLE_DEVICES="" python -m pytest tests/config/test_runtime_resources_derived.py, on this branch, with the second commit reverted, and without both commits (only the test file)
+CUDA_VISIBLE_DEVICES="" python -m pytest tests/v1/spec_decode/test_dflash_mrv2_config.py tests/v1/spec_decode/test_dflash2.py tests/v1/spec_decode/test_draft_profile_scope.py, on this branch and on main
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+GLM-5.3-Flash with the block-FP8 DFlash2 drafter through the OpenAI API server on our fork (below).
+
+## Path coverage
+
+| Path / provider | Format | Key conditions (shape, TP/EP, graph, capability) | Expected selection / fallback | Evidence (source / static / executed / measured) | Unverified scope |
+| --- | --- | --- | --- | --- | --- |
+| Model Runner V2 DFlash drafter build (load_dflash_model) and attention config (DFlashSpeculator.attn_vllm_config) | any drafter dtype; block-FP8 drafter with native SM70 QPN8 owners | SM70 and SM75 | the drafter's owners land in the target's map, which the draft forward activates | measured on our fork: GLM-5.3-Flash PP=5 with the block-FP8 drafter fails without the first commit and runs with it | other quantized drafters |
+| V1 proposers (SpecDecodeBaseProposer._get_model, DraftModelProposer._get_model) | any | DFlash, draft model, Gemma4 MTP, Step3.5 MTP, EAGLE | the config passed to get_model borrows the target's map | executed: test_v1_proposers_load_their_drafter_with_the_target_resources (fails with the sharing on the base return value only) | V1 end to end with a quantized drafter |
+| Qwen4Exp MTP draft config (_make_draft_vllm_config) | any | - | borrows the target's map | source | Qwen4Exp MTP end to end on this branch |
+| drafters without native owners | - | - | unchanged behaviour (the shared map holds the same policies) | measured on our fork: the DSpark drafter of DeepSeek-V4-Flash runs as before with the first commit | BF16 DFlash2 drafters with the change |
+
+## Acceleration and benchmark contract (required for performance changes)
+
+- Default enabled or opt-in: always on; bug fix, not a performance change.
+- Required CLI options and environment switches: none.
+- KV cache dtype used for the benchmark: n/a.
+- Wheel SHA or source commit: this branch on main c98a8d664. The first commit runs on our fork (github.com/Peuqui/1Cat-vLLM, fork-main-v6, commit e7e4c7f82) since 2026-11-06; the V1 move of the second commit is new in this PR (our fork serves its drafters through Model Runner V2).
+- PYTHONPATH, source overlays, or external native libraries used: none.
+- User-entry route-hit, speed, and output-quality evidence: not a performance change. On our fork, GLM-5.3-Flash NVFP4 with the block-FP8 DFlash2 drafter (7 draft tokens, PP=5 on 3 Tesla V100 + 2 Quadro RTX 8000): without the first commit the engine failed to start with the error above; with it the drafter runs, at 76.0 / 74.5 / 74.9 ms per decode round for three prompts against 77.8 / 76.5 / 76.9 ms with the BF16 drafter (same acceptance, 2.36 / 1.84 / 2.05 tokens per round), GSM8K-30 29/30, and the eight fixed questions byte-identical to the BF16 drafter's. DeepSeek-V4-Flash with DSpark, whose drafter shares the same path, passed its A/B with the first commit (prefill, decode, GSM8K-30 and eight fixed questions unchanged).
+- Existing kernel/backend registry and capability-rejection reasons: not touched.
+- Per-engine configuration and deprecated-variable compatibility: no setting added or changed.
+- New/changed environment metadata and generated reference check: none.
+- Route snapshot command and intentional changed rows: none.
+- SM70 registered variables / unregistered reads / model-parameter restrictions, before -> after: no change.
+
+## Test Result
+
+On this branch (main c98a8d664 + the two commits), CUDA_VISIBLE_DEVICES="":
+- tests/config/test_runtime_resources_derived.py: 3 passed. With the second commit's change reverted (the V1 sharing back on the return value of SpecDecodeBaseProposer._create_draft_vllm_config): 1 failed, 2 passed; test_v1_proposers_load_their_drafter_with_the_target_resources fails, because the subclasses' replace() drops the map again.
+- tests/v1/spec_decode/test_dflash_mrv2_config.py, test_dflash2.py and test_draft_profile_scope.py: 177 passed, 13 skipped, 11 failed, and exactly the same 11 cases fail on main c98a8d664: test_dflash_embedding_buffer_covers_expanded_query_capacity[8] and [64], test_adaptive_lookup_disables_async_scheduling_by_default, test_adaptive_lookup_rejects_explicit_async_scheduling, test_selector_alignment_shadow_is_explicit_and_keeps_full_lattice, test_only_mrv2_dflash_skips_eagle_prefix_block_drop[dflash_ddtree-True], [eagle3-True] and [mtp-True], test_noncausal_draft_cannot_enter_flash_v100_small_query_fast_path, test_noncausal_dflash_capture_binds_paged_prefix_attention and test_qwen4exp_mtp_model_config_is_marked_before_revalidation. This PR does not change their outcome.
+- pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/fused_moe.py (platform coupling 25 -> 32) and vllm/model_executor/layers/fused_moe/runner/moe_runner.py (37 -> 39); this PR touches neither file, and main c98a8d664 reports the same. pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD: passed.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUn2th65t88H9KvYkwK

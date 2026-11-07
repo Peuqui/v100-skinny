@@ -1,0 +1,29 @@
+perf(graphs): finer automatic decode context buckets for long contexts
+
+A compressed-index decode round replays the graph of the smallest
+context bucket that covers its context, and the decode indexer in it
+scores the bucket's key bound, so a context just above a bucket pays
+for the whole gap to the next one. The automatic list was
+short * (1, 2, 8, 32, 64) plus max_model_len (short = index_topk *
+min(compress_ratios), 2048 for DeepSeek-V4-Flash): every context above
+131072 tokens paid for max_model_len.
+
+From 8 * short on, the buckets are now a step apart that starts at
+8 * short and doubles each time the bucket passes four times the bucket
+where the step last changed: for DeepSeek-V4-Flash 16384 apart up to
+65536, 32768 up to 262144, then 65536. Below 8 * short the list is
+unchanged, and the last bucket stays at max_model_len.
+
+DeepSeek-V4-Flash with DSpark (7 draft tokens), PP=5 on 3 V100 + 2
+RTX 8000, --max-model-len 307200, this list against the previous
+automatic one, decode round in ms (lower is better): 178480 tokens
+68.1 / 68.3 against 69.9 / 69.5, 251371 tokens 68.4 / 67.9 against
+70.4 / 70.0; contexts in the same bucket unchanged. The runs set the
+list explicitly; this rule gives the same list for 307200 and 500000.
+
+Test: tests/v1/cudagraph/test_cudagraph_dispatch.py pins the lists for
+4096, 8192, 131072, 307200 and 500000.
+
+Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_0172gtUn2th65t88H9KvYkwK

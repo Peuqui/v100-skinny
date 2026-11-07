@@ -1,0 +1,1 @@
+[Bugfix][Spec Decode] Derived drafter configs share the target's runtime resources

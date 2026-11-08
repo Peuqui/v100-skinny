@@ -59,3 +59,10 @@ Hardware-Unmögliches begründet überspringen; echte Fehler im Code beheben.
 Start 11:32 auf V100 1/3/4 (Einheiten `sm70-fix-c{1,3,4}`, Wächter `sm70-fix-guard`), Logs `~/.cache/bench-scripts/gputests_sm70_fixcheck_2026-11-08/card*/summary.log`.
 Danach: rote Fälle EINZELN wiederholen (Parallelartefakte ausschließen), Gruppe A fertigstellen und ebenso prüfen, Diffs durchsehen,
 thematisch committen (Konfiguration, Quantisierung, Spec-Decode/Worker, Attention), PRs nach AGENTS.md (Vorlage #1421).
+
+## Kartenprüfung erledigt (08.11. 11:32–11:36 und 11:48–11:58, V100 1/3/4)
+Alle 77 korrigierten Dateien gelaufen (Logs `gputests_sm70_fixcheck_2026-11-08/card*/` und `rest-card*/`). Gruppen B1/B2/C/D: 61 von 63
+grün; rot nur erwartet: `test_fp8.py` 4 (echter Fehler Marlin-Bias, Test bewusst rot), `test_flash_v100_trace_golden.py` 1 (Ratchet,
+Entscheidung). Gruppe A: 11 von 14 grün; rot `compile/test_config.py` 5 (vorher 6), `test_sm70_fp8_kernel_selection.py` 1 und
+`test_sm70_native_policy.py` 1 (beide vom Helfer noch nicht bearbeitet). Diese Läufe waren parallel zu dritt; rote vor der Wertung einzeln
+wiederholen. Offen bleibt: Gruppe A fertig, alle Diffs selbst lesen, die Entscheidungen oben, die drei echten Fehler, Commits, PRs.

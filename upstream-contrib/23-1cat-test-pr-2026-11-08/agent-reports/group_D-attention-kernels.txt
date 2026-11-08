@@ -1,0 +1,13 @@
+tests/kernels/attention/test_sm70_prefill_score_capacity.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_attention_test_sm70_prefill_score_capacity.py.log
+tests/kernels/attention/test_sm70_tp2_e4m3_scalar_fast.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_attention_test_sm70_tp2_e4m3_scalar_fast.py.log
+tests/kernels/attention/test_triton_decode_attention.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_attention_test_triton_decode_attention.py.log
+tests/kernels/test_fused_sigmoid_gating_delta_rule.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_kernels_test_fused_sigmoid_gating_delta_rule.py.log
+tests/kernels/test_sm70_gdn_mixed_spec_verify.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_kernels_test_sm70_gdn_mixed_spec_verify.py.log
+tests/kernels/test_sm70_mtp_gdn_mixed_qkv.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_kernels_test_sm70_mtp_gdn_mixed_qkv.py.log
+tests/kernels/test_sm70_qsa_page4_plan.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_kernels_test_sm70_qsa_page4_plan.py.log
+tests/v1/attention/test_flash_v100_attention_owner.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_v1_attention_test_flash_v100_attention_owner.py.log
+tests/v1/attention/test_flash_v100_decode_strategy.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_v1_attention_test_flash_v100_decode_strategy.py.log
+tests/v1/attention/test_flash_v100_impl_composition.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_v1_attention_test_flash_v100_impl_composition.py.log
+tests/v1/attention/test_flash_v100_trace_golden.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_v1_attention_test_flash_v100_trace_golden.py.log
+tests/v1/attention/test_sm70_grouped_codecs.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_v1_attention_test_sm70_grouped_codecs.py.log
+tests/vllm_flash_attn/test_fa2_library_per_device.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_vllm_flash_attn_test_fa2_library_per_device.py.log

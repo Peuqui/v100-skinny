@@ -1,0 +1,169 @@
+## AttributeError (35 Dateien)
+  tests/config/test_runtime_default_ownership.py  [10 failed, 21 passed, 14 warnings in 14.]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'model'
+  tests/kernels/ple/test_gguf_packed_embedding.py  [10 failed, 2 passed, 14 warnings in 4.49]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'kernel_config'
+  tests/kernels/quantization/test_gguf_compact_storage.py  [4 failed, 3 passed, 14 warnings in 2.98s]
+      AttributeError: 'GGUFNativeMoEMethod' object has no attribute 'expert_trace_tokens'
+  tests/model_executor/test_sm70_fp8_qpn8_pp2_tp4.py  [4 failed, 9 passed, 20 warnings in 4.72s]
+      AttributeError: 'TurboMindFp#LinearKernel' object has no attribute 'native_ops'
+  tests/test_sm70_gguf_teacher.py  [1 failed, 2 passed in 0.85s]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'named_modules'
+  tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py  [7 failed, 14 warnings in 3.01s]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'attention_config'
+  tests/v1/spec_decode/test_dflash2_ngram_assist.py  [3 failed, 24 passed, 14 warnings in 19.4]
+      AttributeError: 'DFlash#Speculator' object has no attribute '_diagnostics'
+  tests/v1/spec_decode/test_dflash_mrv2_config.py  [4 failed, 17 passed, 14 warnings in 7.49]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'observability_config'
+  tests/v1/spec_decode/test_sm70_mtp_head_scope.py  [1 failed, 8 passed, 14 warnings in 3.63s]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'sm#_draft_hot_vocab_ids'. Did you mean: 'sm#_draft_hot_vocab'?
+  tests/v1/worker/test_gpu_model_runner_v2_greedy.py  [9 failed, 1 passed, 14 warnings in 3.92s]
+      AttributeError: 'Sampler' object has no attribute 'greedy_token_fastpath'
+  tests/v1/worker/test_qwen4_exp_v2.py  [1 failed, 24 passed, 14 warnings in 9.30]
+      AttributeError: 'EagleSpeculator' object has no attribute 'draft_logits'
+  tests/v1/worker/test_sm70_long_attention_graphs.py  [6 failed, 38 passed, 14 warnings in 13.8]
+      AttributeError: 'GPUModelRunner' object has no attribute 'kv_connector'
+  tests/kernels/quantization/test_gguf_turbomind_model_moe.py  [5 failed, 1 passed, 14 warnings in 3.34s]
+      AttributeError: 'GGUFTurboMindMoEMethod' object has no attribute 'mma_planes'
+  tests/kernels/test_sm70_gdn_mixed_spec_verify.py  [8 failed, 14 warnings in 4.85s]
+      AttributeError: 'types.SimpleNamespace' object has no attribute '_spec_replay'
+  tests/kernels/test_sm70_qsa_page4_plan.py  [2 failed, 36 passed, 14 warnings in 14.1]
+      AttributeError: <module 'vllm.models.qwen#_exp.nvidia.ops.qsa' from '/home/mp/Projekte/vllm-research/#Cat-vLLM-pr-stale-sm#-tests/vllm/models/qwen#_ex
+  tests/quantization/test_awq_sm70_persistent_cap.py  [11 failed, 15 passed, 14 warnings in 0.8]
+      AttributeError: module 'vllm.model_executor.layers.quantization.awq_sm#_moe' has no attribute 'envs'
+  tests/quantization/test_nvfp4_mxfp4_gating.py  [4 failed, 7 passed, 14 warnings in 4.29s]
+      AttributeError: module 'vllm.model_executor.layers.quantization.compressed_tensors.schemes.compressed_tensors_w#a#_nvfp#' has no attribute '_is_sm#_tp
+  tests/quantization/test_sm70_nvfp4_qpn2.py  [9 failed, 11 passed, 19 warnings in 6.97]
+      AttributeError: 'Module' object has no attribute 'params_dtype'
+  tests/quantization/test_sm70_prepared_linear.py  [2 failed, 23 passed, 14 warnings in 7.86]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'invoke'
+  tests/v1/executor/test_executor.py  [2 failed, 9 passed, 18 warnings in 139.0]
+      AttributeError: 'NoneType' object has no attribute 'cpu'
+  tests/v1/spec_decode/test_sm70_mtp_safety.py  [1 failed, 19 passed, 15 warnings in 7.88]
+      AttributeError: 'NoneType' object has no attribute '_sampling_policy'
+  tests/v1/worker/test_gpu_model_runner.py  [6 failed, 34 passed, 2 skipped, 20 warni]
+      AttributeError: 'GPUModelRunner' object has no attribute '_runtime_trace'
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py  [3 failed, 1 passed, 14 warnings in 2.00s]
+      AttributeError: 'GPUModelRunner' object has no attribute 'kv_cache_config'. Did you mean: 'cache_config'?
+  tests/v1/worker/test_gpu_sampler_runtime_states.py  [1 failed, 16 passed, 14 warnings in 4.98]
+      AttributeError: 'Sampler' object has no attribute 'greedy_token_fastpath'
+  tests/v1/worker/test_release_cleanup.py  [2 failed, 3 passed, 15 warnings in 2.35s]
+      AttributeError: 'Worker' object has no attribute 'vllm_config'
+  tests/v1/worker/test_sm70_warmup_allocator.py  [3 failed, 9 passed, 14 warnings in 4.57s]
+      AttributeError: 'NoneType' object has no attribute 'estimate_graph_memory'
+  tests/kernels/quantization/test_gguf_original_prefill.py  [6 failed, 15 passed, 14 warnings in 6.35]
+      AttributeError: 'GGUFNativeMoEMethod' object has no attribute 'expert_trace_tokens'
+  tests/kernels/quantization/test_gguf_turbomind_model.py  [5 failed, 26 passed, 14 warnings in 17.2]
+      AttributeError: 'Module' object has no attribute 'prefix'
+  tests/kernels/test_fused_sigmoid_gating_delta_rule.py  [16 failed, 37 passed, 14 warnings in 43.]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'gdn_policy'
+  tests/kernels/test_sm70_mtp_gdn_mixed_qkv.py  [14 failed, 6 skipped, 14 warnings in 9.3]
+      AttributeError: 'types.SimpleNamespace' object has no attribute '_spec_replay'
+  tests/quantization/test_awq_qpn_sm70.py  [2 failed, 31 passed, 14 warnings in 0.85]
+      AttributeError: module 'vllm.model_executor.layers.quantization.awq_sm#_moe' has no attribute 'sm#_ops'
+  tests/quantization/test_sm70_quantized_model_compat.py  [14 failed, 10 passed, 20 warnings in 10.]
+      AttributeError: module 'vllm.model_executor.models.qwen#_dflash#' has no attribute 'envs'
+  tests/quantization/test_sm70_warmup.py  [14 failed, 11 passed, 14 warnings in 9.7]
+      AttributeError: module 'vllm.model_executor.warmup.awq_sm#_warmup' has no attribute 'envs'
+  tests/v1/spec_decode/test_dflash2.py  [6 failed, 171 passed, 29 warnings in 67.]
+      AttributeError: 'types.SimpleNamespace' object has no attribute 'disable_eagle_block_drop'
+  tests/v1/spec_decode/test_mtp.py  [3 failed, 5 passed, 20 warnings in 24.39]
+      AttributeError: 'NoneType' object has no attribute 'value'
+## AssertionError (17 Dateien)
+  tests/config/test_sm70_gguf.py  [1 failed, 2 passed, 14 warnings in 1.42s]
+      AssertionError: assert 'ace#ee#ae#afa#a#bb#f#b#a#a#eed#e#b#a#f#' != 'ace#ee#ae#afa#a#bb#f#b#a#a#eed#e#b#a#f#'
+  tests/kernels/moe/test_sm70_unquantized_moe_config.py  [1 failed, 32 passed, 14 warnings in 9.37]
+      AssertionError: assert {'BLOCK_SIZE_M': #, 'BLOCK_SIZE_N': #, 'BLOCK_SIZE_K': #, 'GROUP_SIZE_M': #, ...} is None
+  tests/kernels/quantization/test_gguf_dmv.py  [1 failed, 115 passed, 14 warnings in 44.]
+      AssertionError: assert 'ace#ee#ae#afa#a#bb#f#b#a#a#eed#e#b#a#f#' != 'ace#ee#ae#afa#a#bb#f#b#a#a#eed#e#b#a#f#'
+  tests/quantization/test_sm70_fp8_kernel_selection.py  [1 failed, 14 passed, 19 warnings in 6.28]
+      AssertionError: assert {'scope': 'se...}}, ...], ...} == {'scope': 'se...}}, ...], ...}
+  tests/quantization/test_sm70_glm53_modelopt_nvfp4.py  [1 failed, 10 passed, 14 warnings in 4.48]
+      AssertionError: Current vLLM config is not set. This typically means get_current_vllm_config() was called outside of a set_current_vllm_config() conte
+  tests/tools/test_policy_lifecycle_boundaries.py  [1 failed, 1 passed in 0.58s]
+      AssertionError: assert [{'name': 'VL...pe': '', ...}] == [{'name': 'VL... 'scope': ''}]
+  tests/v1/sample/test_sampler.py  [1 failed, 36 passed, 18 warnings in 13.9]
+      AssertionError: assert False
+  tests/v1/worker/test_gpu_input_batch.py  [1 failed, 12 passed in 3.61s]
+      AssertionError: Attribute _output_token_repair is different in <vllm.v#.worker.gpu_input_batch.InputBatch object at #> and <vllm.v#.worker.gpu_input_b
+  tests/v1/attention/test_flash_v100_attention_owner.py  [2 failed, 4 passed, 14 warnings in 2.32s]
+      AssertionError: assert [] == ['VLLM_FLASH_...IN_MODEL_LEN']
+  tests/v1/attention/test_flash_v100_impl_composition.py  [1 failed, 2 passed, 15 warnings in 2.22s]
+      AssertionError: assert {'_flash_v#...d#ca#f', ...} == {'_reset_deco...#a#c#', ...}
+  tests/kernels/quantization/test_sm70_dflash_context_reduction.py  [4 failed, 8 passed in 3.82s]
+      AssertionError: assert False
+  tests/kernels/quantization/test_sm70_qpn8_block_fp8.py  [1 failed, 95 passed, 14 warnings in 55.4]
+      AssertionError: Tensor-likes are not equal!
+  tests/quantization/test_sm70_moe_backend_override.py  [1 failed, 6 passed, 14 warnings in 3.30s]
+      AssertionError: Current vLLM config is not set. This typically means get_current_vllm_config() was called outside of a set_current_vllm_config() conte
+  tests/quantization/test_sm70_native_policy.py  [1 failed, 90 passed, 14 warnings in 25.4]
+      AssertionError: assert {'awq_gemm_sm...m#_out', ...} == {'awq_gemm_sm...m#_out', ...}
+  tests/v1/attention/test_flash_v100_trace_golden.py  [2 failed, 10 passed, 15 warnings in 44.0]
+      AssertionError: {'stage': 'prefill', 'codec': 'auto', 'head': #, 'gqa': #, ...}
+  tests/v1/attention/test_sm70_grouped_codecs.py  [1 failed, 12 passed in 3.59s]
+      AssertionError: assert {'clear_group...#ff#cc#aa'} == {'clear_group...c#e#ba#a'}
+  tests/v1/worker/test_gpu_model_runner_v2.py  [2 failed, 5 passed, 15 warnings in 3.02s]
+      AssertionError: assert True is False
+## RuntimeError (7 Dateien)
+  tests/kernels/attention/test_sm70_tp2_e4m3_scalar_fast.py  [1 failed, 19 passed in 8.66s]
+      RuntimeError: Ninja is required to load C++ extensions (pip install ninja to get it)
+  tests/kernels/moe/test_block_int8.py  [80 failed, 14 warnings in 33.97s]
+      RuntimeError: PassManager::run failed
+  tests/kernels/quantization/test_int8_kernel.py  [32 failed, 15 warnings in 17.61s]
+      RuntimeError: PassManager::run failed
+  tests/quantization/test_fp8.py  [8 failed, 9 passed, 4 skipped, 21 warnin]
+      RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+  tests/v1/attention/test_flash_v100_decode_strategy.py  [4 failed, 14 passed, 14 warnings in 5.90]
+      RuntimeError: q must be on CUDA
+  tests/kernels/quantization/test_gguf_expert_gate_up_dispatch.py  [12 failed, 12 passed, 14 warnings in 7.7]
+      RuntimeError: Explicit SM# native policy requires the policy-argument ABI in both _C and _moe_C; rebuild the normal extensions and remove legacy compu
+  tests/quantization/test_compressed_tensors.py  [15 failed, 7 passed, 4 skipped, 16 warni]
+      RuntimeError: Engine core initialization failed. See root cause above. Failed core proc(s): {}
+## TypeError (5 Dateien)
+  tests/kernels/core/test_sm70_sampler_graph_branch.py  [2 failed, 3 passed, 14 warnings in 2.80s]
+      TypeError: dynamic_func() missing # required positional arguments: 'block' and 'has_floor'
+  tests/kernels/quantization/test_deepseek_v41_tail.py  [4 failed, 14 warnings in 2.88s]
+      TypeError: test_tail_all_four_batches_tp_offsets_and_mixed_formats_are_fp#.<locals>.<lambda>() takes # positional arguments but # were given
+  tests/quantization/test_sm70_compressed_tensors_fastpaths.py  [2 failed, 3 passed, 15 warnings in 2.42s]
+      TypeError: test_compressed_tensors_channel_fp#_prepares_and_dispatches_turbomind.<locals>.fake_prepare() got an unexpected keyword argument 'native_po
+  tests/quantization/test_sm70_awq_active_grouped_decode.py  [2 failed, 32 passed, 14 warnings in 0.99]
+      TypeError: test_warmup_reuses_active_op_and_runtime_policy.<locals>.<lambda>() got an unexpected keyword argument 'native_policy'
+  tests/v1/sample/test_rejection_sampler.py  [4 failed, 82 passed, 14 warnings in 42.1]
+      TypeError: '<=' not supported between instances of 'Mock' and 'int'
+## assert (3 Dateien)
+  tests/kernels/quantization/test_gguf_segment_prefill.py  [8 failed, 2 passed, 14 warnings in 5.93s]
+      assert False
+  tests/model_executor/layers/test_gdn_full_forward_device_gate.py  [1 failed, 4 passed, 14 warnings in 2.51s]
+      assert False
+  tests/quantization/test_sm70_modelopt_nvfp4.py  [1 failed, 5 passed, 14 warnings in 2.88s]
+      assert False
+## Failed (2 Dateien)
+  tests/config/test_sm70_debug.py  [22 failed, 9 passed, 7 warnings in 7.42s]
+      Failed: DID NOT WARN. No warnings of type (<class 'FutureWarning'>,) were emitted.
+  tests/model_executor/layers/test_sm70_dense_provider.py  [1 failed, 12 passed, 15 warnings in 0.82]
+      Failed: DID NOT RAISE RuntimeError
+## triton.compiler.errors.CompilationError (2 Dateien)
+  tests/kernels/attention/test_triton_decode_attention.py  [32 failed, 85 passed in 66.47s (0:01:06)]
+      triton.compiler.errors.CompilationError: at #:#:
+  tests/kernels/quantization/test_block_int8.py  [32 failed, 15 warnings in 10.64s]
+      triton.compiler.errors.CompilationError: at #:#:
+## NotImplementedError (2 Dateien)
+  tests/quantization/test_sm70_turbomind_adapter.py  [5 failed, 8 passed, 14 warnings in 5.43s]
+      NotImplementedError: Could not run '_C::nvfp#_gemm_sm#_out' with arguments from the 'CPU' backend. This could be because the operator doesn't exist fo
+  tests/quantization/test_sm70_fp8_workspace_aot_reload.py  [5 failed, 2 passed, 14 warnings in 3.96s]
+      NotImplementedError: Could not run '_C::fp#_qpn#_dispatch_sm#_out' with arguments from the 'CPU' backend. This could be because the operator doesn't e
+## pydantic_core._pydantic_core.ValidationError (1 Dateien)
+  tests/compile/test_config.py  [6 failed, 36 passed, 29 warnings in 148.]
+      pydantic_core._pydantic_core.ValidationError: # validation error for VllmConfig
+## subprocess.CalledProcessError (1 Dateien)
+  tests/kernels/attention/test_sm70_prefill_score_capacity.py  [7 failed in 20.00s]
+      subprocess.CalledProcessError: Command '['/home/mp/vllm/venv/bin/python', '-c', '\nimport json\nimport torch\nfrom vllm.vllm_flash_attn import flash_a
+## ValueError (1 Dateien)
+  tests/kernels/quantization/test_gguf_device_transcode.py  [2 failed, 35 passed, 1 skipped, 15 warni]
+      ValueError: GGUF lattice scale overflows canonical FP# coefficients
+## NameError (1 Dateien)
+  tests/quantization/test_sm70_fp4_mainflow.py  [168 failed, 55 passed, 14 warnings in 6.]
+      NameError: name '_DFLASH_NVFP#_TRACE_ARMED' is not defined
+## IndexError (1 Dateien)
+  tests/vllm_flash_attn/test_fa2_library_per_device.py  [3 failed, 2 passed in 1.37s]
+      IndexError: list index out of range

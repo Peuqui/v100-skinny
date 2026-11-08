@@ -1,0 +1,16 @@
+tests/kernels/ple/test_gguf_packed_embedding.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_ple_test_gguf_packed_embedding.py.log
+tests/kernels/quantization/test_block_int8.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_quantization_test_block_int8.py.log
+tests/kernels/quantization/test_gguf_compact_storage.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_quantization_test_gguf_compact_storage.py.log
+tests/kernels/quantization/test_gguf_device_transcode.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_kernels_quantization_test_gguf_device_transcode.py.log
+tests/kernels/quantization/test_gguf_dmv.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_kernels_quantization_test_gguf_dmv.py.log
+tests/kernels/quantization/test_gguf_expert_gate_up_dispatch.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_kernels_quantization_test_gguf_expert_gate_up_dispatch.py.log
+tests/kernels/quantization/test_gguf_original_prefill.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_kernels_quantization_test_gguf_original_prefill.py.log
+tests/kernels/quantization/test_gguf_segment_prefill.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_kernels_quantization_test_gguf_segment_prefill.py.log
+tests/kernels/quantization/test_gguf_turbomind_model_moe.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_kernels_quantization_test_gguf_turbomind_model_moe.py.log
+tests/kernels/quantization/test_gguf_turbomind_model.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_kernels_quantization_test_gguf_turbomind_model.py.log
+tests/kernels/quantization/test_int8_kernel.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_kernels_quantization_test_int8_kernel.py.log
+tests/quantization/test_awq_qpn_sm70.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_awq_qpn_sm70.py.log
+tests/quantization/test_awq_sm70_persistent_cap.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_awq_sm70_persistent_cap.py.log
+tests/quantization/test_sm70_awq_active_grouped_decode.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_awq_active_grouped_decode.py.log
+tests/test_sm70_gguf_teacher.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_test_sm70_gguf_teacher.py.log
+tests/kernels/moe/test_block_int8.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_moe_test_block_int8.py.log

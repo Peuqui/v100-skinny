@@ -1,0 +1,14 @@
+tests/compile/test_config.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_compile_test_config.py.log
+tests/config/test_runtime_default_ownership.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_config_test_runtime_default_ownership.py.log
+tests/config/test_sm70_debug.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_config_test_sm70_debug.py.log
+tests/config/test_sm70_gguf.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_config_test_sm70_gguf.py.log
+tests/model_executor/layers/test_gdn_full_forward_device_gate.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_model_executor_layers_test_gdn_full_forward_device_gate.py.log
+tests/model_executor/layers/test_sm70_dense_provider.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_model_executor_layers_test_sm70_dense_provider.py.log
+tests/model_executor/test_sm70_fp8_qpn8_pp2_tp4.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_model_executor_test_sm70_fp8_qpn8_pp2_tp4.py.log
+tests/quantization/test_nvfp4_mxfp4_gating.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_nvfp4_mxfp4_gating.py.log
+tests/quantization/test_sm70_fp8_kernel_selection.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_quantization_test_sm70_fp8_kernel_selection.py.log
+tests/quantization/test_sm70_glm53_modelopt_nvfp4.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_quantization_test_sm70_glm53_modelopt_nvfp4.py.log
+tests/quantization/test_sm70_modelopt_nvfp4.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_sm70_modelopt_nvfp4.py.log
+tests/quantization/test_sm70_moe_backend_override.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_moe_backend_override.py.log
+tests/quantization/test_sm70_native_policy.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_native_policy.py.log
+tests/tools/test_policy_lifecycle_boundaries.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_tools_test_policy_lifecycle_boundaries.py.log

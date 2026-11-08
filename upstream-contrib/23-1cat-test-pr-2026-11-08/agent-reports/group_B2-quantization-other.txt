@@ -1,0 +1,13 @@
+tests/kernels/quantization/test_deepseek_v41_tail.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/tests_kernels_quantization_test_deepseek_v41_tail.py.log
+tests/kernels/quantization/test_sm70_dflash_context_reduction.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_kernels_quantization_test_sm70_dflash_context_reduction.py.log
+tests/kernels/quantization/test_sm70_qpn8_block_fp8.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_kernels_quantization_test_sm70_qpn8_block_fp8.py.log
+tests/quantization/test_compressed_tensors.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_compressed_tensors.py.log
+tests/quantization/test_fp8.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_quantization_test_fp8.py.log
+tests/quantization/test_sm70_compressed_tensors_fastpaths.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_sm70_compressed_tensors_fastpaths.py.log
+tests/quantization/test_sm70_fp4_mainflow.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_fp4_mainflow.py.log
+tests/quantization/test_sm70_fp8_workspace_aot_reload.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_fp8_workspace_aot_reload.py.log
+tests/quantization/test_sm70_nvfp4_qpn2.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_sm70_nvfp4_qpn2.py.log
+tests/quantization/test_sm70_prepared_linear.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card3/tests_quantization_test_sm70_prepared_linear.py.log
+tests/quantization/test_sm70_quantized_model_compat.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_quantized_model_compat.py.log
+tests/quantization/test_sm70_turbomind_adapter.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card1/tests_quantization_test_sm70_turbomind_adapter.py.log
+tests/quantization/test_sm70_warmup.py /home/mp/.cache/bench-scripts/gputests_sm70_sweep_2026-11-08/card4/tests_quantization_test_sm70_warmup.py.log

@@ -1,0 +1,1 @@
+[Test] Bring seven SM70 tests in line with current main

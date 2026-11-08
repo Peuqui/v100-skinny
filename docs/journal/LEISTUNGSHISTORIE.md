@@ -1136,3 +1136,77 @@ A/B/A/B 06.11. 18:22–19:40 (`ab_draft8b_glm_2026-11-06b.log`, T = Produktion v
 Umstellung 06.11. 19:41 (`switch_prod_v6c_glm_2026-11-06.sh`: Baum `1Cat-vLLM-v6c` aus `make_prod_v6c_2026-11-06.sh`, bytegleiche Bibliotheken, Caches `*-glm-prod-v6c-2026-11-06`, Sicherung `config.yaml.vor-prod-v6c-glm-2026-11-06`, einzige cmd-Änderung der Entwurfspfad), Rücksprung `rollback_prod_v6c_glm_2026-11-06.sh` (→ v6b). Tag `verified-2026-11-06-prod-v6c`. Kontrolllauf `validate_v6c_glm_2026-11-06.log` (19:41–20:04) bestanden: Prefill 3,87 s, Decode kurz 40,46 tok/s, Präfix-Cache 55 296 von 62 372 Token (23,03 → 3,67 s), Robustheit 5/5, GSM8K 29/30, 8 Texte zeichengleich zum A/B-T1, Langkontext 150k / 250k / 516k 62,2 / 105,4 / 197,4 s (87,3 / 86,9 / 92,5 ms/Schritt), KV-Pool 550 502, GPU-Spitzen 48 351 / 30 886 / 46 347 / 30 542 / 30 906 MiB; Bildfälle mit allen Kernfakten (Medikationsplan wie seit v6 im Denken vollständig gelesen, Abbruch an der 4 000-Token-Grenze). Plattenstörung 19:41–19:42 im Boot, ohne Wirkung auf die Werte. DeepSeek und K7 bleiben auf v6b.
 
 Hebel 2 (eine Schicht von S0 nach S4) mit dem FP8-Entwurf geprüft: Boot mit `VLLM_PP_LAYER_PARTITION=13,7,7,7,11` (`ab_part13_glm_2026-11-06a.log`, Eintrag `part13_entry_glm_2026-10-31.yaml`). PP0 lud 39,59 statt 43,4 GiB; PP4 belegte beim Laden 46,16 von 47,27 GiB und scheiterte um 20:09:53 mit „CUDA out of memory. Tried to allocate 1.18 GiB … 1.10 GiB is free“, noch vor dem KV-Cache. Es fehlen also über 1 GiB Gewichtsplatz plus ≈ 1,4 GiB KV für 524k Token auf S4; erreichbar nur verlustbehaftet → **Hebel 2 verworfen**. Nebenbefund: Nach dem Worker-Absturz blieb die EngineCore schlafend am Leben, der API-Server mit ihr, llama-swap meldete „starting“ (der Client wartete 10 min, bis ich per `/unload` beendet habe; ohne Eingriff bis zum Health-Timeout 2 400 s). Beim Fehlschlag im Profil-Lauf (18:01) kam der Fehler dagegen sofort an.
+
+## 06.11.2026: Fehlboot hängt nicht mehr (prod-v6e, Baum `1Cat-vLLM-v6e`, 5f1c557fb)
+
+prod-v6c + Port vllm#60472 (`MessageQueue` schließt ihre ZMQ-Ressourcen per Finalizer; vorher hing ein Fehlboot bis zum Timeout). Stufe 1, keine Tempo-Absicht. A/B DeepSeek `ab_v6e_dsv4_2026-11-06a.log` (T = v6e, P = v6b, T T P T P): Prefill 8 921 Token 2,28/2,29 gegen 2,28/2,29 s, Decode kurz 55,91/55,89 gegen 55,85/55,84 tok/s (17,9 ms/Token), GSM8K 29 / Annahme 4,103 überall, erstes Token 486k 145,84/145,94 gegen 145,79/145,97 s, Decode 486k 69,4/69,2 gegen 69,0/69,1 ms/Schritt, Texte 8/8 zeichengleich, GPU-Spitzen gleich → **gleich**. Umstellung DeepSeek / K7 / GLM 22:04 / 22:18 / 22:33, Kontrollen `validate_v6e_{dsv4,k7,glm}_2026-11-06.log`, Tag `verified-2026-11-06-prod-v6e`, Rücksprung `rollback_prod_v6e_2026-11-06.sh <key>` (STAND Nachtrag 06.11. 22:58).
+
+## 07.11.2026: 31 Upstream-Backports (prod-v6f, Baum `1Cat-vLLM-v6f`, 0b342e7b5)
+
+Bündel aus der Durchsicht vom 06.11. (Liste `upstream-contrib/20-upstream-backport-scan-2026-11-06/PLAN.md`), Stufe 1 mit verkürzter A/B je Modell. GLM T T P T P (`ab_v6f_glm_2026-11-07a.log`): Prefill 8 687 Token 3,86 s beidseits, Decode kurz 40,38/40,41 gegen 40,47/40,45 tok/s (24,7 ms/Token), GSM8K 29 / 5,511 überall, erstes Token 516k 197,21 gegen 197,46 s, Texte 8/8 gleich, KV-Pool 550 502. DeepSeek T P T P (`ab_v6f_dsv4_2026-11-07a.log`): Prefill 2,28 s, Decode kurz 55,88 gegen 55,87 tok/s, GSM8K 29 / 4,103, 486k 145,88 gegen 145,90 s, 69,0 ms/Schritt beidseits, Texte 8/8, KV-Pool 509 292 → **Tempo gleich**. Neu: GLM nimmt 4K-Bildschirmfotos und 3840×2880-Fotos an (vorher 400 „exceeds the pre-allocated encoder cache size 7921“), ein 20×200 000-Bildstreifen bringt die Engine nicht mehr zum Absturz. Umstellung 01:54 / 02:09 / 02:23, Kontrollen `validate_v6f_{dsv4,k7,glm}_2026-11-07.log`, Tag `verified-2026-11-07-prod-v6f`, Rücksprung `rollback_prod_v6f_2026-11-07.sh <key>` (STAND Nachträge 07.11. 00:20 und 02:50).
+
+## 07.11.2026: Feinere Decode-Graph-Buckets (DeepSeek 08:00, K7 10:12; Baum bleibt v6f)
+
+Anlass: Decode bei langem Kontext folgt dem Graph-Bucket, nicht der Promptlänge (DeepSeek-Profile v6f: 279k/314k/473k Token im Bucket 500 000 je ≈ 71 ms, 247k im Bucket 262 144 64 ms). Nur `--compilation-config`-Liste geändert. DeepSeek `dsv4_context_buckets` 2048,4096,16384,32768,49152,65536,98304,131072,163840,196608,229376,262144,327680,393216,458752,500000; K7 dieselbe Folge bis 262144 plus 307200.
+
+| DeepSeek, ms je Decode-Schritt (weniger ist besser) | T2 / T4 | P3 / P5 | Änderung |
+|---|---|---|---|
+| 91 790 Token | 58,8 / 58,6 | 58,9 / 58,6 | gleich |
+| 178 480 | 62,1 / 62,4 | 63,1 / 62,1 | gleich |
+| 287 039 | 65,7 / 65,3 | 68,3 / 68,2 | −4,0 % |
+| 323 199 | 65,4 / 65,5 | 68,6 / 68,9 | −4,8 % |
+| 456 810 | 67,8 / 67,9 | 69,1 | −1,7 % |
+| 486 316 | 68,9 / 69,1 | 69,5 | gleich |
+
+| K7, ms je Decode-Schritt (weniger ist besser) | T2 / T4 | P3 / P5 | Änderung |
+|---|---|---|---|
+| 178 480 Token | 68,1 / 68,3 | 69,9 / 69,5 | −2,2 % |
+| 248 418 | 67,8 / 68,1 | 69,6 / 69,4 | −2,2 % |
+| 251 371 | 68,4 / 67,9 | 70,4 / 70,0 | −2,9 % |
+| 287 039 und 302 833 | – | – | gleich |
+
+Beide: Prefill 2,28 s, Decode kurz 55,8–55,9 tok/s (DeepSeek), GSM8K 29, erstes Token und Texte (8/8 tokengleich) gleich; Boot +3–5 s, GPU +32 bis +84 MiB je Karte. K7 unter der 3-%-Schwelle als belegte billige Verbesserung übernommen (Peuqui 07.11.). Logs `ab_fbuckets_{dsv4,k7}_2026-11-07a.log` (+ Fortsetzungen), Kontrollen `validate_v6f_fb_{dsv4,k7}_2026-11-07.log`, Tags `verified-2026-11-07-prod-v6f-{dsv4,k7}-buckets`, Rücksprünge `rollback_prod_v6f_fb_{dsv4,k7}_2026-11-07.sh` (STAND Nachtrag 07.11. 07:00).
+
+## 07.11.2026: Decode-Kachel des DSv4-Index-Scorers (prod-v6g, Baum `1Cat-vLLM-v6g`, 31d5473d0)
+
+Der fused Decode-Scorer nutzte die Prefill-Kachel. Neue Kachel nach Sweep über 288 Kacheln (`dsv4_indexer_decode_tile_sweep_2026-11-07.py`): RTX 256/512 Schlüssel je Programm (bitgleich), V100 zwei Token je Programm. Einzelaufruf fused alt → neu (ms, weniger ist besser): V100 16k 0,095 → 0,044, 132k 0,387 → 0,297; RTX 16k 0,114 → 0,039, 132k 0,307 → 0,264. Dazu der qwen3_coder-Nachbau af0072096 (Stufe 0). Nur Python, Bibliotheken bytegleich zu v6f.
+
+| DeepSeek, ms je Decode-Schritt (weniger ist besser) | T2 / T4 | P3 / P5 | Änderung |
+|---|---|---|---|
+| nach 8 921 Token (ms/Token) | 17,2 / 17,1 | 18,5 / 18,7 | −7,5 % |
+| 32 668 Token | 56,0 / 55,9 | 57,6 / 57,5 | −2,8 % |
+| 91 790 | 57,6 / 57,4 | 59,0 / 58,7 | −2,3 % |
+| 178 480 | 60,8 / 60,7 | 62,7 / 62,1 | −2,6 % |
+| 248 418 / 323 199 / 456 810 | – | – | −1,4 / −1,4 / −1,3 % |
+| 287 039 | – | – | gleich |
+| 486 316 | 67,5 / 67,1 | 68,9 / 69,5 | −2,7 % |
+
+Decode kurz, Prefill, erstes Token, GSM8K 29, Speicher und Texte (8/8 tokengleich) gleich. A/B `ab_tile_dsv4_2026-11-07a.log` + `…-fortsetzung.log` (Absturz der Systemplatte 11:11 in T#2, Fortsetzung ab Arm 2). Umstellung DeepSeek / K7 14:17 / 14:34, feinere Buckets bleiben; Kontrollen `validate_v6g_{dsv4,k7}_2026-11-07.log`, Tag `verified-2026-11-07-prod-v6g`, Rücksprung `rollback_prod_v6g_2026-11-07.sh <dsv4|k7>` (STAND Nachtrag 07.11. 14:50).
+
+## 07.11.2026: 1Cat main c98a8d664 nachgezogen (prod-v7, Baum `1Cat-vLLM-v7`, 525327866)
+
+prod-v6g + Merge 1Cat main c98a8d664 (43 Commits seit b2b6b3bb9, doppelte Fixes vorher verglichen) + clang-format + Aufwärm-Fix 525327866. Stufe 1. DeepSeek T T P T P (`ab_v7_dsv4_2026-11-07a.log`): Prefill 2,28 s, Decode kurz 55,87–55,92 tok/s, GSM8K 29 / 4,103, Texte 8/8, erstes Token 486k 145,8 gegen 146,0 s, Decode 486k 68,0 gegen 67,9 ms/Schritt. GLM (`ab_v7_glm_2026-11-07a.log` + `…-fortsetzung.log`): Prefill 3,86 s überall, Decode kurz 40,38/40,36 gegen 40,39/40,40 tok/s, GSM8K 29 / 5,511, 516k 197,3 gegen 196,99 s, Texte 8/8, Bilder 3/3, KV-Pool 550 502 → **Tempo gleich**. Speicher: GLM-Karte 2 (PP4) belegte mit dem Merge dauerhaft 47 433–47 445 statt 45 505–45 975 MiB (1Cats #1402 wärmt ein volles 1024er-Prefill-Stück mit Prompt-Logprobs auf, FP32-Logits über alle Prompt-Token); der Aufwärm-Fix holt das zurück (Kontrolle 46 445 MiB). Umstellung DeepSeek / K7 / GLM 21:16 / 21:30 / 21:56, Kontrollen `validate_v7_{dsv4,k7,glm}_2026-11-07.log`, Tag `verified-2026-11-07-prod-v7`, Rücksprung `rollback_prod_v7_2026-11-07.sh <key>` (STAND Nachträge 07.11. 15:55, 21:05, 22:00).
+
+Das 27B-FP8-RTX hat die v7-A/B ebenfalls bestanden (`ab_v7_fp8rtx_2026-11-07a.log`, Prefill 8 490 Token 5,55/5,57 gegen 5,56/5,55 s, Decode kurz 54,22/54,20 gegen 54,68/54,67 tok/s, GSM8K 27 gegen 26, erstes Token 184k/250k/260k gleich), bleibt aber bis zur Langzeitprobe auf v5d (der v6-Prefill-Ausreißer kam nur nach 36–47 h Laufzeit). Verworfen: 8192er-Prefill-Stücke für das 27B (`ab_chunk8k_fp8rtx_2026-11-07a.log`: Prefill 8 490 Token 6,87 gegen 5,55 s, +24 %; erstes Token 260k 310,43 gegen 286,53 s).
+
+## 08.11.2026: 27B mit eingeschränktem Entwurfsvokabular (weiter prod-v5d, ae0d76216)
+
+Der FP16-LM-Kopf des 27B (124 160 × 5120 je Rang) läuft ≈ 4× je Runde (Verifikation + 3 MTP-Entwurfsschritte). Mit `draft_token_map` (98 304 Ids, `v100-skinny/tools/draft_vocab/qwen38-flash-next-de-en-code-98304.json`, gleicher Tokenizer) lesen die Entwurfsschritte 40 % der Zeilen; das Ziel prüft voll, verlustfrei. Am 20.10. scheiterte der Hebel nur am NVFP4-Kopf des damaligen 27B.
+
+Volle A/B 08.11. 01:14–02:09 (`ab_dv98kv5d_fp8rtx_2026-11-08a.log`, T = v5d + `draft_token_map`, P = Produktion v5d, T T P T P, Langkontext in T2 und P3):
+
+| Messung | T2 / T4 | P3 / P5 | Änderung |
+|---|---|---|---|
+| Zeit je Runde, drei Texte, Temperatur 0,7 (ms, weniger ist besser) | 40,7 / 40,7 / 40,7 (beide) | 42,5 / 42,3 / 42,5 (beide) | −1,7 ms (−4,1 %) |
+| Runden / angenommen je Runde | 80 / 82 / 87; 1,39 / 1,33 / 1,20 | gleich | gleich |
+| Decode kurz, Median (tok/s, mehr ist besser) | 57,19 / 57,18 (17,5 ms/Token) | 54,69 / 54,67 (18,3 ms/Token) | +4,6 % |
+| Decode nach 8 490 Token (tok/s) | 64,27 / 64,23 | 61,89 / 61,88 | +3,8 % |
+| GSM8K-30: richtig; Decode (tok/s); Annahme | 27; 77,24; 3,286 / 27; 77,21; 3,286 | 26; 74,46; 3,296 / 26; 74,44; 3,296 | +3,7 % |
+| Decode 184k / 250k / 260k (ms/Schritt) | 59,0 / 65,7 / 66,7 (43,7 / 38,7 / 39,6 tok/s) | 60,7 / 67,4 / 68,6 (43,0 / 37,7 / 38,5 tok/s) | −2,5 bis −2,8 % |
+| Erstes Token 184k / 250k / 260k (s) | 175,36 / 270,85 / 286,32 | 175,86 / 271,28 / 286,56 | gleich |
+| Prefill 8 490 Token (s) | 5,55 / 5,55 (1 529–1 531 tok/s) | 5,55 / 5,54 (1 529–1 533 tok/s) | gleich |
+| Qualitätsfragen (8), T1 gegen P3 | – | – | alle 8 tokengleich |
+| GPU-Spitze Karten 0 / 2 (MiB) | 46 921 / 46 919 | 46 925 / 46 925 | gleich |
+| KV-Pool (Token) | 851 394 | 876 615 | −2,9 % (Entwurfskopf ≈ 0,5 GB je Rang) |
+
+Umstellung 02:11 (`chain_prod_dv98k_q27_2026-11-08.sh`, einzige cmd-Änderung `draft_token_map`, Caches `*-fp8rtx-prod-v5d-dv98k-2026-11-08`, Sicherung `config.yaml.vor-prod-v5d-dv98k-fp8rtx-2026-11-08`), Rücksprung `rollback_prod_dv98k_q27_2026-11-08.sh fp8rtx`. Kontrolle `validate_v5d_dv98k_fp8rtx_2026-11-08.log` (02:11–02:31) bestanden: Prefill 5,53 s, Decode kurz 57,18 tok/s, Präfix-Cache 68 000 von 68 040 Token (49,95 → 0,25 s), Robustheit 5/5, GSM8K 27/30 (77,27 tok/s), Langkontext 59,0 / 65,7 / 66,7 ms/Schritt, 8 Texte tokengleich zum A/B-T1. Tag `verified-2026-11-08-prod-v5d-q27-draftvocab` (STAND Nachtrag 08.11. 02:45).

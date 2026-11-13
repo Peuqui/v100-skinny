@@ -1,6 +1,6 @@
 # GLM-5.3-Flash für AIfred: was beim Anbinden zu wissen ist (Stand 25.10.2026)
 
-Modell in llama-swap (Port 11435, OpenAI-kompatibel): **`GLM-5.3-Flash-NVFP4-DFlash2-vllm`** (Gruppe `main`, tauscht sich mit den
+Modell in llama-swap (Port 11435, OpenAI-kompatibel): **`GLM-5.3-Flash-320B-A18B-NVFP4-DFlash2-vllm`** (Gruppe `main`, tauscht sich mit den
 anderen großen Modellen aus). Eintrag: `~/.config/llama-swap/config.yaml`, Vorlage `~/.cache/bench-scripts/glm53_prod_entry_2026-10-25.yaml`.
 
 ## Eckdaten (gemessen, siehe STAND.md „25.10. 02:30“)
@@ -32,7 +32,7 @@ anderen großen Modellen aus). Eintrag: `~/.config/llama-swap/config.yaml`, Vorl
 ## Betrieb
 - Karten: 3× V100 + 2× RTX 8000 komplett belegt (Spitzen `memory.used` 48,1 / 30,5 / 47,9 / 30,5 / 30,5 GB). Vor dem Boot die Karten über GPU-Orc
   (0.2.0, `gpu-orc@mp`, seit 25.10. etwa 00:56 mit den neuen STT-/TTS-Suiten kompatibel) freigeben lassen:
-  `curl -X POST http://localhost:5070/free -H 'Content-Type: application/json' -d '{"model":"GLM-5.3-Flash-NVFP4-DFlash2-vllm","reason":"…"}'`
+  `curl -X POST http://localhost:5070/free -H 'Content-Type: application/json' -d '{"model":"GLM-5.3-Flash-320B-A18B-NVFP4-DFlash2-vllm","reason":"…"}'`
   (läuft das Modell schon: `already_running`; Vorschau ohne Wirkung mit `"dry_run":true`; Belegung: `GET /status`).
 - Baum/Version: `~/Projekte/vllm-research/1Cat-vLLM-glm53-prod-sched` (Zweig `glm53-prod-sched`, Tag `verified-2026-10-25-glm53-sched`, 31d73aefa, seit 25.10. 17:00;
   Spitzen `memory.used` des Kontrolllaufs 48,2 / 30,5 / 47,7 / 30,5 / 30,4 GB). Vorgänger `1Cat-vLLM-glm53-prod-meta` (2ae98d460), `1Cat-vLLM-glm53-prod-s5`

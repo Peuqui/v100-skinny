@@ -1,0 +1,25 @@
+[Refactor][SM70] Bring Flash-V100 back under its dependency and size ratchet
+
+Problem: tests/v1/attention/test_flash_v100_trace_golden.py::test_dependency_and_coupling_ratchet fails on main cb97f379b. Against tests/v1/attention/fixtures/flash_v100_dependency_baseline.json (tools/sm70/flash_v100_audit.py), three metrics are over their baseline:
+- impl.py:forward has 121 lines (baseline 113);
+- the largest active function has 250 lines (baseline and hard limit 200): prefill.py:_run_fp8_prefill_bridge; dense_prefill.py:try_sm70_fa2_d256_prefill has 206;
+- 13 cross-module private accesses (baseline 11), nine of them prefill.py reading _dense_prefill._SM70_79T_* and _dense_prefill._FP8_PREFILL_BRIDGE_PAGE_SIZE.
+
+Change, behaviour unchanged (only code moves):
+1. The exact Split-D dense-prefill geometry (SM70_79T_CORE_QUERY_LEN, SM70_79T_MAX_QUERY_LEN, SM70_79T_Q4096_*, SM70_79T_EXACT_QUERY_ALIGNMENT, SM70_79T_KV_ALIGNMENT, SM70_SPLITD_KV_ALIGNMENT) moves next to FP8_PREFILL_BRIDGE_PAGE_SIZE in flash_v100/config.py. dense_prefill.py and the prefill selectors read it there; dense_prefill's private copy of the page size goes.
+2. _run_fp8_prefill_bridge hands the KV-head group loop to fp8_bridge_by_head_groups, which still calls self._run_fp8_prefill_bridge once per group, and the query padding for the exact kernels' 64-row query and 32-row key tiles to pad_fp8_bridge_query.
+3. try_sm70_fa2_d256_prefill asks fa2_d256_prefill_admitted for its admission checks, in the same order.
+4. impl.forward builds the unsupported-layer message in _unsupported_layer_message. forward still reads self.use_flash_v100 and passes the value on.
+The trace tool records calls of functions named _should_*, _try_*, _supports_* and _run_*, and use_* reads from forward, _forward_decode, _observe_forward and _forward_with_prefix. The new helpers avoid those prefixes and forward keeps its use_* reads, so the recorded traces do not change.
+5. Two tests patched or read the removed dense_prefill._FP8_PREFILL_BRIDGE_PAGE_SIZE: test_sm70_flash_v100_policy.py patches FP8_PREFILL_BRIDGE_PAGE_SIZE through the flash_attn_v100 compatibility module (it resolves to config), test_flash_v100_lifecycle.py reads config.FP8_PREFILL_BRIDGE_PAGE_SIZE. No alias for the old private name.
+
+Afterwards: forward 108, largest active function 200 (masks.py:build_bfla_block_mask_for_seq, unchanged), cross-module private accesses 4; the other five metrics, cycles and forbidden edges are unchanged.
+
+Not a duplicate: no open PR addresses the ratchet or touches flash_v100/prefill.py, impl.py, config.py, the audit tool or its baseline (checked the files of all 82 open PRs). #1282, #1286, #1347 and #1348 (ours) change one line of flash_v100_dense_prefill in dense_prefill.py, outside the moved code; #629 changes test_sm70_flash_v100_policy.py around line 279, this PR one line near 679. #1506 (ours, tests only) covers the other failing case of the same file, test_forward_trace_matches_1060[769]: the declined split-KV attempt that #1298 added; with #1506 and this PR the file passes.
+
+Tests (pre-commit ruff-check, ruff-format and mypy pass on the changed files):
+- Without a GPU, test_flash_v100_trace_golden.py: this branch 1 failed, 11 passed; main 2 failed, 10 passed. The ratchet passes; the remaining case [769] fails the same way on main, and the recorded events of its 45 cases are byte-identical on main and on this branch. On the #1506 branch the same file has only the ratchet failing.
+- Without a GPU, all 94 test files that import flash_v100 or flash_attn_v100, one pytest process per file: identical results on main and on this branch except the trace golden file above (86 files pass in both, 8 fail in both: GPU-only cases and tests #1506 fixes, plus test_flash_v100_build_architecture.py, also fixed in #1506).
+GPU_RESULTS_PLACEHOLDER
+
+AI assistance (Claude) was used; I reviewed the change and ran the tests above.

@@ -1,0 +1,20 @@
+One more case, which this PR does not cover yet: the top-k search drops the whole tie group at the smallest finite logit of a row.
+
+The top-k pivot search has the same gap as the probability searches fixed here: it starts at the smallest finite logit and keeps values above the pivot. When fewer than k logits lie above the smallest finite one, which happens when a tie at that value straddles k or when a mask allows only a few distinct values, no pivot satisfies the stop condition, the search converges on the smallest logit and masks every copy of it. The row then keeps fewer than k tokens.
+
+Repro on CUDA (Quadro RTX 8000, sm_75, batch 4, vocab 32768), comparing with apply_top_k_top_p_pytorch:
+
+    x = torch.full((4, 32768), float("-inf"), device="cuda")
+    x[:, :24] = 1.0
+    x[:, :2] = 2.0
+    k = torch.full((4,), 20, dtype=torch.int32, device="cuda")
+    apply_top_k_top_p_pytorch(x.clone(), k, None)   # keeps 24 per row (ties at the k-th logit are kept)
+    apply_top_k_top_p_triton(x.clone(), k, None)    # keeps 2 per row
+
+With p = 0.8 added, PyTorch keeps 19 and the kernel 2. With the rest of the row at 1.0 instead of -inf (most of the vocab tied at its minimum), k = 20 keeps 2 tokens instead of the whole row. Same results on main 5ec99956ad and on this PR's head 93f570efc6; vocab 248320 behaves the same. On the grammar-style row 5.0 / 3.0 / 2.5 with the rest -inf, k = 50, p = 0.95, this PR gives 3 like PyTorch where main gives 2, so the top-p side of this family is covered.
+
+How we ran it: the kernel file and its warmup helpers (jit_warmup, jit_warmup_triton_helper, gpu_sync_debug) taken from each commit and loaded standalone, the PyTorch reference copied verbatim from main; has_topp_only_rows set as get_top_k_top_p computes it, and left at its default for the repro above. With top-k alone (k = 20) on random Gaussian rows (batch 2, 8 and 33, both vocab sizes) the kernel matches the reference exactly in the same setup, so the harness drives it correctly.
+
+In our fork (1Cat-vLLM, where the same two searches came in with the kernel) we fixed it by counting the copies of the smallest finite logit for rows without the outlier route: when fewer than k logits lie above it, top-k masks nothing and the row goes on to top-p; the top-p search also runs down to probability 0. Our kernel has diverged from main, so this is the idea, not a patch for this file. Happy to send a follow-up PR once this one lands, or to leave it to you if you prefer to fold it in here.
+
+AI assistance (Claude) was used to investigate and draft this; I reviewed it.

@@ -1,0 +1,24 @@
+[Bugfix][Frontend] GLM tool parser: stream non-string argument values only when they close
+
+Problem: with --tool-call-parser glm47 (also glm45, same base class Glm4MoeModelToolParser), a streamed chat completion with tool calls can abort at the finish with "Tool arguments at finish do not extend the streamed prefix" (tool_stream.py remaining_tool_args, raised from flush_tool_calls in serving.py). We hit it in production with GLM-5.3-Flash on 2026-11-14, in a multi-round tool turn.
+
+Cause: _build_args_json_so_far streams the open value of a parameter whose schema is not just "string" as its raw text ("key": raw), while the closed pair, like extract_tool_calls at the finish, is json.dumps(_deserialize(value)). _compute_args_diff only sends what is longer than the text already sent, so whenever the raw text and its JSON form differ the client receives broken arguments, and since the finish check of 958205854 the turn is rejected. Shapes that differ:
+- plain text for a parameter that is not a pure string: an undeclared parameter, or a type list such as ["string", "array"]: streamed '{"note": siehe obenn"}' (raw text, then the closing quote appended by the length diff), finish '{"note": "siehe oben"}';
+- Python literals: True vs true, ['a', 'b'] vs ["a", "b"];
+- an integer with newlines around it followed by another argument: the raw "\n5\n" is longer than the closed "5", so the next argument's diff skips characters;
+- an object written without spaces: {"title":"Notiz"} vs {"title": "Notiz"}.
+Before 958205854 the old serving code assembled the remainder by string replacement, so the broken JSON reached the client silently.
+
+Change: a non-string value is held back until </arg_value> closes it; then the same JSON text as at the finish is appended. String values still stream character by character. Every delta is therefore a prefix of the arguments extract_tool_calls returns, which is what flush_tool_calls requires. Non-string values (numbers, booleans, arrays, objects, untyped text) now arrive whole when they close instead of as raw fragments.
+
+New test tests/tool_parsers/test_glm47_moe_tool_parser.py::test_streamed_arguments_stay_a_prefix_of_the_finish: 12 tool calls are streamed character by character (string, integer, boolean True and false, a Python list and a multi-line list, a string/array union, an undeclared parameter, a string/null union with surrounding spaces, three mixed arguments with a quote, a backslash and umlauts, an integer with newlines followed by a string, an object without spaces). After every character it checks that the streamed arguments are a prefix of extract_tool_calls; at the end that they are equal, parse as JSON, and that flush_tool_calls accepts them without adding arguments.
+
+Upstream vLLM replaced this parser after the pinned base with the streaming parser engine of vllm-project/vllm#45915 (vllm/parser/glm47_moe.py), which streams values as JSON-escaped strings. Backporting that engine is a much larger change; this PR keeps the existing parser and its typing and only removes the raw partial value.
+
+Not a duplicate: no open PR touches glm4_moe_tool_parser.py, glm47_moe_tool_parser.py, their tests or tool_stream.py (checked the files of all 82 open PRs). #1495 adds alternative qwen3_coder/qwen3_xml parsers and does not touch the GLM parser.
+
+Tests (pre-commit ruff-check, ruff-format and mypy pass on the changed files):
+TESTS_PLACEHOLDER
+- Our fork runs this change in production for GLM-5.3-Flash (PP5, DFlash2, --tool-call-parser glm47) since 2026-11-14 CONTROL_PLACEHOLDER.
+
+AI assistance (Claude) was used; I reviewed the change and ran the tests above.

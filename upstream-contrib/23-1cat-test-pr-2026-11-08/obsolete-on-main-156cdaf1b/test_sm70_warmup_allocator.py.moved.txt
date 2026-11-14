@@ -1,0 +1,1 @@
+test_sm70_warmup_allocator.py: alte Korrektur (GraphPolicy, torch_allocated_memory) plus neue Attrappen (configure_attention_workspace, get_kv_cache_groups, get_kv_cache_spec) wandert in den Stack-Limit-PR (Zweig pr-stack-limit-restore, Testcommit), gleiche Ursache wie dessen Worker-Tests; im Test-PR nicht mehr enthalten. 14.11. 01:2x

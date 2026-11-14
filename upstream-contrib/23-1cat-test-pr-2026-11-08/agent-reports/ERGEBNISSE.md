@@ -66,3 +66,36 @@ grün; rot nur erwartet: `test_fp8.py` 4 (echter Fehler Marlin-Bias, Test bewuss
 Entscheidung). Gruppe A: 11 von 14 grün; rot `compile/test_config.py` 5 (vorher 6), `test_sm70_fp8_kernel_selection.py` 1 und
 `test_sm70_native_policy.py` 1 (beide vom Helfer noch nicht bearbeitet). Diese Läufe waren parallel zu dritt; rote vor der Wertung einzeln
 wiederholen. Offen bleibt: Gruppe A fertig, alle Diffs selbst lesen, die Entscheidungen oben, die drei echten Fehler, Commits, PRs.
+
+## Nachzug auf 1Cat main 119cae740/156cdaf1b (14.11.2026 nachts)
+Testreihe 13./14.11. (489 Dateien, main 119cae740 + Korrekturen vom 08.11., Baum `1Cat-vLLM-pr-sm70-tests-3`, Logs
+`~/.cache/bench-scripts/gputests_sm70_sweep_2026-11-13/`): 31 rot. Gegenprobe auf reinem main (`gputests_v100_followup_2026-11-14/card*_main/`):
+alle 20 nicht angefassten Dateien scheitern dort genauso. Bearbeitet (ohne GPU grün, V100-Lauf `v100_recheck_2026-11-14.sh` steht aus):
+- Überholt, auf main-Fassung zurück (main grün): `test_sm70_gdn_mixed_spec_verify`, `test_gpu_model_runner_v2_greedy` (Diffs in `../obsolete-on-main-156cdaf1b/`).
+- In den Stack-Limit-PR verschoben: `test_sm70_warmup_allocator` (alte Korrektur + Attrappen für configure_attention_workspace/get_kv_cache_spec).
+- Unsere eigenen gemergten Commits hatten Tests nicht nachgezogen: `test_flash_v100_impl_composition` (c6ae9c5d7, Ausnahme `_call_flash_attn_smallq_decode_paged`),
+  `test_sm72_wheel_targets` (f2674c58c, 7.5 bleibt), `test_qwen4_exp_v2` und `test_dflash_mrv2_config` (Backport vllm#59740: `draft_vocab`/`draft_token_map`).
+- 1Cat-Änderungen ohne Testnachzug: `test_sm70_grouped_codecs` (fb6320531; unsere c8efae47b-Normalisierung war falsch, Fixture trägt den heutigen `_run`),
+  `compressed_tensors_fastpaths`, `ct_fp8_cache_workspace`, `fp8_prefill_exact_dense` (Dispatcher löst den Arbeitsspeicher in `qpn/fp8.py`),
+  `compile/test_config` (SM70-Graph-Vorgabe; Test prüft jetzt die allgemeine Größenlogik auf jeder Karte), `test_pp_spec_decode_cadence` (9fbc11c6f `_v41_*`),
+  `test_target_sampling` (bb48f5d76 `lora_state`), `test_gpu_sampler_runtime_contracts` (96a3129c6: Prompt-Logprobs auf dem Host), `test_qwen3_5_quantization`
+  (4392c5853 Modellmaße), `test_sm70_pynccl_gather_layout` (9fbc11c6f `ca_comm`).
+- Codefehler, im Test-PR-Baum behoben: `_participating_cuda_device_ids` fragte bei `device="cpu"` die CUDA-Karten ab (PP2-Schedulertests mit einer
+  sichtbaren Karte: `test_pp_keep_batch`, `test_pp_spec_decode_inflight`, `test_pp_keep_batch_runner`, `test_pp_spec_decode_history`, IndexError in NVML).
+Offen: `test_fp8` (Marlin-Bias, eigener PR), `test_flash_v100_trace_golden` (Ratchet 250 > 200, Umbau), `test_sm70_native_policy` (Op
+`fp8_qpn8_dispatch_ba_masked_sm70_out` aus b68d40f88 ohne Wrapper, Fake und Listeneintrag; echter Fehler), `test_sm70_fp8_kernel_selection` (Schnappschuss),
+`test_sm70_flash_v100_prefix_decode_rows` (E4M3-Zeilen nehmen den Skalarweg), `test_sm70_long_context_attention` (Benchmark-Anker), sowie die alten
+`long_attention_batch/rows`, `batched_gemm_layouts`, `gguf_turbomind_model_moe`.
+- Außerdem: fp8-Doku `vllm/config/cache.py` korrigiert (`fp8` → fp8_e4m3 auf SM70 Flash-V100, wie `arg_utils` es macht); mypy-Fehler in unserer
+  `trace_golden`-Korrektur behoben (Typangaben). pre-commit über alle 70 geänderten Dateien des Baums grün (14.11. 02:30).
+- Berichtigung 02:30: Die Codeänderung an `_participating_cuda_device_ids` (CPU-Gerät = keine CUDA-Teilnehmer) brach
+  `test_sm70_gates_any_visible_device` (3 rot), weil 1Cats Tests Konfigurationen absichtlich mit `DeviceConfig("cpu")` und gefälschter
+  CUDA-Plattform bauen; zurückgenommen. Stattdessen nutzen die vier PP-Tests einen neuen Helfer `pretend_gpus_without_capability` in
+  `tests/v1/core/utils.py`, der auch `is_device_capability` ersetzt (die Abfrage, die die Laufzeitvorgaben je Karte stellen).
+  V100-Lauf 02:06 (`gputests_v100_recheck_2026-11-14/card1_tests_pr`): 20/24 grün; dazu korrigiert: `test_gpu_sampler_runtime_contracts`
+  (zweiter CUDA-Vergleich im Zweig -1), `test_scheduler`/`test_async_scheduler` (`v41_ahead` aus 9fbc11c6f, liefen in der Testreihe nicht mit).
+  Nach der A/B erneut auf V100 prüfen.
+- 14.11. 08:40: als PR #1506 geöffnet (76 Dateien, Zweig `pr-sm70-stale-tests-4`). `test_compressed_tensors.py` zurückgehalten (Hänger auf der RTX, siehe
+  STAND Nachtrag 08:40). Weiter offen wie oben: test_fp8 (Marlin-Bias), trace_golden (Ratchet), native_policy (maskiertes BA-Op), fp8_kernel_selection,
+  prefix_decode_rows, long_context_attention-Benchmark, long_attention_batch/rows, batched_gemm_layouts, gguf_turbomind_model_moe, auf Turing zusätzlich
+  triton_decode_attention (Shared Memory) und GGUF-Tests.

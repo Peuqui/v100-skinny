@@ -1,0 +1,13 @@
+diff --git a/tests/kernels/test_sm70_gdn_mixed_spec_verify.py b/tests/kernels/test_sm70_gdn_mixed_spec_verify.py
+index 04b7509d4..78bc8efdb 100644
+--- a/tests/kernels/test_sm70_gdn_mixed_spec_verify.py
++++ b/tests/kernels/test_sm70_gdn_mixed_spec_verify.py
+@@ -131,6 +131,8 @@ def test_packed_verify_beside_prefill_matches_generic_route(
+         gdn_preparation=GdnPreparation(heads),
+         _gdn_profiler=profiler,
+         verification_update=None,
++        # Speculative replay is off by default (kernel_config.sm70_gdn_spec_replay).
++        _spec_replay=False,
+         _can_use_sm70_gdn_preprocess=lambda *args: False,
+         prefix="test",
+         tp_size=TP,

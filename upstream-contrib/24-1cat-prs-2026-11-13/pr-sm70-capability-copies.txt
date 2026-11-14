@@ -1,0 +1,20 @@
+[Refactor][SM70] Drop the local compile-safe capability copies now that #1498 covers them; fix the GDN split test stubs
+
+Problem: before #1498, model code that ran inside a compiled graph could not call current_platform.is_device_capability, because Dynamo cannot trace the platform's cached capability query. Four modules worked around it with their own torch.compiler.assume_constant_result wrapper: _sm70_gated_norm_device_supported and _sm70_gemma_long_prefill_available in vllm/model_executor/kernels/norm/sm70.py, _sm70_device in vllm/models/qwen4_exp/nvidia/sm70_mtp_fc.py and _volta_device in vllm/models/qwen4_exp/nvidia/sm70_fp16_gemv.py (#1496). #1498 now makes the platform query itself return a trace-time constant while compiling, so these wrappers answer the same question the same way. Separately, tests/models/qwen4_exp/test_sm70_gdn_projection_split.py replaces is_device_capability with lambda _: ..., which takes no device_id; since #1496 the admission passes device_id, so 23 cases fail on main with TypeError: <lambda>() got an unexpected keyword argument 'device_id'.
+
+Change:
+1. test_sm70_gdn_projection_split.py: the stubs take the device_id and answer True only for capability 70, so a query for the wrong capability also fails the admission cases.
+2. The four wrappers go; the call sites ask current_platform.is_device_capability(70, ...) directly, with the same device arguments as before. tests/config/test_sm70_dflash2_policy.py stubbed one of the removed wrappers and now stubs the platform query. No behaviour change.
+
+We carried the same kind of helper in our fork (one shared wrapper for these call sites) and replaced it with the #1498 platform query after merging main 156cdaf1b; this PR is that change against main.
+
+Not a duplicate: no open PR touches these wrappers or the GDN split test (searched open PRs for assume_constant_result, is_device_capability, _volta_device, gdn_projection_split).
+
+Tests (pre-commit passes on all changed files, mypy-local included):
+- RTX 8000 (sm_75), main 119cae740 (these test and code files are unchanged in 156cdaf1b): test_sm70_gdn_projection_split.py + test_sm70_dflash2_policy.py 23 failed, 46 passed, 8 skipped (all 23 the device_id TypeError).
+- RTX 8000, this branch: test_capability_compile.py, test_sm70_gdn_projection_split.py, test_sm70_dflash2_policy.py: 73 passed, 8 skipped.
+- V100, this branch: test_capability_compile.py, test_sm70_gdn_projection_split.py, test_sm70_dflash2_policy.py: 81 passed. tests/kernels/core/test_layernorm.py, test_sm70_rmsnorm_gated_exact.py, test_sm70_dflash2_gemma_rms.py, test_sm70_fp16_gemv.py and test_sm70_mtp_fc_gather.py in one run: 985 passed, 3 failed (test_sm70_mtp_fc_gather.py::test_prefill_fc_owns_rows_and_only_gathers_weights[7], [8], [9]); the same combined run on main 119cae740 gives the same 985 passed and the same 3 failed, and test_sm70_mtp_fc_gather.py alone passes 9 of 9 on this branch in 5 of 5 runs, so it is an existing test-order dependence.
+- Our fork with the same change (main 156cdaf1b merged): test_capability_compile.py, test_sm70_gdn_projection_split.py, test_sm70_dflash2_policy.py, tests/kernels/core/test_layernorm.py, test_sm70_rmsnorm_gated_exact.py, test_sm70_dflash2_gemma_rms.py, test_sm70_fp16_gemv.py, test_sm70_mtp_fc_gather.py, test_arg_utils.py in one run on the RTX 8000: 1090 passed, 76 skipped, 1 failed (test_sm70_mtp_fc_gather.py::test_prefill_fc_owns_rows_and_only_gathers_weights[9], an existing test-order dependence: it fails the same way on main in a combined run and passes alone).
+- Our fork with the same change, A/B against the previous build that used our shared helper: Qwen3.8-27B-FP8 TP2 on two RTX 8000, DeepSeek-V4-Flash and GLM-5.3-Flash PP5 over 2x RTX 8000 + 3x V100 boot and serve with unchanged speed (short decode 57.18 vs 57.17, 58.50 vs 58.51, 41.23 vs 41.21 tok/s), identical texts for eight greedy prompts each and the same KV cache pools.
+
+AI assistance (Claude) was used; I reviewed the change and ran the tests above.

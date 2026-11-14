@@ -1,0 +1,23 @@
+[Bugfix][Sampler] Let the Triton top-k/top-p pivot searches cut below the smallest finite logit
+
+Problem: both pivot searches of _topk_topp_kernel (vllm/v1/sample/ops/topk_topp_triton.py) start at the smallest finite logit and only probe pivots above it, keeping values > pivot. When the cut has to keep that logit, no pivot satisfies the stop condition and every copy of it is dropped:
+- top-k: with fewer than k logits above the smallest one (its tie straddles k, or a grammar mask allows at most k tokens), the search converged on the smallest logit and filtered all its copies before top-p. Example from tests/v1/sample/test_topk_topp_tied_cutoffs.py: 2 x 2.0 + 22 x 1.0, k=20: the reference keeps 24, the kernel kept 2; with p=0.8 the reference keeps 19, the kernel 2.
+- standalone top-p: a nucleus that needs the smallest finite logit lost all its copies, also without ties (5.0/3.0/2.5 allowed, p=0.95: 2 kept instead of 3).
+Every non-SM70 device takes this kernel for top-k + top-p from batch 2 on (the compact route is admitted only on SM70), and every device for top-k only and top-p only. On an RTX 8000, test_topk_topp_tied_cutoffs.py fails 15 cases on main.
+
+Change:
+1. Count the copies of the smallest finite logit for rows without the outlier route; when fewer than k logits lie above it, top-k masks nothing and the row goes on to standalone top-p. Search top-p down to probability 0. The clamp of min_logit to max_logit and the then unused min_logit of the standalone search go. The compact route's admission becomes one helper, used by the dispatcher and by the tests that need that route. New test test_pivot_kernel_cutoff_below_smallest_finite_logit (24 cases) pins the pivot kernel by disabling the compact route.
+2. _apply_top_k_top_p_compact has a single return and never returns None, so the dispatcher's "if compact is not None" and the "| None" in its return type go.
+3. test_compact_fallback_bounds_full_vocabulary_sort_workspace checks the compact route's bounded dense workspace; off SM70 the route is not taken and its 4 multi-row cases failed with KeyError: 'rowwise_sort'. They now skip when the route is not admitted.
+4. test_compact_top_p_rounding_boundary went through apply_top_k_top_p_triton and so reached the pivot kernel off SM70, which sends split ties and failed pivot reconstructions to the reference but never promised the compact route's rounding margin (3 of 3 cases fail on an RTX 8000). It now calls the compact route directly, as the other compact tests do. With the margin set to 0 its middle case fails, so it still guards the margin.
+
+Not a duplicate: no open PR touches topk_topp_triton.py or its pivot searches (searched open PRs for topk_topp, top-p pivot, top_k top_p tie, smallest finite logit, topk_topp_triton). Upstream vLLM main has the same two searches; we have not reported it there yet.
+
+Tests (pre-commit ruff-check, ruff-format and mypy pass on all changed files):
+- RTX 8000, test_pivot_kernel_cutoff_below_smallest_finite_logit: 24 failed without the kernel change, 24 passed with it.
+- RTX 8000, test_topk_topp_tied_cutoffs.py + test_topk_topp_sampler.py: main 119cae740 178 passed, 22 failed, 4 skipped; this branch 213 passed, 7 failed, 8 skipped. The 7 failures in both are the FlashInfer distribution tests of test_topk_topp_sampler.py, which need scipy (not installed in our venv). The other 15 on main (4 sort_workspace, 8 large_batch_matches_reference, 3 rounding_boundary) pass or skip on this branch; the 24 new pivot cases pass. main 156cdaf1b has the same sampler files as 119cae740.
+- V100 (the compact route is admitted there), this branch: test_topk_topp_sampler.py 98 passed, 35 skipped; test_topk_topp_tied_cutoffs.py 95 passed.
+- Timing (RTX 8000, vocab 248320, k=50, p=0.9, median of 100 calls): -1.4 to +1.0 % on normal rows, +2.4 to +3.4 % on grammar-masked rows.
+- Our fork with this change, Qwen3.8-27B-FP8 TP2 on two RTX 8000 (this kernel serves its top-k/top-p sampling), A/B against the previous build: short decode 57.18 vs 57.17 tok/s, prefill of 8,490 tokens 5.54 vs 5.56 s, GSM8K 27 of 30 in both, identical texts for eight greedy prompts, sampled decoding at temperature 0.7 on three fixed prompts 139/133/157 vs 139/133/156 rounds. DeepSeek-V4-Flash and GLM-5.3-Flash run PP5 with the sampling last stage on an RTX 8000: same speed, identical greedy texts and the same sampled rounds at temperature 0.7 in both builds (121/132/149 and 107/107/107).
+
+AI assistance (Claude) was used; I reviewed the change and ran the tests above.

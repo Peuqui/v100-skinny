@@ -1,0 +1,51 @@
+diff --git a/tests/v1/worker/test_gpu_model_runner_v2_greedy.py b/tests/v1/worker/test_gpu_model_runner_v2_greedy.py
+index 8b11f1395..754c6e425 100644
+--- a/tests/v1/worker/test_gpu_model_runner_v2_greedy.py
++++ b/tests/v1/worker/test_gpu_model_runner_v2_greedy.py
+@@ -7,7 +7,6 @@ import numpy as np
+ import pytest
+ import torch
+ 
+-import vllm.v1.worker.gpu.sample.sampler as sampler_module
+ from vllm.v1.worker.gpu import model_runner as model_runner_module
+ from vllm.v1.worker.gpu.model_runner import GPUModelRunner
+ from vllm.v1.worker.gpu.sample.sampler import Sampler
+@@ -15,6 +14,8 @@ from vllm.v1.worker.gpu.sample.sampler import Sampler
+ 
+ def _sampler() -> Sampler:
+     sampler = object.__new__(Sampler)
++    # Sampler.__init__ reads the switch from the layer policy (7ec7a210c).
++    sampler.greedy_token_fastpath = True
+     sampler.compute_nans = False
+     sampler.greedy_token_fastpath = sampler_module.envs.VLLM_SM70_GREEDY_TOKEN_FASTPATH
+     sampler.sampling_states = SimpleNamespace(
+@@ -32,10 +33,7 @@ def _sampler() -> Sampler:
+     return sampler
+ 
+ 
+-def test_sm70_v2_greedy_fastpath_accepts_plain_temperature_zero(
+-    monkeypatch: pytest.MonkeyPatch,
+-) -> None:
+-    monkeypatch.setattr(sampler_module.envs, "VLLM_SM70_GREEDY_TOKEN_FASTPATH", True)
++def test_sm70_v2_greedy_fastpath_accepts_plain_temperature_zero() -> None:
+     sampler = _sampler()
+     input_batch = SimpleNamespace(idx_mapping_np=np.array([1], dtype=np.int32))
+ 
+@@ -112,15 +110,9 @@ def test_sm70_v2_decode_uses_model_top_tokens(
+         "bad_words",
+     ],
+ )
+-def test_sm70_v2_greedy_fastpath_rejects_non_equivalent_sampling(
+-    monkeypatch: pytest.MonkeyPatch, blocker: str
+-) -> None:
+-    monkeypatch.setattr(
+-        sampler_module.envs,
+-        "VLLM_SM70_GREEDY_TOKEN_FASTPATH",
+-        blocker != "disabled",
+-    )
++def test_sm70_v2_greedy_fastpath_rejects_non_equivalent_sampling(blocker: str) -> None:
+     sampler = _sampler()
++    sampler.greedy_token_fastpath = blocker != "disabled"
+     input_batch = SimpleNamespace(idx_mapping_np=np.array([1], dtype=np.int32))
+ 
+     if blocker == "nan_count":

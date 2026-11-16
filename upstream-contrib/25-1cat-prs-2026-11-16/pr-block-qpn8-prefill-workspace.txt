@@ -20,3 +20,7 @@ Tests (pre-commit ruff-check, ruff-format and mypy-3.12 pass on the changed file
 - Our fork carries the same change (plus the SM75 tensor-core branch of #1278, which gets the same condition with its own bound of 512 rows); its capture-size condition runs in our production (GLM-5.3, DeepSeek-V4, Qwen3.8-27B FP8) since 16.11.2026, the fixed-budget condition followed the same day (none of these entries sets a fixed budget).
 
 AI assistance (Claude) was used; I reviewed the change and ran the tests above.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUiP1oVAFcJKdFRibgr

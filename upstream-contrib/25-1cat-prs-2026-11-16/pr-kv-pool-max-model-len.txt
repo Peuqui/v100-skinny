@@ -1,0 +1,24 @@
+[Bugfix][Core] Refuse a KV pool that cannot hold one max_model_len request
+
+Problem: get_kv_cache_configs checks each rank's available memory against one request of max_model_len (_check_enough_kv_cache_memory; for GLM-5.3 with _kv_cache_memory_needed). Afterwards the pool takes the smallest rank's block count, and for layouts with device state blocks get_max_concurrency_for_kv_cache_config splits it between state and history blocks. The final pool can therefore hold less than one request although every check passed. vLLM even logs it ("Maximum concurrency for N tokens per request: 0.94x") and serves on; a request near max_model_len is admitted and never finishes.
+
+Seen on GLM-5.3-Flash NVFP4 with DFlash2 in PP5 (3x V100 32 GB + 2x Quadro RTX 8000, max_model_len 524,288):
+- gpu_memory_utilization 0.972 with 128 MiB per stage less available (the block-FP8 prefill workspace, #1535): KV pool 511,180 tokens, 0.97x. A 516,196-token prompt stopped in one engine step and never returned (KV usage 53 %, no preemption; py-spy: PP0/PP3 waiting in the KDA prefill, PP4 launching the sparse attention, all GPUs at 100 %).
+- gpu_memory_utilization 0.968: the GLM ledger says "required=1.61 GiB available=1.61 GiB" on rank 0, the pool holds 493,704 tokens (0.94x), and the warm-up fails with "an illegal memory access was encountered" in the DFlash2 drafter's full-graph replay on the last stage (dflash/speculator.py propose -> run_fullgraph, found with CUDA_LAUNCH_BLOCKING=1).
+
+Change (vllm/v1/core/kv_cache_utils.py): check_pool_holds_max_model_len runs for each rank's final config right after its "GPU KV cache size" report and raises a ValueError like the earlier checks when get_max_concurrency_for_kv_cache_config, which accounts for the state/history split and the shared block count, is below 1. The message names the pool's tokens, max_model_len and the concurrency, and suggests raising gpu_memory_utilization or lowering max_model_len. With it, the 0.968 case above stops at start: "The KV cache pool holds 493,704 tokens, fewer than one request of the model's max seq len (524,288) needs (maximum concurrency 0.94x)."
+
+This does not find why the drafter reads out of bounds once the pool is short; it keeps engines out of that state. Engines with at least one max_model_len request of room are unchanged (our DeepSeek-V4, its K7 coding entry, GLM-5.3 and Qwen3.8-27B FP8 start at 1.02x, 1.03x, 1.05x and 3.25x).
+
+Not a duplicate: of the open PRs, #1486, #1260, #1243 and #1031 change kv_cache_utils.py; none touches the final pool check, the concurrency calculation or _report_kv_cache_config (checked their diffs). #1526 changes the KV budget's non-Torch accounting, a different step. Title searches for max_model_len KV cache, maximum concurrency, KV pool, kv cache memory check and device_state_blocks find nothing else.
+
+Tests (pre-commit ruff-check, ruff-format and mypy-3.12 pass on the changed files), on main 4f565bae3 with this change:
+- New test_pool_below_one_max_model_len_request_is_refused in tests/v1/core/test_kv_cache_utils.py: a full-attention pool of 1023 blocks of 16 tokens is refused for max_model_len 16384, 1024 blocks are accepted.
+- tests/v1/core/test_kv_cache_utils.py, tests/v1/core/test_scheduler_kv_capacity.py, tests/v1/worker/test_gpu_model_runner.py: 130 passed, 2 skipped (V100).
+- GLM-5.3 on our fork with the same change: 0.968 refused at start as quoted above. Our production entry at 0.972 (with #1535) has a pool of 550,502 tokens (1.05x), above the check.
+
+AI assistance (Claude) was used; I reviewed the change and ran the tests above.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUiP1oVAFcJKdFRibgr

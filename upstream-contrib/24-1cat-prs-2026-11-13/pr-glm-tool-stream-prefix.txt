@@ -18,7 +18,8 @@ Upstream vLLM replaced this parser after the pinned base with the streaming pars
 Not a duplicate: no open PR touches glm4_moe_tool_parser.py, glm47_moe_tool_parser.py, their tests or tool_stream.py (checked the files of all 82 open PRs). #1495 adds alternative qwen3_coder/qwen3_xml parsers and does not touch the GLM parser.
 
 Tests (pre-commit ruff-check, ruff-format and mypy pass on the changed files):
-TESTS_PLACEHOLDER
-- Our fork runs this change in production for GLM-5.3-Flash (PP5, DFlash2, --tool-call-parser glm47) since 2026-11-14 CONTROL_PLACEHOLDER.
+- No GPU visible: tests/tool_parsers/test_glm47_moe_tool_parser.py, test_glm4_moe_tool_parser.py, test_required_streaming_boundaries.py and tests/entrypoints/openai/test_tool_stream_finish.py: 116 passed on this branch (rebased on main d722fab7c).
+- The new test against main's glm4_moe_tool_parser.py: 8 of its 12 cases fail (True, both lists, the untyped text, the undeclared parameter, the three mixed arguments, the integer with newlines, the object without spaces); the plain string, the integer, false and the string/null union pass on main as well.
+- Our fork runs this change in production for GLM-5.3-Flash (PP5, DFlash2, --tool-call-parser glm47) since 2026-11-14: a live check against that server streamed 8 tool-call requests (4 prompts, 2 each); all 8 finished with finish_reason tool_calls and no error event, and every call's arguments parse as JSON and match the declared types.
 
 AI assistance (Claude) was used; I reviewed the change and ran the tests above.

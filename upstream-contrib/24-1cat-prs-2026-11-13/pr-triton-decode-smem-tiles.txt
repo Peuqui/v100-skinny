@@ -1,0 +1,26 @@
+[Bugfix][Kernel] Triton decode attention: pick the grouped tile by the device's shared memory
+
+Problem: the grouped stage-1 kernel of vllm/v1/attention/ops/triton_decode_attention.py always used BLOCK_H 16 and BLOCK_N 32, with BLOCK_N 16 only for HIP and for MLA with a 512 latent on SM70 (_decode_grouped_block_size). On a Quadro RTX 8000 (Turing, 65536 bytes of shared memory per block) grouped decode with D_V 512 and D_QK 128 or 192 asks for 73728 or 81920 bytes and fails with OutOfResources (16 cases of tests/kernels/attention/test_triton_decode_attention.py::test_decode_attention); dense MLA with Lk 576, the TRITON_MLA backend's case, asks for 102400 bytes there, so TRITON_MLA cannot decode on Turing at all. On SM70 grouped D_QK 576 (BLOCK_DMODEL 1024) asks for 196608 bytes against 98304.
+
+Cause: the SM70 rule covered one shape by architecture instead of by budget. Before sm80 Triton stages the dot operands in fp32 (no cp.async, no bf16/fp16 MMA reading shared memory), and the footprint of this kernel is 4 * (BLOCK_H * (BLOCK_DMODEL + BLOCK_DPE) + BLOCK_N * max(BLOCK_DMODEL, BLOCK_DV)) bytes. We measured it against the compiled kernel's metadata.shared for 9 shapes x bf16/fp16 x 6 tiles on a V100 (108 points, all exact); num_stages, the dtype and the page size do not change it before sm80. From sm80 on the operands are staged in bf16 and num_stages matters, so the formula does not apply there.
+
+Change:
+- The tile is the first of (32,16), (16,16), (16,8), (16,4) (BLOCK_N, BLOCK_H; BLOCK_N stays >= 16 for the second tl.dot) whose footprint fits into get_max_shared_memory_bytes of q's device. Where no tile fits, a ValueError names the budget and the dimensions instead of OutOfResources at launch.
+- From sm80 on and on HIP the tiles stay as they were ((32,16) and (16,16)); num_warps and num_stages are unchanged everywhere.
+- The capability is read for q's device, not for the current device: the old rule asked current_platform.is_device_capability(70) without a device.
+- Every shape that ran before keeps its tile. On a V100 the outputs (o and lse) of the old and the new code are byte-identical for grouped 128/128, 192/128, 192/512 and 128/512, MLA 576/512 and 288/256, and non-grouped 128/128. MLA with Lk = Lv = 512 and no rope part would now take (32,16) on SM70 (98304 bytes fit exactly) instead of (16,16); no model we know of has that shape.
+- The Lk -> BLOCK_DMODEL/BLOCK_DPE split moves into _grouped_block_dims so that the tests use the kernel's own split.
+- Tests: test_decode_grouped_block_size_is_sm70_scoped becomes test_decode_grouped_tile_follows_smem_budget (13 cases, no GPU) plus test_decode_grouped_tile_without_fitting_tile_raises; new test_grouped_smem_formula_matches_compiled_kernel compares the formula with metadata.shared of the running GPU for 8 shapes x 4 tiles (skipped where Triton does not stage in fp32), so a Triton change that breaks the formula fails loudly; test_decode_attention skips a grouped shape only when no tile fits on this GPU.
+
+Results, tests/kernels/attention/test_triton_decode_attention.py, one pytest process:
+- Tesla V100: main 85 passed, 32 failed; this branch 142 passed, 16 failed. The 16 grouped D_QK 576 cases now run with (16,8) and pass. The 16 remaining failures are test_decode_attention_fp8, which needs fp8e4nv (sm89); #1506 adds that skip.
+- Quadro RTX 8000: main 69 passed, 48 failed; this branch 126 passed, 16 skipped, 16 failed. The 16 D_V 512 cases pass with (16,16); the 16 skipped are grouped D_QK 576, for which no tile fits into 65536 bytes; the 16 failures are again test_decode_attention_fp8. The 32 formula cases pass on the RTX as on the V100.
+- In our fork (branch merge-1cat-119cae740 at f1ece7100, which also carries #1506): V100 142 passed, 16 skipped, 0 failed; RTX 126 passed, 32 skipped, 0 failed.
+- A deliberately wrong tile choice (always (32,16)) turns 6 of the budget cases red; dropping the max() from the formula turns the 8 formula cases with BLOCK_DV > BLOCK_DMODEL red.
+- pre-commit (ruff-check, ruff-format, mypy-local) passes on both files.
+
+Scope: decode_attention_fwd has one caller, the TRITON_MLA backend (vllm/v1/attention/backends/mla/triton_mla.py); triton_turboquant_decode.py imports only the stage-2 kernel, which does not use these tiles.
+
+Not a duplicate: no open PR touches triton_decode_attention.py or triton_mla.py (checked the files of all 86 open PRs on 2026-11-14). #1506 (ours) changes the skip at the top of test_decode_attention in the same test file (an SM70 skip for grouped D_QK 576, later keyed to the shared-memory limit); this PR replaces that skip with the budget check, so whichever merges second needs a one-hunk rebase, which I will do.
+
+AI assistance (Claude) was used; I reviewed every changed line and ran the tests above.

@@ -1210,3 +1210,19 @@ Volle A/B 08.11. 01:14–02:09 (`ab_dv98kv5d_fp8rtx_2026-11-08a.log`, T = v5d + 
 | KV-Pool (Token) | 851 394 | 876 615 | −2,9 % (Entwurfskopf ≈ 0,5 GB je Rang) |
 
 Umstellung 02:11 (`chain_prod_dv98k_q27_2026-11-08.sh`, einzige cmd-Änderung `draft_token_map`, Caches `*-fp8rtx-prod-v5d-dv98k-2026-11-08`, Sicherung `config.yaml.vor-prod-v5d-dv98k-fp8rtx-2026-11-08`), Rücksprung `rollback_prod_dv98k_q27_2026-11-08.sh fp8rtx`. Kontrolle `validate_v5d_dv98k_fp8rtx_2026-11-08.log` (02:11–02:31) bestanden: Prefill 5,53 s, Decode kurz 57,18 tok/s, Präfix-Cache 68 000 von 68 040 Token (49,95 → 0,25 s), Robustheit 5/5, GSM8K 27/30 (77,27 tok/s), Langkontext 59,0 / 65,7 / 66,7 ms/Schritt, 8 Texte tokengleich zum A/B-T1. Tag `verified-2026-11-08-prod-v5d-q27-draftvocab` (STAND Nachtrag 08.11. 02:45).
+
+## 23.11.2026: Bündel v14 (prod-v14, Baum `1Cat-vLLM-v14`, 6b1cd5c2c)
+
+Merge 1Cat main 2d218ab03, KV-Block-Zeroer-Fix für den virtuell geteilten GLM-Index-Cache, GLM-Router einmal je MoE-Schicht, SM70-Routing-Gruppenkern als Sortierung, KDA-Decode-Kleber, Warmup-Fix für den kpool-Tail. Prüfstufe 1, A/B T T P gegen prod-v13 (`ab_v14_{dsv4,glm,fp8rtx}_2026-11-22a.log`, 27B-P#3 in `…-fortsetzung.log`).
+
+| Messgröße | DeepSeek T / P | GLM (k = 7) T / P | 27B-FP8 T / P |
+|---|---|---|---|
+| Decode kurz (tok/s, mehr ist besser) | 61,3 (16,3 ms/Token) / 59,7 (16,8 ms/Token), +2,7 % | 44,5 (22,5 ms/Token) / 42,0 (23,8 ms/Token), +6,0 % | 57,0 / 57,0 (17,5 ms/Token), gleich |
+| GSM8K-30-Decode (tok/s); richtig | 72,0 / 70,5 (+2,2 %); 28 / 28 | 67,7 / 64,7 (+4,6 %); 29 / 29 | 77,4 / 77,2; 26–27 / 27 |
+| Langer Kontext je Schritt (ms, weniger ist besser) | −1,4 bis −3 % (150k–486k) | −4 bis −6 % (170k–516k) | gleich |
+| Erstes Token 150k / 250k (s) | 42,2 / 75,1 gegen 41,1 / 73,7 (je eine Messung) | gleich | gleich |
+| Prefill kurz (s) | 2,28 gleich | 3,85 gegen 3,89 | 5,55 gleich |
+| Qualitätsfragen (8) | tokengleich | tokengleich | 7 tokengleich, zug anders formuliert, richtig |
+| GPU-Spitze, KV-Pool | gleich | gleich; Boot-Gruppen-Swap 2,0–3,1 statt 5,0 GiB | gleich |
+
+Umstellung 01:08–02:29 (`chain_prod_v14_2026-11-23.sh`, frische Caches `*-<key>-prod-v14-2026-11-23`), Kontrollen `validate_v14_<key>_2026-11-23.log` je 5/5, GSM8K-30 gleich (Decode DeepSeek 71,7 gegen 69,9, K7 72,9 gegen 71,3, GLM 68,2 gegen 64,9, 27B 77,3 gleich tok/s). Tag `verified-2026-11-23-prod-v14`, Rücksprung `rollback_prod_v14_2026-11-23.sh <key>`.

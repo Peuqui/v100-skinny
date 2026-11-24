@@ -1226,3 +1226,30 @@ Merge 1Cat main 2d218ab03, KV-Block-Zeroer-Fix für den virtuell geteilten GLM-I
 | GPU-Spitze, KV-Pool | gleich | gleich; Boot-Gruppen-Swap 2,0–3,1 statt 5,0 GiB | gleich |
 
 Umstellung 01:08–02:29 (`chain_prod_v14_2026-11-23.sh`, frische Caches `*-<key>-prod-v14-2026-11-23`), Kontrollen `validate_v14_<key>_2026-11-23.log` je 5/5, GSM8K-30 gleich (Decode DeepSeek 71,7 gegen 69,9, K7 72,9 gegen 71,3, GLM 68,2 gegen 64,9, 27B 77,3 gleich tok/s). Tag `verified-2026-11-23-prod-v14`, Rücksprung `rollback_prod_v14_2026-11-23.sh <key>`.
+
+## 24.11.2026: prod-v15 (variable Prüflänge GLM, gepackte PP-Übergaben, MoE-Kernpaket; Baum `1Cat-vLLM-v15`, 0991b16567)
+
+Prüfstufe 2. Einzel-A/Bs 23.11. (STAND Nachtrag 24.11. 01:45): variable Prüflänge `ab_avad_glm_2026-11-23a.log` (AIfred-Sampling +6,9 %),
+PP-Pack `ab_ppk_{glm,dsv4}_2026-11-23a.log` (GLM +0,6–0,9 %, DeepSeek neutral), MoE-Kernpaket `ab_mpk_glm_2026-11-23{a,b}.log`,
+`ab_mpk2_dsv4_2026-11-23a.log` (GLM +3 %, DeepSeek neutral; Mikrobenchmark und ncu in `upstream-contrib/29-glm-profile-v14k4-2026-11-23/MOE_MESSUNG.md`).
+Bündel-A/B `ab_v15_glm_2026-11-23a.log` (T T P T P, T1 kompiliert) und `ab_v15_dsv4_2026-11-23a.log` (T P T P):
+
+| Messgröße | GLM v15 (T2 / T4) | GLM v14 k = 4 (P3 / P5) | Unterschied |
+|---|---|---|---|
+| AIfred-Sampling alle (tok/s, mehr ist besser) | 45,61 / 45,58 | 40,91 / 41,17 | +11,1 % |
+| Prosa / Erklärung / Code / Rechnen (tok/s) | 37,4 / 45,6 / 61,1 / 63,8 (T4) | 34,4 / 41,0 / 58,3 / 58,1 | +8,6 / +11,1 / +4,8 / +9,8 % |
+| Decode kurz (tok/s) | 51,11 (19,6 ms/Token) / 50,67 | 47,07 (21,2 ms/Token) / 47,37 | +7,9 % |
+| GSM8K-30-Decode (tok/s); richtig | 70,75 / –; 29 | 64,38 / –; 29 | +9,8 % |
+| Greedy-Sonde alle (tok/s) | – / 50,89 | 50,30 / 50,70 | +0,6 % |
+| Prefill 8687 Token (s, weniger ist besser) | 3,86 / 3,87 | 3,95 / 3,86 | gleich |
+| Langkontext 150k / 250k / 516k (tok/s, je eine Messung) | 48,1 / 63,4 / 58,1 | 58,9 / 54,7 / 57,1 | Summe −2 %, mit Adaptiv-A/B +4 %: Rauschen |
+| GPU-Spitze Karte 2 (MiB, weniger ist besser) | 46 513 / 45 865 | 46 593 / 46 025 | gleich oder weniger |
+
+DeepSeek: Decode kurz 61,16 / 61,14 gegen 61,10 / 61,15 tok/s, GSM8K-Decode 72,11 / 72,12 gegen 72,07 / 72,08, Langkontext je Schritt gleich,
+Texte 8/8 tokengleich, GSM8K 28. GLM-Texte: 6/8 tokengleich, motor und kuanda anders formuliert, richtig (händisch gelesen).
+
+Umstellung 24.11. 00:26–01:43 (`chain_prod_v15_2026-11-24.sh glm dsv4 k7 fp8rtx`, frische Caches `*-<key>-prod-v15-2026-11-24`), Kontrollen
+`validate_v15_<key>_2026-11-24.log` je 5/5: GLM Decode kurz 51,16 tok/s (v14 47,30), GSM8K-Decode 70,73 (v14 64,34), 29; DeepSeek GSM8K-Decode
+73,36 (v14 71,75), Langkontext je Schritt gleich, Decode kurz 55,61 (v14 61,19: andere Texte nach Neukompilierung, Annahme je Prompt anders);
+K7 und 27B gleich. Abweichende Kontrolltexte (DeepSeek motor/zug/code_bug, K7 zug/logik) gelesen, richtig. Tag `verified-2026-11-24-prod-v15`,
+Rücksprung `rollback_prod_v15_2026-11-24.sh <key>`.

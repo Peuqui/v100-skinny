@@ -1,0 +1,24 @@
+2a3
+> -@pytest.mark.parametrize("graph_width", [2048, 8192])
+7,8c8,10
+< +# The second shape crosses the 16k-key switch of the decode score tile
+< +# (_decode_score_tile) on Volta and Turing.
+---
+> +# The 20k shape crosses the 16k-key switch of the decode score tile
+> +# (_decode_score_tile) on Volta and Turing; live_seq_len is graph_width // 2 - 7
+> +# for the 2k and 8k shapes.
+10c12,14
+< +    "live_seq_len,graph_width", [(1017, 2048), (16437, 20480)], ids=["2k", "20k"]
+---
+> +    "live_seq_len,graph_width",
+> +    [(1017, 2048), (4089, 8192), (16437, 20480)],
+> +    ids=["2k", "8k", "20k"],
+12c16
+< -    monkeypatch, padded_blocks, layout, num_rows
+---
+> -    monkeypatch, padded_blocks, layout, num_rows, graph_width
+14,15c18
+< -    live_seq_len = 1017
+< -    graph_width = 2048
+---
+> -    live_seq_len = graph_width // 2 - 7

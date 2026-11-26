@@ -1,0 +1,26 @@
+Title: [Bugfix][Worker] Reserve one block for the kpool tail ring during MRV2 warmup
+
+Branch: Peuqui:pr-warmup-kpool-tail-block (base 1Cat main 022349e47, two commits: 63ca70442b test alignment, 9b8ceaeab4 fix)
+
+----- Text -----
+
+Problem: The MRV2 warmup (vllm/v1/worker/gpu/warmup.py, _reserved_block_count) sizes the GLM-5.x kpool tail (KpoolTailSpec) by tokens like a sliding window. The scheduler keeps one block per request for it (KpoolTailManager). The tail ring has kpool * next_pow2(cdiv(kpool + k, kpool)) slots; with kpool 4 that is 8 slots for num_speculative_tokens up to 4 and 16 for 5 to 8. With 8 slots, the 1024-token full-chunk warmup reserves a large number of tail blocks, hands out block ids beyond the end of the pool to the groups after it (Mamba and auxiliary groups), and their state reads and writes go past the end of the KV tensors.
+
+Seen on GLM-5.3-Flash with DFlash2 on a 5-stage pipeline (3x V100 + 2x Quadro RTX 8000), pool sizes of 130 and 131 blocks on the stages: with num_speculative_tokens 4 the warmup handed out block ids up to 162 in a pool of 130, with 3 up to 155 in a pool of 131; the pipeline stage PP3 died with an illegal memory access during warmup. With 5 and 7 draft tokens the ids stayed inside the pool, which is why it went unnoticed. MTP with 3 draft tokens also has the 8-slot ring.
+
+Change (vllm/v1/worker/gpu/warmup.py):
+- _reserved_block_count counts KpoolTailSpec as one block, like CircularBufferSpec (the scheduler holds one block for it).
+- _warmup_cycle asserts that every block id it hands out lies inside the pool (kv_cache_config.num_blocks), so an oversized warmup batch fails at its source with a message instead of as a GPU fault on some pipeline stage.
+
+Second commit (tests only, first in the branch): tests/v1/worker/test_gpu_warmup_blocks.py::test_kernel_prefill_warmup_runs_default_batch_and_extra_profile fails on main because the warmup gained a 16-token prefill cycle under speculation and uses the prompt-logprob-free profile sampling params (#1560) without the test being updated. The expected token counts, the sample count and the prompt_logprobs expectations now follow the current warmup. Included because the test file of this fix is not green on main without it.
+
+Tests, CPU only (CUDA_VISIBLE_DEVICES empty), on main 022349e47 plus the two commits, run with pytest -q -p no:cacheprovider:
+- tests/v1/worker/test_gpu_warmup_blocks.py: 24 passed. New: test_reserved_block_count_matches_speculative_tail with the bare KpoolTailSpec and the uniform spec (1 block each), test_warmup_keeps_kpool_tail_layouts_inside_the_pool for 3, 4, 5 and 7 draft tokens (pools of 130, 130, 130 and 126 blocks, stage layout: attention, kpool tail, six align-mode Mamba groups, auxiliary sliding window) and test_warmup_refuses_block_ids_past_the_pool. With the original warmup.py of main and the new test file 6 fail: the 5 new tests (tail block count twice, the k=3 and k=4 layouts, the assert) and test_kernel_prefill_warmup_runs_default_batch_and_extra_profile (that one fails on main without the second commit as well).
+- The largest block id the warmup hands out for the test layouts (measured on the CPU by running warmup_kernels with the stage layout of the test and an unbounded pool): with main's warmup.py k=3 155 (pool 131), k=4 162 (pool 130), k=5 103 (pool 130), k=7 115 (pool 126); with the fix 27, 33, 39 and 51.
+- Other test files of the modules that use the warmup: test_gpu_worker_allocator.py 10 passed 36 skipped, test_qsa_warmup_cache_trim.py 5 passed 1 skipped, test_gpu_worker_profile_failure.py 4 passed, test_gpu_worker_pp_overlap.py 1 passed, test_gpu_worker_static_pp.py 6 passed. test_gpu_worker_memory_profile.py (10 failed) and test_sm70_warmup_allocator.py (8 failed, 4 passed) fail identically on plain main (the same tests fail on main and with this change); I did not touch them.
+- pre-commit run --files on vllm/v1/worker/gpu/warmup.py and the test file: all hooks passed; pre-commit run mypy-3.10 --hook-stage manual --files on the same files: passed.
+- Not run: any GPU boot (the GPUs serve production); the crash itself is reproduced on the CPU through the warmup block ids, not through a boot of this tree.
+
+Not a duplicate: searches over open and all pull requests (kpool tail, warmup block, KpoolTailSpec, KpoolTailManager, warmup illegal memory access, _reserved_block_count) find #1410 (merged: seeds the kpool tail and sizes the tail ring for speculative drafts) and #1493 (merged: keeps the state groups inside a bounded host-KV state pool); neither changes how the warmup counts the kpool tail or checks the block ids against the pool. Among the 94 open pull requests none changes vllm/v1/worker/gpu/warmup.py or tests/v1/worker/test_gpu_warmup_blocks.py.
+
+AI assistance (Claude) was used; the change was reviewed and tested by the submitter.

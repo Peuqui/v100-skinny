@@ -1,0 +1,103 @@
+# Sources for the numbers in update-1278-body.txt and update-1278-comment.txt (Datei:Zeile).
+# update-evidence/ = /home/mp/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/update-evidence (copies of the logs); runs5 = ~/.cache/bench-scripts/prtest_2026-11-25/runs5 (per-file logs: runs5/<tree>/<device>/<path_with_underscores>.log).
+# Test tree: 1Cat-vLLM-pr-r-turing; devices: cpu = CUDA_VISIBLE_DEVICES empty, v100 = Tesla V100-PCIE-32GB (PCI index 1, sm_70), rtx = Quadro RTX 8000 (PCI index 0, sm_75).
+
+  1. branch holds eight commits, head 4ab593ca3, base main 73da3445d
+     source: git -C 1Cat-vLLM rev-list --count 73da3445d..pr-turing-kernels-r1125 = 8 (run 2026-11-26); fakten-runde5.md:19 (head 4ab593ca3)
+  2. previous head c15d1446f held seven commits on main c59b3c4cb
+     source: gh pr view 1278 --json commits,headRefOid (2026-11-26: 7 commits, c15d1446f); git merge-base fork/pr-turing-kernels origin/main = c59b3c4cb
+  3. three commits patch-identical, four changed, one new
+     source: update-evidence/rd1278.txt:1-7 (markers = ! = ! ! ! =) and the last line (-: > 8: 4ab593ca3)
+  4. added/removed lines of csrc/ and CMakeLists.txt identical between old and new diff
+     source: update-evidence/dd_native_1278.txt (empty; produced by diffing 'git diff -U0 c59b3c4cb fork/pr-turing-kernels' against 'git diff -U0 73da3445d pr-turing-kernels-r1125' restricted to +/- lines of csrc and CMakeLists.txt)
+  5. python/test differences old vs new (sm75_mma on both ops, workspace condition, capability call, qpn_fragment_order(device_id=None), test_block_fp8_qpn8_capabilities no longer touched, new gated test)
+     source: update-evidence/dd2_1278.txt (whole file); update-evidence/rd1278.txt
+  6. #1491 added qpn8_native_linear_out; #1524 added the fused gated pair route
+     source: git log -S_qpn8_native_linear_out 73da3445d: 4392c5853 (title of #1491, '[SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8'); git log -Sfp8_qpn8_gated_pair_sm70_out: 280b02436 (title of #1524); PR titles/states: update-evidence/refstates.txt (#1491, #1524 merged via gh pr view)
+  7. #1535 merged 2026-11-25, holds the block-FP8 prefill workspace only when graphs capture the prefill (condition of _graphs_capture_dense_prefill: true when an engine config is missing, when kv_cache_memory_bytes is set, or when a CUDA graph size above dense_above is captured; false when cudagraph_mode is NONE or all sizes are at most dense_above)
+     source: gh pr view 1535 (MERGED 2026-11-25T05:04:00Z); git log -S_graphs_capture_dense_prefill: 2413bfe68
+  8. Turing layer creates the workspace only if no stream is capturing and _graphs_capture_dense_prefill(_SM75_MMA_MAX_M) holds (true for a capture size above 512, a fixed kv_cache_memory_bytes or no engine config; false for cudagraph_mode NONE or sizes up to 512)
+     source: 1Cat-vLLM-pr-r-turing/vllm/model_executor/kernels/linear/qpn/fp8_block.py:102-120 (_graphs_capture_dense_prefill: engine None -> True; cache_config.kv_cache_memory_bytes not None -> True; cudagraph_mode NONE -> False; else any(size > dense_above for size in cudagraph_capture_sizes)), :64 (_SM75_MMA_MAX_M = 512), :711-717 (call with codes.is_cuda and not torch.cuda.is_current_stream_capturing()) (block added by commit aa9aa33b1; see update-evidence/dd2_1278.txt, the '+ if (codes.is_cuda and not torch.cuda.is_current_stream_capturing() and _graphs_capture_dense_prefill(_SM75_MMA_MAX_M))' hunk)
+  9. platform answers for the selected device without a CUDA context; index 0 of the visibility list without a context
+     source: 1Cat-vLLM-pr-r-turing/vllm/platforms/cuda.py:255-265 (resolve_device_id), :731-745 (get_device_capability)
+ 10. 512-row bound (_SM75_MMA_MAX_M)
+     source: 1Cat-vLLM-pr-r-turing/vllm/model_executor/kernels/linear/qpn/fp8_block.py (_SM75_MMA_MAX_M = 512, commit aa9aa33b1; description text 'M = 9..512')
+ 11. eighth commit: Turing gate_up_proj kept off the fused gated route; gated route above M = 8 falls back to GEMM or dense rebuild
+     source: git show 4ab593ca3 (commit message, diff of fp8_block.py and tests); 1Cat-vLLM-pr-r-turing/vllm/model_executor/kernels/linear/qpn/fp8_block.py:370-503 (_qpn8_native_gated_silu: M <= 8 native pair kernel; exact-SM70 batch kernel; fallback_weight GEMM + silu_and_mul; else dense prefill)
+ 12. _C carries 75 sm_70 and 2 sm_75 cubins
+     source: update-evidence/cuobjdump_pr-r-turing_C.txt (/usr/bin/cuobjdump --list-elf 1Cat-vLLM-pr-r-turing/vllm/_C.abi3.so, run 2026-11-26; file built 2026-11-25 06:25)
+ 13. 25 minute limit per file, no hang; devices
+     source: fakten-runde5.md:44-48; each summary.log header line 1 (limit 25 min/file) and its last line '0 hung'
+ 14. stock Triton 3.6.0, torch 2.10.0
+     source: /home/mp/vllm/venv/bin/python -I -c 'import importlib.metadata as m; print(m.version("triton"), m.version("torch"))' -> 3.6.0 2.10.0 (run 2026-11-26); run_pytest_per_file.sh:11 (no sm7x Triton on PYTHONPATH; the mhc tensor-core tests of the other PRs skip, see their summary lines)
+ 15. failures same test IDs on main, zero new failures
+     source: ~/.cache/bench-scripts/prtest_2026-11-25/cmp5_result.txt:pr-r-turing/cpu, /v100, /rtx lines ('neu gegen main: 0'); per-ID check done again by update-evidence-independent script mk_tests.py (failing IDs of runs5/pr-r-turing/<dev>/tests_quantization_test_sm70_fp8_prefill_exact_dense.py.log vs runs5/prmain2/<dev>/same file)
+ 16. the two failing tests and their causes (assert (16,2,False) is None; TypeError cap_to_bounded_ceiling at compressed_tensors_w8a16_fp8.py:414)
+     source: runs5/pr-r-turing/rtx/tests_quantization_test_sm70_fp8_prefill_exact_dense.py.log:24-27 and :143-145; same lines in runs5/prmain2/rtx/ and runs5/prmain2/cpu/ logs
+ 17. test_sm70_fp8_prefill_exact_dense.py 24 passed here vs 22 on main; test_turing_qpn_kernel_selection.py 34 vs 22; test_sm70_qpn8_block_fp8.py V100 152 passed, 27 skipped
+     source: runs5/prmain2/<dev>/summary.log (lines in the table below); runs5/pr-r-turing/v100/summary.log:3
+ 18. CPU-only runs of five earlier Test Plan files (branch / main): 24/24, 55/55, 91/91, 223/223, 32/32
+     source: update-evidence/cpu1278_branch/summary.log:2-6 and update-evidence/cpu1278_main/summary.log:2-6
+ 19. route snapshots moe 168 configurations, fp8 324 configurations, expected changes 0
+     source: update-evidence/snap_fp8_check_turing.log (last line '324 configurations: expected changes=0'), update-evidence/snap_moe_check_turing.log (last line '168 configurations: expected changes=0'); baselines produced from 1Cat-vLLM-prmain2 (73da3445d), check run in 1Cat-vLLM-pr-r-turing
+ 20. pre-commit default stage: 21 hooks pass, 17 skipped, one fails (check-layering); mypy-3.10 (manual stage) passes
+     source: update-evidence/pc3b_r-turing.log: header line 1 (4ab593ca3, origin/main..HEAD); Passed lines 2-5, 14, 16-19, 21-24, 28, 70-80 (21 before the manual stage line 83; counted by script); 'Skipped' lines (17); layering Failed at line 29; mypy-3.10 'Passed' at line 87
+ 21. check-layering reports the same 33 entries in 28 files as main
+     source: update-evidence/pc3b_r-turing.log:29-61 vs update-evidence/pc3b_MAIN.log:129-161 (entry lists compared sorted: identical; 28 distinct files)
+ 22. main fails seven hooks over 28f321c2c..73da3445d
+     source: update-evidence/pc3b_MAIN.log:2 (ruff check), :8 (markdownlint-cli2), :26 (mypy local), :95 (check-architecture-reference), :101 (test-architecture-reference), :129 (check-layering), :189 (mypy-3.10)
+ 23. main merge base of the branch is 73da3445d; origin/main is 44708bdb9 today (two commits, no file of the branch)
+     source: git merge-base origin/main pr-turing-kernels-r1125 = 73da3445d; git diff --name-only 73da3445d origin/main (11 files, none in the branch), fakten-runde5.md:11-15
+ 24. duplicate check: 74 open PRs on 2026-11-26 (63 by other authors), 63 open + 215 merged PRs by other authors diffed (278), five too large
+     source: update-evidence/s_1278.txt (gh pr list --state all --search results); gh pr list --state open --limit 500 (74, run 2026-11-26); gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, author not Peuqui and not dependabot = 215 (the earlier --limit 400 listing sorted by creation date gave 217 and missed #828, #894, #943, #963); open, author not Peuqui and not dependabot = 63; gh pr diff errors 'exceeded the maximum number of lines (20000)' for #1243, #1260, #1482, #1527, #1616
+ 25. #1069, #1157 merged 2026-11-10; #1216 merged 2026-11-16; #1469 qualifies #1157
+     source: update-evidence/refstates.txt (gh pr view: #1069 MERGED 2026-11-10T07:49:34Z, #1157 MERGED 2026-11-10T08:27:00Z, #1216 MERGED 2026-11-16T14:22:56Z); gh pr view 1469 (title 'qualify native block FP8 M17-32 integration for #1157', MERGED 2026-11-10T08:26:58Z)
+ 26. #1030, #1031, #1243, #822 still open and change skinny_moe_qpn_sm70.cu / skinny_sm70_moe.py / test_turing_qpn_kernel_selection.py
+     source: gh pr list --state open --json files (2026-11-26): #1030 and #1031 and #1243 list csrc/sm70_turbomind/ops/skinny_moe_qpn_sm70.cu and vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py; #822 lists tests/quantization/test_turing_qpn_kernel_selection.py (computed in overlap.txt by the file-list intersection script)
+ 27. #1448 retains this PR's head c15d1446f; #1454/#1455 retain the stacked PRs; only these contain the m16n8k8 symbols
+     source: gh pr view 1278 reviews (2026-11-09T14:00:50Z by yangzhuxinyzx: 'retained for qualification in #1448', head c15d1446fa00...); symbol search: 39 added symbols of the PR searched in 275 downloaded diffs, hits listed by symbols.py output (m16n8k8 kernel names only in #1448, #1454, #1455)
+
+# Round 2 corrections after the independent review (2026-11-26); evidence not copied into update-evidence/ stays in the scratchpad of this session (path in the source lines)
+ 28. duplicate check, recount and the four PRs that the first count missed (#828, #894, #943, #963)
+     source: gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000 (run 2026-11-26): 282 PRs = 62 Peuqui + 5 app/dependabot + 215 others (copy: /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/merged.json); gh pr list --state open --limit 500: 74 = 9 Peuqui + 2 dependabot + 63 others (copy: /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/open.json); 215 + 63 = 278
+     source: gh pr diff 828, 894, 943, 963 (568, 414, 98 and 348 lines; merged 2026-11-10T19:13:28Z, 2026-11-10T10:49:36Z, 2026-11-09T17:39:06Z, 2026-11-10T12:52:18Z; copies: /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/four/diffs); the earlier set of downloaded diffs held 211 of the 215 merged ones (gh pr diff of #1260, #1482, #1527, #1616 exceeds 20,000 lines) and all open ones but #1243
+     source: gh pr view N --json mergeCommit and git merge-base --is-ancestor <mergeCommit> 73da3445d for N = 828, 894, 943, 963 (merge commits 6ff089d42, 04787acda, d009f5e90, 677e2df03): all four are ancestors of main 73da3445d
+     source: update-evidence/symbols.py run on the four diffs (python3 symbols.py /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/four): #1278 0 hits, #1347 0, #1348 0, #1221 0; #1282 4 generic names (_all_reduce in #963, _prefill in #943, device_capability in #828/#894/#963, requests in #963); #1286 2 generic names (_device_capability in #828/#894/#963, get_device_capability in #963)
+     source: file lists (gh pr view N --json files) against git diff --name-only of the PR's own range: #894 lists CMakeLists.txt, csrc/sm70_turbomind/ops/bf16_weight_sm70.cu, csrc/sm70_turbomind/ops/mtp_moe_fp16_sm70.cu, docs/design/sm70_bf16_checkpoint_reader.md, tests/kernels/linear/test_sm70_bf16_weight.py, tests/kernels/moe/test_sm70_mtp_moe_bf16.py, vllm/_custom_ops.py: common with #1278 and #1282 CMakeLists.txt, with #1286 CMakeLists.txt and vllm/_custom_ops.py, with #1347, #1348, #1221 nothing; #828, #943, #963 share no file with any of the six PRs
+ 29. route snapshots do not cover SM75 block-FP8 layers; the eighth commit changes the Turing gate_up selection
+     source: /home/mp/Projekte/vllm-research/1Cat-vLLM-pr-r-turing (4ab593ca3)/tools/sm70_fp8_route_snapshot.py:147-153 (platform = NS(... has_device_capability=lambda c: c == 70, get_device_capability=lambda: DeepSeek DeviceCapability(7, 0)); grep -n 'capab' tools/sm70_moe_route_snapshot.py: no hit (no device capability set)
+     source: update-1278-body.txt:110 (new text); test_block_qpn8_gate_up_fuses_the_gated_route_except_on_turing in tests/quantization/test_sm70_fp8_prefill_exact_dense.py (item 11)
+ 30. card runs of test_sm70_native_policy.py and test_sm70_fp4_mainflow.py not repeated on this head (replaces the claim that the earlier known failures no longer occur)
+     source: update-1278-body.txt:20 (CPU-only runs 91 and 223 passed, update-evidence/cpu1278_branch/summary.log:4-5); the card failures at c15d1446f are in update-1278-body.txt:25
+ 31. Runtime acceptance, item 1 (reuse, missing capability, new providers)
+     source: update-1278-body.txt:91 (new); basis: Purpose lines 29-41 (m16n8k8 GEMM, M 9..512, fragment order packed at load, no second layout; 'Volta's mma.m8n8k4, which Turing executes at half its tensor rate')
+ 32. Runtime acceptance, item 2 (admission, qualification, tuning)
+     source: update-1278-body.txt:92; basis: update-1278-body.txt:107 (op requirement, missing native operator), :40 (trap), :34 (split-K scope), :33
+ 33. Runtime acceptance, item 3 (startup equivalence)
+     source: update-1278-body.txt:93; basis: :108 (no setting added), :105 (same entry, own compile cache), :104
+ 34. Runtime acceptance, item 4 (boundaries)
+     source: /home/mp/Projekte/vllm-research/1Cat-vLLM-pr-r-turing (4ab593ca3)/tests/kernels/quantization/test_sm70_qpn8_block_fp8.py:249-266 (test_matches_dequantized_reference: m in [0, 1, 6, 8, 9, 20, 64, 512], five (n, k) shapes, scale dtypes float32 and float8_e8m0fnu, relative L2 error < 1e-3), :556-557 (test_turing_decode_keeps_the_packed_gemm, m in [1, 6, 8]); M above 512 is not among the cases of the first test (grep -n '513' in the file: no hit)
+ 35. Runtime acceptance, item 5 (exact items and error limits)
+     source: update-1278-body.txt:32 (bit-identical to the dense reconstruction), :117 (840 configurations bitwise equal), :120 (6.3e-4), :119 (bit-identical), :29 (w13 split 16 -> 8); test limit 1e-3: test_sm70_qpn8_block_fp8.py:266
+ 36. Runtime acceptance, item 6 (task quality)
+     source: update-1278-body.txt:124 (DeepSeek-V4-Flash: texts differ on 2 of 3 prompts and 7 of 8 quality answers, judged correct and equivalent; sampled acceptance mixed), :125 and :126 (Qwen3.8-27B byte-identical), :129
+ 37. Runtime acceptance, item 7 (gaps) and the open demands of the review of 2026-11-09
+     source: gh pr view 1278 --repo 1CatAI/1Cat-vLLM --json reviews: review by yangzhuxinyzx, 2026-11-09T14:00:50Z, head c15d1446fa00d3196243da5de951d8ed3586de0a 'retained for qualification in #1448; this is not runtime approval or a merge'; '#1278/#1346 require actual SM75 qualification; a V100 cannot establish Turing behavior. Validate native correctness, graph replay, concurrent resource ownership, matched model quality and whole-round timing before promotion.' (PR state OPEN, head c15d1446f, updatedAt 2026-11-09T15:53:26Z, queried 2026-11-26)
+     source: update-1278-body.txt:97; what the RTX 8000 runs cover: update-1278-body.txt:115 (kernel timings in CUDA graphs on a Quadro RTX 8000), :12 (unit tests on the RTX 8000); what they do not: the final 27B FP8 routing was not re-measured (:125); no model boot of this head (:104)
+
+# Test results per file and device (summary.log line of the Round-5 chain; main = runs5/prmain2 = main 73da3445d):
+  tests/kernels/moe/test_skinny_sm70_moe.py CPU: runs5/pr-r-turing/cpu/summary.log:2
+  tests/kernels/moe/test_skinny_sm70_moe.py Tesla V100: runs5/pr-r-turing/v100/summary.log:2
+  tests/kernels/moe/test_skinny_sm70_moe.py Quadro RTX 8000: runs5/pr-r-turing/rtx/summary.log:2
+  tests/kernels/quantization/test_sm70_qpn8_block_fp8.py CPU: runs5/pr-r-turing/cpu/summary.log:3
+  tests/kernels/quantization/test_sm70_qpn8_block_fp8.py Tesla V100: runs5/pr-r-turing/v100/summary.log:3
+  tests/kernels/quantization/test_sm70_qpn8_block_fp8.py Quadro RTX 8000: runs5/pr-r-turing/rtx/summary.log:3
+  tests/quantization/test_sm70_fp8_prefill_exact_dense.py CPU: runs5/pr-r-turing/cpu/summary.log:4
+  tests/quantization/test_sm70_fp8_prefill_exact_dense.py Tesla V100: runs5/pr-r-turing/v100/summary.log:4
+  tests/quantization/test_sm70_fp8_prefill_exact_dense.py Quadro RTX 8000: runs5/pr-r-turing/rtx/summary.log:4
+  tests/quantization/test_sm70_fp8_prefill_exact_dense.py CPU main: runs5/prmain2/cpu/summary.log:38; causes: runs5/pr-r-turing/cpu/tests_quantization_test_sm70_fp8_prefill_exact_dense.py.log
+  tests/quantization/test_sm70_fp8_prefill_exact_dense.py Tesla V100 main: runs5/prmain2/v100/summary.log:38; causes: runs5/pr-r-turing/v100/tests_quantization_test_sm70_fp8_prefill_exact_dense.py.log
+  tests/quantization/test_sm70_fp8_prefill_exact_dense.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:38; causes: runs5/pr-r-turing/rtx/tests_quantization_test_sm70_fp8_prefill_exact_dense.py.log
+  tests/quantization/test_turing_qpn_kernel_selection.py CPU: runs5/pr-r-turing/cpu/summary.log:5
+  tests/quantization/test_turing_qpn_kernel_selection.py Tesla V100: runs5/pr-r-turing/v100/summary.log:5
+  tests/quantization/test_turing_qpn_kernel_selection.py Quadro RTX 8000: runs5/pr-r-turing/rtx/summary.log:5

@@ -1,0 +1,91 @@
+# #1221: changed sentences, old -> new (10 edits to the existing description; the new Update paragraph at the top is listed in the body itself)
+
+## 1. Purpose: first sentences after #1616
+OLD: DeepSeek-V4 with its DSpark drafter runs only on Model Runner V1 in this fork: MRV2 rejects the speculative method 'dspark'. This PR adds it, in three commits.
+NEW: DeepSeek-V4 with its DSpark drafter runs only on Model Runner V1: MRV2 admits the speculative method 'dspark' only for an Inkling 2 drafter (main's #1616) and rejects it for every other. This PR adds it for the other drafters, in three commits.
+
+## 2. Purpose item 1: where the speculator lives and what #1616 changed
+OLD: MRV2 admits 'dspark', reads dspark_target_layer_ids and dspark_noise_token_id, and feeds the drafter the target hidden state unless the target returns an override (DeepSeek-V4 MTP only);
+NEW: MRV2 admits 'dspark' in general (the two Inkling 2 exceptions that #1616 added to _validate_v2_model_runner become redundant and go; init_speculator keeps an Inkling 2 drafter on main's Inkling2DSparkSpeculator and gives every other DSpark drafter this speculator, which lives in dspark/block_drafter.py next to main's speculator.py), reads dspark_target_layer_ids and dspark_noise_token_id, and feeds the drafter the target hidden state unless the target returns an override (DeepSeek-V4 MTP only);
+
+## 3. Purpose item 2: width graphs of #1616
+OLD: The graph manager now captures variants at the compressed-index buckets of the SM70 graph plan, the plan the V1 dispatcher already reads, builds the capture metadata at the bucket, and replays the smallest captured bucket that covers the live context. As in the V1 dispatcher, the variants exist for one request with one verification block.
+NEW: The graph manager now captures variants at the compressed-index buckets of the SM70 graph plan, the plan the V1 dispatcher already reads, builds the capture metadata at the bucket, and replays the smallest captured bucket that covers the live context. As in the V1 dispatcher, the variants exist for one request with one verification block. main's _add_dspark_width_graphs (#1616: target graphs for narrower verify widths) stays with the Inkling 2 drafter, the only one whose draft width shrinks with the batch; for this speculator it would capture graphs that are never replayed.
+
+## 4. Purpose item 3
+OLD: 3. Tests for both.
+NEW: 3. Tests for both, and for the width-graph condition.
+
+## 5. layering sentence
+OLD: The layering baseline records the one SM70 graph-plan import of the MRV2 graph manager and the new speculator's references to the DFlash base it extends, as it does for vllm/v1/spec_decode/dspark.py.
+NEW: The layering baseline records the one SM70 graph-plan import of the MRV2 graph manager (cudagraph_utils.py, platform 30 -> 31) and the new speculator's references to the DFlash base it extends (block_drafter.py), as it does for vllm/v1/spec_decode/dspark.py.
+
+## 6. Not a duplicate paragraph: refreshed on main 73da3445d
+OLD: Not a duplicate: gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "dspark", "MRV2", "model runner v2", "context bucket" and "compressed index graph" find no PR that adds DSpark or compressed-index buckets to MRV2; #874 added the buckets to the V1 dispatcher. Open PRs that touch the same files (#1182, #1184, #1197, #1215, #1217) change other things and merge without conflicts.
+
+
+NEW: Not a duplicate. Checked on 2026-11-26 against main 73da3445d: gh pr list --repo 1CatAI/1Cat-vLLM --state all --search for dspark, MRV2, model runner v2, context bucket, compressed index and speculator; the file lists of all 63 open PRs by other authors (dependabot excluded); and the added and removed lines of the diffs of those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; the merged ones were listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date) for the symbols this change adds (the diffs of #1243, #1260, #1482, #1527 and #1616 exceed GitHub's 20,000-line limit; for these five only the file lists were compared). Findings:
+- main's #1616 (Jozkah, merged 2026-11-25) adds an Inkling 2 DSpark speculator for MRV2 (spec_decode/dspark/speculator.py, Inkling2DSparkSpeculator) and admits 'dspark' on MRV2 for an Inkling 2 drafter. It does not run DeepSeek-V4's DSpark drafter (a plain parallel block drafter: the same width every step, the DeepSeek-V4 context slots per cache layer, PP-resident embedding) and has no compressed-index buckets for MRV2. The two do not overlap in code: the update above shows how this PR selects between them and keeps #1616's behaviour unchanged for Inkling 2.
+- #1600 (ON-works, open; Inkling2DSparkModel with a sidecar loader) and #1598 and #1621 (Inkling 2 ports) work on the Inkling 2 model files and share no file with this PR. #1374 (open; DSpark main projection output rows) changes DeepSeek-V4.1 files only.
+- #1379 (ProprietaryLegal, open; DeepSeek-V4.1 and its DSpark drafter on MRV2) depends on this PR and carries its three commits unchanged. It will need a rebase onto this head: the speculator file is now dspark/block_drafter.py and main has its own dspark/speculator.py.
+- #1452 ("[Draft review queue] DeepSeek-V4.1 model and speculative state queue") retains this PR's earlier head 450e65c52 for qualification (review comment of 2026-11-09 on this PR); it and #1379 are the only PRs whose diffs contain this PR's distinctive symbols (DSparkSpeculator, the test names, _manager_with_buckets); other diffs share only generic names such as map_draft_to_target (#1375, #1377, #1600) and _speculator (#1449, #1450, #1614).
+- #874 added the buckets to the V1 dispatcher (merged). Open PRs that share a file with this PR's own files: #1589 and #1371 (vllm/v1/worker/gpu/model_runner.py), #1589, #1551, #1243, #1031, #629 (vllm/config/vllm.py) and #979 (dflash/utils.py); they change other code in these files. The older #1182, #1184, #1197 and #1215 are closed and #1217 is merged. #828, #894, #943 and #963 (merged 2026-11-09 and 2026-11-10, part of main 73da3445d) share no file and no symbol with this PR.
+
+
+
+## 7. Test Plan: pre-commit range and this round's files
+OLD: ```bash
+pytest tests/v1/worker/test_mrv2_dspark_context_buckets.py tests/v1/worker/test_sm70_long_attention_graphs.py tests/v1/spec_decode/test_dspark.py tests/v1/spec_decode/test_dflash_mrv2_config.py tests/v1/worker/test_gpu_model_runner_v2.py tests/v1/worker/test_gpu_model_runner_v2_greedy.py tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py tests/v1/worker/test_gpu_cudagraph_memory_reserve.py
+pre-commit run --from-ref origin/main --to-ref HEAD
+pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+```
+NEW: The eight test files tests/v1/worker/test_mrv2_dspark_context_buckets.py, tests/v1/worker/test_sm70_long_attention_graphs.py, tests/v1/spec_decode/test_dspark.py, tests/v1/spec_decode/test_dflash_mrv2_config.py, tests/v1/worker/test_gpu_model_runner_v2.py, tests/v1/worker/test_gpu_model_runner_v2_greedy.py, tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py and tests/v1/worker/test_gpu_cudagraph_memory_reserve.py, run with pytest (one command in the plan; one process per file in the round below).
+pre-commit run --from-ref 73da3445d --to-ref HEAD
+pre-commit run mypy-3.10 --hook-stage manual --from-ref 73da3445d --to-ref HEAD
+Round of 2026-11-26 (update at the top): one pytest process per file on the CPU, a Tesla V100 and a Quadro RTX 8000 for the files listed there (four of the eight files above, test_dflash_mrv2_config.py, test_gpu_model_runner_v2.py, test_gpu_model_runner_v2_greedy.py and test_gpu_cudagraph_memory_reserve.py, were run on the CPU only, see the update).
+
+## 8. Test Plan: serving measurement belongs to the earlier head
+OLD: Serving on our fork (main 6f3557c97 plus our commits):
+NEW: Serving on our fork (main 6f3557c97 plus our commits, with the earlier head of this PR; the speculator file of this head is byte-identical to the one measured):
+
+## 9. Test Result: unit-test bullet replaced by a pointer
+OLD: - On a Tesla V100 and on a Quadro RTX 8000 (main 6f3557c97 plus this PR): 130 passed, 14 failed. The same 14 fail identically on main 6f3557c97 without this PR (125 passed, 14 failed): tests/v1/spec_decode/test_dflash_mrv2_config.py (4), tests/v1/worker/test_gpu_model_runner_v2_greedy.py (9) and tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py::test_execute_rejects_prefill_before_dp_graph_dispatch. pre-commit and mypy-3.10 pass.
+
+NEW: - Unit tests: the results on the current head 7730427a0 (CPU, Tesla V100, Quadro RTX 8000, per file, and the comparison with main 73da3445d) are in the update of 2026-11-26 at the top. The earlier head gave 130 passed and 14 failed on a V100 and an RTX 8000 against 125 passed and 14 failed on main 6f3557c97 (the same 14 tests); pre-commit and mypy-3.10 passed then.
+
+
+## 10. footer: the two closing lines of fakten-runde5.md (session link of this session)
+OLD: (no footer)
+NEW: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUkqNsK9nE7L151CUUE
+
+# Round 2 (2026-11-26, after the independent review): further changes to the text, old -> new, short. The entries above stay as they were; where a sentence of an entry above was changed again, the entry's NEW text was updated to the final wording.
+
+## R2-1. A1
+OLD: 'the file lists of all 72 open PRs; ... 63 open PRs by other authors and of 217 PRs by other authors merged since 2026-10-28 (280 in all)'
+NEW: 'the file lists of all 63 open PRs by other authors (dependabot excluded); ... those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date)'
+
+## R2-2. A3 Runtime acceptance section
+OLD: (section missing)
+NEW: new section '## Runtime acceptance (required for runtime changes)' with the seven bullets of the template; the review of 2026-11-09 (DeepSeek-V4.1 checkpoint, stochastic coupling, stateful prefix hits, session replay) named as still open
+
+## R2-3. Body:4 '@benchislett'
+OLD: 'vllm#46995 by @benchislett'
+NEW: 'vllm#46995 by benchislett'
+
+## R2-4. Body:27, 28 fp8e4nv
+OLD: 'Triton CompilationError (fp8e4nv is not supported on sm_75)' in the V100 column
+NEW: the literal message 'type fp8e4nv not supported in this architecture'
+
+## R2-5. Test Plan code block
+OLD: a fenced block with backticks (pytest command and two pre-commit commands)
+NEW: plain text: the eight files named in a sentence, the two pre-commit commands as lines of text; no backticks
+
+## R2-6. four merged PRs of the first count
+OLD: (not mentioned)
+NEW: sentence: share no file and no symbol with this PR
+
+## R2-7. Comment
+OLD: (no mention that four of the eight Test Plan files ran on the CPU only)
+NEW: stated; acceptance section referenced

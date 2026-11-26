@@ -1,0 +1,7 @@
+Source of every number in pr-glm5next-kda-decode-glue.txt
+
+15 -> 2 launches; 42.9 us (V100) / 37.5 us (RTX 8000) less per layer at 8 rows, bit-identical, CUDA graph: v100-skinny/STAND.md Nachtrag 22.11. 15:00 (Kernpakete), benchmark ~/.cache/bench-scripts/pkg_kdaglue_bench_2026-11-22.py. Marked RECHECK.
+12 norm cases + 4 pack cases torch.equal on V100: message of fork commit 381a4eac7 (22.11.2026). The test file counts 4 rows x 3 scales = 12 norm cases + 4 pack cases (16 tests, "16 skipped" on CPU).
+34 KDA layers: pkg_kdaglue_bench_2026-11-22.py constant LAYERS = 34 (GLM-5.3-Flash).
+41.99 -> 44.50 / 44.41 tok/s: /home/mp/.cache/bench-scripts/ab_v14_glm_2026-11-22a.log, ZUSAMMENFASSUNG lines [P3] (41.99, v13) and [T1], [T2] (44.50, 44.41, v14); bundle.
+Test counts: own runs 2026-11-23 in 1Cat-vLLM-pr-glm5next-kda-glue (scratchpad testC.out). test_pp.py failures on unmodified main: own run in the router-once tree with model.py from origin/main.

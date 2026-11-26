@@ -1,0 +1,24 @@
+Title: [Bugfix][GLM-5.3] Compute the MoE router GEMM once per layer
+
+Branch: pr-glm5next-router-once (base 1Cat main 022349e47), one commit, fork version 0ef69f4e6
+
+----- Text -----
+
+Problem: Glm5NextMoE builds its FusedMoE with gate=self.gate, so the MoE runner computes the router logits itself and discards the router_logits argument. Glm5NextMoE.forward nevertheless ran self.gate first and passed the result in. Every MoE layer of GLM-5.3-Flash therefore ran the router GEMM (and its cast to float32) twice per layer and step; one of the two results was never used.
+
+Change (vllm/models/glm5next/nvidia/model.py): Glm5NextMoE.forward no longer calls self.gate. It asserts experts.is_internal_router and passes the hidden states as the placeholder router_logits argument, the way the DeepSeek-V2/V4 models do for an internal router. The comment that said main's MoERunner needs pre-computed logits is replaced; the runner computes them from the gate it was given.
+
+Evidence:
+- New unit test tests/models/glm5next/test_moe_router_once.py: a counting gate behind an experts module that mimics the runner (applies the gate itself, ignores router_logits). On main the gate runs 2 times per forward (assert 2 == 1 fails); with the change it runs once and the output equals the single gate result.
+- The output cannot change: the removed computation was never consumed. In our fork, which carries the same change, the greedy answers of GLM-5.3-Flash to our eight control questions stayed token-identical across the update that brought it in.
+- Speed: not measured for this change alone. It removes one router GEMM and its cast per MoE layer and step.
+
+Tests (pytest -q -p no:cacheprovider <file>, one process per file, on main 022349e47 plus this commit; on the CPU with CUDA_VISIBLE_DEVICES empty unless a GPU is named):
+- tests/models/glm5next/test_moe_router_once.py: 1 passed (fails on main with assert 2 == 1).
+- Other files under tests/models/glm5next: test_kda_norm_dispatch.py 2 passed 2 skipped; test_mtp_config.py 4 passed; test_sm70_kda.py 17 passed 25 skipped; test_sm70_sparse.py 4 passed 6 skipped; test_vision_budget.py 6 passed; test_pp.py 6 passed 2 failed. The two test_pp.py failures (test_glm53_materialized_mhc_state_crosses_pp_boundary and test_glm53_dflash_aux_hidden_states_cross_pp_boundary, AttributeError: 'Glm5NextModel' object has no attribute '_pp_aux_dump') are the same on unmodified main 022349e47; they are not touched by this change.
+- On a Tesla V100 (all tests of these files, including the CUDA ones): test_moe_router_once.py 1 passed, test_kda_norm_dispatch.py 4 passed, test_sm70_kda.py 42 passed, test_sm70_sparse.py 10 passed.
+- pre-commit run --files on the two changed files, and the manual-stage mypy hook (mypy-3.10): all hooks pass.
+
+Duplicate check: gh pr list --state all searches "router GEMM", "Glm5NextMoE", "glm5next router", "internal router" and "GLM-5.3 decode" show no PR that changes the router call in Glm5NextMoE. Open PRs #1102, #1243, #1260, #1286 and #1348 touch vllm/models/glm5next/nvidia/model.py and still contain the double computation (self.gate(hidden_states) followed by router_logits=router_logits); none of them removes it, so this is not a duplicate, but a later rebase of those PRs may need to resolve a small textual conflict at that line.
+
+AI assistance (Claude) was used; the change was reviewed and tested by the submitter.

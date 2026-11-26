@@ -1,0 +1,7 @@
+Source of every number in pr-glm5next-router-once.txt
+
+assert 2 == 1 on main, 1 passed with the change: own run 2026-11-23 in 1Cat-vLLM-pr-glm5next-router-once, model.py temporarily checked out from origin/main (pytest_1cat.sh tests/models/glm5next/test_moe_router_once.py).
+Other glm5next file counts: own runs 2026-11-23, outputs in the session scratchpad testA.out (same counts reproduced on the kda-glue tree, testC.out).
+test_pp.py 2 failed on unmodified main: own run 2026-11-23 with model.py checked out from origin/main inside the same tree (AttributeError _pp_aux_dump).
+41.99 / 44.50 / 44.41 tok/s (decode short, 192 tokens): /home/mp/.cache/bench-scripts/ab_v14_glm_2026-11-22a.log, lines ZUSAMMENFASSUNG [P3] (41.99, v13 arm) and [T1], [T2] (44.50, 44.41, v14 arm). Bundle = v14 (1Cat main merge + router fix + routing kernel + KDA glue + more), not this change alone.
+Router fix bit-identical: v100-skinny/STAND.md Nachtrag 22.11. 15:00 ("Fix a50713a62 / 0ef69f4e6, bitgleich"); marked RECHECK in the text.

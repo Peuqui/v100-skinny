@@ -1,0 +1,664 @@
+ 1:  9ab23ed48 !  1:  aa9aa33b1 feat(sm75): tensor-core GEMM on QPN8 block-FP8 codes for Turing, M 9..512
+    @@ csrc/torch_bindings.cpp: TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
+            "z_out, Tensor(c!) b_out, Tensor(d!) a_out, Tensor input, Tensor codes, "
+     
+      ## tests/kernels/quantization/test_sm70_qpn8_block_fp8.py ##
+    -@@ tests/kernels/quantization/test_sm70_qpn8_block_fp8.py: def test_volta_turbomind_copy_follows_decode_rows(
+    -         layer
+    -     )
+    -     assert hasattr(layer, "_sm70_block_fp8_turbomind_packed_weight") == copy
+    +@@ tests/kernels/quantization/test_sm70_qpn8_block_fp8.py: def test_prefill_workspace_is_held_only_for_captured_prefill(
+    +     assert ((y.float() - expected).norm() / expected.norm()).item() < 1e-3
+    +     assert (primary in pool) == resident
+    +     clear_sm70_fp8_workspaces()
+     +
+     +
+     +@pytest.mark.parametrize("m", [1, 6, 8])
+    @@ tests/kernels/quantization/test_sm70_qpn8_block_fp8.py: def test_volta_turbomind
+     +    cublas_error = (torch.mm(x, dense).double() - expected).norm() / expected.norm()
+     +    assert error < 2 * cublas_error.item() + 1e-6
+     
+    - ## tests/quantization/test_block_fp8_qpn8_capabilities.py ##
+    -@@ tests/quantization/test_block_fp8_qpn8_capabilities.py: from vllm.platforms.interface import DeviceCapability
+    - def native_contract(monkeypatch):
+    -     monkeypatch.setattr(linear.current_platform, "_enum", PlatformEnum.CUDA)
+    -     monkeypatch.setattr(linear.current_platform, "is_cuda", lambda: True)
+    -+    # can_implement asks the capability of the worker's own device.
+    -+    monkeypatch.setattr(torch.accelerator, "current_device_index", lambda: 0)
+    -     monkeypatch.setattr(
+    --        linear.current_platform, "get_device_capability", lambda: DeviceCapability(7, 0)
+    -+        linear.current_platform,
+    -+        "get_device_capability",
+    -+        lambda device_id=0: DeviceCapability(7, 0),
+    -     )
+    -     ops = SimpleNamespace(
+    -         fp8_qpn8_prepare_sm70=lambda: None,
+    -
+      ## vllm/_sm70/linear.py ##
+     @@ vllm/_sm70/linear.py: if hasattr(torch.ops._C, "fp8_qpn8_gemm_sm70_out"):
+              return None
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: The kernel admits static E4
+      """
+      
+      from collections.abc import Sequence
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: from vllm.platforms import current_platform
+    - 
+    - # Block-scale QPN8 GEMM supports M up to this bound; larger M uses a fallback.
+    - _QPN8_MAX_M = 8
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: _QPN8_ROW_BLOCK = 32
+    + _QPN8_ROW_BLOCKS_MAX = 128
+    + _turbomind_headroom_cache: dict[tuple[int, int], bool] = {}
+    + _block_qpn8_prefill_workspaces: dict[tuple[int, int], torch.Tensor] = {}
+     +# Turing's tensor-core GEMM on the packed codes runs M above _QPN8_MAX_M up to
+     +# this bound. Up to M=8 the packed m8n8k4 GEMM is faster on most projection
+     +# shapes (CUDA-graph replay, Quadro RTX 8000, 2026-10-20: the tensor-core GEMM
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: from vllm.platforms import
+      logger = init_logger(__name__)
+      
+      
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: logger = init_logger(__name__)
+    -     schema="(Tensor x, Tensor codes, Tensor group_scales, int split_k, "
+    -     "int accumulator_chains, bool prefetch_codes, Tensor? fallback_weight=None, "
+    -     "Tensor? fallback_scales=None, int fallback_k_ld=0, int fallback_q_ld=0, "
+    --    "str[]? native_policy=None) -> Tensor",
+    -+    "str[]? native_policy=None, bool sm75_mma=False) -> Tensor",
+    - )
+    - def _qpn8_native_linear(
+    -     x: torch.Tensor,
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_write(
+          fallback_k_ld: int = 0,
+          fallback_q_ld: int = 0,
+          native_policy: list[str] | None = None,
+     +    sm75_mma: bool = False,
+    - ) -> torch.Tensor:
+    + ) -> None:
+          # The M decision stays inside the opaque op: a compiled graph covers a
+          # dynamic M range, so a Python branch traced at small M would be reused
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_write(
+                  prefetch_codes,
+              )
+    -         return out
+    +         return
+     +    if sm75_mma and x.shape[0] <= _SM75_MMA_MAX_M:
+     +        call_native(
+     +            sm70_ops.fp8_qpn8_mma_sm75_out,
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+     +            codes,
+     +            group_scales,
+     +        )
+    -+        return out
+    ++        return
+          if fallback_weight is not None:
+              call_native(
+                  sm70_ops.fp8_gemm_sm70_out,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_write(
+    +     schema="(Tensor x, Tensor codes, Tensor group_scales, int split_k, "
+    +     "int accumulator_chains, bool prefetch_codes, Tensor? fallback_weight=None, "
+    +     "Tensor? fallback_scales=None, int fallback_k_ld=0, int fallback_q_ld=0, "
+    +-    "str[]? native_policy=None) -> Tensor",
+    ++    "str[]? native_policy=None, bool sm75_mma=False) -> Tensor",
+    + )
+    + def _qpn8_native_linear(
+    +     x: torch.Tensor,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +     fallback_k_ld: int = 0,
+    +     fallback_q_ld: int = 0,
+    +     native_policy: list[str] | None = None,
+    ++    sm75_mma: bool = False,
+    + ) -> torch.Tensor:
+    +     out = x.new_empty((x.shape[0], codes.shape[1]))
+    +     _qpn8_native_linear_write(
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +         fallback_k_ld,
+    +         fallback_q_ld,
+    +         native_policy,
+    ++        sm75_mma,
+    +     )
+    +     return out
+    + 
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +     "int split_k, int accumulator_chains, bool prefetch_codes, "
+    +     "Tensor? fallback_weight=None, Tensor? fallback_scales=None, "
+    +     "int fallback_k_ld=0, int fallback_q_ld=0, "
+    +-    "str[]? native_policy=None) -> ()",
+    ++    "str[]? native_policy=None, bool sm75_mma=False) -> ()",
+    + )
+    + def _qpn8_native_linear_out(
+    +     out: torch.Tensor,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_out(
+    +     fallback_k_ld: int = 0,
+    +     fallback_q_ld: int = 0,
+    +     native_policy: list[str] | None = None,
+    ++    sm75_mma: bool = False,
+    + ) -> None:
+    +     _qpn8_native_linear_write(
+    +         out,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_out(
+    +         fallback_k_ld,
+    +         fallback_q_ld,
+    +         native_policy,
+    ++        sm75_mma,
+    +     )
+    + 
+    + 
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_fake(
+          fallback_k_ld=0,
+          fallback_q_ld=0,
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_fak
+      ):
+          return x.new_empty((x.shape[0], codes.shape[1]))
+      
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_out_fake(
+    +     fallback_k_ld=0,
+    +     fallback_q_ld=0,
+    +     native_policy=None,
+    ++    sm75_mma=False,
+    + ):
+    +     return None
+    + 
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+              n, k = config.weight_shape
+              if n <= 0 or k <= 0 or n % 128 or k % 128:
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+     +            "fp8_qpn8_prefill_sm70_out",
+              ]
+     +        # The worker's own device: on a node that mixes card generations,
+    -+        # device 0 answers for another card.
+    -+        capability = current_platform.get_device_capability(
+    -+            torch.accelerator.current_device_index()
+    -+        )
+    ++        # device 0 answers for another card. Without an index the platform
+    ++        # resolves it without creating a CUDA context (selection also runs
+    ++        # in processes that must not hold one).
+    ++        capability = current_platform.get_device_capability()
+     +        if capability is not None and capability.to_int() == 75:
+     +            required.append("fp8_qpn8_mma_sm75_out")
+     +        missing = [name for name in required if not hasattr(torch.ops._C, name)]
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+                  layer._qpn8_fallback_q_ld = int(metadata[1].item())
+     -        if hasattr(layer, "_qpn8_fallback_k_ld"):
+     +        if layer._qpn8_sm75_mma:
+    ++            if (
+    ++                codes.is_cuda
+    ++                and not torch.cuda.is_current_stream_capturing()
+    ++                and _graphs_capture_dense_prefill(_SM75_MMA_MAX_M)
+    ++            ):
+    ++                _ensure_block_qpn8_prefill_workspace(codes.device, k_dim * n_dim)
+     +            logger.info_once(
+     +                "Block FP8 QPN8 on SM75: M=1..8 uses the packed decode GEMM, "
+     +                "M=9..512 the tensor-core GEMM on the packed codes, larger M "
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+                  logger.info_once(
+                      "Block FP8 QPN8 native GEMM supports M=1..8; larger M uses a "
+                      "second, TurboMind-packed copy of each weight. Set "
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+    +                 getattr(layer, "_qpn8_fallback_k_ld", 0),
+    +                 getattr(layer, "_qpn8_fallback_q_ld", 0),
+    +                 self.native_ops.arguments,
+    ++                layer._qpn8_sm75_mma,
+    +             )
+    +             if bias is not None:
+    +                 out_2d.add_(bias)
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+                  getattr(layer, "_qpn8_fallback_k_ld", 0),
+                  getattr(layer, "_qpn8_fallback_q_ld", 0),
+ 2:  0368b5fed =  2:  802e496b6 perf(sm75): read the QPN8 block scale with the codes
+ 3:  0ce71d64d !  3:  62f10a052 perf(sm75): fit the QPN8 decode split-K to Turing's occupancy
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: from vllm.model_executor.ke
+     +from vllm.model_executor.layers.quantization.sm70_turbomind import (
+     +    fp8_qpn8_occupancy_split_k,
+     +)
+    + from vllm.model_executor.layers.quantization.utils import sm70_layer_workspaces
+      from vllm.model_executor.layers.quantization.utils.quant_utils import (
+          kFp8Static128BlockSym,
+    - )
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+    -                 "FP16 prefill, which needs no second copy of the weights."
+    +                 "shared workspace when CUDA graphs capture such batches)."
+                  )
+              layer._qpn8_out_features = n
+     -        layer._qpn8_cfg = _sm70_fp8_qpn8_config(k_dim, n_dim, False)
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+     +            accumulator_chains,
+     +            prefetch_codes,
+     +        )
+    -         layer.sm70_fp8_turbomind = True
+    -         # The startup memory profile accounts for both packed layouts on
+    -         # Volta. Raw checkpoint weights are no longer resident.
+    +         if (
+    +             self._is_sm70_gated_silu_layer(layer)
+    +             and bool(self.policy.gated_silu)
+     
+      ## vllm/model_executor/kernels/linear/qpn/pre_ampere.py ##
+     @@ vllm/model_executor/kernels/linear/qpn/pre_ampere.py: def _turing_fp8_qpn8_linear(
+ 4:  e2f881d68 =  4:  ff1dbb77a perf(moe): bound the skinny grouped MoE grid by the expert count
+ 5:  b41f8080d !  5:  d5d39e189 perf(moe): grouped skinny MoE on m16n8k8 fragments for SM75+
+    @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: _CUDA_GRID_Y_LI
+     +    M16N8K8 = 1
+     +
+     +
+    -+def qpn_fragment_order(device_id: int) -> QpnFragmentOrder:
+    -+    """The order the given card's kernels read: m16n8k8 where the card has it."""
+    ++def qpn_fragment_order(device_id: int | None = None) -> QpnFragmentOrder:
+    ++    """The order the given card's kernels read: m16n8k8 where the card has it.
+    ++
+    ++    Without an index the platform answers for the device this process runs on,
+    ++    without creating a CUDA context (kernel selection runs in processes that
+    ++    must not hold one).
+    ++    """
+     +    if current_platform.has_device_capability(75, device_id=device_id):
+     +        return QpnFragmentOrder.M16N8K8
+     +    return QpnFragmentOrder.M8N8K4
+    @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: class Nvfp4Skin
+     -        for name, k in (
+     -            ("hidden", moe_config.hidden_dim),
+     -            ("intermediate", moe_config.intermediate_size_per_partition),
+    -+        order = qpn_fragment_order(torch.accelerator.current_device_index())
+    ++        order = qpn_fragment_order()
+     +        for name, k, reduces_hidden in (
+     +            ("hidden", moe_config.hidden_dim, True),
+     +            ("intermediate", moe_config.intermediate_size_per_partition, False),
+ 6:  48d6d1c64 !  6:  c57f8b720 perf(moe): two column tiles and eight split-K warps for Volta too
+    @@ tests/kernels/moe/test_skinny_sm70_moe.py: def test_moe_qpn_mxfp4_mode_matches_t
+              )
+     
+      ## vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py ##
+    -@@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: def qpn_fragment_order(device_id: int) -> QpnFragmentOrder:
+    +@@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: def qpn_fragment_order(device_id: int | None = None) -> QpnFragmentOrder:
+          return QpnFragmentOrder.M8N8K4
+      
+      
+    @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: def qpn_fragmen
+     @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
+              if not kernel_config.sm70_skinny_moe:
+                  return False, "disabled by kernel_config.sm70_skinny_moe"
+    -         order = qpn_fragment_order(torch.accelerator.current_device_index())
+    +         order = qpn_fragment_order()
+     -        for name, k, reduces_hidden in (
+     -            ("hidden", moe_config.hidden_dim, True),
+     -            ("intermediate", moe_config.intermediate_size_per_partition, False),
+ 7:  1a1ce6274 =  7:  632702cd3 test(moe): cover skewed prefill routing in the skinny MoE dispatch test
+ 8:  d3aaa4eb7 <  -:  --------- [Kernel] Two-rank FP16 all-reduce through pinned host memory for GPUs without P2P
+ -:  --------- >  8:  4ab593ca3 fix(qpn8): keep Turing gate_up on the tensor-core GEMM beside the fused gated route
+ 9:  9f9a98f92 !  9:  93136cea4 perf(attention): Turing paged prefill attention for head dim 256
+    @@ docs/design/architecture/runtime_reference.md: identify initialization/hash code
+      
+      | Type | Owner paths | Lifecycle / hash methods | Source |
+      | --- | --- | --- | --- |
+    --| `vllm.config.attention.AttentionConfig` | attention_config | compute_hash: [vllm/config/attention.py](../../../vllm/config/attention.py#L101) | [vllm/config/attention.py](../../../vllm/config/attention.py#L16) |
+    -+| `vllm.config.attention.AttentionConfig` | attention_config | compute_hash: [vllm/config/attention.py](../../../vllm/config/attention.py#L111) | [vllm/config/attention.py](../../../vllm/config/attention.py#L16) |
+    - | `vllm.config.cache.CacheConfig` | cache_config | compute_hash: [vllm/config/cache.py](../../../vllm/config/cache.py#L207) | [vllm/config/cache.py](../../../vllm/config/cache.py#L43) |
+    - | `vllm.config.compilation.CUDAGraphMode` | compilation_config.cudagraph_mode |  | [vllm/config/compilation.py](../../../vllm/config/compilation.py#L54) |
+    - | `vllm.config.compilation.CompilationConfig` | compilation_config | compute_hash: [vllm/config/compilation.py](../../../vllm/config/compilation.py#L790); __post_init__: [vllm/config/compilation.py](../../../vllm/config/compilation.py#L916) | [vllm/config/compilation.py](../../../vllm/config/compilation.py#L391) |
+    +-| `vllm.config.attention.AttentionConfig` | attention_config | compute_hash: [vllm/config/attention.py](../../../vllm/config/attention.py#L121) | [vllm/config/attention.py](../../../vllm/config/attention.py#L33) |
+    ++| `vllm.config.attention.AttentionConfig` | attention_config | compute_hash: [vllm/config/attention.py](../../../vllm/config/attention.py#L131) | [vllm/config/attention.py](../../../vllm/config/attention.py#L33) |
+    + | `vllm.config.attention.V41IndexTiledPolicy` | attention_config.v41_index_tiled | resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L29); compute_hash: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L37) | [vllm/config/attention.py](../../../vllm/config/attention.py#L17) |
+    + | `vllm.config.cache.CacheConfig` | cache_config | compute_hash: [vllm/config/cache.py](../../../vllm/config/cache.py#L275) | [vllm/config/cache.py](../../../vllm/config/cache.py#L108) |
+    + | `vllm.config.cache.KVRetentionConfig` | cache_config.retention | __post_init__: [vllm/config/cache.py](../../../vllm/config/cache.py#L84) | [vllm/config/cache.py](../../../vllm/config/cache.py#L45) |
+     
+      ## tests/kernels/attention/test_paged_prefill_attention_sm75.py (new) ##
+     @@
+10:  962c52dcf ! 10:  c272a2cc8 fix(flash_v100): check the dense prefill entry without binding it
+    @@ Metadata
+     Author: Peuqui <43776522+Peuqui@users.noreply.github.com>
+     
+      ## Commit message ##
+    -    fix(flash_v100): check the dense prefill entry without binding it
+    +    test(flash_v100): cover the dense prefill availability check before the runtime is bound
+     
+         MLA prefill backend selection asks
+         flash_v100_dense_prefill_lse_available() while the model is built,
+    -    before the engine binds its Flash-V100 runtime. The check went through
+    -    get_flash_dense_forward(), which binds the operation and raised
+    -    "Flash-V100 resources must be bound before execution": the first
+    -    GLM-5.3-Flash boot failed with it. The loader is now separate from the
+    -    bound accessor; availability only loads, execution still binds.
+    +    before the engine binds its Flash-V100 runtime; binding raised "Flash-V100
+    +    resources must be bound before execution" and failed the first
+    +    GLM-5.3-Flash boot. main handles this since #1548; the test pins both
+    +    sides of it: availability does not need the bound runtime, execution
+    +    still requires it.
+     
+         Tests: tests/v1/attention/test_flash_v100_dense_prefill_availability.py,
+    -    2 passed (availability without a bound runtime; execution still
+    -    requires it).
+    +    2 passed.
+     
+         Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+         Claude-Session: https://claude.ai/code/session_019x3uEMYxiUMDKrA6E8o8sP
+    @@ tests/v1/attention/test_flash_v100_dense_prefill_availability.py (new)
+     +def test_execution_still_requires_the_bound_runtime(unbound_runtime):
+     +    with pytest.raises(RuntimeError, match="must be bound before execution"):
+     +        ops.get_flash_dense_forward()
+    -
+    - ## vllm/v1/attention/backends/flash_v100/dense_prefill.py ##
+    -@@ vllm/v1/attention/backends/flash_v100/dense_prefill.py: def flash_v100_dense_prefill(
+    - 
+    - 
+    - def flash_v100_dense_prefill_lse_available() -> bool:
+    --    return _ops.get_flash_dense_forward() is not None
+    -+    return _ops.flash_dense_forward_available()
+    - 
+    - 
+    - def flash_v100_dense_prefill_lse(
+    -
+    - ## vllm/v1/attention/backends/flash_v100/ops.py ##
+    -@@ vllm/v1/attention/backends/flash_v100/ops.py: _flash_attn_forward_lse: Callable[..., tuple[torch.Tensor, ...]] | None = None
+    - _flash_attn_forward_lse_checked = False
+    - 
+    - 
+    --def get_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+    -+def _load_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+    -     """Lazy-load the private LSE-capable forward entry of the FA-V100 wheel."""
+    -     global _flash_attn_forward_lse, _flash_attn_forward_lse_checked
+    -     if not _flash_attn_forward_lse_checked:
+    -@@ vllm/v1/attention/backends/flash_v100/ops.py: def get_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+    -             _flash_attn_forward_lse = _flash_attn_forward
+    -         except (ImportError, AttributeError):
+    -             _flash_attn_forward_lse = None
+    --    return bind_attention_operation(_flash_attn_forward_lse)
+    -+    return _flash_attn_forward_lse
+    -+
+    -+
+    -+def get_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+    -+    """The LSE-capable forward entry, bound to this engine's runtime."""
+    -+    return bind_attention_operation(_load_flash_dense_forward())
+    -+
+    -+
+    -+def flash_dense_forward_available() -> bool:
+    -+    """Whether the wheel ships the entry. Backend selection asks this while the
+    -+    model is built, before the engine binds its Flash-V100 runtime, so it must
+    -+    not bind."""
+    -+    return _load_flash_dense_forward() is not None
+    - 
+    - 
+    - def _get_flash_turboquant_decode_op():
+11:  707e11939 ! 11:  0e1ae75b3 perf(v2): overlap TP prefill all-reduces with the other half's compute
+    @@ Commit message
+         Claude-Session: https://claude.ai/code/session_0141pGKkAa2PjDMhrUwfX3ox
+         Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>
+     
+    + ## docs/design/architecture/runtime_reference.md ##
+    +@@ docs/design/architecture/runtime_reference.md: identify initialization/hash code; they do not evaluate its semantics.
+    + | `vllm.config.gdn_state.GdnStateTraceConfig` | observability_config.gdn_state | resolve: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L99); compile_ignored_aliases: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L142) | [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L59) |
+    + | `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L724) |
+    + | `vllm.config.kernel.IrOpPriorityConfig` | kernel_config.ir_op_priority | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L84) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L67) |
+    +-| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1407) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L737) |
+    ++| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1413) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L737) |
+    + | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L373); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L352) |
+    + | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L468); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L404) |
+    + | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L533) |
+    +
+      ## tests/v1/worker/test_gpu_model_runner_v2.py ##
+     @@ tests/v1/worker/test_gpu_model_runner_v2.py: def test_qsa_circular_group_uses_custom_slot_mapping(monkeypatch):
+          runner.max_num_reqs = 1
+    @@ vllm/config/kernel.py: class KernelConfig:
+                  self.qsa_host_kv or self.qsa_host_kv_active
+     
+      ## vllm/distributed/parallel_state.py ##
+    +@@ vllm/distributed/parallel_state.py: def all_reduce_gemma_rms_norm(
+    +         raise ValueError(f"Group {group_name} is destroyed.")
+    +     if group.device_communicator is None:
+    +         raise ValueError("No device communicator found")
+    ++    group._reject_overlapped_fused_norm()
+    +     fused_op = getattr(group.device_communicator, "all_reduce_gemma_rms_norm", None)
+    +     if fused_op is None:
+    +         raise RuntimeError("Device communicator lacks fused all-reduce RMSNorm")
+     @@ vllm/distributed/parallel_state.py: class GroupCoordinator:
+          def _all_reduce_out_place(self, input_: torch.Tensor) -> torch.Tensor:
+              if self.device_communicator is None:
+    @@ vllm/v1/worker/gpu/attn_utils.py: def build_attn_metadata(
+          prefix_anchor_lens: torch.Tensor | None = None,
+          is_dummy_batch: bool = False,
+     +    ubatch_id: int = 0,
+    +     block_tables_cpu: Sequence[Any] | None = None,
+    +     is_all_prefilling: bool = False,
+      ) -> dict[str, Any]:
+    -     seq_lens = seq_lens[:num_reqs]
+    -     if dcp_local_seq_lens is not None:
+     @@ vllm/v1/worker/gpu/attn_utils.py: def build_attn_metadata(
+              )
+      
+    @@ vllm/v1/worker/gpu/attn_utils.py: def build_attn_metadata(
+                          common_attn_metadata
+     
+      ## vllm/v1/worker/gpu/model_runner.py ##
+    -@@ vllm/v1/worker/gpu/model_runner.py: from vllm.v1.worker.gpu.mm.encoder_cache import EncoderCache
+    - from vllm.v1.worker.gpu.model_states import init_model_state
+    +@@ vllm/v1/worker/gpu/model_runner.py: from vllm.v1.worker.gpu.model_states import init_model_state
+    + from vllm.v1.worker.gpu.model_states.interface import ModelState
+      from vllm.v1.worker.gpu.pool.pooling_runner import PoolingRunner
+      from vllm.v1.worker.gpu.pp_utils import PPHandler, scatter_draft_tokens
+     +from vllm.v1.worker.gpu.prefill_overlap import (
+    @@ vllm/v1/worker/gpu/model_states/default.py: class DefaultModelState(ModelState):
+                  for_cudagraph_capture=for_capture,
+                  prefix_anchor_lens=input_batch.prefix_anchor_lens,
+     +            ubatch_id=ubatch_id,
+    -         )
+    -         return attn_metadata
+    +             block_tables_cpu=getattr(input_batch, "_block_tables_cpu", None),
+    +             is_all_prefilling=(
+    +                 not for_capture
+     
+      ## vllm/v1/worker/gpu/model_states/interface.py ##
+     @@ vllm/v1/worker/gpu/model_states/interface.py: class ModelState(ABC):
+    @@ vllm/v1/worker/gpu/model_states/mamba_hybrid.py: class MambaHybridModelState(Def
+                  is_dummy_batch=input_batch.is_dummy_batch or for_capture,
+                  prefix_anchor_lens=input_batch.prefix_anchor_lens,
+     +            ubatch_id=ubatch_id,
+    -         )
+    -         if common_gdn_metadata is not None:
+    -             assert common_gdn_metadata.spec_query_start_loc.numel() == (
+    +             block_tables_cpu=getattr(input_batch, "_block_tables_cpu", None),
+    +             is_all_prefilling=(
+    +                 not for_capture
+     
+      ## vllm/v1/worker/gpu/model_states/whisper.py ##
+     @@ vllm/v1/worker/gpu/model_states/whisper.py: class WhisperModelState(ModelState):
+    @@ vllm/v1/worker/gpu/prefill_overlap.py (new)
+     +            input_batch.num_computed_prefill_tokens_np[reqs] + cut_before
+     +        ),
+     +        is_prefilling_np=input_batch.is_prefilling_np[reqs],
+    -+        max_seq_len_np=requests(input_batch.max_seq_len_np),
+     +        input_ids=input_batch.input_ids[start:end],
+     +        positions=input_batch.positions[start:end],
+     +        logits_indices=input_batch.logits_indices[:0],
+12:  1f250afc9 ! 12:  1cf0ad572 perf(host_reduce): copy-engine mode for prefill-sized all-reduces
+    @@ docs/design/architecture/runtime_reference.md: identify initialization/hash code
+      | `vllm.config.gdn_schedule.GdnScheduleConfig` | kernel_config.gdn.schedule | resolve: [vllm/config/gdn_schedule.py](../../../vllm/config/gdn_schedule.py#L129); graph_options: [vllm/config/gdn_schedule.py](../../../vllm/config/gdn_schedule.py#L160) | [vllm/config/gdn_schedule.py](../../../vllm/config/gdn_schedule.py#L49) |
+      | `vllm.config.gdn_state.GdnStateConfig` | kernel_config.gdn.state | resolve: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L39); graph_options: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L52) | [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L23) |
+      | `vllm.config.gdn_state.GdnStateTraceConfig` | observability_config.gdn_state | resolve: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L99); compile_ignored_aliases: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L142) | [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L59) |
+    --| `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L662) |
+    -+| `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce | __post_init__: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L681) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L662) |
+    +-| `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L724) |
+    ++| `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce | __post_init__: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L743) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L724) |
+      | `vllm.config.kernel.IrOpPriorityConfig` | kernel_config.ir_op_priority | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L84) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L67) |
+    --| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1146) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L675) |
+    -+| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1169) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L692) |
+    - | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L338); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L317) |
+    - | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L433); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L369) |
+    - | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L498) |
+    +-| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1413) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L737) |
+    ++| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1430) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L754) |
+    + | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L373); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L352) |
+    + | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L468); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L404) |
+    + | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L533) |
+     
+      ## tests/distributed/test_host_reduce.py ##
+     @@
+13:  271e8de35 = 13:  234b25bac perf(turing): split-KV in the paged prefill attention by waves
+14:  ce69d3ed4 = 14:  bd0fe05f8 perf(turing): NVFP4 prefill dequantization with Turing's own tile
+15:  7344bc20e = 15:  be4a0a790 fix(prefill-overlap): concatenate nested aux hidden states of the halves
+16:  4a95e6bea = 16:  389b77f2e test(v2): give two more runner stand-ins the prefill-overlap slot
+17:  18b9096a0 ! 17:  2a6151548 perf(dsv4): vectorize the sm70 indexer prefill epilogue loads
+    @@ vllm/models/deepseek_v4/sm70/indexer.py: _RELU_BLOCK_M = 32
+      # is what keeps a long-context chunk from asking for gigabytes in one go.
+      _EPILOGUE_BLOCK_K = 256
+      _EPILOGUE_BLOCK_H = 8
+    -+# The prefill epilogue reads fp16 scores. Eight keys per thread make 16-byte
+    -+# loads; at two per thread (BLOCK_K 256 over 4 warps) it read the score tile at
+    -+# 105 GB/s on RTX 8000 and 184 GB/s on V100, against 562 and 782 GB/s here.
+    -+# The fp32 decode scores already load 8 bytes per thread with the shared one.
+    ++# The prefill epilogue reads eight keys per thread, 32 bytes of the fp32 tile.
+    ++# Measured on the former fp16 tile (16-byte loads): at two keys per thread
+    ++# (BLOCK_K 256 over 4 warps) it read the tile at 105 GB/s on RTX 8000 and
+    ++# 184 GB/s on V100, against 562 and 782 GB/s with eight.
+     +_PREFILL_EPILOGUE_BLOCK_K = 512
+     +_PREFILL_EPILOGUE_WARPS = 2
+      
+      # At long context the paged Triton decode kernel rescans the same FP8 MQA keys
+      # once for every verifier row and head. For a bounded one-request verifier
+     @@ vllm/models/deepseek_v4/sm70/indexer.py: def _prefill_logits_cublas(q, k_quant, k_scales, weights):
+    -         # the top-k *set* is consumed downstream, so the 5e-4 rounding here is
+    -         # far below the gap between neighbouring index scores.
+    -         scores = torch.mm(q2, k_fp16[start:stop].t())
+    +         # pass fp16's 65504; an fp16 tile overflowed to inf, and to NaN where
+    +         # mixed-sign head weights summed +inf and -inf in the epilogue.
+    +         scores = torch.mm(q2, k_fp16[start:stop].t(), out_dtype=torch.float32)
+     -        _relu_weight_headsum_kernel[(num_q, triton.cdiv(width, _EPILOGUE_BLOCK_K))](
+     +        _relu_weight_headsum_kernel[
+     +            (num_q, triton.cdiv(width, _PREFILL_EPILOGUE_BLOCK_K))
+18:  61fb11707 ! 18:  78791ccb0 perf(dsv4): fuse the sparse MLA softmax and zero unused keys in the gather
+    @@ vllm/models/deepseek_v41/attention_ops.py: def attend_paged_latents(
+          return result
+      
+     @@ vllm/models/deepseek_v41/attention_ops.py: def attend_draft_latents(q, kv, positions, valid, cache, table, sink, block_size
+    -     )
+    -     scores = torch.empty(n, heads, width, dtype=torch.float32, device=q.device)
+    -     result = torch.empty_like(q)
+    +         load_v41sk()
+    +         torch.ops.v41sk.attn_dec(result, q.contiguous(), keys, unused, sink, 512**-0.5)
+    +         return result
+     +    keys.masked_fill_(unused[:, :, None], 0)
+          if _ATTN_FUSED:
+     -        keys.masked_fill_(unused[:, :, None], 0)
+    @@ vllm/models/deepseek_v41/attention_ops.py: def attend_draft_latents(q, kv, posit
+     +        torch.empty(n, heads, width, dtype=keys.dtype, device=q.device),
+          )
+          return result
+    + 
+19:  ec6b0e0d2 = 19:  bdff13e45 test(dsv4): match the sparse BMM workspace tests to the fused softmax
+20:  6adb09cc6 ! 20:  b8a4e780a perf(dsv4): fused lightning-indexer prefill scores on Turing tensor cores
+    @@ csrc/torch_bindings.cpp: TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
+     
+      ## docs/design/architecture/runtime_reference.md ##
+     @@ docs/design/architecture/runtime_reference.md: identify initialization/hash code; they do not evaluate its semantics.
+    - | `vllm.config.sm70_runtime.Sm70RuntimeConfig` | kernel_config.sm70_runtime | value: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L89); __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L94); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L109) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L42) |
+    - | `vllm.config.sm70_runtime.SpecDecodeTraceConfig` | observability_config.spec_decode_trace | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L424); resolve: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L449); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L454) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L405) |
+    - | `vllm.config.sm70_runtime.StepProfilerConfig` | observability_config.step_profiler | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L145); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L151) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L130) |
+    --| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L170); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+    -+| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L171); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+    + | `vllm.config.sm70_runtime.Sm70RuntimeConfig` | kernel_config.sm70_runtime | value: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L99); __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L104); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L119) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L45) |
+    + | `vllm.config.sm70_runtime.SpecDecodeTraceConfig` | observability_config.spec_decode_trace | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L434); resolve: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L459); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L464) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L415) |
+    + | `vllm.config.sm70_runtime.StepProfilerConfig` | observability_config.step_profiler | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L155); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L161) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L140) |
+    +-| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L172); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+    ++| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L173); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+      | `vllm.config.sm70_triton_attention.Sm70TritonAttentionPolicy` | attention_config.sm70_triton | resolve: [vllm/config/sm70_triton_attention.py](../../../vllm/config/sm70_triton_attention.py#L73); compute_hash: [vllm/config/sm70_triton_attention.py](../../../vllm/config/sm70_triton_attention.py#L110); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_triton_attention.py](../../../vllm/config/sm70_triton_attention.py#L36) |
+    - | `vllm.config.speculative.SpeculativeConfig` | speculative_config | compute_hash: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L432); __post_init__: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L774) | [vllm/config/speculative.py](../../../vllm/config/speculative.py#L157) |
+    - | `vllm.config.speculative_sampling.SpeculativeSamplingPolicy` | speculative_config.sampling_policy | resolve_fields: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L109); resolve: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L142); compute_hash: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L181) | [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L16) |
+    + | `vllm.config.speculative.SpeculativeConfig` | speculative_config | compute_hash: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L449); __post_init__: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L795) | [vllm/config/speculative.py](../../../vllm/config/speculative.py#L159) |
+    + | `vllm.config.speculative_sampling.SpeculativeSamplingPolicy` | speculative_config.sampling_policy | resolve_fields: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L117); resolve: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L150); compute_hash: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L191) | [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L16) |
+     
+      ## tests/kernels/test_deepseek_v4_sm70_indexer.py ##
+     @@ tests/kernels/test_deepseek_v4_sm70_indexer.py: def _reference_index_logits(
+21:  06c90b135 = 21:  682e8768a fix(indexer): free each prefill sub-chunk's logits before the next
+22:  cb26adf44 = 22:  2099361ff perf(dsv4): gather the compressed KV cache with 2048 workers
+23:  61dddbfa0 = 23:  e623d99aa fix(dsv4): keep the fused SM75 prefill index scores in FP32
+24:  4df715087 ! 24:  72190ca29 feat(triton): one setting for tensor-core Triton on Volta and Turing
+    @@ Commit message
+      ## docs/design/architecture/runtime_reference.md ##
+     @@ docs/design/architecture/runtime_reference.md: identify initialization/hash code; they do not evaluate its semantics.
+      | `vllm.config.gdn_state.GdnStateTraceConfig` | observability_config.gdn_state | resolve: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L99); compile_ignored_aliases: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L142) | [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L59) |
+    - | `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce | __post_init__: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L681) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L662) |
+    + | `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce | __post_init__: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L743) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L724) |
+      | `vllm.config.kernel.IrOpPriorityConfig` | kernel_config.ir_op_priority | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L84) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L67) |
+    --| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1169) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L692) |
+    -+| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1204) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L692) |
+    - | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L338); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L317) |
+    - | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L433); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L369) |
+    - | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L498) |
+    +-| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1430) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L754) |
+    ++| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1465) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L754) |
+    + | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L373); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L352) |
+    + | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L468); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L404) |
+    + | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L533) |
+     
+      ## tests/kernels/test_kernel_config_triton_sm7x.py (new) ##
+     @@
+25:  a6dbf69f8 ! 25:  15271788f perf(dsv4): Triton prefill index scorer for the SM70-family relu route
+    @@ Commit message
+      ## docs/design/architecture/runtime_reference.md ##
+     @@ docs/design/architecture/runtime_reference.md: identify initialization/hash code; they do not evaluate its semantics.
+      | `vllm.config.gdn_state.GdnStateTraceConfig` | observability_config.gdn_state | resolve: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L99); compile_ignored_aliases: [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L142) | [vllm/config/gdn_state.py](../../../vllm/config/gdn_state.py#L59) |
+    - | `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce | __post_init__: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L681) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L662) |
+    + | `vllm.config.kernel.HostReduceConfig` | kernel_config.host_reduce | __post_init__: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L743) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L724) |
+      | `vllm.config.kernel.IrOpPriorityConfig` | kernel_config.ir_op_priority | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L84) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L67) |
+    --| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1204) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L692) |
+    -+| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1205) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L692) |
+    - | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L338); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L317) |
+    - | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L433); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L369) |
+    - | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L498) |
+    +-| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1465) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L754) |
+    ++| `vllm.config.kernel.KernelConfig` | kernel_config | compute_hash: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L1466) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L754) |
+    + | `vllm.config.kernel.Sm70AwqConfig` | kernel_config.sm70_awq | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L373); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L352) |
+    + | `vllm.config.kernel.Sm70Fp8Config` | kernel_config.sm70_fp8 | resolve: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L468); capture_inputs: [vllm/config/kernel.py](../../../vllm/config/kernel.py#L216) | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L404) |
+    + | `vllm.config.kernel.Sm70GgufConfig` | kernel_config.sm70_gguf |  | [vllm/config/kernel.py](../../../vllm/config/kernel.py#L533) |
+     @@ docs/design/architecture/runtime_reference.md: identify initialization/hash code; they do not evaluate its semantics.
+    - | `vllm.config.sm70_runtime.Sm70RuntimeConfig` | kernel_config.sm70_runtime | value: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L89); __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L94); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L109) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L42) |
+    - | `vllm.config.sm70_runtime.SpecDecodeTraceConfig` | observability_config.spec_decode_trace | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L424); resolve: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L449); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L454) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L405) |
+    - | `vllm.config.sm70_runtime.StepProfilerConfig` | observability_config.step_profiler | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L145); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L151) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L130) |
+    --| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L171); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+    -+| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L172); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+    + | `vllm.config.sm70_runtime.Sm70RuntimeConfig` | kernel_config.sm70_runtime | value: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L99); __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L104); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L119) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L45) |
+    + | `vllm.config.sm70_runtime.SpecDecodeTraceConfig` | observability_config.spec_decode_trace | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L434); resolve: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L459); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L464) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L415) |
+    + | `vllm.config.sm70_runtime.StepProfilerConfig` | observability_config.step_profiler | __post_init__: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L155); compile_ignored_aliases: [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L161) | [vllm/config/sm70_runtime.py](../../../vllm/config/sm70_runtime.py#L140) |
+    +-| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L173); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+    ++| `vllm.config.sm70_sparse.Sm70SparseConfig` | kernel_config.sm70_sparse | compute_hash: [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L174); resolve: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L57); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_sparse.py](../../../vllm/config/sm70_sparse.py#L51) |
+      | `vllm.config.sm70_triton_attention.Sm70TritonAttentionPolicy` | attention_config.sm70_triton | resolve: [vllm/config/sm70_triton_attention.py](../../../vllm/config/sm70_triton_attention.py#L73); compute_hash: [vllm/config/sm70_triton_attention.py](../../../vllm/config/sm70_triton_attention.py#L110); value: [vllm/config/execution_policy_base.py](../../../vllm/config/execution_policy_base.py#L69) | [vllm/config/sm70_triton_attention.py](../../../vllm/config/sm70_triton_attention.py#L36) |
+    - | `vllm.config.speculative.SpeculativeConfig` | speculative_config | compute_hash: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L432); __post_init__: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L774) | [vllm/config/speculative.py](../../../vllm/config/speculative.py#L157) |
+    - | `vllm.config.speculative_sampling.SpeculativeSamplingPolicy` | speculative_config.sampling_policy | resolve_fields: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L109); resolve: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L142); compute_hash: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L181) | [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L16) |
+    + | `vllm.config.speculative.SpeculativeConfig` | speculative_config | compute_hash: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L449); __post_init__: [vllm/config/speculative.py](../../../vllm/config/speculative.py#L795) | [vllm/config/speculative.py](../../../vllm/config/speculative.py#L159) |
+    + | `vllm.config.speculative_sampling.SpeculativeSamplingPolicy` | speculative_config.sampling_policy | resolve_fields: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L117); resolve: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L150); compute_hash: [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L191) | [vllm/config/speculative_sampling.py](../../../vllm/config/speculative_sampling.py#L16) |
+     
+      ## tests/kernels/test_deepseek_v4_sm70_indexer.py ##
+     @@ tests/kernels/test_deepseek_v4_sm70_indexer.py: from vllm.models.deepseek_v4.sm70.indexer import (
+    @@ tests/kernels/test_deepseek_v4_sm70_indexer.py: def test_prefill_relu_off_restor
+          )
+          expected = _reference_factored_logits(q, weights, values * scales[:, None])
+          torch.testing.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
+    +@@ tests/kernels/test_deepseek_v4_sm70_indexer.py: def test_prefill_cublas_scores_survive_unscaled_key_magnitudes(monkeypatch):
+    +     scales = torch.full((num_keys,), 2.0**-8, device="cuda", dtype=torch.float32)
+    + 
+    +     actual = sm70_indexer_prefill_logits(
+    +-        q, bits.view(torch.float8_e4m3fn), scales, weights
+    ++        q, bits.view(torch.float8_e4m3fn), scales, weights, triton_tensor_cores=False
+    +     )
+    +     expected = _reference_index_logits(q, weights, values * scales[:, None])
+    +     assert torch.isfinite(actual).all()
+     
+      ## vllm/config/kernel.py ##
+     @@ vllm/config/kernel.py: class KernelConfig:
+    @@ vllm/models/deepseek_v4/sm70/indexer.py: _LOGITS_BLOCK_N = 32
+     -# is what the decode path still uses, since decode gathers from a paged cache).
+     +# Without tensor-core Triton, prefill scoring routes through cuBLAS on Volta
+     +# (`indexer_prefill_cublas`, 0 takes `_prefill_index_scores_kernel` for an A/B).
+    - # Cap (MiB) on the [tokens*heads, key_tile] fp16 score tile. At the default
+    - # 2048-token prefill chunk and 64 heads this is 128 KiB per key, so the tile
+    + # Cap (MiB) on the [tokens*heads, key_tile] fp32 score tile. At the default
+    + # 2048-token prefill chunk and 64 heads this is 512 KiB per key, so the tile
+      # is what keeps a long-context chunk from asking for gigabytes in one go.
+     @@ vllm/models/deepseek_v4/sm70/indexer.py: def _paged_index_logits_kernel(
+      
+26:  a86859273 = 26:  59cdd9151 perf(moe): reduce skinny expert rows with the batched Triton kernel
+27:  87af6d035 = 27:  fd7beb491 perf(mhc): prefill mHC projection on tensor cores for the sm7x route
+28:  e1b235aef = 28:  72f3685b7 perf(dsv4): sparse prefill matmuls read their rows on tensor cores
+29:  d9cb8b7a7 = 29:  00eec2f75 perf(moe): Volta skinny MoE on a Triton grouped GEMM for long chunks
+30:  301129d95 = 30:  22e813701 perf(moe): balance Triton skinny MoE over row blocks in three tiles
+31:  5ff4a3480 = 31:  564d8cfc8 perf(moe): find each Triton MoE program's row block inside the kernel
+32:  9b25c4ed0 = 32:  70dfebdfa perf(dsv4): attend a whole prefill chunk in one sparse pass
+33:  033ba95d4 = 33:  14011498c fix(dsv4): keep the Triton prefill index scores in FP32
+34:  e9147089c = 34:  c6f36a5e4 test(dsv4): give the sparse policy test layer its tensor-core flag
+35:  294882b45 = 35:  6fcee1fcf docs(triton): where to get the sm7x Triton, and the setting's error names it
+36:  b9fbe637c = 36:  e0f93d68f perf(mhc): let the mHC layer ops take the sm7x tensor-core route

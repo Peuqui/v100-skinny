@@ -1,0 +1,48 @@
+1165	MERGED	2026-10-10	kda gated rmsnorm	[Perf][SM70] Dispatch FP32 KDA output norm through its CustomOp owner
+1165	MERGED	2026-10-10	FusedRMSNormGated	[Perf][SM70] Dispatch FP32 KDA output norm through its CustomOp owner
+1165	MERGED	2026-10-10	fused_rms_norm_gated	[Perf][SM70] Dispatch FP32 KDA output norm through its CustomOp owner
+1348	OPEN	2026-11-03	KDA decode	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1125	OPEN	2026-10-09	KDA decode	[Perf][SM70] GLM-5.3: FP32 tensor-core sparse MLA for FP8-KV prefill
+1455	OPEN	2026-11-09	KDA decode	[Draft review queue] GLM-5.3 model and KDA kernel integration queue
+1286	OPEN	2026-10-28	KDA decode	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1102	OPEN	2026-10-08	KDA decode	[Quantization][SM70] EXL3 routed-expert MoE, loading exllamav3 checkpoints
+1611	MERGED	2026-11-23	KDA decode	[Bugfix][GLM-5.3] Compute the MoE router GEMM once per layer
+1410	MERGED	2026-11-07	KDA decode	[Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded 
+1282	OPEN	2026-10-27	KDA decode	[Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1159	MERGED	2026-10-10	KDA decode	[Perf][SM70] Resolve native mHC verification and KDA projection dispatch
+1228	MERGED	2026-10-17	KDA decode	[Perf][GDN] Run the FlashQLA TileLang prefill kernel on Turing
+1166	MERGED	2026-10-10	KDA decode	[Perf][SM70] Expand mHC post+dot with resolved policy defaults
+392	MERGED	2026-08-28	KDA decode	[Kernel][SM70] Add exact GLM KDA decode GEMV
+1165	MERGED	2026-10-10	KDA decode	[Perf][SM70] Dispatch FP32 KDA output norm through its CustomOp owner
+454	MERGED	2026-09-02	KDA decode	[Kernel][SM70] Qualify GLM-5.3 DFlash2 TP8 verifier
+341	MERGED	2026-08-27	KDA decode	[Model] Add GLM-5.3-Flash NVFP4 support on SM70
+396	MERGED	2026-08-28	KDA decode	[Bugfix][Kernel][SM70] Reconcile GLM KDA GEMV with latest main
+456	MERGED	2026-09-02	KDA decode	[Core][SM70] Qualify GLM-5.3 DFlash2 TP4/PP2 256K
+402	MERGED	2026-08-28	KDA decode	[Benchmark][SM70] Audit GLM reasoning completion
+503	MERGED	2026-09-05	KDA decode	[Kernel][SM70] Integrate GLM TP8 verifier and PP2 KV capacity
+501	MERGED	2026-09-05	KDA decode	[Core][SM70] Reconcile and audit GLM DFlash2 against latest main
+404	MERGED	2026-08-28	KDA decode	[Core][SM70] Bring up GLM-5.3 DFlash2
+1241	CLOSED	2026-10-20	KDA decode	Bump the minor-update group across 1 directory with 171 updates
+1213	MERGED	2026-10-15	RMSNormGated	[Bugfix][GDN] Keep the traced prefill output projection on the custom-op norm
+1619	MERGED	2026-11-24	RMSNormGated	perf(sm70): accelerate Qwen3.8-27B dense prefill (+15% to +35%) with V3 FA2 and P2P/compute kernels
+1455	OPEN	2026-11-09	GLM-5.3 KDA	[Draft review queue] GLM-5.3 model and KDA kernel integration queue
+1348	OPEN	2026-11-03	GLM-5.3 KDA	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1536	OPEN	2026-11-16	GLM-5.3 KDA	[Bugfix][Core] Refuse a KV pool that cannot hold one max_model_len request
+1286	OPEN	2026-10-28	GLM-5.3 KDA	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1125	OPEN	2026-10-09	GLM-5.3 KDA	[Perf][SM70] GLM-5.3: FP32 tensor-core sparse MLA for FP8-KV prefill
+1102	OPEN	2026-10-08	GLM-5.3 KDA	[Quantization][SM70] EXL3 routed-expert MoE, loading exllamav3 checkpoints
+1549	MERGED	2026-11-17	GLM-5.3 KDA	[Bugfix][GLM-5.3] Bind KDA chunk kernels in Glm5NextLinearAttention
+1611	MERGED	2026-11-23	GLM-5.3 KDA	[Bugfix][GLM-5.3] Compute the MoE router GEMM once per layer
+1282	OPEN	2026-10-27	GLM-5.3 KDA	[Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1410	MERGED	2026-11-07	GLM-5.3 KDA	[Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded 
+1159	MERGED	2026-10-10	GLM-5.3 KDA	[Perf][SM70] Resolve native mHC verification and KDA projection dispatch
+1274	MERGED	2026-10-27	GLM-5.3 KDA	[Bugfix][Loader] Load index shards in subfolders; read U16 and U32 through direct I/O
+1165	MERGED	2026-10-10	GLM-5.3 KDA	[Perf][SM70] Dispatch FP32 KDA output norm through its CustomOp owner
+1228	MERGED	2026-10-17	GLM-5.3 KDA	[Perf][GDN] Run the FlashQLA TileLang prefill kernel on Turing
+1166	MERGED	2026-10-10	GLM-5.3 KDA	[Perf][SM70] Expand mHC post+dot with resolved policy defaults
+456	MERGED	2026-09-02	GLM-5.3 KDA	[Core][SM70] Qualify GLM-5.3 DFlash2 TP4/PP2 256K
+454	MERGED	2026-09-02	GLM-5.3 KDA	[Kernel][SM70] Qualify GLM-5.3 DFlash2 TP8 verifier
+402	MERGED	2026-08-28	GLM-5.3 KDA	[Benchmark][SM70] Audit GLM reasoning completion
+341	MERGED	2026-08-27	GLM-5.3 KDA	[Model] Add GLM-5.3-Flash NVFP4 support on SM70
+392	MERGED	2026-08-28	GLM-5.3 KDA	[Kernel][SM70] Add exact GLM KDA decode GEMV
+404	MERGED	2026-08-28	GLM-5.3 KDA	[Core][SM70] Bring up GLM-5.3 DFlash2

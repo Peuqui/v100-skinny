@@ -1,0 +1,280 @@
+Source of every number and claim in pr-adaptive-verify.txt (rewritten 2026-11-26 for branch pr-adaptive-verify at 8bd4a4f2c on 1Cat main 73da3445d; the six files touched by the last two changes (dead V1-runner branch removed, VllmConfig test, comments) ran again on 8bd4a4f2c: runs5/pr-adaptive-verify-final/{cpu,v100,rtx}; the other 13 files: test runs runs5/pr-adaptive-verify on 6ddaf6b53, which differs from 75745f53c only by the comment in vllm/v1/core/sched/output.py and the ruff formatting of tests/v1/core/test_adaptive_verify.py (git diff 6ddaf6b53 75745f53c --stat: 2 files, 5 insertions, 7 deletions); test_adaptive_verify.py on 75745f53c on the CPU: 22 passed, 2026-11-26).
+LOG = ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log (arms T1 P2 T3 P4, chain chain_avadapt_glm_2026-11-23.sh; T = fork commit c9edcaa35, P = production entry); DIR = ab_avad_glm_2026-11-23a/; calibration logs ab_avf{1,3,4,6}_glm_2026-11-23a.log (forced verify length n per boot, block 6) and ab_k4_glm_2026-11-23a.log (production k = 4); entry avad_entry_glm_2026-10-31.yaml. All percentages and the fit are computed here from the logged values (mean of the two T arms against the mean of the two P arms), not copied from ERGEBNIS.md.
+Test counts: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/<tree>/<cpu|v100|rtx>/summary.log, the line of the file named; tree pr-adaptive-verify, main = prmain2 / prmain2-indep; name-for-name comparison cmp5_result.txt (pr-adaptive-verify: cpu 0 new, v100 0, rtx 0).
+Numbers of the text with their lines:
+
+tests/config/test_adaptive_verify_config.py CPU [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/cpu/summary.log:2
+tests/config/test_adaptive_verify_config.py V100 [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/v100/summary.log:2
+tests/config/test_adaptive_verify_config.py RTX [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/rtx/summary.log:2
+tests/test_config.py CPU [134 passed; 9 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/cpu/summary.log:3
+tests/test_config.py V100 [128 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/v100/summary.log:3
+tests/test_config.py RTX [137 passed; 6 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/rtx/summary.log:3
+tests/v1/core/test_adaptive_verify.py CPU [21 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/cpu/summary.log:4
+tests/v1/core/test_adaptive_verify.py V100 [21 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/v100/summary.log:4
+tests/v1/core/test_adaptive_verify.py RTX [21 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/rtx/summary.log:4
+tests/v1/core/test_async_scheduler.py CPU [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/cpu/summary.log:5
+tests/v1/core/test_async_scheduler.py V100 [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/v100/summary.log:5
+tests/v1/core/test_async_scheduler.py RTX [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/rtx/summary.log:5
+tests/v1/core/test_scheduler.py CPU [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/cpu/summary.log:6
+tests/v1/core/test_scheduler.py V100 [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/v100/summary.log:6
+tests/v1/core/test_scheduler.py RTX [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/rtx/summary.log:6
+tests/v1/worker/test_sm70_long_attention_graphs.py CPU [289 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/cpu/summary.log:7
+tests/v1/worker/test_sm70_long_attention_graphs.py V100 [289 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/v100/summary.log:7
+tests/v1/worker/test_sm70_long_attention_graphs.py RTX [289 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify-final/rtx/summary.log:7
+tests/config/test_adaptive_verify_config.py CPU [23 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:3
+tests/config/test_adaptive_verify_config.py V100 [23 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:3
+tests/config/test_adaptive_verify_config.py RTX [23 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:3
+tests/v1/core/test_adaptive_verify.py CPU [22 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:11
+tests/v1/core/test_adaptive_verify.py V100 [22 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:11
+tests/v1/core/test_adaptive_verify.py RTX [22 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:11
+tests/v1/worker/test_sm70_long_attention_graphs.py CPU [289 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:20
+tests/v1/worker/test_sm70_long_attention_graphs.py V100 [289 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:20
+tests/v1/worker/test_sm70_long_attention_graphs.py RTX [289 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:20
+tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py CPU [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:15
+tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py V100 [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:15
+tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py RTX [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:15
+tests/v1/cudagraph/test_sm70_graph_gates_pre_ampere.py CPU [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:14
+tests/v1/cudagraph/test_sm70_graph_gates_pre_ampere.py V100 [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:14
+tests/v1/cudagraph/test_sm70_graph_gates_pre_ampere.py RTX [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:14
+tests/config/test_runtime_default_ownership.py CPU [50 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:4
+tests/config/test_runtime_default_ownership.py V100 [50 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:4
+tests/config/test_runtime_default_ownership.py RTX [50 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:4
+tests/config/test_sm70_attention_schedule.py CPU [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:5
+tests/config/test_sm70_attention_schedule.py V100 [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:5
+tests/config/test_sm70_attention_schedule.py RTX [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:5
+tests/config/test_unused_kernel_policy_hash.py CPU [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:6
+tests/config/test_unused_kernel_policy_hash.py V100 [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:6
+tests/config/test_unused_kernel_policy_hash.py RTX [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:6
+tests/tools/test_config_inventory.py CPU [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:9
+tests/tools/test_config_inventory.py V100 [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:9
+tests/tools/test_config_inventory.py RTX [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:9
+tests/tools/test_sm70_path_explanations.py CPU [32 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:10
+tests/tools/test_sm70_path_explanations.py V100 [32 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:10
+tests/tools/test_sm70_path_explanations.py RTX [32 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:10
+tests/v1/kv_connector/unit/test_async_kv_load_recovery.py CPU [13 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:16
+tests/v1/kv_connector/unit/test_async_kv_load_recovery.py V100 [13 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:16
+tests/v1/kv_connector/unit/test_async_kv_load_recovery.py RTX [13 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:16
+tests/v1/worker/test_gpu_cudagraph_memory_reserve.py CPU [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:17
+tests/v1/worker/test_gpu_cudagraph_memory_reserve.py V100 [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:17
+tests/v1/worker/test_gpu_cudagraph_memory_reserve.py RTX [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:17
+tests/v1/worker/test_shared_graph_capture_stream.py CPU [4 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:19
+tests/v1/worker/test_shared_graph_capture_stream.py V100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:19
+tests/v1/worker/test_shared_graph_capture_stream.py RTX [4 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:19
+tests/compile/test_sm70_decode_graph.py CPU [42 passed; 4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:2
+tests/compile/test_sm70_decode_graph.py V100 [42 passed; 4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:2
+tests/compile/test_sm70_decode_graph.py RTX [42 passed; 4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:2
+tests/test_config.py CPU [134 passed; 9 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:7
+tests/test_config.py V100 [128 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:7
+tests/test_config.py RTX [137 passed; 6 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:7
+tests/tools/test_architecture_reference.py CPU [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:8
+tests/tools/test_architecture_reference.py V100 [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:8
+tests/tools/test_architecture_reference.py RTX [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:8
+tests/v1/core/test_async_scheduler.py CPU [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:12
+tests/v1/core/test_async_scheduler.py V100 [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:12
+tests/v1/core/test_async_scheduler.py RTX [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:12
+tests/v1/core/test_scheduler.py CPU [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:13
+tests/v1/core/test_scheduler.py V100 [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:13
+tests/v1/core/test_scheduler.py RTX [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:13
+tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py CPU [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/cpu/summary.log:18
+tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py V100 [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/v100/summary.log:18
+tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py RTX [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-adaptive-verify/rtx/summary.log:18
+main 73da3445d tests/v1/worker/test_sm70_long_attention_graphs.py cpu [284 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:80
+main 73da3445d tests/v1/worker/test_sm70_long_attention_graphs.py v100 [283 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:80
+main 73da3445d tests/v1/worker/test_sm70_long_attention_graphs.py rtx [284 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:80
+main 73da3445d tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py cpu [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:58
+main 73da3445d tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py v100 [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:58
+main 73da3445d tests/v1/cudagraph/test_sm70_mtp_split_cudagraphs.py rtx [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:58
+main 73da3445d tests/v1/cudagraph/test_sm70_graph_gates_pre_ampere.py cpu [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:57
+main 73da3445d tests/v1/cudagraph/test_sm70_graph_gates_pre_ampere.py v100 [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:57
+main 73da3445d tests/v1/cudagraph/test_sm70_graph_gates_pre_ampere.py rtx [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:57
+main 73da3445d tests/config/test_runtime_default_ownership.py cpu [50 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:5
+main 73da3445d tests/config/test_runtime_default_ownership.py v100 [50 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:5
+main 73da3445d tests/config/test_runtime_default_ownership.py rtx [50 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:5
+main 73da3445d tests/config/test_sm70_attention_schedule.py cpu [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:6
+main 73da3445d tests/config/test_sm70_attention_schedule.py v100 [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:6
+main 73da3445d tests/config/test_sm70_attention_schedule.py rtx [14 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:6
+main 73da3445d tests/config/test_unused_kernel_policy_hash.py cpu [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:7
+main 73da3445d tests/config/test_unused_kernel_policy_hash.py v100 [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:7
+main 73da3445d tests/config/test_unused_kernel_policy_hash.py rtx [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:7
+main 73da3445d tests/tools/test_config_inventory.py cpu [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:49
+main 73da3445d tests/tools/test_config_inventory.py v100 [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:49
+main 73da3445d tests/tools/test_config_inventory.py rtx [24 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:49
+main 73da3445d tests/tools/test_sm70_path_explanations.py cpu [32 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:50
+main 73da3445d tests/tools/test_sm70_path_explanations.py v100 [32 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:50
+main 73da3445d tests/tools/test_sm70_path_explanations.py rtx [32 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:50
+main 73da3445d tests/v1/kv_connector/unit/test_async_kv_load_recovery.py cpu [13 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:60
+main 73da3445d tests/v1/kv_connector/unit/test_async_kv_load_recovery.py v100 [13 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:60
+main 73da3445d tests/v1/kv_connector/unit/test_async_kv_load_recovery.py rtx [13 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:60
+main 73da3445d tests/v1/worker/test_gpu_cudagraph_memory_reserve.py cpu [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:64
+main 73da3445d tests/v1/worker/test_gpu_cudagraph_memory_reserve.py v100 [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:64
+main 73da3445d tests/v1/worker/test_gpu_cudagraph_memory_reserve.py rtx [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:64
+main 73da3445d tests/v1/worker/test_shared_graph_capture_stream.py cpu [4 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:79
+main 73da3445d tests/v1/worker/test_shared_graph_capture_stream.py v100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:79
+main 73da3445d tests/v1/worker/test_shared_graph_capture_stream.py rtx [4 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:79
+main 73da3445d tests/compile/test_sm70_decode_graph.py cpu [42 passed; 4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:3
+main 73da3445d tests/compile/test_sm70_decode_graph.py v100 [42 passed; 4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:3
+main 73da3445d tests/compile/test_sm70_decode_graph.py rtx [42 passed; 4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:3
+main 73da3445d tests/test_config.py cpu [134 passed; 9 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:47
+main 73da3445d tests/test_config.py v100 [128 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:47
+main 73da3445d tests/test_config.py rtx [137 passed; 6 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:47
+main 73da3445d tests/tools/test_architecture_reference.py cpu [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:48
+main 73da3445d tests/tools/test_architecture_reference.py v100 [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:48
+main 73da3445d tests/tools/test_architecture_reference.py rtx [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:48
+main 73da3445d tests/v1/core/test_async_scheduler.py cpu [12 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:54
+main 73da3445d tests/v1/core/test_async_scheduler.py v100 [12 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:54
+main 73da3445d tests/v1/core/test_async_scheduler.py rtx [12 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:54
+main 73da3445d tests/v1/core/test_scheduler.py cpu [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:55
+main 73da3445d tests/v1/core/test_scheduler.py v100 [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:55
+main 73da3445d tests/v1/core/test_scheduler.py rtx [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:55
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py cpu [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:71
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py v100 [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:71
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py rtx [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:71
+T1 sampling all [43.96]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:21
+T3 sampling all [43.90]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:106
+P2 sampling all [41.00]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:64
+P4 sampling all [41.12]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:148
+round time T1 [50.3 ms]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:21
+round time T3 [50.5 ms]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:106
+round time P2 [56.0 ms]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:64
+round time P4 [55.8 ms]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:148
+prose T1 [36.20]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:17
+prose T3 [36.08]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:102
+prose P2 [34.38]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:60
+prose P4 [34.44]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:144
+code T1 [58.85]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:19
+code T3 [58.75]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:104
+code P2 [58.42]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:62
+code P4 [58.56]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:146
+arithmetic T1 [61.41]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:20
+arithmetic T3 [61.23]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:105
+arithmetic P2 [58.28]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:63
+arithmetic P4 [58.34]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:147
+greedy T1 [49.12; 0.73 0.50 0.28 0.16 0.08 0.05]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:16
+greedy T3 [48.94]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:101
+greedy P2 [50.58; 0.72 0.50 0.34 0.24]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:59
+greedy P4 [50.67]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:143
+short decode T1 [Decode kurz 49.20]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:14
+short decode T3 [Decode kurz 49.13]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:99
+short decode P2 [Decode kurz 47.24]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:57
+short decode P4 [Decode kurz 47.38]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:141
+decode after 8687 T1 [nach 8687 Token 66.04]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:14
+T3 [nach 8687 Token 63.51]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:99
+P2 [nach 8687 Token 61.44]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:57
+P4 [nach 8687 Token 61.30]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:141
+prefill T1 [Prefill 3.85 s]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:14
+prefill T3 [Prefill 3.85 s]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:99
+prefill P2 [Prefill 3.85 s]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:57
+prefill P4 [Prefill 3.87 s]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:141
+GSM8K T1 decode [67.85]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:23
+GSM8K T3 [67.74]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:108
+GSM8K P2 [64.42]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:66
+GSM8K P4 [64.46]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:150
+GSM8K correct 29 T1 ["correct": 29]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:22
+GSM8K correct 29 P2 ["correct": 29]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:65
+GSM8K correct 29 T3 ["correct": 29]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:107
+GSM8K correct 29 P4 ["correct": 29]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:149
+long context T3 150k [169693; 57.8; 68.4; steps": 101]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:111
+long context T3 250k [283230; 55.4; 70.5; steps": 102]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:112
+long context T3 max [516196; 56.0; 74.2; steps": 96]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:113
+long context P2 150k [169693; 60.0; 65.8; steps": 101]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:69
+long context P2 250k [283230; 55.8; 66.8; steps": 107]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:70
+long context P2 max [516196; 41.4; 68.0; steps": 142]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:71
+KV pool T1 [583,555]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:38
+KV pool T3 [583,555]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:117
+KV pool P2 [655,360]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:75
+KV pool P4 [655,360]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:154
+mem T1 [0=47375 1=30072 2=46067 3=31100 4=30440]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:36
+mem P2 [0=47863 1=30428 2=46593 3=31100 4=30448]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:73
+mem T3 [0=47905 1=30460 2=46635 3=31100 4=30500]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:115
+mem P4 [0=47375 1=30040 2=46025 3=31100 4=30440]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:152
+text equal to reference line 29 [gleich: True]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:29
+text equal to reference line 30 [gleich: True]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:30
+text equal to reference line 32 [gleich: True]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:32
+text equal to reference line 33 [gleich: True]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:33
+text equal to reference line 34 [gleich: True]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:34
+text equal to reference line 35 [gleich: True]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:35
+motor differs 782 / 791 [motor; gleich: False; 782 / 791]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:28
+kuanda differs 1134 / 1137 [kuanda; gleich: False; 1134 / 1137]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a.log:31
+calibration n=1 prose [36.09]: ~/.cache/bench-scripts/ab_avf1_glm_2026-11-23a.log:16
+calibration n=1 explanation [40.17]: ~/.cache/bench-scripts/ab_avf1_glm_2026-11-23a.log:17
+calibration n=1 code [42.55]: ~/.cache/bench-scripts/ab_avf1_glm_2026-11-23a.log:18
+calibration n=1 arithmetic [43.07]: ~/.cache/bench-scripts/ab_avf1_glm_2026-11-23a.log:19
+calibration n=1 decode after 8687 [nach 8687 Token 41.92]: ~/.cache/bench-scripts/ab_avf1_glm_2026-11-23a.log:14
+calibration n=1 greedy round [42.8 ms]: ~/.cache/bench-scripts/ab_avf1_glm_2026-11-23a.log:15
+calibration n=3 prose [35.59]: ~/.cache/bench-scripts/ab_avf3_glm_2026-11-23a.log:16
+calibration n=3 explanation [44.82]: ~/.cache/bench-scripts/ab_avf3_glm_2026-11-23a.log:17
+calibration n=3 code [58.00]: ~/.cache/bench-scripts/ab_avf3_glm_2026-11-23a.log:18
+calibration n=3 arithmetic [58.62]: ~/.cache/bench-scripts/ab_avf3_glm_2026-11-23a.log:19
+calibration n=3 decode after 8687 [nach 8687 Token 52.42]: ~/.cache/bench-scripts/ab_avf3_glm_2026-11-23a.log:14
+calibration n=3 greedy round [52.4 ms]: ~/.cache/bench-scripts/ab_avf3_glm_2026-11-23a.log:15
+calibration n=4 prose [34.23]: ~/.cache/bench-scripts/ab_avf4_glm_2026-11-23a.log:16
+calibration n=4 explanation [40.87]: ~/.cache/bench-scripts/ab_avf4_glm_2026-11-23a.log:17
+calibration n=4 code [58.20]: ~/.cache/bench-scripts/ab_avf4_glm_2026-11-23a.log:18
+calibration n=4 arithmetic [57.98]: ~/.cache/bench-scripts/ab_avf4_glm_2026-11-23a.log:19
+calibration n=4 decode after 8687 [nach 8687 Token 61.58]: ~/.cache/bench-scripts/ab_avf4_glm_2026-11-23a.log:14
+calibration n=4 greedy round [57.4 ms]: ~/.cache/bench-scripts/ab_avf4_glm_2026-11-23a.log:15
+calibration n=6 prose [29.91]: ~/.cache/bench-scripts/ab_avf6_glm_2026-11-23a.log:16
+calibration n=6 explanation [38.06]: ~/.cache/bench-scripts/ab_avf6_glm_2026-11-23a.log:17
+calibration n=6 code [55.58]: ~/.cache/bench-scripts/ab_avf6_glm_2026-11-23a.log:18
+calibration n=6 arithmetic [59.78]: ~/.cache/bench-scripts/ab_avf6_glm_2026-11-23a.log:19
+calibration n=6 decode after 8687 [nach 8687 Token 55.03]: ~/.cache/bench-scripts/ab_avf6_glm_2026-11-23a.log:14
+calibration n=6 greedy round [65.7 ms]: ~/.cache/bench-scripts/ab_avf6_glm_2026-11-23a.log:15
+production k=4 reference line 17 [34.25]: ~/.cache/bench-scripts/ab_k4_glm_2026-11-23a.log:17
+production k=4 reference line 18 [41.01]: ~/.cache/bench-scripts/ab_k4_glm_2026-11-23a.log:18
+production k=4 reference line 19 [58.29]: ~/.cache/bench-scripts/ab_k4_glm_2026-11-23a.log:19
+production k=4 reference line 20 [58.01]: ~/.cache/bench-scripts/ab_k4_glm_2026-11-23a.log:20
+computed here: least squares fit of the four greedy round times (n = 1, 3, 4, 6: 42.8, 52.4, 57.4, 65.7 ms): t0 38.488 ms, c 4.596 ms per verified draft token, c / t0 0.1194
+computed here: all-texts figure mean T 43.93 / P 41.06 = +6.99 % (ratio 1.0699)
+computed here: prose +5.03 % (ratio 1.0503)
+computed here: code +0.53 % (ratio 1.0053)
+computed here: arithmetic +5.16 % (ratio 1.0516)
+computed here: short decode +3.92 % (ratio 1.0392)
+computed here: after 8687 tokens +5.5 % (1.05548) (ratio 1.0555)
+computed here: GSM8K decode +5.20 % (ratio 1.0520)
+computed here: greedy probe -3.15 % (rounded to -3.2 %) (ratio 0.9685)
+T arm: num_speculative_tokens 6, adaptive_verify enabled min_tokens 1 initial_tokens 4 verify_cost_ratio 0.119 switch_margin 0.02 ["num_speculative_tokens":6]: ~/.cache/bench-scripts/avad_entry_glm_2026-10-31.yaml:13
+T arm kernel-config ["adaptive_verify":{"enabled":true,"min_tokens":1,"initial_tokens":4,"verify_cost_ratio":0.119,"switch_margin":0.02]: ~/.cache/bench-scripts/avad_entry_glm_2026-10-31.yaml:14
+T arm capture size 7 ["cudagraph_capture_sizes":[7]]: ~/.cache/bench-scripts/avad_entry_glm_2026-10-31.yaml:12
+kv cache fp8_e4m3 [fp8_e4m3]: ~/.cache/bench-scripts/avad_entry_glm_2026-10-31.yaml:4
+max-num-seqs 1 [--max-num-seqs]: ~/.cache/bench-scripts/avad_entry_glm_2026-10-31.yaml:9
+PYTHONPATH with the patched Triton [triton-sm7x-glm-prod-2026-10-25]: ~/.cache/bench-scripts/avad_entry_glm_2026-10-31.yaml:32
+T arm scheduler line "Adaptive verify length (throughput) enabled: n in [1, 6], first round 4." [Adaptive verify length (throughput) enabled: n in [1, 6], first round 4.]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a/journal-1-T.txt:863
+T arm "Capturing target tail query lengths (7, 6, 5, 4, 3, 2)" [(7, 6, 5, 4, 3, 2)]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a/journal-1-T.txt:749
+P arm num_spec_tokens=4 [num_spec_tokens=4]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a/journal-2-P.txt:117
+P arm cudagraph_capture_sizes [5] ['cudagraph_capture_sizes': [5]]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a/journal-2-P.txt:39
+peak memory.used differences over the four arms (LOG lines 36, 73, 115, 152): card 0 47375..47905 (530 MiB), card 1 30040..30460 (420), card 2 46025..46635 (610), card 3 31100 (0), card 4 30440..30500 (60); largest 610 MiB
+GSM8K 30 questions in every arm: summary.questions of ab_avad_glm_2026-11-23a/{1-T,2-P,3-T,4-P}-gsm8k.json (read 2026-11-26: 30 / 29 correct in all four)
+"Decode kurz" client is greedy: glm_ab_client.py line 75 ("temperature": 0); sampling figures are the probe spec_length_probe_2026-11-22.py with temperature 1.0 and min_p 0.1 (AIfred sampling); thinking on with reasoning_effort low (MODES["aifred"], lines 47-55); PROMPTS lines 27-46: 3 prose, 2 explanation, 2 code, 1 arithmetic prompt, SEEDS (11, 12); the "alle" summary (lines 141-144) is the median over all 16 requests, which equals the explanation figure in every arm (LOG lines 18/21, 61/64, 103/106, 145/148)
+T: available KV cache memory per worker [1.80 GiB, 2.58 GiB, 2.57 GiB, 2.58 GiB, 4.34 GiB]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a/journal-1-T.txt:735
+P: available KV cache memory per worker [1.80 GiB, 2.58 GiB, 2.57 GiB, 2.58 GiB, 4.34 GiB]: ~/.cache/bench-scripts/ab_avad_glm_2026-11-23a/journal-2-P.txt:908
+main: test_async_scheduler AttributeError _adaptive_mtp [has no attribute '_adaptive_mtp']: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/tests_v1_core_test_async_scheduler.py.log:53
+fork commit c9edcaa35 = prod-v14 (6b1cd5c2c) + the first three commits of this branch (git log, git diff --stat 6b1cd5c2c c9edcaa35: only the files of this change); LOG line 1 "T: c9edcaa35"; P = production entry of that day (num_speculative_tokens 4, v14 tree)
+text comparison reference: AB_QUALITY_REF = validate_v14k4_glm_2026-10-31/quality.json (chain_avadapt_glm_2026-11-23.sh line 28); motor and kuanda read on 2026-11-26 against 1-T-quality.json: both lists the four strokes in the right order resp. state "Ich kenne keine bekannte historische Persönlichkeit namens Henri Kuanda" and offer Kenneth Kaunda; first differing characters (not in the text) 1065 and 3874
+pre-commit head 8bd4a4f2c [8bd4a4f2c]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:1
+branch mypy-local Failed [Run mypy locally; Failed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:14
+branch: async_scheduler.py:50 [async_scheduler.py:50; hf_config]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:18
+branch: async_scheduler.py:61 [async_scheduler.py:61; DSparkWidths]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:19
+branch: async_scheduler.py:62 [async_scheduler.py:62; DSparkAdaptive]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:20
+branch: async_scheduler.py:141 [async_scheduler.py:139; width]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:21
+branch: check-architecture-reference Failed [Check architecture declarations; Failed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:38
+branch: check-layering Failed [Keep generic modules; Failed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:72
+branch: markdownlint Passed [markdownlint-cli2; Passed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_adaptive-verify.log:6
+main: async_scheduler.py:47 [async_scheduler.py:47; hf_config]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:35
+main: :58 [async_scheduler.py:58]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:36
+main: :59 [async_scheduler.py:59]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:37
+main: :171 [async_scheduler.py:171]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:38
+main: layering Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:129
+main: 46 errors in 15 files [Found 46 errors in 15 files]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:78
+main: 1 error in 1 file [Found 1 error in 1 file]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:80
+main: arch ref Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:95
+main: ruff check Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:2
+main: markdownlint Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:8
+layering list of the branch against main (belege/pc6_adaptive-verify.log against belege/lay_MAIN3b.txt): identical except that main lists "vllm/v1/worker/gpu/cudagraph_utils.py: platform coupling 30 -> 32" and the branch does not (checked 2026-11-26)
+runtime_reference.md: tools.generate_architecture_reference --write run in the branch tree at 75745f53c on 2026-11-26 (the last change, to 8bd4a4f2c, touches no configuration class) (then git checkout of the file, git status empty): changes exactly the two lines SpeculativeConfig and VllmConfig, the same two lines as on main (belege/ref_main_regen.diff)
+Duplicate check (gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "<term>" --limit 30, 2026-11-26): raw output belege/dup_adaptive.tsv (16 searches, 173 distinct PRs). States/titles read with gh pr view 2026-11-26: #1570 MERGED 2026-11-19 (body names "Async Adaptive EntMTP (k in [2, 5])", MTP only), #596 MERGED, #366 MERGED, #1616 MERGED 2026-11-25, #1625 MERGED 2026-11-25, #1600 OPEN (no async_scheduler, cudagraph_utils or kernel.py file), #1221 OPEN, #1379 OPEN. gh pr diff of #1221, #1379, #1600 (705, 11975 and 14726 lines) and the per-file patches of #1260 (gh api .../pulls/1260/files, 32891 lines, because gh pr diff refuses the 215-file diff) grep for "adaptive|next_spec_steps|verify_length|verify length|verification length|tail_query|num_draft_tokens.*accept": no hit (#1260: only long_prefill_token_threshold_adaptive and an adaptive mixed-prefill token budget).
+#1616 code read on the branch: vllm/v1/core/sched/async_scheduler.py lines 44-66 (_dspark_widths only for method dspark and draft hf_config model_type inkling2_dspark), _select_adaptive_batch_k (dspark branch first), vllm/v1/worker/gpu/cudagraph_utils.py _add_dspark_width_graphs (method dspark only, VLLM_INKLING2_SM70_DSPARK_GRAPH_TOKENS), vllm/v1/worker/gpu/spec_decode/dspark/widths.py (VLLM_INKLING2_SM70_DSPARK_WIDTHS, DSparkWidths, DSparkAdaptive); resolve_adaptive_verify in vllm/config/kernel.py: returns None when not enabled (method dspark), raises ValueError when enabled and method != dflash.
+Merge probes of the final head 8bd4a4f2c, 2026-11-26 (belege/probe_all_open_2026-11-26b.json: 74 open heads and the eight own heads, added conflicts only runtime_reference.md with #1282 #1347 #1286 #1348); earlier, of 75745f53c: all 74 open PR heads (gh pr list --state open --json number,headRefOid; fetched as refs/probe/pr<n>, head oids checked), conflicts of the branch minus conflicts of 73da3445d per head: none (belege/probe_all_open_2026-11-26.json); rebased #1221 #1278 #1282 #1347 #1286 #1348 and the PRs sharing a file: belege/probe_adaptive_75745f53c.txt (added only runtime_reference.md with #1282 #1347 #1286 #1348).
+Open PRs touching the same files: gh pr list --state open --json files (72 open PRs; full lists via gh api .../pulls/<n>/files for the PRs with 100 or more files), 2026-11-26; merge probes belege/probe.py -> belege/probe_result.txt (adaptive-verify section; 22 heads = 16 fetched PR heads + 6 local rebased branches pr-mrv2-dspark-r1125, pr-turing-kernels-r1125, pr-triton-sm7x-r1125, pr-dsv4-longctx-decode-r1125, pr-glm53-r1125, pr-glm53-prefill-head-r1125). git merge-tree pr-adaptive-verify pr-pp-pack-handover: conflicts in test_sm70_long_attention_graphs.py (import line) and runtime_reference.md.
+Code facts read on branch 8bd4a4f2c: vllm/config/kernel.py (AdaptiveVerifyConfig defaults, resolve_adaptive_verify, ignored factor "adaptive_verify"), vllm/v1/core/sched/adaptive_verify.py (MtpBandController constants against the removed code of origin/main async_scheduler.py: EMA 0.28, prior 4.0 / 5.0, bands 0.62 / 0.74 / 0.82 / 0.89, down thresholds 0.595 / 0.715 / 0.795 / 0.865 equal), async_scheduler.py (ValueError "adaptive_verify requires the V2 model runner"), cudagraph_utils.py tail_query_lens; grep for is_adaptive_mtp_enabled and adaptive_mtp_min_k outside kernel.py: no hit (tests only use the policy attribute); new tests: 4 new cases in test_sm70_long_attention_graphs.py (284 -> 288 passed on the CPU, main CPU line above).
+Base: git merge-tree of the branch with origin/main 44708bdb9 is clean (2026-11-26).
+Notation and rounding of the text: 8,687 = 8687 prompt tokens (LOG lines 6-14); 169,693 / 283,230 / 516,196 = prompt_tokens of ctx150k / ctx250k / ctxmax (LOG lines 69-71 and 111-113); 1,134 / 1,137 = tokens 1134 / 1137 (LOG:31); 400 = completion_tokens of the long-context requests (same lines); 192 = tokens of the short decode (LOG lines 9-11); 64.43 = 64.4275 (LOG:66 gsm8k decode_tok_s); 38.5 and 4.60 = 38.488 and 4.596 (fit computed above); 7.0 and 5.5 = 6.99 and 5.548 percent (computed above); 403 = the HTTP status of the gated Hugging Face repos (GatedRepoError: 403 Client Error in tests_test_config.py.log); 8000 = name Quadro RTX 8000.

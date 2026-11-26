@@ -1,0 +1,77 @@
+# #1286: changed sentences, old -> new (5 edits to the existing description; the new Update paragraph at the top is listed in the body itself)
+
+## 1. Stacked PR paragraph: new base, new hashes, review range
+OLD: Stacked PR. The branch sits on #1282 (Triton routes, itself on #1280, #1279, #1278 and #1216; #1222 and #1227 below them are merged). #1274 and #1275, which the boot needs, are merged as well. Above #1282 come three commits that #1274 and #1275 do not carry because #1260 changes the same places (see the duplicate paragraph): a full-precision LM head left to its embedding method with ModelOpt (c05d939cc), no up-projected context reserved for sparse MLA in the profile run (32f394462) and its test (535f60173). Then the GLM commits. Please review from c05d939cc on (git log c05d939cc~1..814c88909).
+NEW: Stacked PR. The branch sits on #1282 without its last two commits (the wheel page and the mHC layer ops), that is on c6f36a5e4; below it are #1278 (open) and the commits of #1279 and #1280, which were closed as superseded by #1282 (#1216, #1222, #1227, #1274 and #1275 are merged and no longer part of the stack). Above c6f36a5e4 come three commits that #1274 and #1275 do not carry (they were left out of those two PRs because the open #1260 changes the same places; see its entry under Not a duplicate): a full-precision LM head left to its embedding method with ModelOpt (e0ac1073b), no up-projected context reserved for sparse MLA in the profile run (ddc8bfbcc) and its test (7220e0b92). Then the GLM commits. Please review from e0ac1073b on (git log c6f36a5e4..918a96748, 31 commits). The hashes in the groups below belong to earlier heads of this PR.
+
+## 2. Not a duplicate paragraph: refreshed on main 73da3445d
+OLD: Not a duplicate. I compared the changed files with those of all 84 open PRs (complete file lists through the API), ran a three-way merge with every PR that shares a file (new conflicts counted against #1282; repeated on 2026-10-28 against all 57 PRs then open, with the same findings except one file fewer for #1260), and searched the open PRs for GLM, glm5, GLM-5.3, csf, ModelOpt, MXFP8, KDA, "sparse MLA" and EXL3. Findings:
+- #1125 (rivetphilbot) replaces the same _sm70_glm5_sparse_paged_fp8_kernel prefill route with an FP32-softmax tensor-core kernel, and #1092 (rivetphilbot) argues that the fp16 QK scores of the decode route lose precision and can overflow for GLM-5.3. Group 2 moves exactly that decode route (fp16 scores and probabilities from cuBLAS, which accumulates in fp32) to prefill. In our runs the quality answers and GSM8K-60 showed no loss, but I did not check the score range. The two approaches should be measured against each other; both conflict with this PR in vllm/models/glm5next/sm70/sparse.py and its test.
+- #1260 (threhan, conflicting with main) serves GLM-5.3 GGUF and gets new conflicts in 9 files: the full-precision LM head and the sparse-MLA profile reservation (#1260 makes equivalent changes, which is why #1274 and #1275 left them out and this PR carries them as c05d939cc and 32f394462), GLM5NextSM70SparseBackend's capability check, the CUDA platform's attention backend priority, the KPool software-E4M3 condition, GLM attention, KDA and two GLM tests. Whichever lands second drops the duplicated parts.
+- #1102 and #1243 (rivetphilbot, EXL3 experts) change Glm5NextModel.load_weights for another checkpoint format and conflict with this PR's loader changes there.
+- #1159, #1165 and #1166 (rivetphilbot) change GLM's KDA and mHC decode kernels, #1030 and #1031 the skinny MoE, #822, #1069 and #1157 the QPN8 decode, #1271 vllm/platforms/cuda.py: they share files with this PR and merge without a new conflict. #828 lists shared files only because of its old base.
+
+
+NEW: Not a duplicate. Checked on 2026-11-26 against main 73da3445d: gh pr list --repo 1CatAI/1Cat-vLLM --state all --search for GLM-5.3, glm53, Glm5Next, csf, ModelOpt, MXFP8, KDA, sparse MLA, EXL3 and FP4-Local; the file lists of all 63 open PRs by other authors (dependabot excluded); and the added and removed lines of the diffs of those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; the merged ones were listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date) for the symbols this change adds (the diffs of #1243, #1260, #1482, #1527 and #1616 exceed GitHub's 20,000-line limit; for these five only the file lists were compared). Findings:
+- #1125 (rivetphilbot) replaces the same _sm70_glm5_sparse_paged_fp8_kernel prefill route with an FP32-softmax tensor-core kernel, and #1092 (rivetphilbot) argues that the fp16 QK scores of the decode route lose precision and can overflow for GLM-5.3. Both are still open and still change vllm/models/glm5next/sm70/sparse.py and tests/models/glm5next/test_sm70_sparse.py (file lists of 2026-11-26), like group 2 here, which moves exactly that decode route (fp16 scores and probabilities from cuBLAS, which accumulates in fp32) to prefill. In our runs the quality answers and GSM8K-60 showed no loss, but I did not check the score range. The two approaches should be measured against each other.
+- #1260 (threhan) is still open; its file list overlaps this PR's in tests/models/glm5next/test_pp.py, tests/models/glm5next/test_sm70_sparse.py and CMakeLists.txt. The statements of the earlier checks about equivalent changes in the LM head and the profile reservation, and about the number of conflicting files, are not repeated: I did not run the three-way merge against it again (its diff is over GitHub's limit).
+- #1102 and #1243 (rivetphilbot, EXL3 experts) are still open; #1102 changes vllm/models/glm5next/nvidia/model.py and mtp.py, which this PR changes for the loader.
+- #1030 and #1031 (skinny MoE) and #822 (QPN8/QPN2 policy) are still open and share files with this PR (skinny_sm70_moe.py, skinny_moe_qpn_sm70.cu, sm70_turbomind.py). #1159, #1165, #1166 (GLM KDA and mHC decode), #1069, #1157 (QPN8 decode), #1271 (vllm/platforms/cuda.py) and #828 are merged.
+- main's #1541 (unknown quant_algo raises), #1549 (KDA chunk kernels bound in Glm5NextLinearAttention) and #1616 (Inkling 2) touch this PR's files: see the update above for what that changed here. #1549 duplicated one line of this PR, which is gone. #1598, #1600 and #1621 (Inkling 2 by other authors, open) and #1626 (open; a GLM-5.3 MTP graph fix in other files) share no file with this PR's own files.
+- #1455 ("[Draft review queue] GLM-5.3 model and KDA kernel integration queue") retains this PR's earlier head 75fd75d70 for qualification (review comment of 2026-11-09 on this PR); #1450 and #1454 retain related ones. They contain this PR's distinctive symbols by design. Other diffs only share generic or file-level names (QPN8_SPLIT_K in #953 and #1524, ROWS_PER_CHUNK in #1460, _project_qkv in #1595, _fp8_weight in #1031, skinny_moe_qpn_sm70 in #1030, #1031 and #1607).
+
+
+
+## 3. Test Plan: this round's files and pre-commit range
+OLD: pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+
+Model measurements
+NEW: Round of 2026-11-26 (update at the top): one pytest process per file on the CPU, a Tesla V100 and a Quadro RTX 8000 for the 52 files listed there (all files of the plan above and further files that overlap with main's changes), with stock Triton 3.6.0; the five files that need the sm7x Triton (test_kernel_config_triton_sm7x.py, test_mhc_prenorm_tensor_cores.py, test_skinny_moe_triton.py, test_deepseek_v4_sm70_indexer.py, test_dsv4_sparse_prefill_bmm.py) were run once more on the two cards with the sm7x Triton build first on PYTHONPATH (results in the update).
+
+pre-commit run --from-ref 73da3445d --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref 73da3445d --to-ref HEAD
+
+Model measurements
+
+## 4. Test Result: old pre-commit paragraph (main c59b3c4cb) replaced by a pointer
+OLD: pre-commit run --from-ref origin/main --to-ref HEAD on this head: every hook passes except check-layering, which reports vllm/config/speculative.py (model coupling 142 -> 144) and vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39); main c59b3c4cb, the base of the stack, reports the same two counts, so this PR adds none (#1284 on current main removes the first). pre-commit run mypy-3.10 --hook-stage manual: passed.
+
+
+NEW: pre-commit and mypy on the current head: see the update of 2026-11-26 at the top (four hooks fail with the findings that main 73da3445d has as well; none is new). The results of the earlier heads are in the dated updates.
+
+
+
+## 5. footer: the two closing lines of fakten-runde5.md (session link of this session)
+OLD: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+NEW: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUkqNsK9nE7L151CUUE
+
+# Round 2 (2026-11-26, after the independent review): further changes to the text, old -> new, short. The entries above stay as they were; where a sentence of an entry above was changed again, the entry's NEW text was updated to the final wording.
+
+## R2-1. A1
+OLD: 'the file lists of all 72 open PRs; ... 63 open PRs by other authors and of 217 PRs by other authors merged since 2026-10-28 (280 in all)'
+NEW: 'the file lists of all 63 open PRs by other authors (dependabot excluded); ... those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date)'
+
+## R2-2. A3 Runtime acceptance section
+OLD: (section missing)
+NEW: new section '## Runtime acceptance (required for runtime changes)' with the seven bullets of the template; the review of 2026-11-09 (speculative width, padded stride, recurrent state, prompt/decode, image-independent tests, SM75 admission, overlapping stacks) answered one by one; padded stride and recurrent state stay open
+
+## R2-3. sm7x Triton runs (Body:10, 12, 14, 21, 22, 23, 158, Comment:5)
+OLD: 'the runs with the sm7x Triton named below were not repeated' / 'stock Triton 3.6.0 only'
+NEW: stock-Triton table kept; the five files that need the sm7x Triton were run again on the V100 and the RTX 8000 with the sm7x Triton build (source build of branch sm7x-tensor-cores, first on PYTHONPATH, not the wheel): all ok, no failure; per-file results added in brackets: sparse_prefill_bmm 35 / 35, skinny_moe_triton 6 passed / 6 skipped, indexer 59 passed 3 skipped / 62 passed, kernel_config 8 / 8, mhc 7 / 7 (V100 / RTX 8000); 'main was not run with it, so no comparison'
+
+## R2-4. Body:66, 67, 78 fp8e4nv
+OLD: 'Triton CompilationError (fp8e4nv is not supported on sm_75)' in the V100 column; 'the fp8e4nv type, which sm_75 does not have'
+NEW: the literal message 'type fp8e4nv not supported in this architecture', the same in the V100 and RTX 8000 logs
+
+## R2-5. Body:108 hanging reference
+OLD: '(see the duplicate paragraph)'
+NEW: '(they were left out of #1274 and #1275 because the open #1260 changes the same places; see its entry under Not a duplicate)'
+
+## R2-6. four merged PRs of the first count
+OLD: (not mentioned)
+NEW: bullet: #894 shares CMakeLists.txt and vllm/_custom_ops.py; only generic names in common
+
+## R2-7. comment
+OLD: (no mention of the sm7x runs on this head)
+NEW: sm7x runs added; acceptance section referenced

@@ -1,0 +1,9 @@
+Updated this PR: rebased onto main 73da3445d (#1616) and added one commit. The head is now 4ab593ca3 with eight commits (before: c15d1446f, seven commits on c59b3c4cb).
+
+What changed: the native sources are unchanged, so the kernel and model measurements in the description still describe this code. The Python follows main's newer block-FP8 code: the direct-output op from #1491, the fused gated route from #1524, the prefill workspace rule of #1535, and the capability query without a device index. The new eighth commit keeps Turing gate_up_proj layers on the tensor-core GEMM instead of main's fused gated route, which has no Turing tensor-core path (test: test_block_qpn8_gate_up_fuses_the_gated_route_except_on_turing).
+
+The description now also has the Runtime acceptance section of the template. The qualification that the review of 2026-11-09 asked for (SM75 hardware, graph replay, model quality, round time) is listed there as still open, with what the Quadro RTX 8000 runs cover and what they do not.
+
+Tests: four test files, one process per file, on the CPU, a Tesla V100 and a Quadro RTX 8000. No failure that main 73da3445d does not have as well (two compressed-tensors tests in test_sm70_fp8_prefill_exact_dense.py fail the same way on main); the per-file numbers are in the updated description. pre-commit: every hook that ran passes except check-layering, which reports the same 33 entries as main itself; mypy-3.10 passes.
+
+AI assistance (Claude Code) was used for this update; I reviewed and tested the changes.

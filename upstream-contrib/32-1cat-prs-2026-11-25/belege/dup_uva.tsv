@@ -1,0 +1,96 @@
+1286	OPEN	2026-10-28	UVA offload	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1199	MERGED	2026-10-12	UVA offload	[Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+492	MERGED	2026-09-04	UVA offload	[Bugfix][MRV2] Port upstream weight offloader lifecycle
+297	MERGED	2026-08-25	UVA offload	[Core] Add generic UVA multimodal tower offload
+1595	MERGED	2026-11-22	UVA offload	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+374	MERGED	2026-08-28	UVA offload	[Core][SM70] Repair Qwen4Exp PLE integration from #338
+528	MERGED	2026-09-06	UVA offload	[Model][Qwen4Exp] Split the pinned-host PLE table between device and host (#479)
+702	CLOSED	2026-09-26	UVA offload	[Model] Qualify calibrated E4M3 and disk PLE with QSA DCP2
+1199	MERGED	2026-10-12	pin_memory UVA	[Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+1404	MERGED	2026-11-06	memfd	[Bugfix] Shared host arena: do not require seal constants in fcntl
+1277	MERGED	2026-10-27	memfd	[Model] DeepSeek-V4.1-Flash on 4x V100: 512K packed KV, faster prefill, API launch
+1199	MERGED	2026-10-12	cudaHostRegister	[Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+598	MERGED	2026-09-11	cudaHostRegister	[KV Offload] Grouped hybrid RAM caching, filesystem restoration and retention-sized Mamba pools (stacked 
+1286	OPEN	2026-10-28	shared embedding host memory	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1348	OPEN	2026-11-03	shared embedding host memory	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1362	MERGED	2026-11-05	shared embedding host memory	[Bugfix][Loader] Skip the embedding, final norm, LM head and encoder towers a pipeline stage does not hol
+1020	MERGED	2026-10-07	shared embedding host memory	[Core] Reduce GGUF TP4 loading and runtime memory
+646	CLOSED	2026-09-16	shared embedding host memory	[Feature][Qwen4Exp] PLE overflow cascade: device, pinned host, disk
+740	CLOSED	2026-09-30	shared embedding host memory	[Model Loader] Add a direct I/O safetensors load strategy
+903	CLOSED	2026-10-04	shared embedding host memory	SM70: integrate retained MTP optimizations with upstream runtime owners
+590	CLOSED	2026-09-10	shared embedding host memory	Bump the minor-update group across 1 directory with 139 updates
+1212	CLOSED	2026-10-14	shared embedding host memory	Bump the minor-update group across 1 directory with 164 updates
+1286	OPEN	2026-10-28	uva offloader pinned	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1553	OPEN	2026-11-18	pinned host memory	[Perf][SM70][DeepSeek-V4.1] Keep a full host copy of routed experts (VLLM_V41_KEEP_HOST, default off)
+1450	OPEN	2026-11-09	pinned host memory	[Draft review queue] GGUF/EXL3 storage and precision integration queue
+1551	OPEN	2026-11-18	pinned host memory	[Feature] Per-rank NUMA bind, QSA host-KV env gate, GLM5next resolver
+1031	OPEN	2026-10-07	pinned host memory	[Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+1243	OPEN	2026-10-21	pinned host memory	[Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative deco
+1216	MERGED	2026-10-15	pinned host memory	[Kernel] Two-rank FP16 all-reduce through pinned host memory for GPUs without P2P
+1608	MERGED	2026-11-23	pinned host memory	fix(v41): harden V41ProposeGraph capture sync, static DFlash metadata, and coupled key staging ring
+1605	CLOSED	2026-11-23	pinned host memory	[Bugfix][Multimodal] Stop the shm cache reader from pinning its copies and re-reading resent requests
+1340	MERGED	2026-11-01	pinned host memory	[Perf][SM70] Qwen3.8 dual-compile lane: hybrid PLE by default when the host can pin it
+1624	MERGED	2026-11-25	pinned host memory	[Bugfix][QSA] Preserve host-KV page tables and flush deferred writes before windowed prefill
+1397	MERGED	2026-11-06	pinned host memory	[Release] Bring the bundled V100 launchers up to the 1.5.2 profiles
+1392	MERGED	2026-11-05	pinned host memory	[Bugfix][SM70] Release config: Flash-Next host KV default, 27B at c8, release image
+1286	OPEN	2026-10-28	pinned host memory	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1557	MERGED	2026-11-18	pinned host memory	[Feat][Perf][Bugfix] Dynamic Qwen3.8 thinking sampling, relaxed SM70/INT8 paths & audit fixes
+1199	MERGED	2026-10-12	pinned host memory	[Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+1277	MERGED	2026-10-27	pinned host memory	[Model] DeepSeek-V4.1-Flash on 4x V100: 512K packed KV, faster prefill, API launch
+1343	MERGED	2026-11-02	pinned host memory	[Perf][PLE] Serve FP8 checkpoint PLE rows from the native fast lane
+701	CLOSED	2026-09-26	pinned host memory	[Core] Keep CUDA reductions and PLE memory on safe defaults
+622	MERGED	2026-09-13	pinned host memory	[Bugfix][Qwen4Exp] Resolve the PLE table pointer inside the gather op instead of baking it into the graph
+646	CLOSED	2026-09-16	pinned host memory	[Feature][Qwen4Exp] PLE overflow cascade: device, pinned host, disk
+528	MERGED	2026-09-06	pinned host memory	[Model][Qwen4Exp] Split the pinned-host PLE table between device and host (#479)
+996	MERGED	2026-10-05	pinned host memory	[Kernel] Read packed GGUF PLE decode rows from pinned TP shards
+1152	MERGED	2026-10-10	pinned host memory	[Bugfix][Doc] Flash-Next GGUF V100 serving recipe; fix large-batch unroute OOM and long-prompt host-histo
+1242	MERGED	2026-10-21	pinned host memory	[Flash-Next] Prefill, flat long-context decode, 1M window and 2-8 concurrent serving on 16 GB V100
+582	MERGED	2026-09-09	pinned host memory	[Video] Bound H3 host weight residency on memory-constrained hosts
+345	MERGED	2026-08-27	pinned host memory	[Model][SM70] Adapt Qwen3.8 Flash Next NVFP4
+740	CLOSED	2026-09-30	pinned host memory	[Model Loader] Add a direct I/O safetensors load strategy
+1073	MERGED	2026-10-08	pinned host memory	[Test] Freeze Flash-V100 GPU route, token and output parity
+580	MERGED	2026-09-09	pinned host memory	[Bugfix] Honor explicit H3 GPU selection on mixed display hosts
+702	CLOSED	2026-09-26	pinned host memory	[Model] Qualify calibrated E4M3 and disk PLE with QSA DCP2
+1543	OPEN	2026-11-17	embedding offload	[Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+1286	OPEN	2026-10-28	embedding offload	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1214	MERGED	2026-10-15	embedding offload	[Test] Repair stale fakes in PLE offload and SM70 decode-graph tests
+1234	MERGED	2026-10-19	embedding offload	[Bugfix][Qwen4Exp] Decide the PLE cascade merge when the layer is built
+856	MERGED	2026-10-03	embedding offload	[Bugfix][Qwen4Exp] Look up PLE cascade storage under checkpoint layer names
+1199	MERGED	2026-10-12	embedding offload	[Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+1235	MERGED	2026-10-19	embedding offload	[Perf][Qwen4Exp] Bound the page prefetch of the mapped PLE row gather
+516	MERGED	2026-09-05	embedding offload	[Core][Qwen4Exp] Gate PLE under pipeline parallelism on the partition, not the PP size (#479)
+646	CLOSED	2026-09-16	embedding offload	[Feature][Qwen4Exp] PLE overflow cascade: device, pinned host, disk
+1004	MERGED	2026-10-06	embedding offload	[Bugfix][Qwen4Exp] Read the PLE row-gather policy when the layer is built
+740	CLOSED	2026-09-30	embedding offload	[Model Loader] Add a direct I/O safetensors load strategy
+374	MERGED	2026-08-28	embedding offload	[Core][SM70] Repair Qwen4Exp PLE integration from #338
+575	CLOSED	2026-09-08	embedding offload	Bump the minor-update group across 1 directory with 138 updates
+1589	OPEN	2026-11-21	cpu offload	[Feat][Flash-Next] Support native KV offload with QSA Host-KV
+1543	OPEN	2026-11-17	cpu offload	[Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+1370	OPEN	2026-11-05	cpu offload	[Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+1581	OPEN	2026-11-20	cpu offload	[Perf][SM70][DeepSeek-V4.1] TP4 prefill pair relay: one PCIe store per activation element on two-NVLink-p
+1286	OPEN	2026-10-28	cpu offload	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1214	MERGED	2026-10-15	cpu offload	[Test] Repair stale fakes in PLE offload and SM70 decode-graph tests
+1360	MERGED	2026-11-04	cpu offload	[Bugfix][KV Offload] Keep external prefix hits on the Mamba page grid
+1232	MERGED	2026-10-18	cpu offload	[Bugfix][KV Offload] Finish reused-block stores before MRv2 zeroes them
+1170	MERGED	2026-10-10	cpu offload	[Bugfix] Reject mismatched filesystem KV page sizes
+738	CLOSED	2026-09-30	cpu offload	[KV Offload] Demote superseded recurrent states in the CPU tier
+717	CLOSED	2026-09-28	cpu offload	[Feature][Qwen4Exp] Allow the PLE CPU offload under pipeline parallelism
+1217	MERGED	2026-10-15	cpu offload	[Perf][Qwen4Exp] Overlap the PLE gather of the next prefill chunk
+1199	MERGED	2026-10-12	cpu offload	[Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+1111	MERGED	2026-10-09	cpu offload	[Bugfix] Keep CPU PLE imports independent of CUDA bindings
+665	MERGED	2026-09-20	cpu offload	[Bugfix][KV Offload] Order SimpleCPUOffloadConnector stores behind the compute stream
+798	MERGED	2026-10-02	cpu offload	[Bugfix][SM75] Retain offload checkpoints and support DeepSeek-V4 on Turing
+818	MERGED	2026-10-03	cpu offload	[Bugfix] Register whole-table PLE placeholders without cascade state
+876	MERGED	2026-10-04	cpu offload	[Model] Add standalone Qwen4Exp GGUF mapping and TP expert storage
+866	MERGED	2026-10-03	cpu offload	[Bugfix] Admit PLE offload alongside decode context parallelism
+1209	MERGED	2026-10-14	cpu offload	[Bugfix][Qwen4Exp] Bound the batched PLE prefill short-conv by channel chunks
+654	MERGED	2026-09-18	cpu offload	[Bugfix] PLE offload: send registration inputs by file descriptor
+1617	MERGED	2026-11-24	cpu offload	[Bugfix][SM70] Preallocate the Flash-Next DCP A2A workspace
+598	MERGED	2026-09-11	cpu offload	[KV Offload] Grouped hybrid RAM caching, filesystem restoration and retention-sized Mamba pools (stacked 
+696	CLOSED	2026-09-26	cpu offload	[Model][QSA] Target-only DCP2 for Qwen4Exp QSA on TP4 V100
+1595	MERGED	2026-11-22	cpu offload	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1094	CLOSED	2026-10-08	cpu offload	[Core] Decode packed GGUF PLE results on the GPU consumer stream
+823	MERGED	2026-10-03	cpu offload	[Model] Support target-only QSA DCP with per-owner cache geometry
+1200	MERGED	2026-10-12	cpu offload	[Bugfix][Multimodal] Stop the shm processor cache from pinning items for good
+877	MERGED	2026-10-04	cpu offload	[Core] Read packed GGUF PLE rows through the offloader
+1178	CLOSED	2026-10-11	cpu offload	[Doc] Audit KV acceleration coupling and plan INT8 reuse

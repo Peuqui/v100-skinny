@@ -1,0 +1,15 @@
+{
+ "pr-adaptive-verify 8bd4a4f2c": [
+  "#1282 (now on GitHub) added ['docs/design/architecture/runtime_reference.md']",
+  "#1347 (now on GitHub) added ['docs/design/architecture/runtime_reference.md']",
+  "#1286 (now on GitHub) added ['docs/design/architecture/runtime_reference.md']",
+  "#1348 (now on GitHub) added ['docs/design/architecture/runtime_reference.md']"
+ ],
+ "pr-pp-pack-handover 5b3f76805": [
+  "#1551 added ['vllm/v1/worker/gpu_worker.py']",
+  "#1282 (now on GitHub) added ['docs/design/architecture/runtime_reference.md', 'vllm/config/kernel.py']",
+  "#1347 (now on GitHub) added ['docs/design/architecture/runtime_reference.md', 'vllm/config/kernel.py']",
+  "#1286 (now on GitHub) added ['docs/design/architecture/runtime_reference.md', 'vllm/config/kernel.py']",
+  "#1348 (now on GitHub) added ['docs/design/architecture/runtime_reference.md', 'vllm/config/kernel.py']"
+ ]
+}

@@ -1,0 +1,16 @@
+A follow-up for the routing-group kernel this PR adds in vllm/model_executor/layers/fused_moe/sm70/routing.py, for whoever reviews it.
+
+Our fork replaced the pairwise-rank version (rank and selection reductions over all slot pairs, four warps) with one bitonic sort over expert-major keys (expert * BLOCK + slot; the keys are distinct, so the sort is stable by construction) and a scatter of the group starts, on one warp. The outputs (perm, gids, goff) are unchanged. It is commit ca2c1b65a on Peuqui/1Cat-vLLM (branch merge-1cat-2d218ab03). routing.py in this PR is identical to the file that commit starts from, so it applies as is; it also adds a Triton-interpreter CPU test against the torch reference. The same kernel on top of current main, with routing.py and its use in skinny_sm70_moe.py in one commit, is branch Peuqui:pr-sm70-moe-routing-sort (493350e97 on main 022349e47).
+
+Measured on 2026-11-23 inside a CUDA graph (200 launches per graph), the kernel of this PR against the sort-based one; both bit-identical to the torch reference on every shape:
+- Tesla V100, GLM-5.3 (288 experts, top 8) at 1, 5 and 8 tokens: 2.15, 13.96, 12.74 us before; 1.67, 2.24, 2.01 us after. DeepSeek-V4 (256 experts, top 6) at 4, 8 and 16 tokens: 3.51, 12.43, 83.37 us before; 1.79, 1.98, 2.33 us after.
+- Quadro RTX 8000, GLM-5.3 at 1, 5 and 8 tokens: 2.56, 17.78, 14.45 us before; 2.05, 2.61, 2.11 us after. DeepSeek-V4 at 4, 8 and 16 tokens: 3.49, 13.65, 58.10 us before; 1.84, 1.99, 2.27 us after.
+
+Tests on branch Peuqui:pr-sm70-moe-routing-sort (main 022349e47 plus routing.py with this kernel):
+- tests/kernels/moe/test_sm70_group_routing.py: 27 passed on a Tesla V100 and 27 passed on a Quadro RTX 8000.
+- tests/kernels/moe/test_sm70_group_routing_cpu.py with TRITON_INTERPRET=1 on the CPU: 43 passed.
+- tests/kernels/test_sm70_small_moe_routing.py: 45 passed on a V100.
+- tests/kernels/moe/test_skinny_sm70_moe.py: 56 passed, 13 skipped, 8 failed on a V100; the same 8 tests fail on plain main 022349e47 (test_both_serving_paths_match_the_reference for 1, 6 and 40 rows in both modes, test_large_mxfp4_dispatch_matches_reference, test_moe_qpn_mxfp4_mode_matches_the_checkpoint_scales).
+- pre-commit and the manual-stage mypy hook pass on the changed files.
+
+AI assistance (Claude) was used; I reviewed and tested the change.

@@ -1,0 +1,39 @@
+## GLM-5.3
+  #1455 OPEN yangzhuxinyzx - [Draft review queue] GLM-5.3 model and KDA kernel integration queue
+  #1626 OPEN yangzhuxinyzx - fix(sm70): guard N%32 GEMM OOB, PCIe HC fallback, GLM-5.3 MTP graphs, and persistent inductor cache
+  #1549 MERGED Jozkah 2026-11-25T05:04:46Z [Bugfix][GLM-5.3] Bind KDA chunk kernels in Glm5NextLinearAttention
+  #1548 MERGED Jozkah 2026-11-25T05:04:51Z [Bugfix][SM70] Dense prefill availability check must not require bound resources
+  #1328 MERGED squibloads 2026-11-09T16:26:47Z [Bugfix][SM70] Indexer: write the cuBLAS prefill score tile in fp32
+## glm53
+## Glm5Next
+  #1551 OPEN phyxl - [Feature] Per-rank NUMA bind, QSA host-KV env gate, GLM5next resolver
+  #1471 MERGED yangzhuxinyzx 2026-11-10T14:25:09Z [SM70] Integrate repaired mHC dispatch, policy hashes and verifier kernels
+  #1549 MERGED Jozkah 2026-11-25T05:04:46Z [Bugfix][GLM-5.3] Bind KDA chunk kernels in Glm5NextLinearAttention
+## csf
+## ModelOpt
+  #1541 MERGED Leonccaa 2026-11-25T05:04:21Z [Bugfix][Quantization] Reject unhandled ModelOpt mixed linear algorithms
+  #1591 MERGED Maxwell-Lyu 2026-11-25T04:43:06Z [Bugfix][SM70] Preserve FP8 MTP checkpoint metadata through Q8_0
+  #1542 MERGED Leonccaa 2026-11-25T05:04:26Z [Bugfix][Loader] Reject float8 weights in unquantized vocabulary tables
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1533 MERGED Leonccaa 2026-11-25T05:04:31Z [Bugfix][Quantization] Accept AWQ key names in MoeWNA16Config
+  #1491 MERGED yangzhuxinyzx 2026-11-13T01:10:31Z [SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+## MXFP8
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1621 OPEN contrapaul - [Model][SM70] Inkling2: load Unsloth GGUF checkpoints (stacked on #1598)
+  #1616 MERGED Jozkah 2026-11-25T14:56:14Z [Model][SM70] Port Inkling 2 Mini to Volta: NVFP4/MXFP8 experts, vision, DSpark speculation, fused d
+## KDA
+  #1455 OPEN yangzhuxinyzx - [Draft review queue] GLM-5.3 model and KDA kernel integration queue
+  #1549 MERGED Jozkah 2026-11-25T05:04:46Z [Bugfix][GLM-5.3] Bind KDA chunk kernels in Glm5NextLinearAttention
+  #1471 MERGED yangzhuxinyzx 2026-11-10T14:25:09Z [SM70] Integrate repaired mHC dispatch, policy hashes and verifier kernels
+## sparse MLA
+  #1594 MERGED yangzhuxinyzx 2026-11-22T02:06:37Z [Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpar
+## EXL3
+  #1450 OPEN yangzhuxinyzx - [Draft review queue] GGUF/EXL3 storage and precision integration queue
+  #1590 MERGED Hange777 2026-11-25T05:05:01Z [Bugfix][SM70][GGUF] qwen3_5: honor sm70_gguf.embedding_storage when wiring embed_tokens quant_confi
+## FP4-Local
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1544 MERGED yangzhuxinyzx 2026-11-17T11:06:16Z [Perf][SM70][Qwen3.8] Concurrent MTP4 verify, raw-scale NVFP4 MoE, VRAM & unlimited vision
+  #1356 MERGED Leonccaa 2026-11-05T13:29:58Z [Bugfix][Loader] Fail fast on incomplete local sharded safetensors checkpoints
+  #1491 MERGED yangzhuxinyzx 2026-11-13T01:10:31Z [SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+  #1519 MERGED yangzhuxinyzx 2026-11-15T00:44:07Z [Perf][SM70] Accelerate Qwen4Exp MTP decode, concurrency, and no-sync sampling

@@ -1,0 +1,51 @@
+Source of every number and claim in pr-cutlass-int8-build-query.txt (rewritten 2026-11-26 for branch pr-cutlass-int8-build-query-v2 at ef43e2f70 on 1Cat main 73da3445d).
+RUNS = ~/.cache/bench-scripts/prtest_2026-11-25/runs5; tree = pr-cutlass-int8 (branch runs) and prmain2 / prmain2-indep (main 73da3445d). Test counts: <RUNS>/<tree>/<cpu|v100|rtx>/summary.log, the line of the file named; compared name for name with main by prtest_2026-11-25/cmp_fail5.py, result cmp5_result.txt (pr-cutlass-int8: cpu 1 new failure = test_cutlass_int8_support_matches_dispatch, v100 0, rtx 0).
+pre-commit logs: belege/pc3b_cutlass-int8.log (head ef43e2f70), belege/pc3b_MAIN.log (main 73da3445d).
+
+tests/kernels/quantization/test_cutlass_scaled_mm.py CPU [2 passed; 414 failed; 323 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/cpu/summary.log:3
+tests/kernels/quantization/test_cutlass_scaled_mm.py V100 [3 passed; 405 failed; 315 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/summary.log:3
+tests/kernels/quantization/test_cutlass_scaled_mm.py RTX [3 passed; 405 failed; 315 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/summary.log:3
+tests/quantization/test_compressed_tensors.py CPU [6 passed; 7 failed; 13 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/cpu/summary.log:5
+tests/quantization/test_compressed_tensors.py V100 [8 passed; 18 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/summary.log:5
+tests/quantization/test_compressed_tensors.py RTX [13 passed; 13 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/summary.log:5
+tests/kernels/quantization/test_scaled_mm_kernel_selection.py CPU [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/cpu/summary.log:4
+tests/kernels/quantization/test_scaled_mm_kernel_selection.py V100 [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/summary.log:4
+tests/kernels/quantization/test_scaled_mm_kernel_selection.py RTX [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/summary.log:4
+tests/v1/determinism/test_cutlass_batch_invariance.py CPU [16 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/cpu/summary.log:6
+tests/v1/determinism/test_cutlass_batch_invariance.py V100 [16 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/summary.log:6
+tests/v1/determinism/test_cutlass_batch_invariance.py RTX [16 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/summary.log:6
+tests/kernels/quantization/test_block_fp8.py CPU [1 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/cpu/summary.log:2
+tests/kernels/quantization/test_block_fp8.py V100 [1 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/summary.log:2
+tests/kernels/quantization/test_block_fp8.py RTX [1 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/summary.log:2
+main 73da3445d tests/kernels/quantization/test_cutlass_scaled_mm.py cpu [1 passed; 413 failed; 323 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:13
+main 73da3445d tests/kernels/quantization/test_cutlass_scaled_mm.py v100 [1 passed; 405 failed; 315 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:13
+main 73da3445d tests/kernels/quantization/test_cutlass_scaled_mm.py rtx [1 passed; 405 failed; 315 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:13
+main 73da3445d tests/quantization/test_compressed_tensors.py cpu [6 passed; 7 failed; 8 skipped; 5 errors]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:33
+main 73da3445d tests/quantization/test_compressed_tensors.py v100 [8 passed; 18 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:33
+main 73da3445d tests/quantization/test_compressed_tensors.py rtx [13 passed; 13 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:33
+v100: 189 failures "No compiled cutlass_scaled_mm ... capability: 70" (counted over all E lines of the log, first at) [No compiled cutlass_scaled_mm for; capability: 70]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/tests_kernels_quantization_test_cutlass_scaled_mm.py.log:62
+v100: 216 failures "No compiled cutlass_scaled_mm_azp ... capability: 70" (counted over all E lines, first at) [No compiled cutlass_scaled_mm_azp for; capability: 70]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/v100/tests_kernels_quantization_test_cutlass_scaled_mm.py.log:10047
+rtx: 189 failures "No compiled cutlass_scaled_mm ... capability: 75" (counted over all E lines of the log, first at) [No compiled cutlass_scaled_mm for; capability: 75]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/tests_kernels_quantization_test_cutlass_scaled_mm.py.log:62
+rtx: 216 failures "No compiled cutlass_scaled_mm_azp ... capability: 75" (counted over all E lines, first at) [No compiled cutlass_scaled_mm_azp for; capability: 75]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/rtx/tests_kernels_quantization_test_cutlass_scaled_mm.py.log:10053
+pre-commit head ef43e2f70 [ef43e2f70]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_cutlass-int8.log:1
+check-layering Failed [Keep generic modules; Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_cutlass-int8.log:29
+pre-commit manual stage mypy-3.10 rc=0 (the "rc=0 fertig" line follows the manual stage) [rc=0 fertig]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_cutlass-int8.log:88
+main: check-layering Failed [Keep generic modules; Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:129
+main: mypy 46 errors in 15 files [Found 46 errors in 15 files]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:78
+main: mypy 1 error in 1 file [Found 1 error in 1 file]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:80
+main: that error is tests/models/inkling2/test_attention.py:249 [tests/models/inkling2/test_attention.py:249]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:79
+main: model_runner.py:1423 is one of the 46 [vllm/v1/worker/gpu/model_runner.py:1423]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:77
+cpu compressed_tensors: 7 failures "Engine core initialization failed" (7 E lines, first at) [Engine core initialization failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-cutlass-int8/cpu/tests_quantization_test_compressed_tensors.py.log:124
+main cpu compressed_tensors: 5 setup errors "No CUDA GPUs are available" (old fixture allocates a CUDA tensor; 5 E lines, first at) [No CUDA GPUs are available]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/tests_quantization_test_compressed_tensors.py.log:50
+main cpu compressed_tensors: 7 failures "Engine core initialization failed" [Engine core initialization failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/tests_quantization_test_compressed_tensors.py.log:375
+main: check-architecture-reference Failed [Check architecture declarations; Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:95
+main: ruff check Failed [ruff check; Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:2
+main: markdownlint Failed [markdownlint-cli2; Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:8
+33 layering lines, identical lists branch/main: belege/lay_cutlass-int8.txt against belege/lay_MAIN3b.txt (diff empty, checked 2026-11-26)
+Duplicate check (gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "<term>" --limit 30, run 2026-11-26): raw output kept in belege/dup_cutlass.tsv (10 searches, 21 distinct PRs; none touches CutlassInt8ScaledMMLinearKernel or an INT8 build query).
+vllm-project/vllm PRs 54316, 69393, 69272, 69192 (all OPEN) and issue 45260 (OPEN): gh pr view <n> --repo vllm-project/vllm --json state,title,createdAt, 2026-11-26; 54316 diff read (threshold cc >= 100 in is_supported, tests for 121/120/100); 69393 body read ("check the compiled macros" item of 45260).
+Open PRs changing vllm/_custom_ops.py (#1286, #1348, #1243, #1102): gh api repos/1CatAI/1Cat-vLLM/pulls/<n>/files, 2026-11-26; their hunks in that file add csf32_expand and exl3_moe_* only. Merge probes: belege/probe.py (result: belege/probe_result.txt) (git merge-tree --write-tree, branch against 73da3445d baseline): added conflict files none for #1243, #1102, rebased #1286 (pr-glm53-r1125) and #1348 (pr-glm53-prefill-head-r1125).
+Code facts read on branch ef43e2f70: scaled_mm_entry.cu cutlass_scaled_mm dispatch (SM120, SM100, SM90, c2x families, the "No compiled cutlass_scaled_mm" check), cutlass_scaled_mm_azp dispatch, scaled_mm_c3x_sm100.cu:19 and scaled_mm_c3x_sm120.cu:19 (nullptr), c3x/scaled_mm_helper.hpp:30-37 ("Int8 not supported on SM"), kernels/linear/__init__.py:_POSSIBLE_INT8_KERNELS, scaled_mm/triton.py:27-34, w8a8_utils.py:11-15 (_cutlass_capability_probe returns False on AttributeError).
+Native library: _C_stable_libtorch built from 449d0d27b (earlier state of this branch); git diff 449d0d27b ef43e2f70 -- csrc changes only the comment lines of cutlass_scaled_mm_supports_int8 (checked 2026-11-26).
+Base: branch merge-base with origin/main is 73da3445d; git merge-tree of the branch with origin/main 44708bdb9 is clean (2026-11-26).
+Notation of the text: 99 = upper end of the SM90 range (version_num >= 90 and < 100) in scaled_mm_entry.cu; 8000 = name Quadro RTX 8000.

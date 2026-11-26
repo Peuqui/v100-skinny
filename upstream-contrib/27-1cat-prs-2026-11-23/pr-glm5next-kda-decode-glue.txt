@@ -1,0 +1,28 @@
+Title: [Perf][GLM-5.3] Fuse the KDA decode glue kernels into two launches
+
+Branch: pr-glm5next-kda-decode-glue (base 1Cat main 022349e47), one commit (squash of our fork commits b817aa185 and 381a4eac7; the second fixed the first before it was ever sent)
+
+----- Text -----
+
+Problem: In decode and speculative-verify steps the GLM-5.3 KDA layer (Glm5NextLinearAttention) launches 15 tiny kernels around the recurrent kernel: four .contiguous() copies of q, k, v and beta that fused_recurrent_kda makes of the strided conv output and beta, before it, and, after it, the eager FusedRMSNormGated.forward_native chain of 11 kernels for the fp32 output norm. At 1 to 8 rows each of them costs a launch and no real work, in every one of the 34 KDA layers of every step.
+
+Change:
+- New vllm/model_executor/layers/fla/ops/sm70/kda_glue.py with two Triton kernels. kda_pack_recurrent_inputs packs q, k, v (1, T, H, D) and beta (1, T, H) into contiguous buffers in one launch (a pure copy). kda_gated_rmsnorm replaces the eager chain in one launch and follows torch's fp32 operation order: x*x stored before summing (enable_fp_fusion=False, no FMA contraction), four sequential values per lane then torch's halving tree over 32 lanes (lane i with lane i + 16, 8, 4, 2, 1), the exact mean scale 1/128, IEEE expf and division for the sigmoid, one rounding cast. The output is therefore bit-identical to forward_native.
+- vllm/models/glm5next/nvidia/kda.py: the fp32 output norm branch calls kda_gated_rmsnorm; the non-fp32 branch keeps the CustomOp dispatch of #1165. A new Glm5NextLinearAttention._recurrent_inputs packs q, k, v and beta for the spec and non-spec recurrent calls when more than one row is present (for a single row the views are already contiguous and are used as before). The q|k|v split of the plain-decode path that is no longer needed is removed.
+- Prefill, the chunked kernel and the PP/graph structure are untouched.
+
+Evidence:
+- Bit-identity: tests/models/glm5next/test_kda_glue.py (CUDA only) asserts torch.equal against forward_native for 1, 5, 6 and 8 rows and input scales 1, 1000 and 1e-3, and of the packed tensors against .contiguous(). On this branch: 16 passed on a Tesla V100 and 16 passed on a Quadro RTX 8000.
+- Launches: 15 -> 2 per KDA layer in a decode or verify step.
+- Time in a CUDA graph, old eager glue against the two kernels, measured on this branch (bit-identical in every case): per KDA layer 20.5 / 41.9 / 42.2 / 42.9 us less at 1 / 5 / 6 / 8 rows on a V100 and 24.8 / 37.3 / 37.0 / 37.6 us less on a Quadro RTX 8000; for the 34 KDA layers at 8 rows 1.66 -> 0.20 ms (V100) and 1.47 -> 0.20 ms (RTX 8000).
+- End to end: in our fork a bundle of this change, the router GEMM fix, the sort-based MoE routing kernel (separate PRs) and a merge of 1Cat main measured GLM-5.3-Flash decode (short prompts, 192 tokens, greedy) 41.99 -> 44.50 and 44.41 tok/s on PP5 over 3x V100 + 2x Quadro RTX 8000. That figure belongs to the bundle, not to this change alone; this change was not measured alone end to end.
+
+Tests (on main 022349e47 plus this commit; CUDA_VISIBLE_DEVICES empty, our wrapper around python -m pytest, one process per file):
+- tests/models/glm5next/test_kda_glue.py: 16 skipped on the CPU (needs CUDA); 16 passed on a Tesla V100 and on a Quadro RTX 8000.
+- Other files under tests/models/glm5next: test_kda_norm_dispatch.py 2 passed 2 skipped; test_mtp_config.py 4 passed; test_sm70_kda.py 17 passed 25 skipped; test_sm70_sparse.py 4 passed 6 skipped; test_vision_budget.py 6 passed; test_pp.py 6 passed 2 failed (AttributeError: 'Glm5NextModel' object has no attribute '_pp_aux_dump' in test_glm53_materialized_mhc_state_crosses_pp_boundary and test_glm53_dflash_aux_hidden_states_cross_pp_boundary; the same two fail on unmodified main 022349e47). On a Tesla V100 (CUDA tests included): test_sm70_kda.py 42 passed, test_kda_norm_dispatch.py 4 passed, test_sm70_sparse.py 10 passed; on a Quadro RTX 8000: 17 passed 25 skipped, 4 passed, 4 passed 6 skipped (skipped by the tests' own device checks).
+- tests/kernels/core/test_fused_rms_norm_gated.py (the eager norm this must equal; untouched): 25 failed on the CPU with RuntimeError: No CUDA GPUs are available, identically on unmodified main (the file has no CUDA skip marker). On a Tesla V100: 25 passed.
+- pre-commit run --files on the three changed files and the manual-stage mypy hook (mypy-3.10): all hooks pass.
+
+Duplicate check: gh pr list --state all searches "KDA glue", "kda gated rmsnorm", "kda_gated_rmsnorm", "kda_glue", "glm5next decode", "KDA decode", "fused_recurrent_kda", "FusedRMSNormGated" and "GLM-5.3 decode". The merged #1165 (dispatch of the fp32 KDA output norm through its CustomOp owner) and #392/#396 (GLM KDA decode GEMV) are the earlier work on this path; none fuses the packing or replaces forward_native for the fp32 branch. Open PRs #1260, #1286, #1348 and #1549 touch vllm/models/glm5next/nvidia/kda.py (prefill warmup, chunk kernel binding) and contain the unchanged o_norm and .contiguous() calls; a rebase of them onto this change may need a textual merge in kda.py.
+
+AI assistance (Claude) was used; the change was reviewed and tested by the submitter.

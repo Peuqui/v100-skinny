@@ -1,0 +1,118 @@
+# #1278: changed sentences, old -> new (12 edits to the existing description; the new Update paragraph at the top is listed in the body itself)
+
+## 1. commit count
+OLD: Volta numerics change in one place: the grouped skinny MoE now splits the w13 reduction over 8 instead of 16 warps, so Volta MoE output is no longer bit-identical to main (group 2). Seven commits in two groups:
+NEW: Volta numerics change in one place: the grouped skinny MoE now splits the w13 reduction over 8 instead of 16 warps, so Volta MoE output is no longer bit-identical to main (group 2). Eight commits in two groups:
+
+## 2. group 1 title: eighth commit; hashes are fork hashes
+OLD: 1. Block-FP8 QPN8 linears on Turing (3e4b5a8b4, 28ecc05ba) and an occupancy split-K for the M <= 8 launch (b08b9f2ac).
+NEW: 1. Block-FP8 QPN8 linears on Turing (3e4b5a8b4, 28ecc05ba), an occupancy split-K for the M <= 8 launch (b08b9f2ac) and a guard that keeps Turing gate_up_proj layers off main's fused gated route (the eighth commit). The hashes in this description are those of our fork (github.com/Peuqui/1Cat-vLLM), where each change was measured; the commits of this PR are the same changes rebased onto main, and the eighth is new.
+
+## 3. can_implement wording after the rebase
+OLD: can_implement requires the Turing GEMM's op by the capability of the worker's own device, not device 0.
+NEW: can_implement requires the Turing GEMM's op by the capability of the device this process runs on (the platform is asked without an explicit index, which main resolves to the worker's selected device without creating a CUDA context), not by device 0.
+
+## 4. new bullet for the eighth commit
+OLD: 2. Grouped skinny MoE (6a4512994, 67e2b8a6a, d7c0ab302, 001b73e3e).
+NEW:    - Turing gate_up_proj (eighth commit): main's fused gated-SiLU route serves every row count of a gate_up_proj layer that qualifies for it, because the MLP calls apply_fused_silu_and_mul before apply_weights, where the Turing dispatch of this PR lives. The gated route has no tensor-core path on Turing: above M = 8 it takes the fallback GEMM or rebuilds the dense FP16 weight (the prefill route this PR's GEMM replaces). Layers that take the SM75 tensor-core path (layer._qpn8_sm75_mma) therefore no longer enable the gated route, so Turing gate_up_proj runs the packed GEMM up to M = 8 and the tensor-core GEMM above it like every other block-FP8 layer; Volta keeps the fused route. test_block_qpn8_gate_up_fuses_the_gated_route_except_on_turing prepares a gate_up_proj layer on the CPU with the device capability set to SM70 and to SM75 and checks which of the two gets the gated route (the commit message records that the SM75 case fails without the guard); test_block_qpn8_fused_gated_silu_matches_reference now expects no gated route on a Turing card.
+2. Grouped skinny MoE (6a4512994, 67e2b8a6a, d7c0ab302, 001b73e3e).
+
+## 5. Not a duplicate paragraph: refreshed on main 73da3445d
+OLD: Not a duplicate. Open PRs on the same files or the same problem, checked with gh and with git merge-tree of every open PR against main and against this branch (rechecked on main 899e9ed33 for the PRs named here):
+- #1069 and #1157 (kezboard233) also address block-scaled QPN8 FP8 at M 9..32, on SM70: #1069 chunks those rows through the M <= 8 kernels, #1157 adds a native M = 17..32 kernel. Both change the native dispatch op fp8_qpn8_dispatch_sm70_out. This PR only moves two decode helpers out of that file into a shared header and does not change the dispatch; its block-FP8 kernel (QPN8Fp8BlockScaledMMLinearKernel) calls the packed GEMM, the new Turing GEMM and the prefill ops directly. They target Volta decode with several 8-token verify rows; the new GEMM runs on Turing only, for M 9..512. No textual conflict with either.
+- #1030 (split-K 4, 6, 9, 12 and 18 and K % 32 for DeepSeek-V4.1 MoE shapes), #1031 (DeepSeek-V4.1-Flash on V100) and #1243 (stacked on #1031) carry the same change to skinny_moe_qpn_sm70.cu and skinny_sm70_moe.py; it adds split specialisations and does not change fragment order, grid or tiles. All three already conflict with main 899e9ed33 (in 1, 13 and 14 files). This branch adds conflicts in those two files to each; whichever lands second has to re-add the new splits on the new tile structure (this branch also drops the two-accumulator variant their check still names).
+- #822 (QPN2 activation packing through per-engine policy, already conflicting with main) gains a conflict in tests/quantization/test_turing_qpn_kernel_selection.py, where both add tests.
+- #1216 (mine, two-rank host all-reduce) edits the same CMake block; git merge-tree merges CMakeLists.txt cleanly with this branch, and its two remaining conflicts (runtime_reference.md, kernel.py) exist against main already.
+- Searches of open PRs for m16n8k8, QPN8, "QPN8 Turing", "Turing tensor", sm_75, SM75, "skinny MoE" and split-K find, besides these, our own Turing PRs for other kernels and PRs in other areas (#953 and #1021 among the QPN8 hits); none changes these kernels or routes.
+
+
+NEW: Not a duplicate. Checked on 2026-11-26 against main 73da3445d: gh pr list --repo 1CatAI/1Cat-vLLM --state all --search for m16n8k8, QPN8, Turing, SM75, tensor core, skinny MoE, split-K, block FP8 and gated SiLU; the file lists of all 63 open PRs by other authors (dependabot excluded); and the added and removed lines of the diffs of those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; the merged ones were listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date) for the symbols this change adds (the diffs of #1243, #1260, #1482, #1527 and #1616 exceed GitHub's 20,000-line limit; for these five only the file lists were compared). Findings:
+- #1069 and #1157 (kezboard233; block-scaled QPN8 FP8 at M 9..32 on SM70) are merged (2026-11-10; #1469 qualified #1157's integration) and are part of main now. This PR still only moves two decode helpers out of fp8_qpn8_sm70.cu into a shared header and does not change that file's dispatch; the new GEMM runs on Turing only, for M 9..512, before the M <= 8 and fallback routes. Nothing in them adds a Turing tensor-core path.
+- #1030 (split-K 4, 6, 9, 12 and 18 and K % 32 for DeepSeek-V4.1 MoE shapes), #1031 (DeepSeek-V4.1-Flash on V100) and #1243 (stacked on #1031) are still open and still change skinny_moe_qpn_sm70.cu and skinny_sm70_moe.py (file lists of 2026-11-26); they add split specialisations and do not change fragment order, grid or tiles. I did not repeat the merge test against them; whichever lands second has to re-add the new splits on the new tile structure.
+- #822 (QPN2 activation packing through per-engine policy) is still open and still changes tests/quantization/test_turing_qpn_kernel_selection.py, where this PR adds tests too.
+- #1216 (mine, two-rank host all-reduce) is merged (2026-11-16) and is no longer part of the stack.
+- #1448 ("[Draft review queue] Native FP8/QPN and SM75 kernel qualification", yangzhuxinyzx) retains this PR's earlier head c15d1446f for qualification (its review comment of 2026-11-09 on this PR); #1454 and #1455 retain the stacked PRs. They are the only other PRs whose diffs contain this PR's symbols (the m16n8k8 kernels, fp8_qpn8_mma_sm75_out, qpn_fragment_order, fp8_qpn8_occupancy_split_k). The other hits are names shared with merged PRs for moved helpers (qpn8_col_from_lane in #1157 and #1469) and grouped_splitk in #1030 and #1031.
+- Merged PRs that touch the same files since the previous check (#1491, #1524, #1469, #1472, #1473, #1518, #1412 and others) are Volta decode and prefill fast paths, Flash-V100 Turing fixes and an E4M3 group-size instantiation; none adds a Turing tensor-core GEMM for block-FP8 QPN8 or the grouped skinny MoE (no hit for the m16n8k8 symbols outside the draft queues).
+
+
+
+## 6. cubin counts
+OLD: Native build of this branch in place (MAX_JOBS=4, TORCH_CUDA_ARCH_LIST=7.0; only fp8_qpn8_mma_sm75.cu and skinny_moe_qpn_sm70.cu get sm_75 code), then cuobjdump --list-elf vllm/_C.abi3.so for the sm_70 and sm_75 images.
+NEW: Native build of this branch in place (MAX_JOBS=4, TORCH_CUDA_ARCH_LIST=7.0; only fp8_qpn8_mma_sm75.cu and skinny_moe_qpn_sm70.cu get sm_75 code), then cuobjdump --list-elf vllm/_C.abi3.so for the sm_70 and sm_75 images (75 and 2 on 2026-11-26).
+
+## 7. test plan devices
+OLD: Kernel and selection tests, one pytest process per file, on a Quadro RTX 8000 (SM75) and on a Tesla V100 (SM70):
+NEW: Kernel and selection tests, one pytest process per file, on a Quadro RTX 8000 (SM75), on a Tesla V100 (SM70) and on the CPU:
+
+## 8. base of the route snapshot
+OLD: On main 899e9ed33: python tools/sm70_route_snapshot.py --category moe --output moe-main.json
+NEW: On main 73da3445d: python tools/sm70_route_snapshot.py --category moe --output moe-main.json
+
+## 9. source commit statement
+OLD: This branch carries the same changes rebased onto main 899e9ed33 plus the later changes described in Purpose (split-K scoped to M <= 8 and chosen inside the op, can_implement on the worker's own device, traps below SM75, sm_75 code only for the two m16n8k8 sources); it is built and unit-tested, not booted with a full model.
+NEW: This branch carries the same changes rebased onto main 73da3445d plus the later changes described in Purpose and in the update of 2026-11-26 (split-K scoped to M <= 8 and chosen inside the op, can_implement on the device the process runs on, traps below SM75, sm_75 code only for the two m16n8k8 sources, the Turing gate_up_proj guard); it is built and unit-tested on the CPU, a Tesla V100 and a Quadro RTX 8000, not booted with a full model.
+
+## 10. Test Result: old unit-test block, known failures and pre-commit paragraph replaced by pointers to the new update
+OLD: Unit tests on this branch, native build in place (_C carries 72 sm_70 and 2 sm_75 cubins), one process per file:
+- Quadro RTX 8000: test_skinny_sm70_moe.py 103 passed, 33 skipped; test_sm70_qpn8_block_fp8.py 113 passed, 10 skipped; test_turing_qpn_kernel_selection.py 34 passed; test_block_fp8_qpn8_capabilities.py 24 passed; test_sm70_moe_mainflow.py 55 passed; test_sm70_path_explanations.py 29 passed; test_sm70_native_policy.py 90 passed, 1 failed; test_sm70_fp4_mainflow.py 55 passed, 168 failed.
+- Tesla V100: test_skinny_sm70_moe.py 89 passed, 47 skipped; test_sm70_qpn8_block_fp8.py 95 passed, 27 skipped, 1 failed (test_volta_medium_prefill_keeps_original_turbomind_output[64]); test_turing_qpn_kernel_selection.py 34 passed; test_block_fp8_qpn8_capabilities.py 24 passed; test_sm70_moe_mainflow.py 55 passed; test_sm70_path_explanations.py 29 passed; test_sm70_native_policy.py 90 passed, 1 failed; test_sm70_fp4_mainflow.py 55 passed, 168 failed.
+- test_block_fp8_qpn8_capabilities.py also passes without a visible GPU (24 passed).
+- Route snapshots, main 899e9ed33 -> this branch: moe 168 configurations, fp8 324 configurations, no changed route.
+The failures in test_sm70_native_policy.py and test_sm70_fp4_mainflow.py are the same test IDs on main 899e9ed33 (in-place build of main; the tree also carried the Python-only #1272, which touches neither file): of the 168 fp4 mainflow failures, 118 raise NameError for _DFLASH_NVFP4_TRACE_ARMED, 49 AttributeError ('Module' object has no attribute 'top_k') and one expects a ValueError that is not raised. On main 6a143197e the same file failed 119 times.
+
+Known failures to read these results against:
+- tests/quantization/test_sm70_native_policy.py::test_packaged_native_policy_schemas_parse_before_build also fails on main 899e9ed33: gguf_grouped_prefill_gemm_sm70_out takes native_policy but is missing from CONFIGURED_OPERATORS. #1273 (open) adds it. This branch lists its own new op, fp8_qpn8_mma_sm75_out.
+- On the V100, test_sm70_qpn8_block_fp8.py::test_volta_medium_prefill_keeps_original_turbomind_output compares two TurboMind calls bit for bit. With fp8_tune_small_shapes unset (the default), the runtime tuning times candidates for each new small shape and can pick different tiles for the two calls; #1187 proposes turning that default off. On an earlier build of this branch, two runs of this test alone failed 2 and then 1 of its 2 cases, and three runs with the tuning switched off passed. That the failure is independent of this PR is so far shown by code reading only: the branch does not change the Volta TurboMind path the test compares. On a main build (899e9ed33, same card) the same test failed in all five runs, each time in its M = 64 case, as on this branch (and likewise on 6a143197e); the failure is therefore not caused by this PR.
+
+pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39); this PR does not touch that file and main reports the same. pre-commit run mypy-3.10 --hook-stage manual: passed. The pre-commit CI job fails on main's own run at 899e9ed33 (run 40532180681) with mypy errors in vllm/v1/kv_cache_interface.py:156-158 and the same check-layering count; none of these files is touched here.
+
+
+NEW: Unit tests on this branch: the results on the current head 4ab593ca3 (CPU, Tesla V100, Quadro RTX 8000, per file) are in the update of 2026-11-26 at the top of this description. The results on the earlier head c15d1446f (main c59b3c4cb) are in the update of 2026-10-28 below it.
+
+Known failures to read these results against: on main 73da3445d, test_sm70_fp8_prefill_exact_dense.py has two failing compressed-tensors tests (the lm_head shape gate and a stand-in lambda without the keyword cap_to_bounded_ceiling), listed in the update of 2026-11-26. The earlier known failures no longer occur in the runs of this round: test_sm70_native_policy.py and test_sm70_fp4_mainflow.py pass on the CPU on both this branch and main (91 and 223 passed; their runs on the two cards were not repeated on this head, so the failures they showed there at c15d1446f are not shown to be gone), and test_volta_medium_prefill_keeps_original_turbomind_output[64] passes on the V100 (test_sm70_qpn8_block_fp8.py 152 passed, 27 skipped).
+
+pre-commit and mypy: see the update of 2026-11-26 at the top (all hooks pass except check-layering, which reports main's own 33 entries; mypy-3.10 passes).
+
+
+
+## 11. path coverage: row for the eighth commit
+OLD: | same on SM70 | block FP8 | all M |
+NEW: | gate_up_proj layers on SM75 | block FP8 | layer takes the SM75 tensor-core path, policy gated_silu on | no fused gated route: packed GEMM up to M = 8, tensor-core GEMM above | executed: test_block_qpn8_gate_up_fuses_the_gated_route_except_on_turing (CPU, capability patched to SM70 and SM75), test_block_qpn8_fused_gated_silu_matches_reference on RTX 8000 and V100 | speed of this routing in a model (not measured) |
+| same on SM70 | block FP8 | all M |
+
+## 12. footer: the two closing lines of fakten-runde5.md (session link of this session)
+OLD: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+https://claude.ai/code/session_0172gtUiymppDzziDqKfy78Q
+NEW: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUkqNsK9nE7L151CUUE
+
+# Round 2 (2026-11-26, after the independent review): further changes to the text, old -> new, short. The entries above stay as they were; where a sentence of an entry above was changed again, the entry's NEW text was updated to the final wording.
+
+## R2-1. A1
+OLD: 'the file lists of all 72 open PRs; ... 63 open PRs by other authors and of 217 PRs by other authors merged since 2026-10-28 (280 in all)'
+NEW: 'the file lists of all 63 open PRs by other authors (dependabot excluded); ... those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date)'
+
+## R2-2. A3 Runtime acceptance section
+OLD: (section missing)
+NEW: new section '## Runtime acceptance (required for runtime changes)' with the seven bullets of the template; the review of 2026-11-09 (SM75 hardware, graph replay, concurrent resource ownership, model quality, whole-round timing) named as still open, with what the RTX 8000 runs cover and what not
+
+## R2-3. Body:7 workspace condition
+OLD: 'creates it at load only if the graphs capture rows up to the 512-row bound of the tensor-core GEMM ... and no stream is capturing'
+NEW: 'only if no stream is capturing and _graphs_capture_dense_prefill(_SM75_MMA_MAX_M) holds': true for a capture size above 512, a fixed kv_cache_memory_bytes or no engine config; false for CUDA graphs off or sizes up to 512 (fp8_block.py:102-120)
+
+## R2-4. Body:99 route snapshot
+OLD: 'no intentional changed rows (the selected kernels stay the same ...)'
+NEW: the snapshots do not cover SM75 block-FP8 layers (fp8 snapshot patches capability 7.0, moe snapshot sets none); the eighth commit changes the Turing gate_up selection and is checked by its own test, not by the snapshot; same remark added to the snapshot line of the update
+
+## R2-5. Body:122 earlier known failures
+OLD: 'The earlier known failures no longer occur on this head: ... pass on the CPU ...'
+NEW: 'no longer occur in the runs of this round': the two files pass on the CPU only, their card runs were not repeated on this head, so the card failures of c15d1446f are not shown to be gone
+
+## R2-6. four merged PRs of the first count
+OLD: (not mentioned)
+NEW: bullet: #828, #894, #943, #963 are part of main 73da3445d; only #894 shares a file (CMakeLists.txt); no symbol of this PR in their diffs
+
+## R2-7. comment
+OLD: (no reference to the acceptance section)
+NEW: one paragraph: the description has the Runtime acceptance section; the review's qualification is listed there as open

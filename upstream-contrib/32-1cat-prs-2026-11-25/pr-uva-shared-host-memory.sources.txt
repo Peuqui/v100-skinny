@@ -1,0 +1,98 @@
+Source of every number and claim in pr-uva-shared-host-memory.txt (rewritten 2026-11-26 for branch pr-uva-shared-host-memory at 5f58dd8e9 on 1Cat main 73da3445d).
+LOG = ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log (arms T1 T2 P3 T4 P5; counted T2 P3 T4 P5; T = fork commit 1f17e135f, P = production prod-v5f), DIR = ab_shared_glm_2026-11-05b/ (memtrace/trace.jsonl and journal-<n>-<T|P>.txt per arm). The Shmem peaks, the init-engine times and the GPU peaks that the earlier source file marked RECHECK are now taken from these files (cg_shmem maximum of the memtrace, journal "init engine" lines, log GPU-Speicherspitze lines); they agree with the table in v100-skinny/docs/journal/LEISTUNGSHISTORIE.md (05.11.2026 section).
+Test counts: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/<tree>/<cpu|v100|rtx>/summary.log, the line of the file named; tree pr-uva, main = prmain2; name-for-name comparison cmp5_result.txt (pr-uva: cpu 0 new, v100 0, rtx 0).
+Numbers of the text with their lines:
+
+tests/model_executor/test_uva_shared_host_memory.py CPU [1 passed; 2 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/cpu/summary.log:3
+tests/model_executor/test_uva_shared_host_memory.py V100 [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/v100/summary.log:3
+tests/model_executor/test_uva_shared_host_memory.py RTX [3 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/rtx/summary.log:3
+tests/model_executor/test_uva_tower_offload.py CPU [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/cpu/summary.log:4
+tests/model_executor/test_uva_tower_offload.py V100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/v100/summary.log:4
+tests/model_executor/test_uva_tower_offload.py RTX [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/rtx/summary.log:4
+tests/utils/test_shared_host.py CPU [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/cpu/summary.log:6
+tests/utils/test_shared_host.py V100 [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/v100/summary.log:6
+tests/utils/test_shared_host.py RTX [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/rtx/summary.log:6
+tests/basic_correctness/test_cpu_offload.py CPU [6 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/cpu/summary.log:2
+tests/basic_correctness/test_cpu_offload.py V100 [4 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/v100/summary.log:2
+tests/basic_correctness/test_cpu_offload.py RTX [4 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/rtx/summary.log:2
+tests/quantization/test_cpu_offload.py CPU [4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/cpu/summary.log:5
+tests/quantization/test_cpu_offload.py V100 [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/v100/summary.log:5
+tests/quantization/test_cpu_offload.py RTX [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-uva/rtx/summary.log:5
+main 73da3445d tests/basic_correctness/test_cpu_offload.py cpu [6 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:2
+main 73da3445d tests/basic_correctness/test_cpu_offload.py v100 [4 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:2
+main 73da3445d tests/basic_correctness/test_cpu_offload.py rtx [4 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:2
+main 73da3445d tests/quantization/test_cpu_offload.py cpu [4 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:34
+main 73da3445d tests/quantization/test_cpu_offload.py v100 [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:34
+main 73da3445d tests/quantization/test_cpu_offload.py rtx [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:34
+T2 ready 318 s [[T2]; bereit nach 318 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:44
+T4 ready 280 s [[T4]; bereit nach 280 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:127
+P3 ready 322 s [[P3]; bereit nach 322 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:80
+P5 ready 315 s [[P5]; bereit nach 315 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:163
+T2 swap peak 3.76 [[T2 memtrace]; Gruppen-Swap Spitze 3.76 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:54
+T4 swap peak 1.06 [[T4 memtrace]; Gruppen-Swap Spitze 1.06 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:137
+P3 swap peak 4.70 [[P3 memtrace]; Gruppen-Swap Spitze 4.70 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:90
+P5 swap peak 5.00 [[P5 memtrace]; Gruppen-Swap Spitze 5.00 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:173
+T2 decode short 41.79 (23.9 ms) [[T2]; ZUSAMMENFASSUNG; Decode kurz 41.79 tok/s (23.9 ms/Token)]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:53
+T4 41.78 (23.9) [[T4]; ZUSAMMENFASSUNG; Decode kurz 41.78 tok/s (23.9 ms/Token)]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:136
+P3 41.58 (24.1) [[P3]; ZUSAMMENFASSUNG; Decode kurz 41.58 tok/s (24.1 ms/Token)]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:89
+P5 41.61 (24.0) [[P5]; ZUSAMMENFASSUNG; Decode kurz 41.61 tok/s (24.0 ms/Token)]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:172
+T2 prefill run 3 4.16 s [[T2]; Prefill 2: 8687 Token in 4.16 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:47
+T4 prefill run 3 4.17 [[T4]; Prefill 2: 8687 Token in 4.17 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:130
+P3 prefill run 3 4.17 [[P3]; Prefill 2: 8687 Token in 4.17 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:83
+P5 prefill run 3 4.17 [[P5]; Prefill 2: 8687 Token in 4.17 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:166
+T2 GSM8K 29 correct [[T2 gsm8k]; "correct": 29]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:55
+T2 acceptance 5.4227 [[T2 gsm8k]; 5.4227]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:57
+T4 GSM8K 29 correct [[T4 gsm8k]; "correct": 29]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:138
+T4 acceptance 5.4227 [[T4 gsm8k]; 5.4227]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:140
+P3 GSM8K 29 correct [[P3 gsm8k]; "correct": 29]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:91
+P3 acceptance 5.4227 [[P3 gsm8k]; 5.4227]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:93
+P5 GSM8K 29 correct [[P5 gsm8k]; "correct": 29]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:174
+P5 acceptance 5.4227 [[P5 gsm8k]; 5.4227]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:176
+T2 GPU peaks [[T2] GPU-Speicherspitze; 0=48311 1=30646 2=47015 3=30502 4=30848]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:63
+T4 GPU peaks [[T4] GPU-Speicherspitze; 0=48311 1=30646 2=47015 3=30502 4=30848]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:146
+P3 GPU peaks [[P3] GPU-Speicherspitze; 0=48313 1=30646 2=46999 3=30502 4=30828]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:110
+P5 GPU peaks [[P5] GPU-Speicherspitze; 0=48313 1=30646 2=46999 3=30502 4=30828]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:182
+T2 KV pool 582,542 [[T2 journal]; 582,542]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:65
+T4 KV pool [[T4 journal]; 582,542]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:148
+P3 KV pool 578,061 [[P3 journal]; 578,061]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:112
+P5 KV pool [[P5 journal]; 578,061]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:184
+quality text motor T1 against P3 equal [[Textvergleich T/P] motor; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:97
+quality text prime T1 against P3 equal [[Textvergleich T/P] prime; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:98
+quality text zug T1 against P3 equal [[Textvergleich T/P] zug; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:99
+quality text kuanda T1 against P3 equal [[Textvergleich T/P] kuanda; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:100
+quality text logik T1 against P3 equal [[Textvergleich T/P] logik; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:101
+quality text code_bug T1 against P3 equal [[Textvergleich T/P] code_bug; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:102
+quality text summary T1 against P3 equal [[Textvergleich T/P] summary; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:103
+quality text english T1 against P3 equal [[Textvergleich T/P] english; gleich: True]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:104
+quality text lengths up to 1500 tokens [prime; 1500 / 1500]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:98
+arm order T T P T P and "T1 zählt nicht", page cache of both checkpoints dropped before every boot: v100-skinny/docs/journal/LEISTUNGSHISTORIE.md line 934-935 (text of the 05.11.2026 section) and log line 1
+T2 Shmem peak of the group: max(cg_shmem) over ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/2-T-memtrace/trace.jsonl = 1390407680 B = 1.2949 GiB
+T4 Shmem peak of the group: max(cg_shmem) over ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/4-T-memtrace/trace.jsonl = 1397112832 B = 1.3012 GiB
+P3 Shmem peak of the group: max(cg_shmem) over ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/3-P-memtrace/trace.jsonl = 4421550080 B = 4.1179 GiB
+P5 Shmem peak of the group: max(cg_shmem) over ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/5-P-memtrace/trace.jsonl = 4419874816 B = 4.1163 GiB
+T2 init engine 35.54 s [init engine (profile, create kv cache, warmup model) took 35.54 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/journal-2-T.txt:765
+T4 init engine 23.24 s [init engine (profile, create kv cache, warmup model) took 23.24 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/journal-4-T.txt:737
+P3 init engine 37.41 s [init engine (profile, create kv cache, warmup model) took 37.41 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/journal-3-P.txt:772
+P5 init engine 37.73 s [init engine (profile, create kv cache, warmup model) took 37.73 s]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b/journal-5-P.txt:775
+memory cgroup limit of the measured group (llama-swap, MemoryHigh 16 GiB) and the page-cache remark: v100-skinny/docs/journal/LEISTUNGSHISTORIE.md (05.11.2026 section, "Bootzeit: T erreicht MemoryHigh (16 GiB) ..."; "Der Seiten-Cache, den der vorige Arm in der Gruppe lässt (0,9-2,7 GiB beim Bootbeginn) ..."); [T2 memtrace] "Gruppe Spitze 16.00 GiB" in the log (all four counted arms)
+T2 group peak 16.00 GiB [[T2 memtrace]; Gruppe Spitze 16.00 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:54
+T4 group peak 16.00 GiB [[T4 memtrace]; Gruppe Spitze 16.00 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:137
+P3 group peak 16.00 GiB [[P3 memtrace]; Gruppe Spitze 16.00 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:90
+P5 group peak 16.00 GiB [[P5 memtrace]; Gruppe Spitze 16.00 GiB]: ~/.cache/bench-scripts/ab_shared_glm_2026-11-05b.log:173
+1.18 GiB embedding table, 2.00 GiB per copy, 4.0 GiB for two copies, PP0 and the last stage: LEISTUNGSHISTORIE.md 05.11.2026 section "Anlass" and message of fork commit 1f17e135f (git log -1 1f17e135f)
+pre-commit head 5f58dd8e9 [5f58dd8e9]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_uva.log:1
+layering Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_uva.log:29
+manual stage + final rc=0 [rc=0]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_uva.log:88
+main: layering Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:129
+main: 46 errors in 15 files [Found 46 errors in 15 files]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:78
+main: 1 error in 1 file [Found 1 error in 1 file]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:80
+main: arch ref Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:95
+main: ruff check Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:2
+main: markdownlint Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:8
+layering list of the branch equals main (33 lines): belege/lay_uva.txt against belege/lay_MAIN3b.txt, diff empty (2026-11-26)
+Duplicate check (gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "<term>" --limit 30, 2026-11-26): raw output belege/dup_uva.tsv (10 searches, 74 distinct PRs). Open-PR file check: gh pr list --state open --limit 300 --json number,files and gh api .../pulls/<n>/files for the five PRs with 100 or more files (#1348, #1286, #1260, #1243, #1031), 2026-11-26: no open PR lists vllm/model_executor/offloader/uva.py, vllm/utils/shared_host.py or tests/model_executor/test_uva_shared_host_memory.py. Merged #1199, #297, #492, #1623, #1404 titles/dates via gh pr view; #1623 files: tests/model_executor/model_loader/test_direct_io.py, vllm/model_executor/model_loader/direct_io.py, vllm/model_executor/layers/quantization/nvfp4_sm70_moe.py (+2); direct_io.py uses /dev/shm files (_shm_run_buffer, lines 151-206), no SharedHostArena.
+vllm-project/vllm: gh pr list -R vllm-project/vllm --state all --search "UVA offload pin_memory" (2026-11-26): 56413 OPEN ("Avoid duplicate host allocation for UVA weights", 2 files), 67060 OPEN ("Pin UVA-offloaded weights directly at their exact size", stacked on 60909, 10 files); bodies and diffs read: both pin per process at exact size, no sharing between processes (67060 diff has no memfd/shared region for weights). Issue 56410 OPEN. Closed related: 58185, 67657.
+Merge probes: belege/probe.py -> belege/probe_result.txt, uva section: no added conflict for any of the 22 probed heads (16 open PR heads fetched with git fetch origin pull/<n>/head, 6 local rebased branches) (git merge-tree --write-tree against the 73da3445d baseline).
+Code facts read on branch 5f58dd8e9: uva.py (_HostBuffer, _share_arena, _open_owner_arena, _share_key (VocabParallelEmbedding only, dist.is_initialized), _pinned_host_copy), shared_host.py (SharedHostArena(identity check, seals), create rounds up to whole pages, registration_guard), tests/model_executor/test_uva_shared_host_memory.py (3 tests, lines 33, 69, 114).
+Base: git merge-tree of the branch with origin/main 44708bdb9 is clean (2026-11-26).
+Notation and rounding of the text: 4.12 = 4.1179 and 4.1163 GiB (computed above); 0.9 and 2.7 GiB = the page cache the previous arm leaves (LEISTUNGSHISTORIE.md, 05.11.2026 section); 5.423 = 5.4227 (LOG gsm8k acceptance lines); 1,500 = tokens of the longest quality answer (LOG: [Textvergleich T/P] prime ... Token 1500 / 1500); 8,687 = 8687 prompt tokens; 192 = tokens of the short decode; 8000 = name Quadro RTX 8000.

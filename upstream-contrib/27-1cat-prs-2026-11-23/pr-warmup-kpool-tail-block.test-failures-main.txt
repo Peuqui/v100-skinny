@@ -1,0 +1,80 @@
+== tests/v1/worker/test_gpu_worker_memory_profile.py
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            error_str = self.cudaGetErrorString(result)
+>           raise RuntimeError(f"CUDART error: {error_str}")
+E           RuntimeError: CUDART error: no CUDA-capable device is detected
+            error_str = self.cudaGetErrorString(result)
+>           raise RuntimeError(f"CUDART error: {error_str}")
+E           RuntimeError: CUDART error: no CUDA-capable device is detected
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[0-NONE-True-0-False]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[0-FULL-False-0-False]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[0-FULL-True-33554432-False]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[0-FULL-True-268435456-True]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[256-NONE-True-0-False]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[256-FULL-False-0-False]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[256-FULL-True-33554432-False]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_kv_budget_ignores_cold_compile_scratch[256-FULL-True-268435456-True]
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_explicit_kv_bytes_profiles_once_and_skips_memory_estimation
+FAILED tests/v1/worker/test_gpu_worker_memory_profile.py::test_cold_compile_stack_growth_is_not_charged
+10 failed, 14 warnings in 4.95s
+== tests/v1/worker/test_sm70_warmup_allocator.py
+                    raise RuntimeError("compile failed")
+            with pytest.raises(RuntimeError, match="compile failed"):
+            error_str = self.cudaGetErrorString(result)
+>           raise RuntimeError(f"CUDART error: {error_str}")
+E           RuntimeError: CUDART error: no CUDA-capable device is detected
+                    raise RuntimeError("compile failed")
+            with pytest.raises(RuntimeError, match="compile failed"):
+            error_str = self.cudaGetErrorString(result)
+>           raise RuntimeError(f"CUDART error: {error_str}")
+E           RuntimeError: CUDART error: no CUDA-capable device is detected
+                    raise RuntimeError("compile failed")
+            with pytest.raises(RuntimeError, match="compile failed"):
+            error_str = self.cudaGetErrorString(result)
+>           raise RuntimeError(f"CUDART error: {error_str}")
+E           RuntimeError: CUDART error: no CUDA-capable device is detected
+                    raise RuntimeError("compile failed")
+            with pytest.raises(RuntimeError, match="compile failed"):
+            error_str = self.cudaGetErrorString(result)
+>           raise RuntimeError(f"CUDART error: {error_str}")
+E           RuntimeError: CUDART error: no CUDA-capable device is detected
+                    raise RuntimeError("compile failed")
+>           with pytest.raises(RuntimeError, match="compile failed"):
+E             Expected regex: 'compile failed'
+E             Actual message: 'CUDART error: no CUDA-capable device is detected'
+                    raise RuntimeError("compile failed")
+>           with pytest.raises(RuntimeError, match="compile failed"):
+E             Expected regex: 'compile failed'
+E             Actual message: 'CUDART error: no CUDA-capable device is detected'
+                    raise RuntimeError("compile failed")
+>           with pytest.raises(RuntimeError, match="compile failed"):
+E             Expected regex: 'compile failed'
+E             Actual message: 'CUDART error: no CUDA-capable device is detected'
+                    raise RuntimeError("compile failed")
+>           with pytest.raises(RuntimeError, match="compile failed"):
+E             Expected regex: 'compile failed'
+E             Actual message: 'CUDART error: no CUDA-capable device is detected'
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[False-False-True-True]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[False-False-True-False]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[False-True-True-True]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[False-True-True-False]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[True-False-True-True]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[True-False-True-False]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[True-True-True-True]
+FAILED tests/v1/worker/test_sm70_warmup_allocator.py::test_compile_allocator_restored_before_measuring_or_returning[True-True-True-False]
+8 failed, 4 passed, 14 warnings in 5.52s

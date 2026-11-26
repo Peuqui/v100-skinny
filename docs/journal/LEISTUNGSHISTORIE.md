@@ -1253,3 +1253,37 @@ Umstellung 24.11. 00:26–01:43 (`chain_prod_v15_2026-11-24.sh glm dsv4 k7 fp8rt
 73,36 (v14 71,75), Langkontext je Schritt gleich, Decode kurz 55,61 (v14 61,19: andere Texte nach Neukompilierung, Annahme je Prompt anders);
 K7 und 27B gleich. Abweichende Kontrolltexte (DeepSeek motor/zug/code_bug, K7 zug/logik) gelesen, richtig. Tag `verified-2026-11-24-prod-v15`,
 Rücksprung `rollback_prod_v15_2026-11-24.sh <key>`.
+
+## 24.11.2026 (Nachmittag): Entwicklungszweig nach v15, keine Produktionsänderung
+
+Übernommen in `merge-1cat-2d218ab03` (fährt mit v16), je T P T P, gleicher Compile-Hash:
+
+| Hebel | Log | Ergebnis (GLM; DeepSeek) | Texte |
+|---|---|---|---|
+| Host-Bereinigung 3b06bda1a/508ac9f8f | `ab_hpo_{glm,dsv4}_2026-11-24a.log` | Runde 53,6 gegen 53,6–53,7 ms (weniger ist besser), AIfred-Sampling +0,15 %, erstes Token 150k–516k −0,4 bis −0,7 %; DeepSeek gleich | tokengleich |
+| kv_b-Skinny-Kern 48a92aa11 | `ab_kvb_glm_2026-11-24a.log` | Runde greedy 53,4/53,5 gegen 53,7/54,1 ms, AIfred-Sampling +0,5 %, GSM8K-Decode +0,5 %, Prefill und Langkontext gleich | 8/8 tokengleich |
+
+Verworfen (Belege in `upstream-contrib/29-glm-profile-v14k4-2026-11-23/{KLEINE_GEMMS,MOE_MESSUNG}.md`,
+`28-glm-adaptive-verify-2026-11-23/ERGEBNIS.md`): QPN8-Skalen vorladen (+0,5 bis +3,6 % µs je Aufruf, langsamer), entrollte Ring-Schleifen,
+MoE-Fixkosten-Epiloge, variable Prüflänge für DeepSeek (Obergrenze unter 1 %), Shared-Experte auf dem Aux-Stream (Decode +1,1 %, Prefill −2 %).
+
+In Arbeit: DeepSeek wo_a auf den RTX-Stufen aus FP8 (Zweig `dsv4-wo-a-turing-fp8`) (die fp32-Reduktion im QPN8-Prefill-Op bd9fdf7ae ist für die Produktion wirkungslos: der Worker schaltet die fp16-Teilreduktion ohnehin ab).
+Erste A/B `ab_woa_dsv4_2026-11-24a.log` (T3 gegen P4): Prefill 8921 Token 2,41 gegen 2,29 s (3704 gegen 3897 tok/s, schlechter),
+AIfred-Sampling alle 49,4 gegen 50,5 ms je Runde und 56,94 gegen 57,94 tok/s (Annahme je Runde 1,87 gegen 1,93), greedy 48,7 gegen 50,2 ms
+je Runde und 67,36 gegen 64,75 tok/s, GSM8K-Decode 75,49 gegen 72,14 tok/s (30 gegen 28 richtig). Prefill-Pfad wird umgebaut, dann neue A/B.
+
+## 25.11.2026: prod-v16 (Host-Bereinigung, kv_b-Kern GLM, wo_a aus FP8 DeepSeek; Baum `1Cat-vLLM-v16`, e336f616e)
+
+Prüfstufe 2, Bündel-A/Bs siehe 24.11. (Nachmittag) und `upstream-contrib/31-dsv4-profile-v15-2026-11-24/WOA_TURING.md`; 27B `ab_v16_fp8rtx_2026-11-24a.log`
+(T P): Prefill 5,52 gegen 5,54 s, AIfred-Sampling 65,19 gegen 65,12 tok/s, erstes Token 150k/250k/260k 177,0/275,8/291,7 gegen 177,8/276,8/292,4 s, Pool 851 394
+beide, Texte 8/8 tokengleich. Umstellung 24.11. 23:56 bis 25.11. 01:16, Kontrollen `validate_v16_<key>_2026-11-24.log` gegen `validate_v15_<key>_2026-11-24.log`
+(erster Boot mit frischen Caches, zählt nicht als Tempomessung):
+
+| Eintrag | Decode kurz v15 → v16 (tok/s, mehr ist besser) | GSM8K-Decode v15 → v16 (tok/s) | Prefill 8,7–8,9k v15 → v16 (s, weniger ist besser) | KV-Pool v16 (Token) |
+|---|---|---|---|---|
+| GLM | 51,16 → 50,55 | 70,73 → 67,29 (Annahme gleich 4,95; Nebenlast durch Hilfsagent; Wiederholung ohne Nebenlast 70,41, `validate_v16b_glm_2026-11-25.log`) | 3,86 → 3,85 | 583 555 |
+| DeepSeek | 55,61 → 64,56 | 73,36 → 74,91 | 2,28 → 2,29 | 509 292 |
+| K7 | 55,00 → 56,20 | 72,93 → 73,66 | 2,28 → 2,29 | 317 261 |
+| 27B | 57,12 → 57,17 | 77,30 → 77,39 | 5,54 → 5,52 | 851 394 |
+
+Tag `verified-2026-11-25-prod-v16`, Rücksprung `rollback_prod_v16_2026-11-24.sh <key>`.

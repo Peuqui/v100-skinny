@@ -1,0 +1,11 @@
+Updated this PR: rebased onto main 73da3445d and adapted to #1616 (Inkling 2 Mini), which brought its own DSpark speculator for Model Runner V2. The head is 7730427a0; the PR still has three commits.
+
+What changed: our generic speculator moved to spec_decode/dspark/block_drafter.py (its content is byte-identical to the previous head), and init_speculator now picks main's Inkling2DSparkSpeculator for an Inkling 2 drafter and ours for every other DSpark drafter. With 'dspark' admitted on MRV2 in general, the two Inkling 2 exceptions in _validate_v2_model_runner are redundant and removed. main's _add_dspark_width_graphs (target graphs for narrower verify widths) now only runs for the Inkling 2 drafter: our speculator drafts at one fixed width, so those graphs would be captured and never replayed. New test: test_narrower_width_graphs_only_for_the_drafter_that_narrows.
+
+#1379 builds on this PR and carries its three commits unchanged; it will need a rebase onto this head.
+
+Tests: 15 test files, one process per file, on the CPU, a Tesla V100 and a Quadro RTX 8000, with the environment's stock Triton 3.6.0. Four of the eight Test Plan files (test_dflash_mrv2_config.py, test_gpu_model_runner_v2.py, test_gpu_model_runner_v2_greedy.py and test_gpu_cudagraph_memory_reserve.py) ran on the CPU only on this head; their runs on the two cards were not repeated. No failure that main 73da3445d does not have as well. pre-commit: four hooks fail with main's own findings, mypy-3.10 the same single error as main; no autofix. The per-file numbers are in the updated description.
+
+The description now has the Runtime acceptance section of the template. What the review of 2026-11-09 asked for (model-level acceptance on the DeepSeek-V4.1 checkpoint, stochastic coupling, stateful prefix hits, session replay) is listed there as still open.
+
+AI assistance (Claude Code) was used for this update; I reviewed and tested the changes.

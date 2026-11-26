@@ -212,3 +212,13 @@ Untere Grenze der Posten (Mindestabstand 0,3 bis 0,6 µs je Knoten) bleibt: etwa
 | Summe der drei Obergrenzen | 4,6 | 2,1 bis 2,85 | nicht addierbar bevor je Posten einzeln gemessen ist |
 
 Die zweite Spalte der Übergaben (1,46 ms) ist vom letzten Graphkern der Senderstufe an gemessen und daher um 0,01 bis 0,03 ms je Übergabe größer als die 1,35 ms der `ANALYSE.md`, die ab dem letzten Kern des Durchlaufs rechnet (einschließlich der Nachkerne nach dem Graphen).
+
+## Nachtrag 24.11.2026: Host-Vorbereitung gebündelt und gemessen
+
+Zweig `host-prep-staging` (3b06bda1a GDN-Hostzahlen ohne Torch-Dispatch + Spec-Index bei Bedarf; 508ac9f8f eine Kopie für die
+Index-Arrays + Host-Blocktabelle nur für ihren Leser), Gegenprobe am alten Code 14 von 16 neuen Tests rot. A/B `ab_hpo_{glm,dsv4}_2026-11-24a.log`
+(T P T P, Env wie Produktion, gleicher Compile-Hash): GLM Runde 53,6 gegen 53,6–53,7 ms, AIfred-Sampling +0,15 %, Prefill gleich, erstes
+Token 150k–516k −0,4 bis −0,7 %, Texte tokengleich; DeepSeek gleich. Die unter nsys gemessene GPU-Leerlaufzeit vor Stufe 0 (1,5 ms, Capture 1)
+begrenzt die Runde im Betrieb ohne Profiler offenbar nicht. Änderungen als verlustfreie Bereinigung in den Entwicklungszweig
+`merge-1cat-2d218ab03` übernommen (fährt mit dem nächsten Bündel), kein eigener Produktionswechsel. Weitere Hostarbeit (Deskriptor,
+Scheduler-Rundreise) erst nach einer Hostzeitmessung ohne nsys, die zeigt, dass der Host die Runde begrenzt.

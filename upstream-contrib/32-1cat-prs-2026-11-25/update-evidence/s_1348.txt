@@ -1,0 +1,6 @@
+## KDA prefill
+  #1549 MERGED Jozkah 2026-11-25T05:04:46Z [Bugfix][GLM-5.3] Bind KDA chunk kernels in Glm5NextLinearAttention
+## lm_head MXFP8
+## MXFP8 LM head
+## quant_lm_head
+## autotune

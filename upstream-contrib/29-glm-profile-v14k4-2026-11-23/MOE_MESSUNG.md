@@ -64,3 +64,21 @@ T1 = P bis auf die Nachkommastelle (gleiche Token, gleiche Annahme); T3 erzeugte
 neu geschriebenen Compile-Artefakten nach T1 („Texte folgen dem Compile-Artefaktsatz“). Je Schritt gleich: DeepSeek neutral.
 
 Urteil: GLM +3 % in allen AIfred-Größen, Langkontext −2,7 % je Schritt, Qualität gleich, Speicher weniger; DeepSeek neutral. Ins Bündel v15.
+
+## Shared-Experte auf vLLMs Aux-Stream (24.11.2026): nicht übernommen
+
+Der generische Mechanismus (`shared_experts.py`, Decode ≤ 256 Zeilen) ist im Baum vollständig; die Produktionseinträge schalten ihn mit
+`VLLM_DISABLE_SHARED_EXPERTS_STREAM=1` ab. Ohne die Env (`ab_shs_glm_2026-11-24a.log`, `ab_hps_{glm,dsv4}_2026-11-24a.log`): GLM Decode
++1,1 % (Runde 53,1 gegen 53,7 ms), AIfred-Sampling +1,2 %, Texte tokengleich; aber Prefill 8687 Token 3,94 gegen 3,86 s (+2,1 %), erstes Token
+150k–516k +1,5 %. Die Env geht in den Compile-Schlüssel ein; die Gegenprobe `ab_frs_glm_2026-11-24a.log` (unveränderte Produktion, leerer
+Cache) erzeugt dieselben Artefakte und prefillt 3,85–3,86 s: Der Verlust kommt vom anderen Graphen mit Stream, nicht vom Neukompilieren.
+DeepSeek: Decode +0,8 %, Prefill gleich. Peuqui 24.11.: dem 1-%-Rest nicht weiter nachgehen; Env bleibt in den Einträgen.
+
+## MoE-Fixkosten: Aktivierung und Reduktion als Kern-Epiloge (24.11.2026): verworfen
+
+Zweig `moe-fixed-costs` (im Fork, nicht übernommen): SwiGLU-Aktivierung als Epilog des Up-Kerns (Gate- und Up-Kachel N/64 auseinander
+gepaart, Inductor-Rechnung als PTX nachgebildet), gewichtete Reduktion als „letzter Ankömmling“-Epilog des Down-Kerns (Atomics). Kette
+`chain_moefix_2026-11-24.sh`, Logs `~/.cache/bench-scripts/moefix_2026-11-24/`: 12 von 12 Läufen bytegleich zu den Grunddumps, Tests grün
+(V100 190, RTX 292), aber µs je Schicht (weniger ist besser) Stufe 1 V100 491,0/492,1 → 516,3/516,2 (+5,0 %), Stufe 0 RTX 810,3/810,8 →
+805,1/804,7 (−0,7 %), Stufe 4 RTX 524,1/523,6 → 518,7/518,6 (−1,0 %). Leere CTAs: laut Analyse wenige µs (steigen nach zwei Loads aus),
+nicht umgebaut. Der Achsenabschnitt a (40–63 µs je Schicht) ist überwiegend Rampe und Schwanz der beiden großen Kerne.

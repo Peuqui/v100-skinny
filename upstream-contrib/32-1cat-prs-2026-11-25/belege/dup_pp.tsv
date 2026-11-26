@@ -1,0 +1,161 @@
+1286	OPEN	2026-10-28	PP intermediate tensors	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1362	MERGED	2026-11-05	PP intermediate tensors	[Bugfix][Loader] Skip the embedding, final norm, LM head and encoder towers a pipeline stage does not hol
+636	MERGED	2026-09-14	PP intermediate tensors	[Bugfix][Qwen3.5] Keep the MTP drafter stage-local under pipeline parallelism
+573	MERGED	2026-09-08	PP intermediate tensors	[Bugfix][Qwen4Exp] Keep the MTP drafter stage-local under pipeline parallelism
+662	MERGED	2026-09-19	PP intermediate tensors	[Bugfix][Spec Decode] Ship the speculative round state to non-last PP ranks
+523	CLOSED	2026-09-06	PP intermediate tensors	[Kernel][WIP] Integrate native FlashInfer SM70 batch GDN and QSA probes
+1245	MERGED	2026-10-21	PP intermediate tensors	[Perf][Distributed] Add topology-aware all-reduce selection and extend to any p2p
+573	MERGED	2026-09-08	intermediate_tensors	[Bugfix][Qwen4Exp] Keep the MTP drafter stage-local under pipeline parallelism
+1594	MERGED	2026-11-22	NCCL message	[Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpark5 & 
+1279	CLOSED	2026-10-27	NCCL message	[Perf][SM75] Turing prefill attention; overlap TP prefill all-reduces on GPUs without P2P
+431	CLOSED	2026-08-31	NCCL message	platform: disable custom all-reduce on SM70 (Volta) — TP2 was hitting non-converging capture + Xid 62
+1278	OPEN	2026-10-27	NCCL message	[Perf][SM75] Turing tensor-core paths for block-FP8 QPN8 and the grouped skinny MoE; bound the MoE grid
+1282	OPEN	2026-10-27	NCCL message	[Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1286	OPEN	2026-10-28	NCCL message	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1350	OPEN	2026-11-03	NCCL message	Bump the minor-update group with 174 updates
+1280	CLOSED	2026-10-27	NCCL message	[Perf][SM70][DeepSeek-V4] Long-prefill indexer and sparse attention: vectorized epilogue, fused softmax, 
+755	CLOSED	2026-10-02	NCCL message	Bump the minor-update group across 1 directory with 155 updates
+737	CLOSED	2026-09-29	NCCL message	Bump the minor-update group across 1 directory with 152 updates
+735	CLOSED	2026-09-29	NCCL message	Bump the minor-update group across 1 directory with 153 updates
+1134	CLOSED	2026-10-09	NCCL message	Bump the minor-update group across 1 directory with 160 updates
+681	CLOSED	2026-09-22	NCCL message	Bump the minor-update group across 1 directory with 145 updates
+1123	CLOSED	2026-10-09	NCCL message	Bump the minor-update group across 1 directory with 160 updates
+1012	CLOSED	2026-10-06	NCCL message	Bump the minor-update group with 159 updates
+590	CLOSED	2026-09-10	NCCL message	Bump the minor-update group across 1 directory with 139 updates
+575	CLOSED	2026-09-08	NCCL message	Bump the minor-update group across 1 directory with 138 updates
+330	CLOSED	2026-08-26	NCCL message	Bump the minor-update group with 170 updates
+303	CLOSED	2026-08-25	NCCL message	Bump the minor-update group across 1 directory with 171 updates
+264	CLOSED	2026-08-23	NCCL message	Bump the minor-update group across 1 directory with 171 updates
+242	CLOSED	2026-08-18	NCCL message	Bump the minor-update group with 171 updates
+220	CLOSED	2026-08-16	NCCL message	Bump the minor-update group across 1 directory with 171 updates
+196	CLOSED	2026-08-11	NCCL message	Bump the minor-update group across 1 directory with 172 updates
+111	CLOSED	2026-07-21	NCCL message	Bump the minor-update group across 1 directory with 166 updates
+1371	OPEN	2026-11-05	pipeline parallel send	[Bugfix][V1][PP] Preserve synchronous speculative step ownership
+662	MERGED	2026-09-19	pipeline parallel send	[Bugfix][Spec Decode] Ship the speculative round state to non-last PP ranks
+636	MERGED	2026-09-14	pipeline parallel send	[Bugfix][Qwen3.5] Keep the MTP drafter stage-local under pipeline parallelism
+573	MERGED	2026-09-08	pipeline parallel send	[Bugfix][Qwen4Exp] Keep the MTP drafter stage-local under pipeline parallelism
+646	CLOSED	2026-09-16	pipeline parallel send	[Feature][Qwen4Exp] PLE overflow cascade: device, pinned host, disk
+1348	OPEN	2026-11-03	PP5	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1536	OPEN	2026-11-16	PP5	[Bugfix][Core] Refuse a KV pool that cannot hold one max_model_len request
+1221	OPEN	2026-10-16	PP5	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1293	MERGED	2026-10-28	PP5	[Misc][PP] Log the KV cache memory of every worker and the SM70 indexer decode route of every stage
+1502	MERGED	2026-11-14	PP5	[Bugfix][Core] Restore the device stack limit a cold-compile warm-up grew
+1294	MERGED	2026-10-28	PP5	[Perf][PP] Overlap eager sends with explicit buffer ownership
+1420	MERGED	2026-11-07	PP5	[Bugfix][Core] MRV2 warmup: no prompt logprobs on the full-chunk and kernel prefill profiles
+1418	MERGED	2026-11-07	PP5	[Bugfix][Spec Decode] Derived drafter configs share the target's runtime resources
+1362	MERGED	2026-11-05	PP5	[Bugfix][Loader] Skip the embedding, final norm, LM head and encoder towers a pipeline stage does not hol
+1344	MERGED	2026-11-02	PP5	[Perf][SM70][DeepSeek-V4] Bound fused KV compression stack use
+1286	OPEN	2026-10-28	PP5	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1417	MERGED	2026-11-07	PP5	[Perf][SM70][SM75][DeepSeek-V4] Finer automatic decode context buckets for long contexts
+1406	MERGED	2026-11-06	PP5	[Bugfix][Core] Backport vllm-project/vllm#60472: close MessageQueue zmq resources via finalizer to avoid 
+1183	MERGED	2026-10-11	PP5	[Bugfix][DeepSeek-V4] Restore DSpark decode on SM70 after the per-engine policy migration
+1187	MERGED	2026-10-11	PP5	[SM70] Default the FP8 small-shape runtime tuning to off
+1504	MERGED	2026-11-14	PP5	[Refactor][SM70] Drop the local compile-safe capability copies now that #1498 covers them; fix the GDN sp
+1512	MERGED	2026-11-14	PP5	[Bugfix][Frontend] GLM tool parser: stream non-string argument values only when they close
+1222	MERGED	2026-10-16	PP5	[Perf][SM70][DeepSeek-V4] Keep the cuBLAS decode indexer above 131,072 tokens of context
+1571	MERGED	2026-11-19	PP5	[Bugfix][Parser] DeepSeek DSML: stream non-string tool arguments only when complete
+1535	MERGED	2026-11-16	PP5	[Bugfix][SM70] Hold the block-FP8 prefill workspace only when graphs capture the prefill or the KV budget
+1503	MERGED	2026-11-14	PP5	[Bugfix][Sampler] Let the Triton top-k/top-p pivot searches cut below the smallest finite logit
+1415	MERGED	2026-11-07	PP5	[Bugfix][Multimodal] Backport vllm-project/vllm#56576, #59565, #59126: broken-EXIF image hashing, GLM-5.3
+857	MERGED	2026-10-03	PP5	[Bugfix][DeepSeek-V4] Read the SM70 sparse policy when the layers are built
+752	CLOSED	2026-10-01	PP5	[Bugfix][Spec Decode] Assert enough query rows for each request's drafts
+747	CLOSED	2026-10-01	PP5	[Feature][DeepSeek-V4] Run the SM70 route on Turing
+1408	MERGED	2026-11-07	PP5	[Bugfix][Core] Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample
+1414	CLOSED	2026-11-07	PP5	[Bugfix][Frontend] Backport vllm-project/vllm#61297, #44383, #46091: whole-number integer tool arguments,
+1413	MERGED	2026-11-07	PP5	[Bugfix][DeepSeek-V4] Backport vllm-project/vllm#51856, #51262, #54838, #55954, #56141, #56271: prompt re
+874	MERGED	2026-10-04	PP5	[Perf][SM70][DeepSeek-V4] Bucket speculative decode graphs by context so the sparse indexer can take cuBL
+873	MERGED	2026-10-04	PP5	[Bugfix][SM70] Start block QPN8 on Volta: warm up the layout it holds, keep the TurboMind copy only when 
+1584	OPEN	2026-11-20	pipeline parallel decode	[Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+1031	OPEN	2026-10-07	pipeline parallel decode	[Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+1371	OPEN	2026-11-05	pipeline parallel decode	[Bugfix][V1][PP] Preserve synchronous speculative step ownership
+1370	OPEN	2026-11-05	pipeline parallel decode	[Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+1374	OPEN	2026-11-05	pipeline parallel decode	[Perf][SM70][DeepSeek-V4] Shard the DSpark main projection output rows
+1221	OPEN	2026-10-16	pipeline parallel decode	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1347	OPEN	2026-11-03	pipeline parallel decode	[Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the spar
+1586	OPEN	2026-11-20	pipeline parallel decode	[Perf][PP] Engine core: submit spacing steps ahead, no sleep after an answer, loop counters (VLLM_V41_PP_
+1362	MERGED	2026-11-05	pipeline parallel decode	[Bugfix][Loader] Skip the embedding, final norm, LM head and encoder towers a pipeline stage does not hol
+1537	MERGED	2026-11-17	pipeline parallel decode	[Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+1595	MERGED	2026-11-22	pipeline parallel decode	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1570	MERGED	2026-11-19	pipeline parallel decode	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1349	MERGED	2026-11-03	pipeline parallel decode	[Test] Fix the V2 MTP profile report test and two PP2 scheduler tests
+1293	MERGED	2026-10-28	pipeline parallel decode	[Misc][PP] Log the KV cache memory of every worker and the SM70 indexer decode route of every stage
+1373	MERGED	2026-11-05	pipeline parallel decode	[Perf][V1][PP] Retain persistent request rows across empty steps
+808	MERGED	2026-10-02	pipeline parallel decode	[Model Loader] Admit direct checkpoint reads by storage and memory capacity
+1264	MERGED	2026-10-25	pipeline parallel decode	[Perf] Run the fused GDN speculative metadata launch on Turing too
+1263	MERGED	2026-10-25	pipeline parallel decode	[Perf] Do not send a request's token history to the V2 runner every decode step
+1272	MERGED	2026-10-27	pipeline parallel decode	[Bugfix][KV] MLA specs carry the codec of their cache dtype
+1417	MERGED	2026-11-07	pipeline parallel decode	[Perf][SM70][SM75][DeepSeek-V4] Finer automatic decode context buckets for long contexts
+1372	MERGED	2026-11-05	pipeline parallel decode	[Perf][SM70][DeepSeek-V4] Tile live packed decode index scoring
+516	MERGED	2026-09-05	pipeline parallel decode	[Core][Qwen4Exp] Gate PLE under pipeline parallelism on the partition, not the PP size (#479)
+639	MERGED	2026-09-15	pipeline parallel decode	[Bugfix][Qwen4Exp] Allow checkpoint FP8 MTP experts under pipeline parallelism
+1408	MERGED	2026-11-07	pipeline parallel decode	[Bugfix][Core] Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample
+662	MERGED	2026-09-19	pipeline parallel decode	[Bugfix][Spec Decode] Ship the speculative round state to non-last PP ranks
+714	CLOSED	2026-09-28	pipeline parallel decode	[Perf][SM70] Take the DeepSeek-V4 cuBLAS indexer decode under speculative decoding
+716	CLOSED	2026-09-28	pipeline parallel decode	[Perf][SM70] DeepSeek-V4 sparse MLA as gather + batched matmul (opt-in)
+740	CLOSED	2026-09-30	pipeline parallel decode	[Model Loader] Add a direct I/O safetensors load strategy
+646	CLOSED	2026-09-16	pipeline parallel decode	[Feature][Qwen4Exp] PLE overflow cascade: device, pinned host, disk
+512	MERGED	2026-09-05	pipeline parallel decode	[Bugfix][Spec Decode] Report SM70 MTP profiles from the last PP stage (#414)
+1370	OPEN	2026-11-05	pipeline parallel	[Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+1031	OPEN	2026-10-07	pipeline parallel	[Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+1371	OPEN	2026-11-05	pipeline parallel	[Bugfix][V1][PP] Preserve synchronous speculative step ownership
+1584	OPEN	2026-11-20	pipeline parallel	[Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+1374	OPEN	2026-11-05	pipeline parallel	[Perf][SM70][DeepSeek-V4] Shard the DSpark main projection output rows
+1586	OPEN	2026-11-20	pipeline parallel	[Perf][PP] Engine core: submit spacing steps ahead, no sleep after an answer, loop counters (VLLM_V41_PP_
+1362	MERGED	2026-11-05	pipeline parallel	[Bugfix][Loader] Skip the embedding, final norm, LM head and encoder towers a pipeline stage does not hol
+1221	OPEN	2026-10-16	pipeline parallel	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1416	MERGED	2026-11-07	pipeline parallel	[Perf][Scheduler] Prefill short prompts in smaller chunks, keep large chunks for long prompts
+1537	MERGED	2026-11-17	pipeline parallel	[Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+1595	MERGED	2026-11-22	pipeline parallel	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1349	MERGED	2026-11-03	pipeline parallel	[Test] Fix the V2 MTP profile report test and two PP2 scheduler tests
+808	MERGED	2026-10-02	pipeline parallel	[Model Loader] Admit direct checkpoint reads by storage and memory capacity
+717	CLOSED	2026-09-28	pipeline parallel	[Feature][Qwen4Exp] Allow the PLE CPU offload under pipeline parallelism
+1570	MERGED	2026-11-19	pipeline parallel	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+639	MERGED	2026-09-15	pipeline parallel	[Bugfix][Qwen4Exp] Allow checkpoint FP8 MTP experts under pipeline parallelism
+1116	MERGED	2026-10-09	pipeline parallel	[Bugfix] Preserve UUID masks and fill structured speculative drafts
+1237	MERGED	2026-10-19	pipeline parallel	[Bugfix][Qwen4Exp] Reduce the PLE offload config to DP1 before it is built
+771	MERGED	2026-10-02	pipeline parallel	[Bugfix] Validate complete PP speculative token payloads
+516	MERGED	2026-09-05	pipeline parallel	[Core][Qwen4Exp] Gate PLE under pipeline parallelism on the partition, not the PP size (#479)
+662	MERGED	2026-09-19	pipeline parallel	[Bugfix][Spec Decode] Ship the speculative round state to non-last PP ranks
+619	MERGED	2026-09-13	pipeline parallel	[Bugfix][Distributed] Pass --distributed-timeout-seconds to the NCCL subgroups
+636	MERGED	2026-09-14	pipeline parallel	[Bugfix][Qwen3.5] Keep the MTP drafter stage-local under pipeline parallelism
+1293	MERGED	2026-10-28	pipeline parallel	[Misc][PP] Log the KV cache memory of every worker and the SM70 indexer decode route of every stage
+1373	MERGED	2026-11-05	pipeline parallel	[Perf][V1][PP] Retain persistent request rows across empty steps
+1264	MERGED	2026-10-25	pipeline parallel	[Perf] Run the fused GDN speculative metadata launch on Turing too
+1372	MERGED	2026-11-05	pipeline parallel	[Perf][SM70][DeepSeek-V4] Tile live packed decode index scoring
+1272	MERGED	2026-10-27	pipeline parallel	[Bugfix][KV] MLA specs carry the codec of their cache dtype
+1347	OPEN	2026-11-03	pipeline parallel	[Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the spar
+1263	MERGED	2026-10-25	pipeline parallel	[Perf] Do not send a request's token history to the V2 runner every decode step
+1370	OPEN	2026-11-05	stage boundary	[Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+1593	OPEN	2026-11-22	stage boundary	[Feature][DS-V4.1] Image inputs on the GGUF route (VLLM_V41_VISION)
+1543	OPEN	2026-11-17	stage boundary	[Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+1581	OPEN	2026-11-20	stage boundary	[Perf][SM70][DeepSeek-V4.1] TP4 prefill pair relay: one PCIe store per activation element on two-NVLink-p
+1598	OPEN	2026-11-22	stage boundary	[Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1599	OPEN	2026-11-22	stage boundary	[Reasoning][ToolUse] Add Inkling2ReasoningParser, Inkling2ToolParser, and content-delimiter contract
+1600	OPEN	2026-11-22	stage boundary	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1624	MERGED	2026-11-25	stage boundary	[Bugfix][QSA] Preserve host-KV page tables and flush deferred writes before windowed prefill
+1594	MERGED	2026-11-22	stage boundary	[Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpark5 & 
+1381	MERGED	2026-11-05	stage boundary	[Bugfix][DeepSeek-V4.1] Restore packed KV bytes and reserve speculative rewind span
+1611	MERGED	2026-11-23	stage boundary	[Bugfix][GLM-5.3] Compute the MoE router GEMM once per layer
+1529	MERGED	2026-11-16	stage boundary	[Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming tool par
+1525	MERGED	2026-11-15	stage boundary	[Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.8 con
+1253	MERGED	2026-10-23	stage boundary	[Core] Slice packed GGUF rows before transcoding on the host fallback
+1325	MERGED	2026-10-30	stage boundary	[Perf][SM70] Qualify mHC row staging for large prefill batches
+1471	MERGED	2026-11-10	stage boundary	[SM70] Integrate repaired mHC dispatch, policy hashes and verifier kernels
+1542	MERGED	2026-11-17	stage boundary	[Bugfix][Loader] Reject float8 weights in unquantized vocabulary tables
+1439	MERGED	2026-11-09	stage boundary	[Frontend] Prepare parser and template reloads before publication
+1294	MERGED	2026-10-28	stage boundary	[Perf][PP] Overlap eager sends with explicit buffer ownership
+1537	MERGED	2026-11-17	stage boundary	[Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+1539	MERGED	2026-11-17	stage boundary	[Bugfix][Qwen4Exp] Select the complete MTP checkpoint shard set
+1481	CLOSED	2026-11-11	stage boundary	[Deploy][SM70] Enable multimodal and tool/reasoning parsers in the V1…
+1544	MERGED	2026-11-17	stage boundary	[Perf][SM70][Qwen3.8] Concurrent MTP4 verify, raw-scale NVFP4 MoE, VRAM & unlimited vision
+1503	MERGED	2026-11-14	stage boundary	[Bugfix][Sampler] Let the Triton top-k/top-p pivot searches cut below the smallest finite logit
+1007	MERGED	2026-10-06	stage boundary	[Core] Fuse Flash-Next HC boundaries on SM70
+1178	CLOSED	2026-10-11	stage boundary	[Doc] Audit KV acceleration coupling and plan INT8 reuse
+1185	CLOSED	2026-10-11	stage boundary	[Kernel] Share q16 grouped KV execution plans
+1240	MERGED	2026-10-20	stage boundary	[Bugfix][Core] Align Mamba replay boundaries without an EAGLE block drop
+1590	MERGED	2026-11-21	stage boundary	[Bugfix][SM70][GGUF] qwen3_5: honor sm70_gguf.embedding_storage when wiring embed_tokens quant_config
+1277	MERGED	2026-10-27	stage boundary	[Model] DeepSeek-V4.1-Flash on 4x V100: 512K packed KV, faster prefill, API launch
+1151	MERGED	2026-10-10	hidden state transfer	[Core] Bind remaining provider policies and resources to each engine
+1482	MERGED	2026-11-11	hidden state transfer	[Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+619	MERGED	2026-09-13	hidden state transfer	[Bugfix][Distributed] Pass --distributed-timeout-seconds to the NCCL subgroups
+1279	CLOSED	2026-10-27	hidden state transfer	[Perf][SM75] Turing prefill attention; overlap TP prefill all-reduces on GPUs without P2P

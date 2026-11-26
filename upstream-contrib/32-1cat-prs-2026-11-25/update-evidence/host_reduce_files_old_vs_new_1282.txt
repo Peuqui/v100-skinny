@@ -1,0 +1,1 @@
+(empty = byte-identical) git diff --stat fork/pr-triton-sm7x pr-triton-sm7x-r1125 -- csrc/host_reduce.cu vllm/distributed/device_communicators/host_reduce.py tests/distributed/test_host_reduce.py

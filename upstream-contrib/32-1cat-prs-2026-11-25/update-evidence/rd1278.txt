@@ -1,0 +1,283 @@
+1:  c78b18d91 ! 1:  aa9aa33b1 feat(sm75): tensor-core GEMM on QPN8 block-FP8 codes for Turing, M 9..512
+    @@ csrc/torch_bindings.cpp: TORCH_LIBRARY_EXPAND(TORCH_EXTENSION_NAME, ops) {
+            "z_out, Tensor(c!) b_out, Tensor(d!) a_out, Tensor input, Tensor codes, "
+     
+      ## tests/kernels/quantization/test_sm70_qpn8_block_fp8.py ##
+    -@@ tests/kernels/quantization/test_sm70_qpn8_block_fp8.py: def test_volta_turbomind_copy_follows_decode_rows(
+    -         layer
+    -     )
+    -     assert hasattr(layer, "_sm70_block_fp8_turbomind_packed_weight") == copy
+    +@@ tests/kernels/quantization/test_sm70_qpn8_block_fp8.py: def test_prefill_workspace_is_held_only_for_captured_prefill(
+    +     assert ((y.float() - expected).norm() / expected.norm()).item() < 1e-3
+    +     assert (primary in pool) == resident
+    +     clear_sm70_fp8_workspaces()
+     +
+     +
+     +@pytest.mark.parametrize("m", [1, 6, 8])
+    @@ tests/kernels/quantization/test_sm70_qpn8_block_fp8.py: def test_volta_turbomind
+     +    cublas_error = (torch.mm(x, dense).double() - expected).norm() / expected.norm()
+     +    assert error < 2 * cublas_error.item() + 1e-6
+     
+    - ## tests/quantization/test_block_fp8_qpn8_capabilities.py ##
+    -@@ tests/quantization/test_block_fp8_qpn8_capabilities.py: from vllm.platforms.interface import DeviceCapability
+    - def native_contract(monkeypatch):
+    -     monkeypatch.setattr(linear.current_platform, "_enum", PlatformEnum.CUDA)
+    -     monkeypatch.setattr(linear.current_platform, "is_cuda", lambda: True)
+    -+    # can_implement asks the capability of the worker's own device.
+    -+    monkeypatch.setattr(torch.accelerator, "current_device_index", lambda: 0)
+    -     monkeypatch.setattr(
+    --        linear.current_platform, "get_device_capability", lambda: DeviceCapability(7, 0)
+    -+        linear.current_platform,
+    -+        "get_device_capability",
+    -+        lambda device_id=0: DeviceCapability(7, 0),
+    -     )
+    -     ops = SimpleNamespace(
+    -         fp8_qpn8_prepare_sm70=lambda: None,
+    -
+      ## vllm/_sm70/linear.py ##
+     @@ vllm/_sm70/linear.py: if hasattr(torch.ops._C, "fp8_qpn8_gemm_sm70_out"):
+              return None
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: The kernel admits static E4
+      """
+      
+      from collections.abc import Sequence
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: from vllm.platforms import current_platform
+    - 
+    - # Block-scale QPN8 GEMM supports M up to this bound; larger M uses a fallback.
+    - _QPN8_MAX_M = 8
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: _QPN8_ROW_BLOCK = 32
+    + _QPN8_ROW_BLOCKS_MAX = 128
+    + _turbomind_headroom_cache: dict[tuple[int, int], bool] = {}
+    + _block_qpn8_prefill_workspaces: dict[tuple[int, int], torch.Tensor] = {}
+     +# Turing's tensor-core GEMM on the packed codes runs M above _QPN8_MAX_M up to
+     +# this bound. Up to M=8 the packed m8n8k4 GEMM is faster on most projection
+     +# shapes (CUDA-graph replay, Quadro RTX 8000, 2026-10-20: the tensor-core GEMM
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: from vllm.platforms import
+      logger = init_logger(__name__)
+      
+      
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: logger = init_logger(__name__)
+    -     schema="(Tensor x, Tensor codes, Tensor group_scales, int split_k, "
+    -     "int accumulator_chains, bool prefetch_codes, Tensor? fallback_weight=None, "
+    -     "Tensor? fallback_scales=None, int fallback_k_ld=0, int fallback_q_ld=0, "
+    --    "str[]? native_policy=None) -> Tensor",
+    -+    "str[]? native_policy=None, bool sm75_mma=False) -> Tensor",
+    - )
+    - def _qpn8_native_linear(
+    -     x: torch.Tensor,
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_write(
+          fallback_k_ld: int = 0,
+          fallback_q_ld: int = 0,
+          native_policy: list[str] | None = None,
+     +    sm75_mma: bool = False,
+    - ) -> torch.Tensor:
+    + ) -> None:
+          # The M decision stays inside the opaque op: a compiled graph covers a
+          # dynamic M range, so a Python branch traced at small M would be reused
+    -@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_write(
+                  prefetch_codes,
+              )
+    -         return out
+    +         return
+     +    if sm75_mma and x.shape[0] <= _SM75_MMA_MAX_M:
+     +        call_native(
+     +            sm70_ops.fp8_qpn8_mma_sm75_out,
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+     +            codes,
+     +            group_scales,
+     +        )
+    -+        return out
+    ++        return
+          if fallback_weight is not None:
+              call_native(
+                  sm70_ops.fp8_gemm_sm70_out,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_write(
+    +     schema="(Tensor x, Tensor codes, Tensor group_scales, int split_k, "
+    +     "int accumulator_chains, bool prefetch_codes, Tensor? fallback_weight=None, "
+    +     "Tensor? fallback_scales=None, int fallback_k_ld=0, int fallback_q_ld=0, "
+    +-    "str[]? native_policy=None) -> Tensor",
+    ++    "str[]? native_policy=None, bool sm75_mma=False) -> Tensor",
+    + )
+    + def _qpn8_native_linear(
+    +     x: torch.Tensor,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +     fallback_k_ld: int = 0,
+    +     fallback_q_ld: int = 0,
+    +     native_policy: list[str] | None = None,
+    ++    sm75_mma: bool = False,
+    + ) -> torch.Tensor:
+    +     out = x.new_empty((x.shape[0], codes.shape[1]))
+    +     _qpn8_native_linear_write(
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +         fallback_k_ld,
+    +         fallback_q_ld,
+    +         native_policy,
+    ++        sm75_mma,
+    +     )
+    +     return out
+    + 
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear(
+    +     "int split_k, int accumulator_chains, bool prefetch_codes, "
+    +     "Tensor? fallback_weight=None, Tensor? fallback_scales=None, "
+    +     "int fallback_k_ld=0, int fallback_q_ld=0, "
+    +-    "str[]? native_policy=None) -> ()",
+    ++    "str[]? native_policy=None, bool sm75_mma=False) -> ()",
+    + )
+    + def _qpn8_native_linear_out(
+    +     out: torch.Tensor,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_out(
+    +     fallback_k_ld: int = 0,
+    +     fallback_q_ld: int = 0,
+    +     native_policy: list[str] | None = None,
+    ++    sm75_mma: bool = False,
+    + ) -> None:
+    +     _qpn8_native_linear_write(
+    +         out,
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_out(
+    +         fallback_k_ld,
+    +         fallback_q_ld,
+    +         native_policy,
+    ++        sm75_mma,
+    +     )
+    + 
+    + 
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_fake(
+          fallback_k_ld=0,
+          fallback_q_ld=0,
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_fak
+      ):
+          return x.new_empty((x.shape[0], codes.shape[1]))
+      
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: def _qpn8_native_linear_out_fake(
+    +     fallback_k_ld=0,
+    +     fallback_q_ld=0,
+    +     native_policy=None,
+    ++    sm75_mma=False,
+    + ):
+    +     return None
+    + 
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+              n, k = config.weight_shape
+              if n <= 0 or k <= 0 or n % 128 or k % 128:
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+     +            "fp8_qpn8_prefill_sm70_out",
+              ]
+     +        # The worker's own device: on a node that mixes card generations,
+    -+        # device 0 answers for another card.
+    -+        capability = current_platform.get_device_capability(
+    -+            torch.accelerator.current_device_index()
+    -+        )
+    ++        # device 0 answers for another card. Without an index the platform
+    ++        # resolves it without creating a CUDA context (selection also runs
+    ++        # in processes that must not hold one).
+    ++        capability = current_platform.get_device_capability()
+     +        if capability is not None and capability.to_int() == 75:
+     +            required.append("fp8_qpn8_mma_sm75_out")
+     +        missing = [name for name in required if not hasattr(torch.ops._C, name)]
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+                  layer._qpn8_fallback_q_ld = int(metadata[1].item())
+     -        if hasattr(layer, "_qpn8_fallback_k_ld"):
+     +        if layer._qpn8_sm75_mma:
+    ++            if (
+    ++                codes.is_cuda
+    ++                and not torch.cuda.is_current_stream_capturing()
+    ++                and _graphs_capture_dense_prefill(_SM75_MMA_MAX_M)
+    ++            ):
+    ++                _ensure_block_qpn8_prefill_workspace(codes.device, k_dim * n_dim)
+     +            logger.info_once(
+     +                "Block FP8 QPN8 on SM75: M=1..8 uses the packed decode GEMM, "
+     +                "M=9..512 the tensor-core GEMM on the packed codes, larger M "
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+                  logger.info_once(
+                      "Block FP8 QPN8 native GEMM supports M=1..8; larger M uses a "
+                      "second, TurboMind-packed copy of each weight. Set "
+    +@@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+    +                 getattr(layer, "_qpn8_fallback_k_ld", 0),
+    +                 getattr(layer, "_qpn8_fallback_q_ld", 0),
+    +                 self.native_ops.arguments,
+    ++                layer._qpn8_sm75_mma,
+    +             )
+    +             if bias is not None:
+    +                 out_2d.add_(bias)
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+                  getattr(layer, "_qpn8_fallback_k_ld", 0),
+                  getattr(layer, "_qpn8_fallback_q_ld", 0),
+2:  502fc1f73 = 2:  802e496b6 perf(sm75): read the QPN8 block scale with the codes
+3:  fd0266731 ! 3:  62f10a052 perf(sm75): fit the QPN8 decode split-K to Turing's occupancy
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: from vllm.model_executor.ke
+     +from vllm.model_executor.layers.quantization.sm70_turbomind import (
+     +    fp8_qpn8_occupancy_split_k,
+     +)
+    + from vllm.model_executor.layers.quantization.utils import sm70_layer_workspaces
+      from vllm.model_executor.layers.quantization.utils.quant_utils import (
+          kFp8Static128BlockSym,
+    - )
+     @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMMLinearKernel(TurboMindFp8LinearKernel):
+    -                 "FP16 prefill, which needs no second copy of the weights."
+    +                 "shared workspace when CUDA graphs capture such batches)."
+                  )
+              layer._qpn8_out_features = n
+     -        layer._qpn8_cfg = _sm70_fp8_qpn8_config(k_dim, n_dim, False)
+    @@ vllm/model_executor/kernels/linear/qpn/fp8_block.py: class QPN8Fp8BlockScaledMML
+     +            accumulator_chains,
+     +            prefetch_codes,
+     +        )
+    -         layer.sm70_fp8_turbomind = True
+    -         # The startup memory profile accounts for both packed layouts on
+    -         # Volta. Raw checkpoint weights are no longer resident.
+    +         if (
+    +             self._is_sm70_gated_silu_layer(layer)
+    +             and bool(self.policy.gated_silu)
+     
+      ## vllm/model_executor/kernels/linear/qpn/pre_ampere.py ##
+     @@ vllm/model_executor/kernels/linear/qpn/pre_ampere.py: def _turing_fp8_qpn8_linear(
+4:  33a8965d6 = 4:  ff1dbb77a perf(moe): bound the skinny grouped MoE grid by the expert count
+5:  c805c33a4 ! 5:  d5d39e189 perf(moe): grouped skinny MoE on m16n8k8 fragments for SM75+
+    @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: _CUDA_GRID_Y_LI
+     +    M16N8K8 = 1
+     +
+     +
+    -+def qpn_fragment_order(device_id: int) -> QpnFragmentOrder:
+    -+    """The order the given card's kernels read: m16n8k8 where the card has it."""
+    ++def qpn_fragment_order(device_id: int | None = None) -> QpnFragmentOrder:
+    ++    """The order the given card's kernels read: m16n8k8 where the card has it.
+    ++
+    ++    Without an index the platform answers for the device this process runs on,
+    ++    without creating a CUDA context (kernel selection runs in processes that
+    ++    must not hold one).
+    ++    """
+     +    if current_platform.has_device_capability(75, device_id=device_id):
+     +        return QpnFragmentOrder.M16N8K8
+     +    return QpnFragmentOrder.M8N8K4
+    @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: class Nvfp4Skin
+     -        for name, k in (
+     -            ("hidden", moe_config.hidden_dim),
+     -            ("intermediate", moe_config.intermediate_size_per_partition),
+    -+        order = qpn_fragment_order(torch.accelerator.current_device_index())
+    ++        order = qpn_fragment_order()
+     +        for name, k, reduces_hidden in (
+     +            ("hidden", moe_config.hidden_dim, True),
+     +            ("intermediate", moe_config.intermediate_size_per_partition, False),
+6:  ca64e433f ! 6:  c57f8b720 perf(moe): two column tiles and eight split-K warps for Volta too
+    @@ tests/kernels/moe/test_skinny_sm70_moe.py: def test_moe_qpn_mxfp4_mode_matches_t
+              )
+     
+      ## vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py ##
+    -@@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: def qpn_fragment_order(device_id: int) -> QpnFragmentOrder:
+    +@@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: def qpn_fragment_order(device_id: int | None = None) -> QpnFragmentOrder:
+          return QpnFragmentOrder.M8N8K4
+      
+      
+    @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: def qpn_fragmen
+     @@ vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py: class Nvfp4SkinnySm70Experts(Nvfp4QuantizationEmulationTritonExperts):
+              if not kernel_config.sm70_skinny_moe:
+                  return False, "disabled by kernel_config.sm70_skinny_moe"
+    -         order = qpn_fragment_order(torch.accelerator.current_device_index())
+    +         order = qpn_fragment_order()
+     -        for name, k, reduces_hidden in (
+     -            ("hidden", moe_config.hidden_dim, True),
+     -            ("intermediate", moe_config.intermediate_size_per_partition, False),
+7:  c15d1446f = 7:  632702cd3 test(moe): cover skewed prefill routing in the skinny MoE dispatch test
+-:  --------- > 8:  4ab593ca3 fix(qpn8): keep Turing gate_up on the tensor-core GEMM beside the fused gated route

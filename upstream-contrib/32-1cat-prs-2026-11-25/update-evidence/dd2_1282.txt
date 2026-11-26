@@ -1,0 +1,452 @@
+2114,2115c2114
+< +# SPDX-License-Identifier: Apache-2.0
+< +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+---
+> -"""The host-memory two-rank all-reduce gives NCCL's bits, eagerly and in a graph."""
+2118,2119d2116
+< +
+< +import os
+2121,2126d2117
+< +
+< +import pytest
+< +import torch
+< +import torch.distributed as dist
+< +import torch.multiprocessing as mp
+< +
+2129,2133d2119
+< +from vllm.distributed.device_communicators.host_reduce import (
+< +    HostReduceCommunicator,
+< +)
+< +
+< +SIZES = [8, 4096, 5120, 3 * 5120, 8 * 5120, 131072]
+2139,2196d2124
+< +def _worker(rank: int, port: int, failures) -> None:
+< +    os.environ["NCCL_P2P_DISABLE"] = "1"
+< +    torch.accelerator.set_device_index(rank)
+< +    device = torch.device("cuda", rank)
+< +    init = f"tcp://127.0.0.1:{port}"
+< +    dist.init_process_group("nccl", init_method=init, rank=rank, world_size=2)
+< +    cpu_group = dist.new_group(backend="gloo")
+< +    comm = HostReduceCommunicator(cpu_group, device, "tp:0")
+< +    try:
+< +        assert comm.status["enabled"], comm.status
+< +        generator = torch.Generator(device=device).manual_seed(1234 + rank)
+< +        for size in SIZES:
+< +            for _ in range(3):
+< +                x = torch.randn(size, generator=generator, device=device)
+< +                x = x.half()
+< +                expected = x.clone()
+< +                dist.all_reduce(expected)
+< +                got = comm.all_reduce(x)
+< +                assert got is not None
+< +                assert torch.equal(got, expected), size
+< +        static = torch.randn(5120, generator=generator, device=device).half()
+< +        graph = torch.cuda.CUDAGraph()
+< +        with torch.cuda.graph(graph):
+< +            graph_out = comm.all_reduce(static)
+< +        for _ in range(4):
+< +            static.copy_(torch.randn(5120, device=device).half())
+< +            expected = static.clone()
+< +            dist.all_reduce(expected)
+< +            graph.replay()
+< +            torch.accelerator.synchronize()
+< +            assert torch.equal(graph_out, expected)
+< +        assert comm.all_reduce(torch.ones(3, device=device).half()) is None
+< +        assert comm.all_reduce(torch.ones(8, device=device)) is None
+< +    except Exception as exc:  # noqa: BLE001 - reported to the parent
+< +        failures.put(f"rank {rank}: {exc!r}")
+< +        raise
+< +    finally:
+< +        comm.close()
+< +        dist.destroy_process_group()
+< +
+< +
+< +@pytest.mark.skipif(
+< +    torch.accelerator.device_count() < 2
+< +    or not hasattr(torch.ops._C, "host_reduce_open"),
+< +    reason="needs two GPUs and the native host all-reduce",
+< +)
+< +def test_host_reduce_matches_nccl():
+< +    import socket
+< +
+< +    with socket.socket() as s:
+< +        s.bind(("127.0.0.1", 0))
+< +        port = s.getsockname()[1]
+< +    ctx = mp.get_context("spawn")
+< +    failures = ctx.Queue()
+< +    mp.spawn(_worker, args=(port, failures), nprocs=2, join=True)
+< +    assert failures.empty()
+< +
+< +
+2782a2711,2718
+> -    assert getattr(layer, "sm70_fp8_gated_silu", False)
+> +    if torch.cuda.get_device_capability() == (7, 5):
+> +        # Turing serves gate_up_proj through the tensor-core GEMM; only Volta
+> +        # fuses the gated route.
+> +        assert not getattr(layer, "sm70_fp8_gated_silu", False)
+> +        assert kernel.apply_fused_silu_and_mul(layer, x) is None
+> +        return
+> +    assert getattr(layer, "sm70_fp8_gated_silu", False)
+3047a2984,2985
+> -        q, bits.view(torch.float8_e4m3fn), scales, weights
+> +        q, bits.view(torch.float8_e4m3fn), scales, weights, triton_tensor_cores=False
+3364,3368c3302,3325
+< diff --git a/tests/quantization/test_block_fp8_qpn8_capabilities.py b/tests/quantization/test_block_fp8_qpn8_capabilities.py
+< +    # can_implement asks the capability of the worker's own device.
+< +    monkeypatch.setattr(torch.accelerator, "current_device_index", lambda: 0)
+< -        linear.current_platform, "get_device_capability", lambda: DeviceCapability(7, 0)
+< +        linear.current_platform,
+---
+> diff --git a/tests/quantization/test_sm70_fp8_prefill_exact_dense.py b/tests/quantization/test_sm70_fp8_prefill_exact_dense.py
+> +
+> +
+> +@pytest.mark.parametrize(
+> +    ("capability", "fused_gated"), [((7, 0), True), ((7, 5), False)]
+> +)
+> +def test_block_qpn8_gate_up_fuses_the_gated_route_except_on_turing(
+> +    monkeypatch, capability, fused_gated
+> +):
+> +    # Turing serves gate_up_proj rows above M=8 through the tensor-core GEMM,
+> +    # which the fused gated route has no counterpart for; only Volta fuses.
+> +    from vllm.model_executor.kernels.linear.qpn import fp8_block
+> +    from vllm.model_executor.kernels.linear.scaled_mm.ScaledMMLinearKernel import (
+> +        FP8ScaledMMLinearLayerConfig,
+> +    )
+> +    from vllm.model_executor.layers.quantization.utils.quant_utils import (
+> +        kFp8Dynamic128Sym,
+> +        kFp8Static128BlockSym,
+> +    )
+> +    from vllm.platforms.interface import DeviceCapability
+> +
+> +    n, k = 256, 128
+> +    monkeypatch.setattr(
+> +        fp8_block.current_platform,
+3370c3327,3382
+< +        lambda device_id=0: DeviceCapability(7, 0),
+---
+> +        lambda device_id=None: DeviceCapability(*capability),
+> +    )
+> +    monkeypatch.setattr(
+> +        torch.ops._C, "fp8_qpn8_gated_pair_sm70_out", object(), raising=False
+> +    )
+> +    monkeypatch.setattr(
+> +        fp8_block,
+> +        "_sm70_fp8_qpn8_config",
+> +        lambda k_dim, n_dim, gated: (8, 2, True),
+> +    )
+> +    monkeypatch.setattr(
+> +        fp8_block, "fp8_qpn8_occupancy_split_k", lambda k, n, split_k, device: split_k
+> +    )
+> +    monkeypatch.setattr(
+> +        fp8_block.QPN8Fp8BlockScaledMMLinearKernel,
+> +        "_keep_volta_turbomind_copy",
+> +        lambda self, device=None: False,
+> +    )
+> +    # The operator and device probes of can_implement need a GPU; only the
+> +    # preparation is under test.
+> +    monkeypatch.setattr(
+> +        fp8_block.QPN8Fp8BlockScaledMMLinearKernel,
+> +        "can_implement",
+> +        classmethod(lambda cls, config: (True, None)),
+> +    )
+> +    kernel = fp8_block.QPN8Fp8BlockScaledMMLinearKernel(
+> +        FP8ScaledMMLinearLayerConfig(
+> +            weight_quant_key=kFp8Static128BlockSym,
+> +            activation_quant_key=kFp8Dynamic128Sym,
+> +            weight_shape=(n, k),
+> +            input_dtype=torch.float16,
+> +            out_dtype=torch.float16,
+> +        )
+> +    )
+> +    kernel.policy.gated_silu = True
+> +    kernel.native_ops = SimpleNamespace(
+> +        fp8_qpn8_prepare_sm70=lambda weight, scales: (
+> +            torch.zeros((k, n), dtype=torch.uint8),
+> +            torch.zeros(1),
+> +        )
+> +    )
+> +    layer = torch.nn.Module()
+> +    layer.prefix = "model.layers.0.mlp.gate_up_proj"
+> +    layer.output_partition_sizes = [n // 2, n // 2]
+> +    layer.weight = torch.nn.Parameter(
+> +        torch.zeros((n, k), dtype=torch.float8_e4m3fn), requires_grad=False
+> +    )
+> +    layer.weight_scale_inv = torch.nn.Parameter(
+> +        torch.ones(n // 128, k // 128), requires_grad=False
+> +    )
+> +
+> +    kernel.process_weights_after_loading(layer)
+> +
+> +    assert layer._qpn8_sm75_mma == (capability == (7, 5))
+> +    assert getattr(layer, "sm70_fp8_gated_silu", False) == fused_gated
+> +    assert hasattr(layer, "_qpn8_gated_cfg") == fused_gated
+3826,3835c3838
+< +@config
+< +class HostReduceConfig:
+< +    """Two-rank FP16 all-reduce through pinned host memory for GPU pairs without
+< +    peer access; exact, the same bits as NCCL's two-rank sum."""
+< +
+< +    enabled: bool = True
+< +    """Admit the operator for two-rank groups whose GPUs NCCL cannot connect
+< +    peer to peer."""
+< +
+< +    max_bytes: int = Field(default=262144, gt=0, le=4194304, multiple_of=16)
+---
+> -    """Largest payload; larger all-reduces stay on NCCL."""
+3854,3855d3856
+< +
+< +
+3892,3895d3892
+< +
+< +    host_reduce: HostReduceConfig = Field(default_factory=HostReduceConfig)
+< +    """Two-rank host-memory all-reduce policy, resolved from peer access."""
+< +
+3902,3903d3898
+< +            # Collective transport chosen outside the compiled graph.
+< +            "host_reduce",
+3911,3932d3905
+< diff --git a/vllm/distributed/device_communicators/cuda_communicator.py b/vllm/distributed/device_communicators/cuda_communicator.py
+< +        self.host_reduce_comm = None
+< +        if "tp" in self.unique_name and self.world_size == 2:
+< +            from .host_reduce import HostReduceCommunicator
+< +
+< +            self.host_reduce_comm = HostReduceCommunicator(
+< +                self.cpu_group, self.device, self.unique_name
+< +            )
+< +            "HOST_REDUCE",
+< +        if (
+< +            self.host_reduce_comm is not None
+< +            and self.host_reduce_comm.status["enabled"]
+< +        ):
+< +            enabled_ar_backends.append("HOST_REDUCE")
+< +        if self.host_reduce_comm is not None:
+< +            host_out = self.host_reduce_comm.all_reduce(input_)
+< +            if host_out is not None:
+< +                self._collective_trace.record("host_reduce", input_)
+< +                return host_out
+< +        host_reduce_comm = getattr(self, "host_reduce_comm", None)
+< +        if host_reduce_comm is not None:
+< +            host_reduce_comm.close()
+3934,3949c3907
+< +# SPDX-License-Identifier: Apache-2.0
+< +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+< +"""Two-rank FP16 all-reduce through pinned host memory (csrc/host_reduce.cu)
+< +for GPU pairs that NCCL cannot connect peer to peer."""
+< +
+< +import os
+< +import uuid
+< +from typing import Any
+< +
+< +import torch
+< +import torch.distributed as dist
+< +
+< +from vllm.config import get_current_vllm_config_or_none
+< +from vllm.config.kernel import HostReduceConfig
+< +from vllm.platforms import current_platform
+< +
+---
+> -_OPS = ("host_reduce_open", "host_reduce_close", "host_reduce_out")
+3956,4012c3914
+< +
+< +
+< +def _nccl_peer_access(group, device: torch.device) -> bool:
+< +    """Whether NCCL may connect the two ranks peer to peer; NCCL_P2P_DISABLE
+< +    turns it off regardless of the hardware."""
+< +    if os.environ.get("NCCL_P2P_DISABLE", "0") not in ("", "0"):
+< +        return False
+< +    local = device.index
+< +    if local is None:
+< +        local = torch.accelerator.current_device_index()
+< +    uuids = [""] * 2
+< +    dist.all_gather_object(uuids, current_platform.get_device_uuid(local), group=group)
+< +    visible = {
+< +        current_platform.get_device_uuid(i): i
+< +        for i in range(torch.accelerator.device_count())
+< +    }
+< +    peer = visible.get(uuids[1 - dist.get_rank(group)])
+< +    # A peer outside this worker's visible devices cannot be reached directly.
+< +    return peer is not None and torch.cuda.can_device_access_peer(local, peer)
+< +
+< +
+< +class HostReduceCommunicator:
+< +    def __init__(self, group, device: torch.device, name: str):
+< +        self.group = group
+< +        self.device = device
+< +        self.rank = dist.get_rank(group)
+< +        self.handle: int | None = None
+< +        self.status: dict[str, Any] = {
+< +            "enabled": False,
+< +            "reason": None,
+< +            "scope": "collective_capability",
+< +        }
+< +        cfg = get_current_vllm_config_or_none()
+< +        self.policy = cfg.kernel_config.host_reduce if cfg else HostReduceConfig()
+< +        reason = None
+< +        if not self.policy.enabled:
+< +            reason = "disabled_by_configuration"
+< +        elif dist.get_world_size(group) != 2:
+< +            reason = "requires_two_ranks"
+< +        elif not current_platform.is_cuda():
+< +            reason = "requires_cuda"
+< +        elif missing := [op for op in _OPS if not hasattr(torch.ops._C, op)]:
+< +            reason = "operator_missing:" + ",".join(missing)
+< +        if dist.get_world_size(group) == 2:
+< +            reasons: list[str | None] = [None] * 2
+< +            dist.all_gather_object(reasons, reason, group=group)
+< +            reason = next((r for r in reasons if r is not None), None)
+< +            if reason is None:
+< +                access = [False] * 2
+< +                dist.all_gather_object(
+< +                    access, _nccl_peer_access(group, device), group=group
+< +                )
+< +                if any(access):
+< +                    reason = "peer_access_available"
+< +        if reason is None:
+< +            self._open()
+< +        self.status.update(
+---
+> -            enabled=reason is None, reason=reason, max_bytes=self.policy.max_bytes
+4017,4029c3919
+< +        )
+< +        if cfg:
+< +            cfg.kernel_config.collective_kernel_selections[name] = self.status
+< +
+< +    def _open(self) -> None:
+< +        # Both ranks map one shared file; it is unlinked once both hold it, so
+< +        # nothing outlives the processes.
+< +        paths = [f"/dev/shm/vllm_host_reduce_{uuid.uuid4().hex}"]
+< +        dist.broadcast_object_list(
+< +            paths, src=dist.get_global_rank(self.group, 0), group=self.group
+< +        )
+< +        with torch.accelerator.device_index(self.device.index):
+< +            self.handle = torch.ops._C.host_reduce_open(
+---
+> -                paths[0], self.rank, self.policy.max_bytes
+4034,4047c3924
+< +            )
+< +        dist.barrier(group=self.group)
+< +        if self.rank == 0:
+< +            os.unlink(paths[0])
+< +        self.status.update(dtype="float16", transport="pinned_host_memory")
+< +
+< +    def rejection_reason(self, tensor: torch.Tensor) -> str | None:
+< +        if not self.status["enabled"]:
+< +            return self.status["reason"]
+< +        if tensor.dtype != torch.float16:
+< +            return "fp16_input_required"
+< +        if tensor.device != self.device or not tensor.is_contiguous():
+< +            return "requires_contiguous_local_cuda_input"
+< +        nbytes = tensor.numel() * tensor.element_size()
+---
+> -        if not 0 < nbytes <= self.policy.max_bytes or nbytes % 16:
+4050d3926
+< +            return "payload_outside_channel"
+4056,4063c3932
+< +        if tensor.data_ptr() % 16:
+< +            return "requires_16_byte_alignment"
+< +        return None
+< +
+< +    def all_reduce(self, tensor: torch.Tensor) -> torch.Tensor | None:
+< +        if self.rejection_reason(tensor) is not None:
+< +            return None
+< +        output = torch.empty_like(tensor)
+---
+> -        torch.ops._C.host_reduce_out(output, tensor, self.handle)
+4068,4073d3936
+< +        return output
+< +
+< +    def close(self) -> None:
+< +        if self.handle is not None:
+< +            torch.ops._C.host_reduce_close(self.handle)
+< +            self.handle = None
+4074a3938
+> +    group._reject_overlapped_fused_norm()
+4134,4135d3997
+< -    "str[]? native_policy=None) -> Tensor",
+< +    "str[]? native_policy=None, bool sm75_mma=False) -> Tensor",
+4146c4008,4017
+< +        return out
+---
+> +        return
+> -    "str[]? native_policy=None) -> Tensor",
+> +    "str[]? native_policy=None, bool sm75_mma=False) -> Tensor",
+> +    sm75_mma: bool = False,
+> +        sm75_mma,
+> -    "str[]? native_policy=None) -> ()",
+> +    "str[]? native_policy=None, bool sm75_mma=False) -> ()",
+> +    sm75_mma: bool = False,
+> +        sm75_mma,
+> +    sm75_mma=False,
+4161,4164c4032,4035
+< +        # device 0 answers for another card.
+< +        capability = current_platform.get_device_capability(
+< +            torch.accelerator.current_device_index()
+< +        )
+---
+> +        # device 0 answers for another card. Without an index the platform
+> +        # resolves it without creating a CUDA context (selection also runs
+> +        # in processes that must not hold one).
+> +        capability = current_platform.get_device_capability()
+4172a4044,4049
+> +            if (
+> +                codes.is_cuda
+> +                and not torch.cuda.is_current_stream_capturing()
+> +                and _graphs_capture_dense_prefill(_SM75_MMA_MAX_M)
+> +            ):
+> +                _ensure_block_qpn8_prefill_workspace(codes.device, k_dim * n_dim)
+4187a4065,4071
+> +        # Turing serves gate_up_proj rows above M=8 through the tensor-core
+> +        # GEMM; the fused gated route has no such path and would rebuild the
+> +        # dense weight for them.
+> -            self._is_sm70_gated_silu_layer(layer)
+> +            not layer._qpn8_sm75_mma
+> +            and self._is_sm70_gated_silu_layer(layer)
+> +                layer._qpn8_sm75_mma,
+4702,4703c4586,4592
+< +def qpn_fragment_order(device_id: int) -> QpnFragmentOrder:
+< +    """The order the given card's kernels read: m16n8k8 where the card has it."""
+---
+> +def qpn_fragment_order(device_id: int | None = None) -> QpnFragmentOrder:
+> +    """The order the given card's kernels read: m16n8k8 where the card has it.
+> +
+> +    Without an index the platform answers for the device this process runs on,
+> +    without creating a CUDA context (kernel selection runs in processes that
+> +    must not hold one).
+> +    """
+4804c4693
+< +        order = qpn_fragment_order(torch.accelerator.current_device_index())
+---
+> +        order = qpn_fragment_order()
+5440,5443c5329,5332
+< +# The prefill epilogue reads fp16 scores. Eight keys per thread make 16-byte
+< +# loads; at two per thread (BLOCK_K 256 over 4 warps) it read the score tile at
+< +# 105 GB/s on RTX 8000 and 184 GB/s on V100, against 562 and 782 GB/s here.
+< +# The fp32 decode scores already load 8 bytes per thread with the shared one.
+---
+> +# The prefill epilogue reads eight keys per thread, 32 bytes of the fp32 tile.
+> +# Measured on the former fp16 tile (16-byte loads): at two keys per thread
+> +# (BLOCK_K 256 over 4 warps) it read the tile at 105 GB/s on RTX 8000 and
+> +# 184 GB/s on V100, against 562 and 782 GB/s with eight.
+5857,5876d5745
+< diff --git a/vllm/v1/attention/backends/flash_v100/dense_prefill.py b/vllm/v1/attention/backends/flash_v100/dense_prefill.py
+< -    return _ops.get_flash_dense_forward() is not None
+< +    return _ops.flash_dense_forward_available()
+< diff --git a/vllm/v1/attention/backends/flash_v100/ops.py b/vllm/v1/attention/backends/flash_v100/ops.py
+< -def get_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+< +def _load_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+< -    return bind_attention_operation(_flash_attn_forward_lse)
+< +    return _flash_attn_forward_lse
+< +
+< +
+< +def get_flash_dense_forward() -> Callable[..., tuple[torch.Tensor, ...]] | None:
+< +    """The LSE-capable forward entry, bound to this engine's runtime."""
+< +    return bind_attention_operation(_load_flash_dense_forward())
+< +
+< +
+< +def flash_dense_forward_available() -> bool:
+< +    """Whether the wheel ships the entry. Backend selection asks this while the
+< +    model is built, before the engine binds its Flash-V100 runtime, so it must
+< +    not bind."""
+< +    return _load_flash_dense_forward() is not None
+6120d5988
+< +        max_seq_len_np=requests(input_batch.max_seq_len_np),

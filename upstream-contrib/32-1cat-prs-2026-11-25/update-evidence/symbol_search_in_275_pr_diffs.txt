@@ -1,0 +1,387 @@
+== #1278: 39 added symbols, 38 found in other PR diffs
+   QPN8_COLUMNS_PER_CTA: #1448, #1454, #1455
+   QPN8_OCCUPANCY_MAX_M: #1448, #1454, #1455
+   QpnFragmentOrder: #1448, #1454, #1455
+   SM75_MMA_MAX_M: #1448, #1454, #1455
+   __launch_bounds__: #897, #983, #1092, #1102, #1125, #1292, #1298, #1369, #1372, #1384, #1385, #1386, #1388, #1390, #1448, #1449, #1450, #1451, #1453, #1454, #1455, #1456, #1470, #1472, #1478, #1491, #1518, #1521, #1524, #1525, #1544, #1552, #1565, #1567, #1570, #1587, #1588, #1594, #1595, #1596, #1607, #1619, #1625
+   _fp8_qpn8_mma_sm75_out_fake: #1448, #1454, #1455
+   _fragment_tables: #1448, #1454, #1455
+   _skinny_experts: #1448, #1454, #1455
+   fp4x8_to_half2x4: #1448, #1454, #1455
+   fp8_qpn8_mma_sm75_kernel: #1448, #1454, #1455
+   fp8_qpn8_mma_sm75_out: #1448, #1454, #1455
+   fp8_qpn8_occupancy_split_k: #1448, #1454, #1455
+   fp8_qpn8_split_reduce_sm75_kernel: #1448, #1454, #1455
+   fp8x8_to_half2x4_fast: #1448, #1454, #1455
+   grouped_splitk: #1030, #1031, #1448, #1454, #1455
+   launch_fp8_qpn8_mma_sm75: #1448, #1454, #1455
+   ldmatrix_x4: #1448, #1454, #1455
+   m16n8k8_fp4_column: #1448, #1454, #1455
+   m16n8k8_fp4_k: #1448, #1454, #1455
+   mma_m16n8k8: #1448, #1454, #1455
+   qpn8_col_from_lane: #1157, #1448, #1454, #1455, #1469
+   qpn_fragment_order: #1448, #1454, #1455
+   resident_ctas_per_sm: #1448, #1454, #1455
+   test_both_serving_paths_match_the_reference: #1448, #1454, #1455
+   test_fragment_tables_place_every_code_and_scale_once: #1448, #1454, #1455
+   test_grouped_launch_rejects_unsupported_alignment: #1448, #1454, #1455
+   test_grouped_launch_uses_actual_alignment: #1448, #1454, #1455
+   test_large_mxfp4_dispatch_matches_reference: #1448, #1454, #1455
+   test_m16n8k8_scale_bytes_follow_their_lanes_columns: #1448, #1454, #1455
+   test_m16n8k8_split_keeps_sixteen_groups_per_warp_where_it_can: #1448, #1454, #1455
+   test_m8n8k4_split_prefers_eight_warps: #1448, #1454, #1455
+   test_moe_qpn_mxfp4_mode_matches_the_checkpoint_scales: #1448, #1454, #1455
+   test_qpn8_per_tensor_launch_config_is_the_table_split: #1448, #1454, #1455
+   test_qpn8_per_tensor_op_picks_the_split_by_m: #1448, #1454, #1455
+   test_qpn8_split_k_follows_device_occupancy: #1448, #1454, #1455
+   test_qpn_prepack_only_permutes_the_checkpoint_bytes: #1448, #1454, #1455
+   test_turing_decode_keeps_the_packed_gemm: #1448, #1454, #1455
+   test_turing_large_m_runs_the_tensor_core_gemm: #1448, #1454, #1455
+== #1282: 139 added symbols, 139 found in other PR diffs
+   COPY_MAX_BYTES: #1454, #1455
+   COPY_SIZES: #1454, #1455
+   DEVICE_INDEX: #1454, #1455
+   FMA_SCORE_TILE: #1454, #1455
+   GATHER_SLOTS: #1454, #1455
+   HALF_BUILDER_IDS: #1454, #1455
+   MicroBatchAborted: #1454, #1455
+   NUM_METADATA_BUILDERS: #1454, #1455
+   PREFILL_EPILOGUE_BLOCK_K: #1454, #1455
+   PREFILL_EPILOGUE_WARPS: #1454, #1455
+   PrefillOverlap: #1454, #1455
+   SMALL_FMA_MAX_TOKENS: #1454, #1455
+   TC_PRENORM_BLOCK_K: #1454, #1455
+   TC_PRENORM_BLOCK_M: #1454, #1455
+   TC_PRENORM_BLOCK_N: #1454, #1455
+   TC_PRENORM_K_BLOCKS_PER_STEP: #1454, #1455
+   TC_PRENORM_SPLITS: #1454, #1455
+   TC_PRENORM_WARPS: #1454, #1455
+   TC_TOKENS_PER_PASS: #1454, #1455
+   TRITON_MIN_ROWS_PER_EXPERT: #1454, #1455
+   _AuxToyModel: #1454, #1455
+   _ScoreTile: #1454, #1455
+   _ToyModel: #1454, #1455
+   __init__: #241, #897, #959, #979, #983, #1020, #1021, #1031, #1102, #1159, #1166, #1199, #1208, #1245, #1261, #1271, #1297, #1300, #1320, #1325, #1370, #1371, #1372, #1373, #1374, #1376, #1377, #1379, #1381, #1383, #1384, #1385, #1386, #1387, #1388, #1389, #1390, #1398, #1429, #1442, #1443, #1445, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1457, #1458, #1460, #1461, #1463, #1464, #1468, #1469, #1470, #1471, #1472, #1473, #1477, #1479, #1486, #1494, #1495, #1497, #1518, #1519, #1529, #1539, #1540, #1552, #1557, #1561, #1562, #1570, #1584, #1585, #1586, #1587, #1593, #1594, #1598, #1599, #1600, #1607, #1613, #1619, #1621
+   __launch_bounds__: #897, #983, #1092, #1102, #1125, #1292, #1298, #1369, #1372, #1384, #1385, #1386, #1388, #1390, #1448, #1449, #1450, #1451, #1453, #1454, #1455, #1456, #1470, #1472, #1478, #1491, #1518, #1521, #1524, #1525, #1544, #1552, #1565, #1567, #1570, #1587, #1588, #1594, #1595, #1596, #1607, #1619, #1625
+   __post_init__: #241, #1245, #1284, #1301, #1355, #1373, #1374, #1382, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1458, #1461, #1464, #1468, #1469, #1470, #1472, #1473, #1476, #1479, #1486, #1525, #1540, #1551, #1552, #1595
+   _align_split: #1454, #1455
+   _all_reduce: #1031, #1208, #1245, #1284, #1292, #1301, #1370, #1376, #1377, #1379, #1382, #1386, #1388, #1389, #1448, #1449, #1450, #1452, #1453, #1454, #1455, #1456, #1470, #1472, #1478, #1524, #1570, #1598, #1600, #1619, #1621
+   _assert_close_to_max: #1454, #1455
+   _chunk_batch: #1454, #1455
+   _compiler: #1454, #1455, #1461
+   _copy_engine_worker: #1454, #1455
+   _dot_probe_kernel: #1454, #1455
+   _e2m1x2_to_f16: #1454, #1455
+   _e4m3_bits_as_scaled_fp16: #1454, #1455
+   _expert_weights: #1031, #1450, #1454, #1455, #1595
+   _fp16_ulp: #1454, #1455
+   _gather_rows_kernel: #1369, #1454, #1455, #1595
+   _generator: #241, #1313, #1314, #1317, #1318, #1437, #1440, #1443, #1454, #1455, #1458, #1459, #1462, #1464, #1525, #1529, #1559
+   _grouped_projection: #1454, #1455
+   _groups_per_block: #1454, #1455
+   _lanes_to_columns: #1454, #1455
+   _mhc_prenorm_tensor_core_kernel: #1454, #1455
+   _mhc_split_sum: #1454, #1455
+   _mhc_split_sum_kernel: #1454, #1455
+   _overlap_config: #1454, #1455
+   _paged_cache: #1454, #1455, #1478, #1552
+   _prefill: #241, #822, #890, #897, #979, #1020, #1021, #1031, #1069, #1125, #1159, #1166, #1225, #1244, #1247, #1250, #1261, #1284, #1287, #1288, #1290, #1295, #1298, #1317, #1321, #1328, #1357, #1370, #1371, #1373, #1376, #1377, #1379, #1381, #1386, #1387, #1388, #1389, #1392, #1397, #1398, #1400, #1402, #1432, #1435, #1445, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1457, #1458, #1461, #1463, #1464, #1470, #1472, #1473, #1477, #1478, #1479, #1491, #1501, #1518, #1519, #1521, #1524, #1525, #1529, #1530, #1537, #1544, #1551, #1552, #1557, #1562, #1567, #1570, #1573, #1581, #1584, #1586, #1587, #1594, #1595, #1598, #1600, #1601, #1604, #1607, #1613, #1614, #1619, #1621, #1623, #1624
+   _prefill_index_scores_kernel: #1454, #1455
+   _prefill_scores_triton: #1454, #1455
+   _raise_if_aborted: #1454, #1455
+   _reference: #844, #1021, #1030, #1031, #1092, #1125, #1166, #1176, #1200, #1267, #1292, #1297, #1298, #1328, #1356, #1367, #1370, #1376, #1377, #1379, #1382, #1386, #1388, #1389, #1398, #1435, #1442, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1461, #1462, #1463, #1464, #1470, #1471, #1472, #1473, #1478, #1491, #1518, #1519, #1521, #1524, #1525, #1551, #1552, #1557, #1561, #1589, #1595, #1603, #1613
+   _reference_prefill_logits: #1454, #1455
+   _reject_overlapped_fused_norm: #1454, #1455
+   _residual: #1166, #1450, #1454, #1455, #1470, #1471, #1472, #1478, #1524, #1598, #1600, #1619, #1621
+   _routing: #959, #1287, #1298, #1449, #1450, #1453, #1454, #1455, #1479, #1524, #1552, #1557, #1598, #1600, #1619, #1621
+   _run_prefill_halves: #1454, #1455
+   _score_tile: #1450, #1454, #1455
+   _selected_pv_kernel: #1454, #1455
+   _selected_scores_kernel: #1454, #1455
+   _selection_impl: #1454, #1455
+   _sink_softmax: #1454, #1455
+   _sink_softmax_kernel: #1454, #1455
+   _skinny_moe_e8m0_m8n8k4_kernel: #1454, #1455
+   _tensor_core_triton: #1454, #1455
+   _turing_device: #1454, #1455
+   _turing_fused_prefill_scores: #1454, #1455
+   _unused_slots: #1454, #1455
+   _use_turing_prefill: #1454, #1455
+   align_ubatch_split: #1454, #1455
+   cat_ubatch_outputs: #1454, #1455
+   check_model: #1454, #1455, #1458
+   cublas_route: #1454, #1455
+   dbo_overlaps_collectives: #1454, #1455
+   dbo_run_collective_overlapped: #1454, #1455
+   device_capability: #629, #844, #890, #953, #959, #979, #983, #1020, #1021, #1030, #1031, #1092, #1125, #1159, #1165, #1166, #1167, #1176, #1245, #1261, #1287, #1298, #1303, #1320, #1321, #1322, #1325, #1368, #1372, #1374, #1382, #1389, #1398, #1412, #1425, #1435, #1441, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1461, #1464, #1470, #1471, #1472, #1473, #1475, #1478, #1479, #1491, #1496, #1498, #1509, #1518, #1519, #1521, #1524, #1525, #1533, #1551, #1552, #1557, #1564, #1570, #1584, #1586, #1587, #1595, #1598, #1600, #1603, #1619, #1621
+   dispatch_weights: #1454, #1455
+   e4m3x8_to_half2x4: #1454, #1455
+   engine_config: #1449, #1454, #1455, #1457
+   forbidden: #1020, #1031, #1450, #1454, #1455, #1459, #1463, #1479, #1621
+   forward_context: #983, #1031, #1230, #1232, #1250, #1379, #1425, #1432, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1461, #1470, #1472, #1473, #1478, #1491, #1493, #1501, #1518, #1521, #1524, #1525, #1540, #1552, #1589, #1595, #1598, #1600, #1607, #1621
+   gather_rows: #1369, #1454, #1455, #1595, #1607
+   host_reduce_copy_engine_out: #1454, #1455
+   indexer_prefill_scores_sm75: #1454, #1455
+   indexer_prefill_scores_sm75_kernel: #1454, #1455
+   ldmatrix_x4_trans: #1454, #1455
+   lowers_dot_to_mma: #1454, #1455
+   mhc_prenorm_tensor_cores: #1454, #1455
+   model_of: #1454, #1455
+   paged_prefill_attention_sm75: #1454, #1455
+   requests: #241, #629, #897, #953, #983, #1020, #1031, #1157, #1176, #1200, #1201, #1225, #1244, #1247, #1250, #1287, #1289, #1290, #1291, #1292, #1295, #1297, #1304, #1312, #1317, #1338, #1369, #1370, #1371, #1373, #1375, #1376, #1377, #1379, #1381, #1388, #1389, #1393, #1399, #1401, #1402, #1425, #1435, #1437, #1439, #1440, #1442, #1443, #1445, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1457, #1458, #1459, #1460, #1461, #1463, #1464, #1466, #1470, #1472, #1473, #1476, #1477, #1478, #1479, #1486, #1491, #1492, #1509, #1518, #1519, #1521, #1524, #1525, #1529, #1530, #1537, #1543, #1544, #1552, #1557, #1558, #1562, #1570, #1584, #1585, #1586, #1588, #1595, #1598, #1600, #1601, #1607, #1613, #1621, #1622
+   run_collective_overlapped: #1454, #1455
+   run_half: #1454, #1455
+   skinny_moe_e8m0_m8n8k4_triton: #1454, #1455
+   sparse_attn_prefill_tensor_cores: #1454, #1455
+   split_token: #1454, #1455
+   splits_by_waves: #1454, #1455
+   test_a_failing_half_stops_both_and_reports_its_error: #1454, #1455
+   test_align_mode_split_keeps_the_last_state_block: #1454, #1455
+   test_align_mode_split_on_a_request_boundary_stays: #1454, #1455
+   test_availability_does_not_need_the_bound_runtime: #1454, #1455
+   test_cat_ubatch_outputs_keeps_the_structure_of_the_model_output: #1454, #1455
+   test_copy_engine_limit_must_exceed_the_kernel_limit: #1454, #1455
+   test_execution_still_requires_the_bound_runtime: #1454, #1455
+   test_fused_post_pre_route_keeps_outputs: #1454, #1455
+   test_halves_overlapping_collectives_match_the_whole_batch: #1454, #1455
+   test_halves_return_the_aux_hidden_states_of_the_whole_batch: #1454, #1455
+   test_host_reduce_copy_engine_matches_nccl: #1454, #1455
+   test_layer_ops_take_the_kernel_config_route: #1454
+   test_matches_the_fp32_reference: #1454, #1455
+   test_model_inputs_split_along_tokens_and_mrope_positions: #1454, #1455
+   test_off_by_default_without_probing: #1454, #1455
+   test_on_with_fma_triton_stops: #1454, #1455
+   test_on_with_tensor_core_triton: #1454, #1455
+   test_other_architectures_keep_their_routes: #1454, #1455
+   test_overlap_rejects_configurations_it_cannot_split: #1454, #1455
+   test_overlap_rejects_moe_and_deepstack_models: #1454, #1455
+   test_prefill_matches_the_reference_scoring_function: #1454, #1455
+   test_prefill_model_head_counts_match_the_reference: #1454, #1455
+   test_prefill_retains_fp32_scores_before_softmax: #1454, #1455
+   test_prefill_triton_scores_survive_unscaled_key_magnitudes: #1454, #1455
+   test_probe_sees_mma_where_every_triton_emits_it: #1454, #1455
+   test_projection_matches_fp64: #1454, #1455
+   test_projection_rejects_unaligned_k_and_split_outputs: #1454, #1455
+   test_selection_keeps_unsupported_caches_on_fa2: #1454, #1455
+   test_setting_changes_the_compilation_hash: #1454, #1455
+   test_tensor_core_route_spans_several_passes: #1454, #1455
+   test_tensor_core_triton_keeps_the_fused_turing_scorer: #1454, #1455
+   test_token_range_cuts_the_request_that_spans_the_split: #1454, #1455
+   test_token_range_on_a_request_boundary_keeps_requests_whole: #1454, #1455
+   test_triton_projection_matches_hand_kernel: #1454, #1455
+   test_turing_fused_scorer_survives_unscaled_key_magnitudes: #1454, #1455
+   test_turing_prefill_takes_the_fused_scorer: #1454, #1455
+   token_range_batch: #1454, #1455
+   token_range_model_inputs: #1454, #1455
+   token_range_requests: #1454, #1455
+   tokens_per_pass: #1454, #1455
+   unbound_runtime: #1454, #1455
+   use_triton_sm7x_tensor_cores: #1454, #1455
+== #1347: 9 added symbols, 9 found in other PR diffs
+   TC_TOKENS_PER_PASS: #1454, #1455
+   _decode_logits_fused: #1454
+   _decode_score_tile: #1454
+   _gather_request_index_k: #1454
+   _on_turing: #1454
+   _prefill_chunk_requests: #1454
+   _prefill_scores_triton: #1454, #1455
+   _score_request_cublas: #1454
+   test_sm70_sparse_eager_workspace_holds_one_row_per_sequence: #1454
+== #1286: 163 added symbols, 162 found in other PR diffs
+   BLOCK_ROWS: #1455
+   CSF32_SCALE_ENCODING: #1455
+   CSF_SCALE_PART: #1455
+   Csf32Layout: #1455
+   CsfExpertScaleLoader: #1455
+   CsfExpertScales: #1455
+   CsfScaleConsumer: #1455
+   ENCODE_EXPERTS: #1455
+   FIXED_PARTS: #1455
+   FP16_MHC_CAPABILITIES: #1455
+   FP8_PREFILL_BLOCK_TOKENS: #1455
+   FROM_LAYER_INDEX: #1455
+   MAX_KERNEL_SLOTS: #1455
+   MXFP8_QPN8_EXPONENT_RANGE: #1455
+   ONE_PIECE: #1455
+   PAGE_TILES: #1455
+   PlainExperts: #1455
+   QPN8_FP8_OPERATORS: #1455
+   QPN8_SPLIT_K: #953, #1449, #1455, #1524
+   Qpn8Mxfp8LinearKernel: #1455
+   ROWS_PER_CHUNK: #1455, #1460
+   S5Scales: #1455
+   S5_MAX_SPREAD: #1455
+   SHARED_RASTERS: #1455
+   TARGET_PROGRAMS: #1455
+   TILE_BLOCK_ROWS: #1455
+   TILE_PAIRS: #1455
+   _EchoAttention: #1455
+   __init__: #241, #897, #959, #979, #983, #1020, #1021, #1031, #1102, #1159, #1166, #1199, #1208, #1245, #1261, #1271, #1297, #1300, #1320, #1325, #1370, #1371, #1372, #1373, #1374, #1376, #1377, #1379, #1381, #1383, #1384, #1385, #1386, #1387, #1388, #1389, #1390, #1398, #1429, #1442, #1443, #1445, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1457, #1458, #1460, #1461, #1463, #1464, #1468, #1469, #1470, #1471, #1472, #1473, #1477, #1479, #1486, #1494, #1495, #1497, #1518, #1519, #1529, #1539, #1540, #1552, #1557, #1561, #1562, #1570, #1584, #1585, #1586, #1587, #1593, #1594, #1598, #1599, #1600, #1607, #1613, #1619, #1621
+   __launch_bounds__: #897, #983, #1092, #1102, #1125, #1292, #1298, #1369, #1372, #1384, #1385, #1386, #1388, #1390, #1448, #1449, #1450, #1451, #1453, #1454, #1455, #1456, #1470, #1472, #1478, #1491, #1518, #1521, #1524, #1525, #1544, #1552, #1565, #1567, #1570, #1587, #1588, #1594, #1595, #1596, #1607, #1619, #1625
+   _assert_same: #1455
+   _bare_glm_model: #1455
+   _block_fp8_scale_2d: #1455
+   _block_scale: #897, #1448, #1450, #1454, #1455, #1598, #1600, #1621
+   _block_scales: #1448, #1454, #1455, #1598, #1600, #1621
+   _chunked_and_one_piece: #1455
+   _create_csf_scales: #1455
+   _csf_planes: #1455
+   _csf_to_s5: #1455
+   _dequantized_pair: #1455
+   _device_capability: #629, #844, #890, #953, #959, #979, #983, #1020, #1021, #1030, #1031, #1092, #1125, #1159, #1165, #1166, #1167, #1176, #1245, #1261, #1287, #1298, #1303, #1320, #1321, #1322, #1325, #1368, #1372, #1374, #1382, #1389, #1398, #1412, #1425, #1435, #1441, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1461, #1464, #1470, #1471, #1472, #1473, #1475, #1478, #1479, #1491, #1496, #1498, #1509, #1518, #1519, #1521, #1524, #1525, #1533, #1551, #1552, #1557, #1564, #1570, #1584, #1586, #1587, #1595, #1598, #1600, #1603, #1619, #1621
+   _element_fields: #1455
+   _element_fields_cached: #1455
+   _forward_rows: #1455
+   _fp8_weight: #1031, #1455
+   _from_layer_index: #1455
+   _group_routing_kernel: #1455
+   _is_block_fp8_scale: #1455
+   _kda_layer: #1455
+   _kda_projection_mapping: #1455
+   _language_model: #979, #1271, #1370, #1376, #1377, #1379, #1388, #1389, #1449, #1452, #1453, #1455, #1461, #1464, #1468, #1469, #1561, #1598, #1600, #1621
+   _mixed_config: #1455
+   _mixed_mxfp8_config: #1455
+   _mxfp8_held_modules: #1455
+   _mxfp8_method: #1455
+   _mxfp8_weight: #1455
+   _prepare_fp8_qpn8_linear: #1455
+   _profile_run: #1031, #1455
+   _project_inputs: #1455
+   _project_qkv: #1455, #1595
+   _qpn8_fp8_available: #1455
+   _release_rasters: #1455
+   _resolve_scale_encoding: #1455
+   _routing: #959, #1287, #1298, #1449, #1450, #1453, #1454, #1455, #1479, #1524, #1552, #1557, #1598, #1600, #1619, #1621
+   _row_chunks: #1455
+   _runs_per_row: #1455
+   _scale_module: #1455
+   _spread_scales: #1455
+   _torch_parts: #1455
+   _try_load_fp8_indexer_wk: #1450, #1455
+   _turing_supported: #1450, #1455
+   _widen_u16: #1455
+   apply_weights: #890, #1320, #1448, #1450, #1453, #1454, #1455, #1461, #1464, #1470, #1472, #1473, #1491, #1524
+   attach_csf_scales: #1455
+   can_implement: #1448, #1450, #1454, #1455
+   csf32_expand: #1455
+   csf32_expand_kernel: #1455
+   csf32_expand_sm70: #1455
+   csf32_layout: #1455
+   declared_quant_config: #1455
+   decode_csf32: #1455
+   decode_s5: #1455
+   dequantize_mxfp8_weight_pairs: #1455
+   encode_csf32: #1455
+   encode_s5: #1455
+   expand_csf32_experts: #1455
+   fp8_qpn8_row_group_scale_sm70_kernel: #1455
+   fp8_qpn8_shape_reason: #1455
+   get_device_capability: #844, #890, #953, #979, #983, #1020, #1021, #1030, #1031, #1159, #1165, #1166, #1167, #1176, #1245, #1287, #1298, #1320, #1321, #1325, #1368, #1372, #1374, #1382, #1389, #1398, #1412, #1425, #1441, #1448, #1449, #1450, #1451, #1453, #1454, #1455, #1456, #1461, #1464, #1470, #1471, #1472, #1473, #1475, #1478, #1479, #1498, #1509, #1518, #1519, #1521, #1524, #1525, #1533, #1552, #1557, #1564, #1587, #1598, #1600, #1603, #1619, #1621
+   group_routing: #1455
+   group_routing_reference: #1455
+   init_mxfp8_linear_kernel: #1455
+   is_quantized: #1379, #1452, #1454, #1455, #1552
+   is_supported: #1448, #1454, #1455, #1598, #1600, #1621
+   launch_fp8_qpn8_row_group_sm70: #1455
+   load_csf_scale_part: #1455
+   load_weights: #1031, #1271, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1460, #1543, #1598, #1600, #1607, #1619, #1621
+   num_blocks: #241, #983, #1031, #1230, #1247, #1297, #1360, #1373, #1402, #1431, #1444, #1449, #1450, #1452, #1454, #1455, #1457, #1458, #1461, #1464, #1466, #1470, #1472, #1473, #1476, #1486, #1491, #1492, #1493, #1521, #1525, #1529, #1552, #1557, #1559, #1589, #1594, #1595, #1598, #1600, #1601, #1621
+   num_experts: #897, #959, #1020, #1030, #1031, #1102, #1166, #1300, #1369, #1370, #1376, #1377, #1379, #1388, #1389, #1448, #1449, #1450, #1452, #1453, #1454, #1455, #1461, #1464, #1479, #1519, #1521, #1544, #1591, #1595, #1598, #1600, #1607, #1621, #1623
+   num_pages: #1455, #1573, #1595
+   prepare_fp8_qpn8_channel_linear: #1455
+   prepare_mxfp8_qpn8_linear: #1455
+   process_weights_after_loading: #822, #1020, #1021, #1030, #1031, #1102, #1320, #1448, #1449, #1450, #1453, #1454, #1455, #1461, #1463, #1464, #1468, #1469, #1470, #1473, #1479, #1491, #1524, #1598, #1600, #1607, #1621
+   qpn_scale_entries: #1455
+   recording_empty: #1455
+   scale_rasters_released: #1455
+   scale_spread: #1455
+   shared_scale_raster: #1455
+   skinny_moe_qpn_sm70: #1030, #1031, #1448, #1450, #1454, #1455, #1607
+   sm70_glm5_sparse_attention_paged_fp8_blocked: #1455
+   test_a_kept_mxfp8_pair_passes_through_in_stream_order: #1455
+   test_a_scale_without_its_weight_fails_loudly: #1455
+   test_all_slots_on_distinct_experts: #1455
+   test_all_slots_on_one_expert: #1455
+   test_an_unquantized_model_holds_nothing: #1455
+   test_attention_projections_match_one_piece: #1455
+   test_block_fp8_projection_loads_with_its_scale_first: #1455
+   test_block_fp8_projection_of_another_stage_is_skipped: #1455
+   test_block_fp8_scale_before_its_weight_is_handed_on_after_it: #1455
+   test_block_fp8_weight_before_its_scale_stays_next_to_it: #1455
+   test_csf_experts_give_the_same_output_as_five_bit_planes: #1455
+   test_csf_scales_need_experts_that_expand_them: #1455
+   test_decode_inverts_encode: #1455
+   test_decode_rejects_malformed_parts: #1455
+   test_dense_mla_reserves_the_up_projected_context: #1455
+   test_encoder_matches_reference_bytes: #1455
+   test_expansion_matches_qpn_prepack: #1455
+   test_float_scale_after_an_unquantized_weight_passes_through: #1455
+   test_full_precision_lm_head_keeps_its_embedding_method: #1455
+   test_glm53_fp16_indexer_predicate_follows_each_card: #1455
+   test_glm53_indexer_query_and_op_share_the_fp16_predicate: #1455
+   test_glm53_pp_intermediate_state_shapes: #1455
+   test_glm53_sm70_fp8_kv_prefill_blocks_match_reference: #1455
+   test_glm5next_sparse_backend_admits_volta_and_turing: #1455
+   test_int64_ids_and_a_slot_count_off_the_power_of_two: #1455
+   test_kda_projection_mapping_follows_the_built_layers: #1455
+   test_kda_projection_mapping_rejects_layers_that_disagree: #1455
+   test_modelopt_mixed_precision_builds_the_mxfp8_config_only_when_named: #1455
+   test_modelopt_mixed_precision_dispatches_mxfp8_linear: #1455
+   test_modelopt_mixed_precision_leaves_the_mxfp8_lm_head_to_the_loader: #1455
+   test_modelopt_mixed_precision_reports_which_modules_are_quantized: #1455
+   test_modules_the_model_does_not_keep_are_still_dequantized: #1455
+   test_modules_with_an_mxfp8_method_are_held_under_their_checkpoint_names: #1455
+   test_moe_qpn_five_bit_scales_give_the_raster_result: #1455
+   test_moe_qpn_multi_pass_groups_cover_every_row: #1455
+   test_more_slots_than_the_kernel_takes_use_the_reference: #1455
+   test_mxfp8_pair_becomes_one_dequantized_weight: #1455
+   test_nvfp4_block_scales_pass_through_in_place: #1455
+   test_pairs_survive_a_split_by_top_level_prefix: #1455
+   test_patch_merger_rows_match_one_piece: #1455
+   test_qpn8_mxfp8_dequantization_equals_the_load_time_dequantization: #1455
+   test_qpn8_mxfp8_kernel_declines_shapes_it_cannot_pack: #1455
+   test_qpn8_mxfp8_linear_matches_the_dequantized_weight: #1455
+   test_qpn8_mxfp8_prepare_rejects_exponents_outside_the_exact_range: #1455
+   test_random_routing_matches_the_reference: #1455
+   test_s5_high_bit_of_position_p_is_bit_p_of_the_group_word: #1455
+   test_s5_plane_shapes_and_sizes: #1455
+   test_s5_refuses_a_row_wider_than_five_bits: #1455
+   test_s5_round_trip_is_exact: #1455
+   test_scale_spread_reports_the_widest_row: #1455
+   test_sparse_mla_reserves_no_up_projected_context: #1455
+   test_the_language_model_alone_gives_the_same_answer: #1455
+== #1348: 13 added symbols, 13 found in other PR diffs
+   FROM_LAYER_INDEX: #1455
+   MXFP8_SCALE_ONE: #1455
+   _mxfp8_config: #1455
+   _padded_head: #1455
+   _warmup_prefill_kernels: #1455
+   single_rank: #1455, #1551
+   test_an_lm_head_with_an_mxfp8_method_is_held_under_its_checkpoint_name: #1455
+   test_compressed_tensors_mxfp8_scale_pads_with_the_unit_scale: #1455
+   test_modelopt_mixed_precision_leaves_an_unlisted_lm_head_unquantized: #1455
+   test_modelopt_mixed_precision_serves_the_mxfp8_lm_head_as_a_linear: #1455
+   test_padded_head_logits_through_qpn8: #1455
+   test_padding_rows_load_zero_codes_and_the_unit_scale: #1455
+   test_profile_run_tunes_the_prefill_kernels_once_at_its_length: #1455
+== #1221: 22 added symbols, 20 found in other PR diffs
+   DSparkSpeculator: #1379, #1452
+   _RecordingDraft: #1379, #1452
+   __init__: #241, #897, #959, #979, #983, #1020, #1021, #1031, #1102, #1159, #1166, #1199, #1208, #1245, #1261, #1271, #1297, #1300, #1320, #1325, #1370, #1371, #1372, #1373, #1374, #1376, #1377, #1379, #1381, #1383, #1384, #1385, #1386, #1387, #1388, #1389, #1390, #1398, #1429, #1442, #1443, #1445, #1448, #1449, #1450, #1451, #1452, #1453, #1454, #1455, #1456, #1457, #1458, #1460, #1461, #1463, #1464, #1468, #1469, #1470, #1471, #1472, #1473, #1477, #1479, #1486, #1494, #1495, #1497, #1518, #1519, #1529, #1539, #1540, #1552, #1557, #1561, #1562, #1570, #1584, #1585, #1586, #1587, #1593, #1594, #1598, #1599, #1600, #1607, #1613, #1619, #1621
+   _generate_draft: #1379, #1452
+   _manager_with_buckets: #1379, #1452
+   _precompute_context_kv: #1379, #1452
+   _sample_step: #1379, #1452
+   _speculator: #1379, #1449, #1450, #1452, #1614
+   _speculator_hidden_states: #1379, #1452
+   get_draft_kv_cache_layer_names: #1379, #1452, #1600
+   get_parallel_draft_model: #1379, #1452
+   load_dflash_model: #1379, #1449, #1452
+   load_draft_model: #1379, #1452
+   map_draft_to_target: #1375, #1377, #1379, #1452, #1600
+   precompute_and_store_context_kv: #1379, #1452, #1453, #1600
+   test_context_slots_are_passed_per_cache_layer: #1379, #1452
+   test_dummy_batch_at_a_context_bound_keeps_query_offsets: #1379, #1452
+   test_greedy_step_maps_the_draft_argmax_to_target_ids: #1379, #1452
+   test_replay_selects_the_smallest_covering_context_bucket: #1379, #1452
+   test_replay_skips_buckets_that_were_not_captured: #1379, #1452

@@ -1,0 +1,181 @@
+Update 2026-11-26: thank you for merging 45 PRs since the last update. #1293, #1294, #1344, #1345, #1346, #1349, #1365, #1406, #1410, #1411, #1415, #1416, #1417, #1418, #1420, #1421, #1535, #1571, #1609, #1610 and #1611 went in directly, #1218 through #1469, #1187 through #1470, #1228, #1235, #1236 and #1273 through #1473, #1217 through #1479, and #1216, #1276, #1362, #1408, #1413, #1502, #1503, #1504, #1506, #1507, #1508, #1512, #1513, #1514, #1516, #1517 and #1520 through #1527. Since the last update I opened 46 PRs: 34 of them are merged, #1414 is closed because main already carried it through #1464, and 11 are open: #1347, #1348, #1536 and, today, #1627, #1628, #1629, #1630, #1631, #1632, #1633 and #1634. #1279 and #1280 are closed as superseded by #1282, which carries their commits. Today I also updated #1221, #1278, #1282, #1286, #1347 and #1348: each is rebased onto main 73da3445d and has an update comment with the tests rerun on the new base. Of the new PRs, #1631 sits on #1278, #1632 on #1282, and #1633 and #1634 on #1286; of the older ones, #1282 sits on #1278, #1286 and #1347 on #1282 (without its last two commits), and #1348 on #1286 (without its last three commits). #1221, #1536 and #1627 to #1630 stand alone. 15 PRs are open, and all 15 are mergeable according to GitHub; a trial merge of each head with current main (44708bdb9) is clean. The pre-commit job is red on main itself (73da3445d and 44708bdb9) with check-layering, markdownlint-cli2, ruff check and mypy for Python 3.10 to 3.13, and architecture-docs is red on 73da3445d because docs/design/architecture/runtime_reference.md is stale. The finished pre-commit runs of the open PRs fail with the same hooks, and their architecture-docs runs with the same message; #1536 last ran on its older base 7db135fa0, and fails there with the same hooks as main at 7db135fa0.
+
+Update 2026-10-28: thank you for merging #715, #1183, #1213, #1214, #1219, #1222, #1226, #1227, #1229, #1234, #1237, #1240, #1263, #1264, #1272, #1274 and #1275 overnight, and for closing #739. Since the last update I opened #1272, #1273, #1274, #1275, #1276, #1278, #1279, #1280, #1282 and, today, #1286, #1293 and #1294; the ones still open are listed below. After the merge I rebased every open PR that conflicted onto current main: the stacks of #1279, #1280 and #1282 no longer carry #1222 and #1227, #1276 no longer carries #1240, and #1217 no longer carries #1214. Each rebased PR has a short update on top of its body with the tests rerun on the new base. 17 PRs are open, and all of them merge cleanly into current main (6aea01fc6). On main itself, check-layering still reports vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39).
+
+Update 2026-10-25: three more PRs. #1240 aligns the Mamba replay boundaries when no KV cache group drops the EAGLE last block. #1263 stops the scheduler from copying and serializing the whole token history of a request on every decode step under pipeline parallelism, a list that only the V1 runner reads (DeepSeek-V4-Flash PP5 at 287,039 tokens: 85.0-86.5 -> 72.9-73.0 ms per step). #1264 lets the fused GDN speculative metadata launch run on Turing as well (Qwen3.8-27B TP2 on two Quadro RTX 8000: short decode 73.77-73.93 -> 77.55-77.59 tok/s). 22 PRs are open. Against current main (6a143197e) 18 of them merge cleanly; #1216, #1217, #1218 and #1235 conflict in the generated docs/design/architecture/runtime_reference.md (which tools/generate_architecture_reference.py --write regenerates), and #1216 also in vllm/config/kernel.py. The pre-commit CI job is red on main itself at the moment: ruff-check and mypy report an undefined name tp_slice_packed in vllm/model_executor/layers/quantization/gguf_turbomind_moe.py:609, mypy reports attr-defined in vllm/v1/kv_cache_interface.py:156-158, and check-layering reports platform coupling 37 -> 39 in vllm/model_executor/layers/fused_moe/runner/moe_runner.py; it reports the same findings on #1263.
+
+Update 2026-10-19, afternoon: #1237 fixes the rest of #739. With one visible device, the PLE offload process built its VllmConfig before reducing it to DP1 and asked for the device of its inherited local DP rank. The second test in #739 failed only after the first one, because that test restored local DP rank 1 as an envs attribute. 19 PRs are open, and all of them merge cleanly into current main (6f3557c97).
+
+Update 2026-10-19: thank you for #856 and #857 (merged on 2026-10-03), #873 and #874 (2026-10-04), and #1004 and #1005 (2026-10-09). #611 is closed in favor of #822, which keeps its history. I closed #1006 in favor of #1187: main had added the typed field itself, so only the default change was left. 18 PRs are open, listed below, and all of them merge cleanly into current main (6f3557c97). Among themselves, #1217 builds on #1214, and #1216, #1217 and #1235 overlap only in the generated docs/design/architecture/runtime_reference.md (the line anchors of KernelConfig, which tools/generate_architecture_reference.py --write regenerates). A correction to #1226, #1228 and #1229: the boot-to-boot differences of the Flash-Next greedy texts mentioned there came from the bug that #1234 fixes. With #1234 on top (our fork commit 6bbcd40be, which also contains those three changes), three boots per topology give byte-identical greedy texts.
+
+Update 2026-10-03, afternoon: #742 is merged through #837, thank you. Native results for it are posted in #837: the 13 SM75 cases on a Quadro RTX 8000, complete-model runs, and a paired skinny on/off comparison. Two new fixes came out of those runs. #856: the PLE cascade never admitted ModelOpt checkpoints such as nvidia/Qwen3.8-Flash-Next-NVFP4, because the admission looked up the wrong layer under the wrong name, so a PP4 start tried to put the whole 47.69 GiB table on stage 0. #857: DeepSeek-V4 could not start on our V100/RTX 8000 rig, because the sparse policy was read through get_current_vllm_config() inside the forward pass, where the worker does not set it. Four PRs are open, and all of them merge cleanly into current main (8002bc107).
+
+Update 2026-10-03, morning: thank you for the overnight round. #791 and #793 went in through #795, #623 through #797, #747 through #798, #604 through #804, #750 through #801, #740 through #808, #646 and #717 through #806, and #714 and #716 through #816. GPU results for #795, #797 and #798 are posted there. Three PRs are still open, and all of them merge cleanly into current main (3efe512d).
+
+Update 2026-10-02, evening: thank you for the integration round. #743, #710, #749 and #726 went in through #773, #720 through #776, #744 and #745 through #777, #667 through #765, and #711 is merged. #646 and #717 are rebased onto main after the hybrid PLE change of #786, and #747 and #750 onto main after #777 and #782; #750 now registers its switch in the env metadata of #782. #750 also got a test fix I had missed: its PP2xTP4 tests built Fp8LinearMethod without use_qpn8. Two new fixes: #791 for the DFlash/DSpark start that #748 broke, and #793, which settles the hybrid block size before the PLE KV estimate; with the cascade of #646, Qwen3.8-Flash-Next needs it to start. 14 PRs are still open, and all of them merge cleanly into current main (a3498d46).
+
+Update 2026-10-02: #621 and #723 are merged, and #725, #741 and #752 went in through #757, #758 and #762, thank you. 21 PRs are still open, and all of them merge cleanly into current main (e0f3fedd).
+
+Update 2026-10-01, evening: one more, #752. It asserts that each request with drafts has at least draft_len + 1 query rows, so a scheduler/runner mismatch fails where it starts instead of verifying drafts against the preceding request's hidden states. One comparison per request. It has been in our fork since 2026-09-06 and has not fired in the logs we keep (back to 2026-09-21).
+
+Update 2026-10-01, afternoon: two more. #750 lets every [128, 128] block-FP8 linear on Volta and Turing use the native QPN8 operators behind an opt-in switch (DeepSeek-V4 at PP5: prefill 16.7 -> 15.2 s, decode step 100 -> 85 ms, and no TurboMind tuning stall at new prompt lengths); stacked on #747. #749 checks the token ids the last pipeline stage hands to the others, so an out-of-vocabulary id is named instead of ending in an anonymous device-side assert. #744 now covers six test modules. Main plus our open PRs, with the #716 and #750 switches set, now produces output identical to our fork on DeepSeek-V4 (greedy and eight reference answers).
+
+Update 2026-10-01, morning: three more PRs, all about DeepSeek-V4 before Ampere. #747 lets Turing take main's SM70 route (one capability-family predicate, so V100 and RTX stages of one pipeline declare the same backend) and gives wo_a a grouped fp16 path where Marlin serves block FP8. #745 decodes FP8 in software on every card without FP8 units, and #744 brings five DeepSeek-V4 test modules in line on pre-Ampere cards. #716 got a fix: its batched-matmul prefill read stale index slots past each token's length and hit a device assert on the first long prompt. Our fork now runs #747 + #716 instead of its own pre-Hopper path; on the same build that was 4 to 6 % faster (tables in #747). All 25 open PRs merge cleanly into current main (d3046986).
+
+Update 2026-09-30, evening: #742 is the MoE part of the v100-skinny proposal in #718, and #743 fixes a memory peak in the SM70 MXFP4 repack that kept DeepSeek-V4 off our V100 stages on the default path. Earlier that day: #740, #741 and the bug report #739. #727 is closed, since #733 covers the same ground more broadly. 22 of the PRs below are merged, thank you for going through them.
+
+Still open
+
+- #1221 DSpark speculator (port of vllm-project/vllm#46995 by benchislett) and compressed-index context buckets for Model Runner V2. DeepSeek-V4-Flash PP5, V1 against V2: prose 42.9-43.0 -> 48.2-48.3 tok/s (+12 %). After the rebase, main's own Inkling 2 speculator serves an Inkling 2 drafter and this one every other DSpark drafter.
+- #1278 Turing tensor-core paths for block-FP8 QPN8 linears and the grouped skinny MoE, and the MoE grid bounded by the expert count. Skinny MoE on a Quadro RTX 8000, DeepSeek-V4 shapes at 512 tokens: w13 6555 -> 4303 us, w2 3271 -> 2238 us.
+- #1282 Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing, for a Triton 3.6 that lowers tl.dot to mma on sm_70 and sm_75 (github.com/Peuqui/triton, shown in https://github.com/triton-lang/triton/discussions/12517). DeepSeek-V4-Flash PP5, together with parts of the stacked PRs and 1024-token chunks: 287,039-token prefill 144.74 / 144.64 -> 73.57 / 73.55 s. Stacked on #1278; it carries the commits of the closed #1279 (Turing prefill attention, TP prefill all-reduce overlap) and #1280 (DeepSeek-V4 long prefill).
+- #1286 GLM-5.3-Flash-FP4-Local (ModelOpt mixed precision) on SM70 and SM75: csf_32x2_v1 expert scales kept compressed on the GPU as five-bit planes, MXFP8 and block-FP8 projections kept as 8 bits in QPN8, sparse MLA prefill on cuBLAS blocks. Our deployment: PP5 over three Tesla V100 and two Quadro RTX 8000 with DFlash2 and 524,288 tokens of context; DFlash2 against the same build without draft model 53.35 against 23.26 tok/s. Stacked on #1282 without its last two commits.
+- #1347 Long DeepSeek-V4 contexts on Volta and Turing: score the decode index keys in one fused kernel (with kernel_config.triton_sm7x_tensor_cores) and halve the sparse prefill workspace. DeepSeek-V4-Flash PP5, decode round at 287,039 tokens 64.4 / 64.1 ms against 72.7 / 72.5 ms; 7.6 to 8.4 ms less per round from 178,480 tokens on. Stacked on #1282 without its last two commits.
+- #1348 GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, so the first request no longer fixes the choice, and serve the MXFP8 LM head through QPN8. LM head call on a Quadro RTX 8000 in a CUDA graph: 1.11 to 1.17 ms instead of 2.08 to 2.17 ms (M 1 to 16). Stacked on #1286 without its last three commits.
+- #1536 Refuse at start a KV pool that cannot hold one max_model_len request. GLM-5.3-Flash with DFlash2 in PP5, max_model_len 524,288: a pool of 493,704 tokens (0.94x) is refused at start instead of ending in an illegal memory access in the warm-up.
+- #1627 CUTLASS INT8 linear: admit it only where the build has a kernel, so the selector moves on to the next INT8 kernel instead of failing in the first GEMM. No throughput claim, it is a selection fix: on a Tesla V100 and a Quadro RTX 8000 the INT8 call fails, and the new query and is_supported() answer False.
+- #1628 Fuse the KDA decode glue kernels of GLM-5.3-Flash: q/k/v/beta packing and the gated RMSNorm. Micro-benchmark in a CUDA graph, 34 KDA layers at 8 rows, output bit-identical: 1.684 -> 0.197 ms on a Tesla V100, 1.471 -> 0.211 ms on a Quadro RTX 8000 (not measured end to end).
+- #1629 Per-round verify length for DFlash drafters, opt-in through kernel_config.adaptive_verify. GLM-5.3-Flash with the DFlash2 drafter, PP5, sampling with temperature 1.0 and min_p 0.1, all texts: 43.96 / 43.90 against 41.00 / 41.12 tok/s (mean +7.0 %); the greedy probe is slower, 3.2 % (details in the PR).
+- #1630 Send decode and verify handovers between pipeline stages as one packed message, opt-in through kernel_config.pp_pack_handover. GLM-5.3-Flash with DFlash2, PP5, greedy short-prompt decode 47.77 / 47.74 against 47.39 / 47.31 tok/s (mean +0.9 %), measured on our fork before the rebase onto main.
+- #1631 DeepSeek-V4 wo_a on Turing straight from block FP8 (grouped QPN8 launch) instead of an FP16 copy. DeepSeek-V4-Flash with DSpark, PP5: greedy round 48.7 and 48.7 against 49.9 and 50.2 ms (-2.7 %), measured on our fork. Stacked on #1278.
+- #1632 MLA decode on Volta and Turing: a skinny Triton kernel for the two kv_b products; it needs kernel_config.triton_sm7x_tensor_cores and the mma probe of #1282. Micro-benchmark, five rows, Tesla V100: W_UK_T 34.12 -> 26.12 us, W_UV 34.34 -> 24.21 us; end to end on GLM-5.3-Flash about +0.5 % (sampling 45.78 and 45.40 against 45.54 and 45.19 tok/s). Stacked on #1282.
+- #1633 Skinny MoE decode on Volta and Turing: six-bit scale planes for the nine projections that exceed five bits, three CTAs per SM on Turing, an explicit load ring on Volta; kernel output bit-identical. The five commits together on GLM-5.3-Flash, PP5: sampling, all texts, 42.32 and 42.33 against 41.08 and 41.14 tok/s (+3.0 %), greedy round 55.3 and 55.3 against 57.0 and 57.0 ms. Stacked on #1286.
+- #1634 Skinny MoE routing groups: one sort kernel with one warp instead of pairwise ranks. GLM-5.3-Flash shape on a Tesla V100 in a CUDA graph, 40 slots (five tokens): 13.96 -> 2.24 us per call; computed from the micro-benchmark, not measured end to end: 0.56 ms of a decode round of 55 to 57 ms. Stacked on #1286.
+
+How the open PRs depend on each other (checked on the branch heads with git merge-base --is-ancestor and git merge-tree): #1282 contains the eight commits of #1278. #1631 contains #1278 and adds two commits, #1632 contains #1282 and adds one. #1286 and #1347 contain #1278 and #1282 up to its commit c6f36a5e4, that is without its last two commits (the wheel page and the mHC layer ops). #1348 contains #1286 up to its commit 05ab8a59c, that is without its three vision commits. #1633 and #1634 contain #1286 and add five and one commits. When a PR below one of them merges, the PR above is rebased and shows only its own commits. #1221, #1536 and #1627 to #1630 do not contain another open PR. These pairs of open PRs conflict when both are merged; whichever merges second needs a rebase for that file:
+- docs/design/architecture/runtime_reference.md (generated, tools/generate_architecture_reference.py --write regenerates it): #1629 and #1630 each with #1282, #1286, #1347, #1348, #1632, #1633 and #1634, and #1629 with #1630.
+- vllm/config/kernel.py: #1630 with #1282, #1286, #1347, #1348, #1632, #1633 and #1634.
+- tests/v1/worker/test_sm70_long_attention_graphs.py: #1629 with #1630.
+- csrc/sm70_turbomind/ops/fp8_qpn8_sm70.cu: #1631 with #1286, #1348, #1633 and #1634.
+- vllm/models/glm5next/nvidia/kda.py: #1628 with #1348.
+
+Bug report #739 is closed: the first test was fixed on main by 91701504c, the second by #1237.
+
+#718 proposed bringing the v100-skinny kernels into csrc; its MoE part, #742, is merged through #837. Block FP8 needs no port: main's native QPN8 kernels already match or beat it on DeepSeek-V4's shapes. A correction to what this overview said before: main does run DeepSeek-V4's MXFP4 MoE on Turing, through Marlin.
+
+Merged
+
+- #1535 Hold the block-FP8 prefill workspace only when graphs capture the prefill or the KV budget is fixed
+- #1611 Compute the MoE router GEMM once per layer
+- #1571 DeepSeek DSML: stream non-string tool arguments only when complete
+- #1610 Reserve one block for the kpool tail ring during MRV2 warmup
+- #1609 Zero whole storage blocks of virtually paged compressed caches
+- #1276 Lookahead block hashes for EAGLE/MTP prefix hits (backport of vllm#61589) (merged as part of #1527)
+- #1216 Two-rank FP16 all-reduce through pinned host memory for GPUs without P2P (merged as part of #1527)
+- #1520 Long-attention rows reference, Flash-V100 prefill skips on Turing, cover copy_block_ids (merged as part of #1527)
+- #1517 Grouped e4m3 fp32 route: admit explicit groups again (merged as part of #1527)
+- #1516 Triton decode attention: pick the grouped tile by the device's shared memory (merged as part of #1527)
+- #1514 Bring Flash-V100 back under its dependency and size ratchet (merged as part of #1527)
+- #1513 Marlin test helpers pack through the loaders' repack ops (merged as part of #1527)
+- #1512 GLM tool parser: stream non-string argument values only when they close (merged as part of #1527)
+- #1508 Run the fused GDN verify projection under the engine's FP8 policy (merged as part of #1527)
+- #1507 Add the Marlin bias on the SM70 dense and MoE paths (merged as part of #1527)
+- #1506 Bring 76 SM70 test files in line with current main (merged as part of #1527)
+- #1504 Drop the local compile-safe capability copies now that #1498 covers them; fix the GDN split test stubs (merged as part of #1527)
+- #1503 Let the Triton top-k/top-p pivot searches cut below the smallest finite logit (merged as part of #1527)
+- #1502 Restore the device stack limit a cold-compile warm-up grew (merged as part of #1527)
+- #1413 Backport vllm-project/vllm#51856, #51262, #54838, #55954, #56141, #56271: prompt rendering and DSML tool parsing (merged as part of #1527)
+- #1408 Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample race, shm reader stalls, new_block_ids leak, PP broadcast, MM block hashing, compile cache (merged as part of #1527)
+- #1362 Skip the embedding, final norm, LM head and encoder towers a pipeline stage does not hold (merged as part of #1527)
+- #1217 Overlap the PLE gather of the next prefill chunk (merged as part of #1479)
+- #1187 Default the FP8 small-shape runtime tuning to off (merged as part of #1470)
+- #1273 One grouped GEMM for DeepSeek-V4 wo_a; opt-in TurboMind tuning freeze after warmup (merged as part of #1473)
+- #1236 Run the native page4 QSA prefill routes for 12/24-head ranks, several KV heads and Turing (merged as part of #1473)
+- #1235 Bound the page prefetch of the mapped PLE row gather (merged as part of #1473)
+- #1228 Run the FlashQLA TileLang prefill kernel on Turing (merged as part of #1473)
+- #1346 Pin the Turing FlashAttention library to the split-wave heuristic
+- #1218 Reduced draft vocabulary for MTP (backport of vllm#59740) (merged as part of #1469)
+- #1411 Backport vllm-project/vllm#63475, #62936, #62467, #49139: persistent_topk radix CTA syncs, float4 tail lanes, radix histogram ring
+- #1417 Finer automatic decode context buckets for long contexts
+- #1410 Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded stride, size the tail ring for speculative drafts
+- #1344 Bound fused KV compression stack use
+- #1294 Overlap eager sends with explicit buffer ownership
+- #1345 Grouped FP16 verify with several KV heads per rank
+- #1365 Port three upstream fixes for multimodal models under pipeline parallelism
+- #1415 Backport vllm-project/vllm#56576, #59565, #59126: broken-EXIF image hashing, GLM-5.3-Flash image budget and vision rope table
+- #1420 MRV2 warmup: no prompt logprobs on the full-chunk and kernel prefill profiles
+- #1418 Derived drafter configs share the target's runtime resources
+- #1416 Prefill short prompts in smaller chunks, keep large chunks for long prompts
+- #1406 Backport vllm-project/vllm#60472: close MessageQueue zmq resources via finalizer to avoid exit hang
+- #1293 Log the KV cache memory of every worker and the SM70 indexer decode route of every stage
+- #1421 Bring seven SM70 tests in line with current main
+- #1349 Fix the V2 MTP profile report test and two PP2 scheduler tests
+- #1275 Size the chunked-prefill workspace and the indexer prefill buffer by max_num_seqs
+- #1274 Load index shards in subfolders; read U16 and U32 through direct I/O
+- #1272 MLA specs carry the codec of their cache dtype
+- #1264 Run the fused GDN speculative metadata launch on Turing too
+- #1263 Do not send a request's token history to the V2 runner every decode step
+- #1240 Align Mamba replay boundaries without an EAGLE block drop
+- #1237 Reduce the PLE offload config to DP1 before it is built
+- #1234 Decide the PLE cascade merge when the layer is built
+- #1229 Admit the cuBLAS QSA indexer and exact top-k on Turing
+- #1227 Pack GQA heads for FA2 multi-token decode verification
+- #1226 Let the delta_h autotuner lift the ptxas register cap
+- #1222 Keep the cuBLAS decode indexer above 131,072 tokens of context
+- #1219 Verify P2P before provisioning compact collectives without custom all-reduce
+- #1214 Repair stale fakes in PLE offload and SM70 decode-graph tests
+- #1213 Keep the traced prefill output projection on the custom-op norm
+- #1183 Restore DSpark decode on SM70 after the per-engine policy migration
+- #715 Keep hc_head finite under float16 for attention-sink rows
+- #1004 Read the PLE row-gather policy when the layer is built
+- #1005 Repair twelve SM70 test cases broken by recent main changes
+- #873 Start block QPN8 on Volta: warm up the layout it holds, keep the TurboMind copy only when decode can use it
+- #874 Bucket speculative decode graphs by context so the sparse indexer can take cuBLAS
+- #856 Look up PLE cascade storage under checkpoint layer names
+- #857 Read the SM70 sparse policy when the layers are built
+- #742 Skinny QPN MoE backend for NVFP4 and MXFP4 on SM70 and SM75 (merged as part of #837)
+- #604 Run ModelOpt NVFP4 and FP8 linears on Turing through the SM70 QPN kernels (merged as part of #804)
+- #750 Block FP8 through the native QPN8 operators on SM70/SM75 (merged as part of #801)
+- #740 Add a direct I/O safetensors load strategy (merged as part of #808)
+- #646 PLE overflow cascade: device, pinned host, disk (merged as part of #806)
+- #717 Allow the PLE CPU offload under pipeline parallelism (merged as part of #806)
+- #714 Take the DeepSeek-V4 cuBLAS indexer decode under speculative decoding (merged as part of #816)
+- #716 DeepSeek-V4 sparse MLA as gather + batched matmul (merged as part of #816)
+- #791 Copy the DFlash/DSpark draft config with vLLM's pydantic-aware replace (merged as part of #795)
+- #793 Settle the hybrid block size before estimating the PLE KV budget (merged as part of #795)
+- #623 Build and load a Turing FlashAttention-2 library next to the Volta one (merged as part of #797)
+- #747 Run the DeepSeek-V4 SM70 route on Turing (merged as part of #798)
+- #743 Repack DeepSeek-V4 MXFP4 experts for TurboMind without a second copy (merged as part of #773)
+- #710 Resolve SM70 linear workspace addresses on AOT reload (merged as part of #773)
+- #749 Check the token ids the last pipeline stage hands over (merged as part of #773, which extends the check to the whole payload)
+- #726 Bring stale core and SM70 tests in line with current main (merged as part of #773)
+- #711 Reject new VLLM_* environment reads that bypass envs.py
+- #720 Size the ROCm SWA ragged copy from the actual row width (merged as part of #776)
+- #744 Run the DeepSeek-V4 test modules on pre-Ampere cards (merged as part of #777)
+- #745 Decode FP8 in software on every card without FP8 units (merged as part of #777)
+- #667 Reuse a sliding window's dead blocks before other requests' cached ones (merged as part of #765)
+- #752 Assert enough query rows for each request's drafts (merged as part of #762)
+- #725 Keep the SM70 cudagraph size cap inside max_num_batched_tokens (merged as part of #757, together with #733)
+- #741 Do not take shared anonymous memory for a PLE disk shard (merged as part of #758)
+- #723 Keep recovered tokens inside the vocabulary (backport of vllm-project/vllm#44744)
+- #621 Drop the forced compile-cache opt-out for the Flash-V100 graph
+- #670 Keep dummy-run positions inside max_model_len
+- #662 Ship the speculative round state to non-last PP ranks
+- #574 Trim the optimistic spec-decode tokens on every pipeline rank (now also proposed upstream as vllm-project/vllm#58926)
+- #636 Keep the MTP drafter stage-local under pipeline parallelism (Qwen3.5)
+- #603 Align the SWA decode threshold with the sparse MLA builder
+- #658 Keep mHC finite under float16 for attention-sink rows
+- #613 Honor a checkpoint's KV-cache quantization directive only on Ampere and newer
+- #665 Order SimpleCPUOffloadConnector stores behind the compute stream
+- #592 DFlash: fuse context K/V through quant_method so a quantized draft head loads
+- #600 Resolve an unspecified device_id to the worker's own device
+- #576 Read the quantization SM70 gate from the worker's own device
+- #618 Gate the SM70 graph tunings on the worker's own pre-Ampere device
+- #599 Gate DFlash2's BF16 emulation and FlashInfer top-k on the worker's own device
+- #657 Backport vllm-project/vllm#44082: cache the EAGLE/MTP lookahead block in the SWA prefix-cache mask
+- #669 Skip checkpoint tensors a model does not load before reading them
+- #659 Apply min_p in the rejection sampler
+- #622 Resolve the PLE table pointer inside the gather op instead of baking it into the graph
+- #640 Detect the FP8 PLE table from ModelOpt mixed-precision configs
+- #639 Allow checkpoint FP8 MTP experts under pipeline parallelism
+- #654 PLE offload: send registration inputs by file descriptor
+- #619 Pass --distributed-timeout-seconds to the NCCL subgroups
+- #683 Let an explicit --moe-backend win over the TurboMind MoE gate
+
+Background, from the original overview: all of these come from running 1Cat-vLLM on a mixed rig (3x V100 + 2x Quadro RTX 8000): DeepSeek-V4-Flash + DSpark with pipeline parallel over all five cards, Qwen3.8-Flash-Next with pipeline parallel over four cards, and Qwen3.8-27B with TP2 on the two RTX cards.
+
+AI assistance (Claude Code) was used to prepare this overview; I checked it against the PRs. The merge state of each open PR was checked against current main (44708bdb9, 2026-11-26) with git merge-tree and GitHub's mergeable flag; the two tests of #739 were last run again on main 6f3557c97 on 2026-10-19.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUkqNsK9nE7L151CUUE

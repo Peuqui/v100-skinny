@@ -1,0 +1,4 @@
+git show pr-mrv2-dspark-r1125:vllm/v1/worker/gpu/spec_decode/dspark/block_drafter.py vs fork/pr-mrv2-dspark:.../dspark/speculator.py vs prod-v16:.../dspark/speculator.py (2026-11-26)
+d79a07fe52308965c0289da9a426020402ea15414541fab3bf5040c2a41404ec  -
+d79a07fe52308965c0289da9a426020402ea15414541fab3bf5040c2a41404ec  -
+d79a07fe52308965c0289da9a426020402ea15414541fab3bf5040c2a41404ec  -

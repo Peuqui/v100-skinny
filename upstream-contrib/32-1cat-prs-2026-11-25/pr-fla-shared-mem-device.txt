@@ -1,0 +1,30 @@
+Title: [Bugfix][FLA] Judge shared memory on the worker's own device
+
+Branch: pr-fla-shared-mem-device (base 1Cat main 7db135fa0), one commit (squash of our fork commits a6d6d3e82 and 969dfdea0; the second fixed the first, which created a CUDA context at import)
+
+TESTS-PENDING (all test results below are placeholders until the test run on this branch is done)
+
+----- Text -----
+
+Problem: check_shared_mem() in vllm/model_executor/layers/fla/ops/utils.py read the maximum shared memory of index 0 of the visible devices. chunk_o.py (BKV_LIST) and cumsum.py (BS_LIST) evaluate it at import, so every worker of a mixed rig chose its chunk_o and cumsum tile lists from the first visible card. With an Ampere-class card first, a worker on a V100 (96 KiB of shared memory per block, 98,304 bytes) would be given tile lists that need the larger shared memory of the other card. The threshold of the default architecture is 102,400 bytes (100 KiB).
+
+Change:
+- check_shared_mem() takes tensor_idx=None. Without an explicit index it asks current_platform.resolve_device_id(None), the existing answer to "the device this process runs on": the device the worker selected once CUDA is initialized, index 0 of the visibility list before, and it never creates a CUDA context. An explicit tensor_idx still works.
+- The first version of this fix called torch.cuda.current_device(). Because chunk_o.py and cumsum.py call check_shared_mem() at import, importing the FLA ops then created a CUDA context in every process, also in processes that must not hold one (API server, CPU helpers); tests/model_executor/test_fla_context_free_import.py fails on that. resolve_device_id avoids it.
+- No change where all visible cards are on the same side of the 100 KiB threshold: a rig with a V100 (96 KiB) and a Quadro RTX 8000 (64 KiB) picks the same tile lists as before, because both are below it. The change matters when a card above the threshold is visible next to one below it.
+- Limit: the result is cached and evaluated when the module is first imported. A process that imports the FLA ops before the worker has selected its device gets index 0, as before; the worker processes import them while loading the model.
+
+Evidence:
+- tests/kernels/test_fla_shared_mem_per_device.py (CPU, stubs get_all_max_shared_mem with [166912, 98304] and resolve_device_id): the worker on device 1 gets False, tensor_idx=0 still gives True.
+- Probe with a Quadro RTX 8000 and a V100 visible: without a CUDA context index 0 and no CUDA initialization; after set_device(1) index 1 (the V100, 98,304 bytes of shared memory, the RTX 65,536).
+- No kernel-speed claim: on our rig of V100 and Quadro RTX 8000 the tile lists do not change.
+
+Tests (TESTS-PENDING): tests/kernels/test_fla_shared_mem_per_device.py (2 tests, CPU), tests/model_executor/test_fla_context_free_import.py (1 test, CPU; fails when the import creates a CUDA context). In the fork these three passed together with the second commit; results on this branch: TESTS-PENDING. pre-commit run --files on the two changed files: all hooks pass; the manual-stage mypy hook (mypy-3.10) passes but excludes vllm/model_executor/layers/fla/ops and tests, so it checks neither file. Import of vllm.model_executor.layers.fla.ops.utils with CUDA_VISIBLE_DEVICES empty: works and torch.cuda.is_initialized() stays False.
+
+Duplicate check: gh pr list --state all searches on 1CatAI/1Cat-vLLM for "check_shared_mem", "FLA shared memory", "fla shared mem device", "shared memory current device FLA" and "chunk_o BKV_LIST": no PR changes check_shared_mem; no open PR touches vllm/model_executor/layers/fla/ops/utils.py. In vllm-project/vllm, open PR 63500 (do not initialize CUDA when importing the FLA ops) and 68902 (avoid torch.cuda.is_available() before worker fork) change the import-time probing of the vendored copy under vllm/third_party and keep the device-0 choice of check_shared_mem; 37700 and 43047 concern Hopper misclassification and a shared-memory autotune pruner. None selects the worker's own device.
+
+AI assistance (Claude) was used; the change was reviewed and tested by the submitter.
+
+----- Open points before sending (remove this block) -----
+1. The earlier STAND note (2508) judged this "not provable on V100 + RTX, only offer bundled". The change has no effect on our rig; the PR claims only the mixed-rig case and rests on the stubbed test and the probe. Decide whether that is enough for a standalone PR or whether it should wait for a bundle.
+2. The caching/import-time limit (module imported before set_device gets index 0) is stated in the text; confirm that the worker really imports chunk_o/cumsum after init_device (not verified here, needs a boot).

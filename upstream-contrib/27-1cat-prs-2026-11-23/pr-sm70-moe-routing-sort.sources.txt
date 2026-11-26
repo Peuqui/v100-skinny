@@ -1,0 +1,6 @@
+Source of every number in pr-sm70-moe-routing-sort.txt
+
+13.4 -> 2.1 us (V100), 17.8 -> 2.6 us (RTX 8000), CUDA graph, bit-identical to the torch reference: v100-skinny/STAND.md Nachtrag 22.11. 15:00 (Kernpakete), benchmark ~/.cache/bench-scripts/pkg_routing_bench_2026-11-22.py. Marked RECHECK.
+about 86 us per layer / about 19 torch kernels: message of fork commit 9712e0edf (24.10.2026), not re-measured. Marked RECHECK.
+41.99 -> 44.50 / 44.41 tok/s: /home/mp/.cache/bench-scripts/ab_v14_glm_2026-11-22a.log, ZUSAMMENFASSUNG lines [P3] (41.99, v13) and [T1], [T2] (44.50, 44.41, v14); bundle, not this change alone.
+43 passed (CPU interpreter), 51/26, 8/37, 7, 30/5, 64/6, 3 passed, 27 skipped, 2 failed on main: own runs 2026-11-23 in 1Cat-vLLM-pr-sm70-routing-sort (scratchpad testB.out; the 43 re-run after the test preamble change). The two test_small_routing_integration.py failures reproduced in the router-once tree (= main for that file).

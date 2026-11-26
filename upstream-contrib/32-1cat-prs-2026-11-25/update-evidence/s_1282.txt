@@ -1,0 +1,101 @@
+## triton tensor core
+  #1370 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+  #1563 MERGED yangzhuxinyzx 2026-11-18T13:03:42Z fix(sm70,vit): keep TORCH_SDPA Cutlass Tensor Core backend for pre-Ampere ViT
+  #1625 MERGED yangzhuxinyzx 2026-11-25T15:12:54Z perf(inkling2-sm70): optimize DSpark7 concurrency, prefill, and long-context decode with SM70 WMMA
+  #1573 MERGED yangzhuxinyzx 2026-11-20T09:14:47Z fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issue
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1529 MERGED yangzhuxinyzx 2026-11-16T18:49:50Z [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming too
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+## sm7x
+## mma
+  #1587 OPEN ProprietaryLegal - [DeepSeek V4.1][SM70] VLLM_V41_INDEX_TC: tensor-core decode index scorer, bitwise the tiled scorer (
+  #1388 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1 indexer: fused SM70 prefill index scores (VLLM_V41_INDEX_FUSE, default o
+  #1387 MERGED ProprietaryLegal 2026-11-16T14:22:55Z [Perf][SM70][DeepSeek-V4.1] Compact-scheduled grouped prefill GEMM for IQ routed experts (VLLM_V41_P
+  #1390 MERGED ProprietaryLegal 2026-11-16T14:22:55Z [Perf][SM70] DeepSeek-V4.1 decode: dense GGUF mat-vec on a v41k dmv13_x kernel (VLLM_V41_DMV_X, defa
+## indexer prefill
+  #1388 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1 indexer: fused SM70 prefill index scores (VLLM_V41_INDEX_FUSE, default o
+  #1370 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+  #1328 MERGED squibloads 2026-11-09T16:26:47Z [Bugfix][SM70] Indexer: write the cuBLAS prefill score tile in fp32
+  #1594 MERGED yangzhuxinyzx 2026-11-22T02:06:37Z [Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpar
+  #1567 MERGED yangzhuxinyzx 2026-11-18T18:34:10Z [Perf][DS-V4.1] Distributed IB peer-RAM Engram, key-stationary prefill indexer & PP4 queue tuning
+  #1601 MERGED yangzhuxinyzx 2026-11-22T15:04:15Z perf(sm70): accelerate Qwen3.8-Flash-Next mixed prefill+decode for multi-turn agents
+  #1568 MERGED yangzhuxinyzx 2026-11-18T21:18:09Z [Bugfix][DS-V4.1] Fix PP4 async micro-batch wind-down, prefill IB overlap & 512K indexer tail
+  #1565 MERGED yangzhuxinyzx 2026-11-18T16:43:05Z [Perf][DS-V4.1] Batched SM70 kernels, prefill fusion, zero-cost vision decode & agent prefix cache
+  #1617 MERGED Maxwell-Lyu 2026-11-25T04:43:02Z [Bugfix][SM70] Preallocate the Flash-Next DCP A2A workspace
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+  #1475 MERGED yangzhuxinyzx 2026-11-10T19:13:26Z Audit #828: opt-in grouped page4 attention for SM70 QSA DCP
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+  #1544 MERGED yangzhuxinyzx 2026-11-17T11:06:16Z [Perf][SM70][Qwen3.8] Concurrent MTP4 verify, raw-scale NVFP4 MoE, VRAM & unlimited vision
+  #1372 MERGED ProprietaryLegal 2026-11-16T14:22:56Z [Perf][SM70][DeepSeek-V4] Tile live packed decode index scoring
+## sparse prefill
+  #1589 OPEN Maxwell-Lyu - [Feat][Flash-Next] Support native KV offload with QSA Host-KV
+  #1625 MERGED yangzhuxinyzx 2026-11-25T15:12:54Z perf(inkling2-sm70): optimize DSpark7 concurrency, prefill, and long-context decode with SM70 WMMA
+  #1594 MERGED yangzhuxinyzx 2026-11-22T02:06:37Z [Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpar
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1559 MERGED yangzhuxinyzx 2026-11-18T10:34:33Z feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+  #1401 MERGED yangzhuxinyzx 2026-11-06T14:30:54Z [Bugfix][Core] Restore partial prefix hits on long hybrid prompts (27B and Flash-Next)
+  #1519 MERGED yangzhuxinyzx 2026-11-15T00:44:07Z [Perf][SM70] Accelerate Qwen4Exp MTP decode, concurrency, and no-sync sampling
+  #1544 MERGED yangzhuxinyzx 2026-11-17T11:06:16Z [Perf][SM70][Qwen3.8] Concurrent MTP4 verify, raw-scale NVFP4 MoE, VRAM & unlimited vision
+  #1492 MERGED yangzhuxinyzx 2026-11-13T02:29:07Z [Bugfix][SM70] Hybrid prefix caching: one prefix grid by default, no crash on an empty pool (#1422, 
+  #1518 MERGED yangzhuxinyzx 2026-11-15T02:39:26Z [Perf][SM70] Approach V100 HBM2/NVLink roofline for MTP decode, concurrency, and compact sampling
+## mHC
+  #1471 MERGED yangzhuxinyzx 2026-11-10T14:25:09Z [SM70] Integrate repaired mHC dispatch, policy hashes and verifier kernels
+  #1325 MERGED squibloads 2026-11-10T01:56:30Z [Perf][SM70] Qualify mHC row staging for large prefill batches
+  #1588 MERGED yangzhuxinyzx 2026-11-21T02:50:38Z [Perf][Serving][DS-V4.1] Prefix cache hit-rate API & SM70 Markov/route/mHC/clip optimizations
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+## paged prefill
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+  #1596 MERGED yangzhuxinyzx 2026-11-22T07:02:05Z [Perf][Serving][DS-V4.1] Zero-spill 3-launch NVLink P2P DCP=4 attention (1.55x–1.82x faster, beats N
+  #1473 MERGED yangzhuxinyzx 2026-11-10T16:19:35Z Integrate reviewed PLE, FP8, PP and Turing runtime fixes
+  #1557 MERGED yangzhuxinyzx 2026-11-18T08:03:46Z [Feat][Perf][Bugfix] Dynamic Qwen3.8 thinking sampling, relaxed SM70/INT8 paths & audit fixes
+  #1472 MERGED yangzhuxinyzx 2026-11-10T17:25:56Z [Perf][SM70] Share MTP runtime operators and pipeline long-context KV reads
+## prefill overlap
+  #1388 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1 indexer: fused SM70 prefill index scores (VLLM_V41_INDEX_FUSE, default o
+  #1370 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1568 MERGED yangzhuxinyzx 2026-11-18T21:18:09Z [Bugfix][DS-V4.1] Fix PP4 async micro-batch wind-down, prefill IB overlap & 512K indexer tail
+  #1619 MERGED yangzhuxinyzx 2026-11-24T16:41:18Z perf(sm70): accelerate Qwen3.8-27B dense prefill (+15% to +35%) with V3 FA2 and P2P/compute kernels
+  #1625 MERGED yangzhuxinyzx 2026-11-25T15:12:54Z perf(inkling2-sm70): optimize DSpark7 concurrency, prefill, and long-context decode with SM70 WMMA
+  #1567 MERGED yangzhuxinyzx 2026-11-18T18:34:10Z [Perf][DS-V4.1] Distributed IB peer-RAM Engram, key-stationary prefill indexer & PP4 queue tuning
+  #1537 MERGED squibloads 2026-11-25T05:09:04Z [Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+  #1585 OPEN ProprietaryLegal - [Frontend][Perf] Tokenize only what a grown chat added, for tokenizers without `<|im_start|>` (VLLM_
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+  #1596 MERGED yangzhuxinyzx 2026-11-22T07:02:05Z [Perf][Serving][DS-V4.1] Zero-spill 3-launch NVLink P2P DCP=4 attention (1.55x–1.82x faster, beats N
+  #1529 MERGED yangzhuxinyzx 2026-11-16T18:49:50Z [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming too
+  #1478 MERGED yangzhuxinyzx 2026-11-10T23:27:47Z [SM70] Share Qwen MTP acceleration across TP2 and TP4 shards
+  #1472 MERGED yangzhuxinyzx 2026-11-10T17:25:56Z [Perf][SM70] Share MTP runtime operators and pipeline long-context KV reads
+## host reduce
+  #1587 OPEN ProprietaryLegal - [DeepSeek V4.1][SM70] VLLM_V41_INDEX_TC: tensor-core decode index scorer, bitwise the tiled scorer (
+  #1369 MERGED yangzhuxinyzx 2026-11-05T14:45:28Z [Perf][SM70] Flash-Next: concurrent MTP4 verification batches
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1442 MERGED ChainZeaxion 2026-11-10T04:16:20Z [Perf][DFlash2] Reuse sampler graphs across live temperatures
+  #1562 MERGED yangzhuxinyzx 2026-11-18T12:53:12Z feat(vision,ttft,sm70): enable default unlimited Qwen3.8 vision & cut multi-turn TTFT
+  #1581 OPEN ProprietaryLegal - [Perf][SM70][DeepSeek-V4.1] TP4 prefill pair relay: one PCIe store per activation element on two-NVL
+  #1552 MERGED yangzhuxinyzx 2026-11-18T03:33:01Z [Perf][SM70] Native per-token-head INT8 KV cache for QSA & Flash-V100 as default
+  #1518 MERGED yangzhuxinyzx 2026-11-15T02:39:26Z [Perf][SM70] Approach V100 HBM2/NVLink roofline for MTP decode, concurrency, and compact sampling
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+  #1544 MERGED yangzhuxinyzx 2026-11-17T11:06:16Z [Perf][SM70][Qwen3.8] Concurrent MTP4 verify, raw-scale NVFP4 MoE, VRAM & unlimited vision
+  #1557 MERGED yangzhuxinyzx 2026-11-18T08:03:46Z [Feat][Perf][Bugfix] Dynamic Qwen3.8 thinking sampling, relaxed SM70/INT8 paths & audit fixes
+  #1529 MERGED yangzhuxinyzx 2026-11-16T18:49:50Z [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming too
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1620 OPEN app/dependabot - Bump the minor-update group across 1 directory with 175 updates
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+## flash dense prefill
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1548 MERGED Jozkah 2026-11-25T05:04:51Z [Bugfix][SM70] Dense prefill availability check must not require bound resources
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+  #1559 MERGED yangzhuxinyzx 2026-11-18T10:34:33Z feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+  #1524 MERGED yangzhuxinyzx 2026-11-15T19:08:27Z [Perf][SM70] Generalize TP2/TP4 decode, prefill, FP8/W8A16-FP8 fastpaths, and VRAM footprint
+  #1603 MERGED hdq66666 2026-11-25T04:41:59Z [Bugfix][SM70] Keep the committed GDN state when a replay round ends on a Mamba block
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+  #1427 CLOSED yangzhuxinyzx - [Perf][SM70] Qwen3.8 MTP: MRV2, shared verifier routes, no draft-step sync; 16 GB capacity
+## epilogue
+  #1389 OPEN ProprietaryLegal - [Perf][SM70] DeepSeek-V4.1 decode: fuse attention prep and post kernels (VLLM_V41_FUSE_ATTN_PREP/POS
+  #1328 MERGED squibloads 2026-11-09T16:26:47Z [Bugfix][SM70] Indexer: write the cuBLAS prefill score tile in fp32
+  #1387 MERGED ProprietaryLegal 2026-11-16T14:22:55Z [Perf][SM70][DeepSeek-V4.1] Compact-scheduled grouped prefill GEMM for IQ routed experts (VLLM_V41_P
+  #1385 MERGED ProprietaryLegal 2026-11-16T14:22:55Z [Perf][SM70][DeepSeek-V4.1] Instruction-diet routed-expert kernels (VLLM_V41_EXPERT_DIET, default of

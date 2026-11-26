@@ -1,0 +1,114 @@
+Belege zu issue674-body.txt (neue Beschreibung von 1CatAI/1Cat-vLLM#674), Stand 2026-11-26 ca. 11:30.
+Kurzform: R = 1CatAI/1Cat-vLLM. "gh pr view N" heisst: gh pr view N --repo 1CatAI/1Cat-vLLM. Rohdaten im Scratchpad
+/tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/ (open.json, merged.json, closed.json,
+created.json, merged_via.json, pr_<n>.json, conflicts.txt, issue674_live.md = alter Body; Erzeugung: gen674.py).
+
+== Alter Body ==
+- gh issue view 674 --repo R --json body (Kopie issue674_live.md, 19354 Zeichen). Alle alten Update-Absaetze (2026-10-28 und aelter),
+  die Hinweisabsaetze (Bug report #739, #718), die alte Merged-Liste und der Background-Absatz sind unveraendert uebernommen.
+- Letzte Aenderung des Issues: gh issue view 674 --json updatedAt = 2026-10-28T13:40:48Z (= Zeitpunkt, ab dem "seit dem letzten Update" zaehlt).
+- Der alte Body hatte einen KI-Hinweis ("AI assistance was used ..."); er ist auf die neue Form angeglichen, der Satz zum
+  Merge-Stand (neu: main 44708bdb9) und zu den Tests von #739 (unveraendert 6f3557c97, 2026-10-19) bleibt.
+
+== Zahlen im neuen Update-Absatz ==
+- 15 offene PRs, alle mergeable: gh pr list --repo R --author Peuqui --state open --json number,mergeable (Feld mergeable = MERGEABLE bei allen 15;
+  mergeStateStatus = UNSTABLE bei allen 15, wegen der roten Checks).
+  Offen: #1221 #1278 #1282 #1286 #1347 #1348 #1536 #1627 #1628 #1629 #1630 #1631 #1632 #1633 #1634.
+- Probemerge gegen aktuellen main: gh api repos/R/commits/main --jq .sha = 44708bdb9 (Commit 2026-11-25T15:27:11Z);
+  im Haupt-Checkout /home/mp/Projekte/vllm-research/1Cat-vLLM: git merge-tree --write-tree <Kopf> 44708bdb9 fuer alle 15 Koepfe: sauber (Exit 0).
+  Koepfe (gh pr view N --json headRefOid): 1221 7730427a0, 1278 4ab593ca3, 1282 e0f93d68f, 1286 918a96748, 1347 f546c6761, 1348 c7fcf8b50,
+  1536 159cce181, 1627 ef43e2f70, 1628 d2a0ff732, 1629 8bd4a4f2c, 1630 5b3f76805, 1631 780f8f535, 1632 4a26d56d7, 1633 50c215daf, 1634 b42b25b8d.
+- 62 Peuqui-PRs seit 2026-10-28 gemergt: gh pr list --repo R --author Peuqui --state merged --search "merged:>=2026-10-28" --limit 200
+  --json number,title,mergedAt (62 Treffer). Davon 17 schon im Update 2026-10-28 bedankt (715 1183 1213 1214 1219 1222 1226 1227 1229 1234 1237
+  1240 1263 1264 1272 1274 1275, mergedAt 2026-10-28T02:2x-02:3x), bleiben 45 = "seit dem letzten Update".
+- "went in directly" / "through #N": je PR gh pr view N --json mergeCommit, dann gh api repos/R/commits/<mergeCommit>/pulls --jq '[.[].number]'
+  (Datei merged_via.json). Direkt (Merge-Commit gehoert zur PR selbst, 21): 1293 1294 1344 1345 1346 1349 1365 1406 1410 1411 1415 1416 1417 1418
+  1420 1421 1535 1571 1609 1610 1611. Ueber #1469: 1218. Ueber #1470: 1187. Ueber #1473: 1228 1235 1236 1273. Ueber #1479: 1217.
+  Ueber #1527 (17): 1216 1276 1362 1408 1413 1502 1503 1504 1506 1507 1508 1512 1513 1514 1516 1517 1520. Summe 21+1+1+4+1+17 = 45.
+  (Alle vier Sammel-PRs sind MERGED, Autor des Sammel-PRs und mergedBy ist das Maintainer-Konto; gh pr view 1473/1527 --json state,title.)
+  Der gh-Status der 45 ist state = MERGED (gh pr view N --json state,mergedAt).
+- 46 seit dem letzten Update geoeffnete PRs: gh pr list --repo R --author Peuqui --state all --search "created:>=2026-10-28" --json number,state,createdAt
+  (49 Treffer) minus 1286 (createdAt 2026-10-28T07:36, vor dem Update) minus 1293 und 1294 (2026-10-28T13:40, im alten Update genannt) = 46.
+  Davon state MERGED 34 (1344 1345 1346 1349 1362 1365 1406 1408 1410 1411 1413 1415 1416 1417 1418 1420 1421 1502 1503 1504 1506 1507 1508 1512 1513
+  1514 1516 1517 1520 1535 1571 1609 1610 1611), CLOSED 1 (#1414), OPEN 11 (1347 1348 1536 1627-1634). 34+1+11 = 46.
+  Zu den 45 gemergten kommen 11 aeltere (1187 1216 1217 1218 1228 1235 1236 1273 1276 1293 1294): 34 + 11 = 45.
+- Geschlossen, nicht gemergt, seit 2026-10-19: gh pr list --repo R --author Peuqui --state closed --limit 300 --json number,mergedAt,closedAt:
+  nur #1279 (2026-11-13T14:41:25Z), #1280 (2026-11-13T14:41:29Z), #1414 (2026-11-13T14:52:17Z); jeweils mergedAt = null.
+  #1279/#1280: gh pr view N --json comments, letzter Kommentar von Peuqui: "Closing as superseded by #1282 ... head is an ancestor of the #1282 head".
+  #1282-Body (Update 2026-11-26): "15 commits that come from the closed #1279 and #1280".
+  #1414: letzter Kommentar: "Closing as superseded by #1464; nothing is l[ost]" ("main already carries this PR"). #1464: gh pr view 1464 --json state,mergedAt
+  = MERGED 2026-11-09T15:15:56Z (Autor Maintainer-Konto).
+- Heute aktualisiert (je ein Kommentar "Updated this PR: rebased onto main 73da3445d (#1616)" bzw. Body-Zeile "Update 2026-11-26"):
+  gh pr view N --json comments (Peuqui, 2026-11-26T08:39-08:40Z) fuer 1221 1278 1282 1286 1347 1348; Koepfe wie oben.
+  Alle 15 Koepfe enthalten 73da3445d bis auf #1536 (git merge-base --is-ancestor 73da3445d <Kopf>: #1536 nein, Rest ja).
+
+== Abhaengigkeiten ==
+- Git, Haupt-Checkout, git merge-base --is-ancestor <Kopf A> <Kopf B>: Kopf von #1278 ist Vorfahre von #1282 #1286 #1347 #1348 #1631 #1632 #1633 #1634;
+  Kopf von #1282 Vorfahre von #1632; Kopf von #1286 Vorfahre von #1633 #1634. Keine weiteren Beziehungen unter den 15 Koepfen
+  (also stehen #1221 #1536 #1627 #1628 #1629 #1630 allein).
+- git merge-base e0f93d68f(#1282) 918a96748(#1286) = c6f36a5e4; gleiche Basis fuer #1286/#1347 mit #1282 (git merge-base e0f93d68f f546c6761 = c6f36a5e4).
+  git log c6f36a5e4..e0f93d68f: 6fcee1fcf "docs(triton): where to get the sm7x Triton ..." und e0f93d68f "perf(mhc): let the mHC layer ops take the
+  sm7x tensor-core route" = die letzten zwei Commits von #1282 (Wheel-Seite, mHC-Schicht-Ops). Dazu #1347-Body "#1282's last two commits, the wheel page and the mHC layer ops".
+- git merge-base 918a96748(#1286) c7fcf8b50(#1348) = 05ab8a59c; git log 05ab8a59c..918a96748: d1e07968a, 25fcfbfa7, 918a96748 (drei Vision-Commits);
+  #1348-Body "#1286 without its last three commits (the three vision commits; that is its commit 05ab8a59c)".
+- Commit-Zahlen: gh pr view N --json commits: 1278 8, 1282 36, 1286 65, 1347 37, 1348 65, 1631 10 (= 8 + 2), 1632 37 (= 36 + 1), 1633 70 (= 65 + 5), 1634 66 (= 65 + 1).
+  Bodies von #1631, #1632, #1633, #1634 nennen dieselbe Stapelung ("Stacked on #1278/#1282/#1286").
+- Konflikte: git merge-tree --write-tree --name-only <Kopf A> <Kopf B> fuer alle 105 Paare der 15 Koepfe, Exit-Code ungleich 0 = Konflikt
+  (Datei conflicts.txt, Dateinamen = erste Zeilen nach der Baum-ID). Treffer:
+  runtime_reference.md: 1282x1629, 1282x1630, 1286x1629, 1286x1630, 1347x1629, 1347x1630, 1348x1629, 1348x1630, 1629x1630, 1629x1632, 1629x1633,
+  1629x1634, 1630x1632, 1630x1633, 1630x1634. vllm/config/kernel.py: 1282x1630, 1286x1630, 1347x1630, 1348x1630, 1630x1632, 1630x1633, 1630x1634.
+  tests/v1/worker/test_sm70_long_attention_graphs.py: 1629x1630. csrc/sm70_turbomind/ops/fp8_qpn8_sm70.cu: 1286x1631, 1348x1631, 1631x1633, 1631x1634.
+  vllm/models/glm5next/nvidia/kda.py: 1348x1628. Alle anderen Paare sauber.
+  Gegenprobe in den Bodies: #1631-Body ("It conflicts in csrc/sm70_turbomind/ops/fp8_qpn8_sm70.cu with #1286 ..., #1348 ..., our MoE kernel PR and our routing PR"),
+  #1348-Body ("#1628 ... conflicts with this PR in vllm/models/glm5next/nvidia/kda.py").
+
+== CI ==
+- gh run list --repo R --branch main --limit 12: pre-commit auf 73da3445d, 2878bcdec, 44708bdb9 = failure; architecture-docs auf 73da3445d = failure
+  (Lauf 45639523915; auf 44708bdb9 gibt es keinen architecture-docs-Lauf); letzter gruener pre-commit auf main: 28f321c2c (2026-11-25T08:01Z).
+- Rote Hooks auf main: gh run view 45645335881 (44708bdb9) und 45639523970 (73da3445d) --log-failed, Zeilen mit "Failed":
+  check-layering ("Keep generic modules free of new model/platform/env coupling"), markdownlint-cli2, ruff check, mypy 3.10/3.11/3.12/3.13.
+- Rote Hooks der PR-Laeufe (gh run list --branch <Zweig>, dann gh run view <id> --log-failed): identische sieben Hooks bei #1221 (45785007672),
+  #1278 (45784958776), #1282 (45784973413), #1286 (45784991562), #1347 (45784979567), #1348 (45784998371), #1627 (45762188730), #1628 (45762192947),
+  #1629 (45787380142), #1630 (45787473078), #1631 (45799287125). Abweichend #1536 (Lauf 45556937081, 2026-11-25T05:55Z, aeltere Basis):
+  SPDX headers, ruff check, ruff format, mypy 3.10-3.13; sein Kommentar vom 2026-11-25 (gh pr view 1536 --json comments) nennt Dateien, die der PR nicht beruehrt.
+  OFFEN: die pre-commit-Laeufe von #1632 (45799309471), #1633 (45799329193) und #1634 (45799349807) liefen beim Schreiben noch (status in_progress);
+  der Body sagt das. Vor dem Senden neu abfragen und den Klammersatz streichen, wenn sie fertig sind (und dieselben Hooks zeigen).
+- architecture-docs (Lauf-IDs 45785007677 #1221, 45784972962 #1282, 45784991636 #1286, 45784979588 #1347, 45784998429 #1348, 45787380177 #1629,
+  45787472779 #1630, 45799309532 #1632, 45799329376 #1633, 45799349711 #1634): alle failure mit der Meldung
+  "docs/design/architecture/runtime_reference.md is stale; run .venv/bin/python -m tools.generate_architecture_reference --write" (gh run view <id> --log);
+  dieselbe Meldung im Lauf von main 73da3445d. #1278, #1536, #1627, #1628, #1631 haben keinen architecture-docs-Lauf.
+
+== Zeilen unter "Still open" (je PR, Quelle: gh pr view N --json title,body; Zahlen woertlich aus dem Body) ==
+- #1221: Zahlen "prose 42.9-43.0 -> 48.2-48.3 tok/s (+12 %)" im Abschnitt Test Result (V1 -> V2); die alte Zeile nannte 70 ms / 63 ms, der Body nennt
+  "decode step 70 / 73 / 78 -> 63 / 65 / 70 ms", daher die ms-Angabe weggelassen. Satz zu Inkling 2: Update-Kommentar vom 2026-11-26
+  ("init_speculator now picks main's Inkling2DSparkSpeculator for an Inkling 2 drafter and ours for every other DSpark drafter").
+- #1278: Zeile unveraendert vom alten Body; Zahlen im Body: "DeepSeek-V4 512 tokens w13 6555 -> 4303 us, w2 3271 -> 2238 us" (Skinny MoE m16n8k8 on a Quadro RTX 8000).
+- #1282: Zahlen "287,039 tokens: 144.74 / 144.64 -> 73.57 / 73.55 s" im Test Result; "Stacked on #1278" und 15 Commits aus #1279/#1280: Update-Absatz im Body
+  ("the branch is stacked on #1278 only"); Titel von #1279/#1280 aus gh pr list --state closed.
+- #1286: Zeile vom alten Body, Zahlen "53.35 against 23.26 tok/s", "524,288", "csf_32x2_v1" im Body geprueft; Stapelung per git (siehe oben).
+- #1347: "Decode round at 287,039 tokens: 64.4 / 64.1 ms changed, 72.7 / 72.5 ms reference" und "7.6 to 8.4 ms less per round (10.5 to 11.5 %) from 178,480 tokens on" im Test Result;
+  "with kernel_config.triton_sm7x_tensor_cores" aus dem Purpose-Absatz.
+- #1348: "one call in a CUDA graph takes 1.11 to 1.17 ms instead of 2.08 to 2.17 ms (M 1 to 16)" (Quadro RTX 8000, Purpose-Absatz MXFP8 LM head); Autotune-Satz aus Purpose.
+- #1536: "pool holds 493,704 tokens (0.94x)", Warm-up-Fehler "an illegal memory access was encountered" im Body (GLM-5.3-Flash PP5, max_model_len 524,288);
+  Titel "Refuse a KV pool that cannot hold one max_model_len request". Keine Rebase auf 73da3445d (nur main 4f565bae3 im Test).
+- #1627: "there is no throughput claim; this is a selection fix"; V100/RTX: "the INT8 call fails ..., query and is_supported() answer False" (Evidence-Absatz).
+- #1628: "for the 34 KDA layers at 8 rows 1.684 -> 0.197 ms (V100) and 1.471 -> 0.211 ms (RTX 8000)", "bit-identical", "not part of an end-to-end run" (Evidence-Absatz).
+- #1629: "43.96 / 43.90 against 41.00 / 41.12 (mean +7.0 %)" und "greedy probe ... -3.2 %" im Evidence-Absatz; Feld kernel_config.adaptive_verify.
+- #1630: "T1 47.77, T3 47.74 against P2 47.39, P4 47.31 (mean +0.9 %)", gemessen auf dem Fork vor dem Rebase; Feld kernel_config.pp_pack_handover.
+- #1631: "Greedy round time in ms: 48.7 and 48.7 against 49.9 and 50.2 (-2.7 %)" (Fork-Messung); "dequantized wo_a to an FP16 copy at load" aus Problem; "Stacked on #1278".
+- #1632: "W_UK_T 34.12 -> 26.12, W_UV 34.34 -> 24.21" (V100, fuenf Zeilen), "sampling ... 45.78 and 45.40 against 45.54 and 45.19 tok/s (+0.5 %)", "about half a percent at most"; "Stacked on #1282".
+- #1633: "sampling ... 42.32 and 42.33 tok/s against 41.08 and 41.14 tok/s (+3.0 %)", "Greedy round 55.3 and 55.3 ms against 57.0 and 57.0 ms", Bundle aus fuenf Commits,
+  "the kernels are bit-identical", neun Projektionen ueber fuenf Bit; "Stacked on #1286".
+- #1634: "Tesla V100, 8 / 40 / 48 / 64 / 128 slots: 2.15 -> 1.67, 13.96 -> 2.24, ..." und "0.56 ms per decode round ... computed, not measured end to end" (round of 55 to 57 ms).
+
+== Merged-Liste ==
+- 45 neue Zeilen aus merged.json (Titel mit abgeschnittenen fuehrenden [Tags]), sortiert nach mergedAt absteigend, dann Nummer absteigend;
+  Zusatz "(merged as part of #N)" nur, wenn gh api repos/R/commits/<mergeCommit>/pulls eine andere PR als die PR selbst liefert (merged_via.json).
+  Die bisherige Liste (71 Zeilen im alten Body, 116 im neuen) steht darunter unveraendert.
+- Nicht in "Merged": #1279, #1280, #1414 (geschlossen, nicht gemergt; im Update-Absatz mit Beleg genannt).
+
+== Formpruefung ==
+- Keine Backticks, kein Fettdruck, kein @, keine Zeilen mit #-Ueberschrift (nur die alte Zeile "#718 proposed ..." beginnt mit # ohne Leerzeichen, so im alten Body);
+  Abschnittsueberschriften "Still open" und "Merged" als eigene Zeilen; Listen mit "- ". Nicht-ASCII: nur das Robot-Emoji der vorgegebenen Schlusszeile.
+- Persoenliche Kennungen: grep -c -F -f ~/.config/claude-identifier-guard/identifiers.txt issue674-body.txt = 0.
+- Laenge: siehe wc -c issue674-body.txt (unter 65536).

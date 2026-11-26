@@ -1,0 +1,30 @@
+Title: [Perf][SM70] Group the skinny MoE routing in one sort-based Triton kernel
+
+Branch: pr-sm70-moe-routing-sort (base 1Cat main 022349e47), one commit (squash of our fork commits 9f5bfb462a "group the skinny MoE experts in one Triton kernel" and ca2c1b65a "sort-based routing-group kernel")
+Status: DRAFT, not sent. Items marked RECHECK must be re-measured on this branch before sending.
+IMPORTANT (decide before sending): vllm/model_executor/layers/fused_moe/sm70/routing.py does not exist on main. Its first version (pairwise-rank kernel, our commit 9f5bfb462a) is part of the open PRs #1286 and #1348. This branch therefore introduces the file with the sort-based kernel directly. It will conflict with #1286 and #1348 (same new file, same hunk in skinny_sm70_moe.py). Either send this one and rebase those two onto it, or hold it until #1286/#1348 are merged and send only the sort change on top.
+
+----- Text -----
+
+Problem: Nvfp4SkinnySm70Experts groups the routing slots of a decode or verify step by expert (argsort, group start, cumsum, scatter_reduce, dtype casts) with about 19 small torch kernels per MoE layer, about 86 us per layer in decode. Each of them is a launch of a few microseconds that the GPU mostly spends waiting.
+
+Change:
+- New vllm/model_executor/layers/fused_moe/sm70/routing.py with group_routing(topk_ids). Up to 128 slots (one token times 8 experts up to a verify step of 16 tokens) one Triton program on a single warp replaces the torch chain: one sort key per slot, expert * BLOCK + slot (the keys are distinct, so sorting them is the stable sort by expert; the slot rides in the low bits), one tl.sort, the group starts found by comparing neighbours and a cumsum, and a scatter of the starts into the group rows. Padding lanes take the largest key. Above 128 slots group_routing falls back to group_routing_reference, the torch version, which defines the result. Both return the same int32 tensors perm, gids and goff.
+- Nvfp4SkinnySm70Experts._apply_grouped calls group_routing instead of the inline torch code (skinny_sm70_moe.py, 27 lines changed). The tensors the following kernels read are unchanged.
+- Triton program size is one warp: for at most 128 keys more warps only add shared-memory round trips.
+
+Evidence:
+- Outputs are bit-identical to the torch reference: test_sm70_group_routing.py (CUDA) and the Triton-interpreter CPU test below compare perm, gids and goff with torch.equal for random routings of the GLM-5.3-Flash (288 experts, top 8), DeepSeek-V4-Flash (256, top 6) and a 9-expert shape, heavy ties, all slots on one expert, all slots distinct, int64 ids, negative ids and the 128/129-slot limit.
+- Kernel time inside a CUDA graph (200 launches per graph, GLM shape, 8 slots, lower is better): 13.4 us -> 2.1 us on V100 and 17.8 us -> 2.6 us on Quadro RTX 8000 (RECHECK: re-run on this branch with the micro-benchmark, and the bit-identity check it prints). The older pairwise kernel in the same benchmark is the previous version of this file; the torch chain it replaced was about 86 us per layer in decode (our earlier measurement, RECHECK).
+- End to end: in our fork a bundle of this change, the router GEMM fix, the KDA glue kernels (separate PRs) and a merge of 1Cat main measured GLM-5.3-Flash decode (short prompts, 192 tokens, greedy) 41.99 -> 44.50 and 44.41 tok/s on PP5 over 3x V100 + 2x Quadro RTX 8000. That figure belongs to the bundle, not to this change alone. RECHECK: A/B of this change alone on this branch.
+
+Tests (on main 022349e47 plus this commit; CUDA_VISIBLE_DEVICES empty, our wrapper around python -m pytest, one process per file):
+- TRITON_INTERPRET=1 tests/kernels/moe/test_sm70_group_routing_cpu.py: 43 passed (Triton interpreter on the CPU; it runs the kernel logic, not the GPU's sort/gather lowering). Without TRITON_INTERPRET=1 the file skips itself.
+- tests/kernels/moe/test_sm70_group_routing.py: 27 skipped (needs CUDA). To be run on a GPU before sending (RECHECK).
+- Existing files that use the changed module or the changed method: tests/kernels/moe/test_skinny_sm70_moe.py 51 passed 26 skipped; tests/kernels/test_sm70_small_moe_routing.py 8 passed 37 skipped; tests/quantization/test_sm70_moe_backend_override.py 7 passed; tests/quantization/test_sm70_mxfp4_moe.py 30 passed 5 skipped; tests/quantization/test_sm70_modelopt_mixed_nvfp4.py 64 passed 6 skipped; tests/v1/attention/test_flash_v100_candidates.py 3 passed. The skipped tests need CUDA and are to be run on a GPU before sending (RECHECK).
+- tests/models/gguf/test_small_routing_integration.py: 2 failed (AttributeError: 'GGUFTurboMindMoEMethod' object has no attribute 'mma_planes'); the same two fail on unmodified main 022349e47 and the file does not use this code.
+- pre-commit run --files on the four changed files and the manual-stage mypy hook (mypy-3.10): all hooks pass.
+
+Duplicate check: gh pr list --state all searches "group routing", "_group_routing", "routing.py", "skinny MoE routing", "bitonic", "tl.sort" and "router GEMM". The only PRs with this kernel are the open #1286 and #1348 (our own GLM-5.3 stack, the pairwise-rank version of the same file, commit 9f5bfb462a); the merged #742 introduced the skinny MoE backend whose torch routing chain this replaces. #1278, #1030, #1031, #1243, #1282 and #1347 touch skinny_sm70_moe.py but not the routing code.
+
+AI assistance (Claude) was used; the change was reviewed and tested by the submitter.

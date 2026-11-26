@@ -1,0 +1,89 @@
+15c15
+< +from vllm.v1.worker.gpu.spec_decode.dspark.speculator import DSparkSpeculator
+---
+> +from vllm.v1.worker.gpu.spec_decode.dspark.block_drafter import DSparkSpeculator
+112a113,138
+> +
+> +
+> +def _width_graph_manager(inkling2_drafter: bool):
+> +    manager = object.__new__(ModelCudaGraphManager)
+> +    manager.vllm_config = SimpleNamespace(
+> +        speculative_config=SimpleNamespace(method="dspark"),
+> +        _is_inkling2_dspark=lambda: inkling2_drafter,
+> +    )
+> +    manager.decode_query_len = 4
+> +    manager.decode_query_lens = (4,)
+> +    manager.max_num_reqs = 1
+> +    manager._capture_sizes = [1, 4]
+> +    return manager
+> +
+> +
+> +def test_narrower_width_graphs_only_for_the_drafter_that_narrows():
+> +    # This speculator drafts at one width: no graphs for narrower verify shapes.
+> +    fixed = _width_graph_manager(inkling2_drafter=False)
+> +    fixed._add_dspark_width_graphs()
+> +    assert fixed.decode_query_lens == (4,)
+> +    assert fixed._capture_sizes == [1, 4]
+> +
+> +    narrowing = _width_graph_manager(inkling2_drafter=True)
+> +    narrowing._add_dspark_width_graphs()
+> +    assert narrowing.decode_query_lens == (4, 1, 2, 3)
+> +    assert narrowing._capture_sizes == [1, 2, 3, 4]
+118,120c144,146
+< -  "platform": 33
+< +  "platform": 34
+< + "vllm/v1/worker/gpu/spec_decode/dspark/speculator.py": {
+---
+> -  "platform": 30
+> +  "platform": 31
+> + "vllm/v1/worker/gpu/spec_decode/dspark/block_drafter.py": {
+123a150,163
+> -            elif (
+> -                speculative_config.method
+> -                not in (
+> -                    "eagle",
+> -                    "eagle3",
+> -                    "mtp",
+> -                    "dflash",
+> -                )
+> -                and not self._is_inkling2_dspark()
+> +            elif speculative_config.method not in (
+> +                "eagle",
+> +                "eagle3",
+> +                "mtp",
+> +                "dflash",
+126a167
+> -                and not self._is_inkling2_dspark()
+128a170,172
+> +            # Other DSpark drafters keep one draft width; graphs for the
+> +            # narrower verify shapes would only be captured, never replayed.
+> +            or not self.vllm_config._is_inkling2_dspark()
+210d253
+< -            if self.speculative_config.method in ("eagle3", "dflash"):
+212d254
+< +            if self.speculative_config.method in ("eagle3", "dflash", "dspark"):
+253,254c295,301
+< +    if speculative_config.method == "dspark":
+< +        from vllm.v1.worker.gpu.spec_decode.dspark.speculator import DSparkSpeculator
+---
+> -        from vllm.v1.worker.gpu.spec_decode.dspark import Inkling2DSparkSpeculator
+> -
+> -        return Inkling2DSparkSpeculator(vllm_config, device)
+> +        from vllm.v1.worker.gpu.spec_decode.dspark import (
+> +            DSparkSpeculator,
+> +            Inkling2DSparkSpeculator,
+> +        )
+255a303,306
+> +        # The Inkling2 drafter has its own speculator; every other DSpark
+> +        # drafter is a plain parallel block drafter.
+> +        if vllm_config._is_inkling2_dspark():
+> +            return Inkling2DSparkSpeculator(vllm_config, device)
+276,278c327,330
+< +# SPDX-License-Identifier: Apache-2.0
+< +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+< diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py b/vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
+---
+> +from vllm.v1.worker.gpu.spec_decode.dspark.block_drafter import DSparkSpeculator
+> -__all__ = ["Inkling2DSparkSpeculator"]
+> +__all__ = ["DSparkSpeculator", "Inkling2DSparkSpeculator"]
+> diff --git a/vllm/v1/worker/gpu/spec_decode/dspark/block_drafter.py b/vllm/v1/worker/gpu/spec_decode/dspark/block_drafter.py

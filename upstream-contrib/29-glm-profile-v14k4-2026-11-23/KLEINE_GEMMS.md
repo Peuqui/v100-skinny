@@ -131,3 +131,21 @@ Zusammen: belastbar ≈ 0,28 + 0,30 + 0,10 + 0,06 + 0,04 = **0,8 ms**, Decke ≈
 3. **Speicher:** bestätigen, dass `W_UK_T`/`W_UV` wirklich Sichten sind (Speicherverbrauch kv_b je Schicht 33,55 MB, nicht 67 MB) – aus dem Code abgeleitet, nicht gemessen.
 4. **Zählung `splitKreduce`:** je DSA-Schicht V100 7–8 Aufrufe à ~4 µs (QK, 5 × PV, cuBLAS-Zerlegung) = ~30 µs, nicht Gegenstand dieser Frage, aber derselbe Mechanismus (cuBLAS-Split-K für M = 5): eigener Posten für eine spätere Runde.
 5. **Wiederholbarkeit der Zahlen:** Mittelwerte aus Capture 1 (kurzer Kontext); in Capture 2 (16k) ändern sich diese Kerne nicht (Gewichtsstrom ist kontextunabhängig), nicht einzeln nachgerechnet.
+
+## Nachtrag 24.11.2026: QPN8-Zeilengruppen-Skalen vorladen (KDA o_proj) verworfen
+
+Zweig `qpn8-rowgroup-scale-preload` ea95771f7 (Baum `1Cat-vLLM-qpn8-scales`), Mikrobenchmark `pkg_qpn8_scales_bench_2026-11-23.py`,
+Kette `chain_qpn8sc_2026-11-24.sh`, Logs `~/.cache/bench-scripts/qpn8sc_2026-11-24/`, alt = Baum v14 (gleicher QPN8-Kern wie v15), je
+zweimal im Wechsel. Bitgleich (0 von 32 Formen abweichend, beide Karten), aber langsamer, µs je Aufruf bei M = 5 (weniger ist besser):
+V100 o_proj 4096×8192 47,3 → 47,6–47,9, 4096×4096 25,3 → 25,8, 2048×6144 21,9 → 22,7, 8192×4096 48,9 → 49,6; RTX 59,4 → 60,0,
+30,9 → 31,3, 23,8 → 24,3, 58,9 → 59,2. Also +0,5 bis +3,6 %. Verworfen.
+
+## Nachtrag 24.11.2026: kv_b als schmaler Triton-Kern übernommen (Entwicklungszweig)
+
+Zweig `glm-kvb-skinny` 48a92aa11 (im Entwicklungszweig `merge-1cat-2d218ab03`): ein Programm je Kopf und Spaltenstreifen, `tl.dot` mit
+FP32-Akkumulation, Kacheln je Architektur aus `benchmark_mla_kv_b_skinny.py --sweep --rows 1 5 7` (V100 64×32/4 und 64×64/2, RTX 128×32/4
+und 64×64/2), Schalter `kernel_config.mla_kv_b_skinny` (nicht im Compile-Hash), über 8 Zeilen bleibt `torch.bmm`. Mikrobenchmark bei 5 Zeilen,
+µs je Aufruf (weniger ist besser): V100 W_UK_T 34,1 → 26,1, W_UV 34,3 → 24,2; RTX 41,3 → 31,9, 40,4 → 32,1. Tests 33/33 je Karte.
+A/B GLM `ab_kvb_glm_2026-11-24a.log` (T P T P): Runde greedy 53,4/53,5 gegen 53,7/54,1 ms, AIfred-Sampling +0,5 %, GSM8K-Decode +0,5 %, 29;
+erstes Token 150k–516k gleich, Langkontext je Schritt gleich, Prefill 8,7k 3,87–3,88 gegen 3,85–3,86 s (Streuung), Texte 8/8 tokengleich.
+Fährt mit dem nächsten Produktionsbündel mit (Eintrag: `"mla_kv_b_skinny":true` im `--kernel-config`).

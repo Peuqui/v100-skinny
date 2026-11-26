@@ -1,0 +1,3 @@
+248a249,250
+> -            if quant_algo and quant_algo != "MXFP8":
+> +            if quant_algo:

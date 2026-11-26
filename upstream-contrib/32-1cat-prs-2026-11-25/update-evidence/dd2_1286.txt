@@ -1,0 +1,112 @@
+1753a1754,1758
+> diff --git a/tests/models/glm5next/test_sm70_kda.py b/tests/models/glm5next/test_sm70_kda.py
+> +        split_qkv=False,
+> +    # forward starts with _project_inputs, which owns the projection choice.
+> -        kda_module.Glm5NextLinearAttention.forward(layer, hidden, None)
+> +        kda_module.Glm5NextLinearAttention._project_inputs(layer, hidden)
+1759c1764,1766
+< +    not current_platform.is_cuda() or current_platform.get_device_capability()[0] != 7,
+---
+> +    not torch.cuda.is_available()
+> +    or not current_platform.is_cuda()
+> +    or current_platform.get_device_capability()[0] != 7,
+1834c1841
+< +@pytest.mark.skipif(not current_platform.is_cuda(), reason="requires CUDA")
+---
+> +@pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+1860a1868,1869
+> +pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")
+> +
+1997a2007,2018
+> diff --git a/tests/quantization/test_modelopt_mixed_precision_validation.py b/tests/quantization/test_modelopt_mixed_precision_validation.py
+> -    assert isinstance(
+> -        config.get_quant_method(MagicMock(spec=layer_type), prefix),
+> -        UnquantizedLinearMethod,
+> -    )
+> +    method = config.get_quant_method(MagicMock(spec=layer_type), prefix)
+> +    if layer_type is ParallelLMHead:
+> +        # An LM head keeps its own UnquantizedEmbeddingMethod: the linear
+> +        # method's weight preparation expects LinearBase's per-layer policies.
+> +        assert method is None
+> +    else:
+> +        assert isinstance(method, UnquantizedLinearMethod)
+2144,2146d2164
+< +from vllm.model_executor.layers.fused_moe.experts import skinny_sm70_moe
+< +        # The automatic backend keeps TurboMind when the skinny kernel declines.
+< +        patch.object(skinny_sm70_moe, "skinny_backend_admitted", return_value=False),
+2192,2207c2210,2221
+< diff --git a/tests/quantization/test_sm70_modelopt_nvfp4.py b/tests/quantization/test_sm70_modelopt_nvfp4.py
+< -        patch.object(sm70_tm, "should_prepare_turbomind", return_value=False),
+< +        patch.object(sm70_tm, "is_exact_sm70_cuda", return_value=False),
+< +        patch.object(sm70_tm, "is_turing_cuda_platform", return_value=False),
+< -        patch.object(sm70_tm, "should_prepare_turbomind", return_value=True),
+< +        patch.object(sm70_tm, "is_exact_sm70_cuda", return_value=True),
+< +        patch.object(sm70_tm, "is_turing_cuda_platform", return_value=False),
+< -    with patch(
+< -        "vllm.model_executor.layers.quantization.modelopt.init_nvfp4_linear_kernel",
+< -        return_value=fake_kernel,
+< +    # Off SM70 here means a card with the generic NVFP4 kernel (not Turing,
+< +    # whose method defers kernel selection to weight processing).
+< +    with (
+< +        patch(
+< +            "vllm.model_executor.layers.quantization.modelopt.init_nvfp4_linear_kernel",
+< +            return_value=fake_kernel,
+---
+> +def test_nvfp4_sm70_moe_creates_uncompressed_expert_scales(monkeypatch):
+> +    monkeypatch.setattr(
+> +        "vllm.model_executor.parameter.get_tensor_model_parallel_rank", lambda: 0
+> +    )
+> +    monkeypatch.setattr(
+> +        "vllm.model_executor.parameter.get_tensor_model_parallel_world_size",
+> +        lambda: 1,
+> +    )
+> +    method = ModelOptNvFp4SM70MoEMethod(
+> +        quant_config=ModelOptNvFp4Config(
+> +            quant_method="W4A16_NVFP4",
+> +            is_checkpoint_nvfp4_serialized=True,
+2209,2212c2223,2234
+< +        patch.object(sm70_tm, "is_turing_cuda_platform", return_value=False),
+< -        patch.object(sm70_tm, "should_prepare_turbomind", return_value=False),
+< +        patch.object(sm70_tm, "is_exact_sm70_cuda", return_value=False),
+< +        patch.object(sm70_tm, "is_turing_cuda_platform", return_value=False),
+---
+> +        moe_config=_moe_contract(is_act_and_mul=True),
+> +    )
+> +    layer = torch.nn.Module()
+> +
+> +    method.create_weights(
+> +        layer, 8, 256, 128, torch.float16, weight_loader=None, global_num_experts=8
+> +    )
+> +
+> +    assert layer.w13_weight_scale.dtype == torch.float8_e4m3fn
+> +    assert layer.w2_weight_scale.shape == (8, 256, 128 // 16)
+> +
+> +
+3052,3053c3074
+< -            # Layer not in quantized_layers — leave unquantized
+< -            return UnquantizedLinearMethod()
+---
+> -            if quant_algo:
+3057a3079,3081
+> +            if quant_algo and quant_algo != "MXFP8":
+> -            # Layer not in quantized_layers — leave unquantized
+> -            return UnquantizedLinearMethod()
+3070a3095,3098
+> diff --git a/vllm/model_executor/layers/quantization/nvfp4_sm70_moe.py b/vllm/model_executor/layers/quantization/nvfp4_sm70_moe.py
+> +        # The TurboMind experts read uncompressed block scales; only the
+> +        # skinny experts serve csf_32x2_v1 scales.
+> +        self.csf_scales = False
+3916d3943
+< +from vllm.model_executor.layers.fla.ops.gdn_chunk_kernels import bind_kda_kernels
+3918d3944
+< +        self.chunk_kernels = bind_kda_kernels(vllm_config)
+3922,3925c3948,3949
+< +            and current_platform.get_device_capability(
+< +                torch.accelerator.current_device_index()
+< +            )
+< +            in ((7, 0), (7, 5))
+---
+> +            # Without an index: the worker's own device, no CUDA context.
+> +            and current_platform.get_device_capability() in ((7, 0), (7, 5))
+4259a4284
+> +

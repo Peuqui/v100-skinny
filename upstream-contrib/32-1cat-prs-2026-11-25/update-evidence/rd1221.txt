@@ -1,0 +1,214 @@
+1:  e3614d9d4 ! 1:  ff399b673 [Spec Decode][MRV2] DSpark speculator for Model Runner V2
+    @@ Commit message
+         weight contract (the drafter keeps its own embedding copy under PP).
+         Admits method 'dspark' on MRV2, wires its aux target layers and noise token,
+         and feeds drafters the target hidden state unless the target provides an
+    -    override (DeepSeek-V4 MTP only). The layering baseline records the new
+    +    override (DeepSeek-V4 MTP only). The speculator lives in
+    +    dspark/block_drafter.py next to the Inkling2 DSpark speculator (#1616);
+    +    init_speculator keeps an Inkling2 drafter on that one. With 'dspark'
+    +    admitted on MRV2 in general, the two Inkling2 exceptions in
+    +    _validate_v2_model_runner become redundant and go. The narrower-width target
+    +    graphs of #1616 stay with the Inkling2 drafter, the only one whose draft
+    +    width shrinks with the batch. The layering baseline records the new
+         speculator's references to the DFlash base it extends, as it does for the
+         V1 proposer (vllm/v1/spec_decode/dspark.py).
+     
+    @@ Commit message
+      ## tools/pre_commit/layering_baseline.json ##
+     @@
+       "vllm/v1/worker/gpu/spec_decode/__init__.py": {
+    -   "model": 16
+    +   "model": 12
+       },
+    -+ "vllm/v1/worker/gpu/spec_decode/dspark/speculator.py": {
+    ++ "vllm/v1/worker/gpu/spec_decode/dspark/block_drafter.py": {
+     +  "model": 6
+     + },
+       "vllm/v1/worker/gpu/spec_decode/eagle/eagle3_utils.py": {
+    @@ tools/pre_commit/layering_baseline.json
+     
+      ## vllm/config/vllm.py ##
+     @@ vllm/config/vllm.py: class VllmConfig:
+    -                 "eagle3",
+    -                 "mtp",
+    -                 "dflash",
+    +             # TODO: ngram / ngram_gpu are not supported by the v2 model runner yet
+    +             if speculative_config.method in ("ngram", "ngram_gpu"):
+    +                 unsupported.append("ngram/ngram_gpu speculative decoding")
+    +-            elif (
+    +-                speculative_config.method
+    +-                not in (
+    +-                    "eagle",
+    +-                    "eagle3",
+    +-                    "mtp",
+    +-                    "dflash",
+    +-                )
+    +-                and not self._is_inkling2_dspark()
+    ++            elif speculative_config.method not in (
+    ++                "eagle",
+    ++                "eagle3",
+    ++                "mtp",
+    ++                "dflash",
+     +                "dspark",
+                  ):
+                      unsupported.append(f"speculative method '{speculative_config.method}'")
+    @@ vllm/config/vllm.py: class VllmConfig:
+                  if (
+                      speculative_config.parallel_drafting
+     -                and speculative_config.method != "dflash"
+    +-                and not self._is_inkling2_dspark()
+     +                and speculative_config.method not in parallel_drafting_methods
+                  ):
+                      unsupported.append("parallel drafting for speculative decoding")
+      
+     
+    + ## vllm/v1/worker/gpu/cudagraph_utils.py ##
+    +@@ vllm/v1/worker/gpu/cudagraph_utils.py: class CudaGraphManager:
+    +         if (
+    +             spec is None
+    +             or spec.method != "dspark"
+    ++            # Other DSpark drafters keep one draft width; graphs for the
+    ++            # narrower verify shapes would only be captured, never replayed.
+    ++            or not self.vllm_config._is_inkling2_dspark()
+    +             or not isinstance(self, ModelCudaGraphManager)
+    +             or self.decode_query_len <= 1
+    +         ):
+    +
+      ## vllm/v1/worker/gpu/model_runner.py ##
+     @@ vllm/v1/worker/gpu/model_runner.py: class GPUModelRunner(LoRAModelRunnerMixin):
+    -             if self.is_last_pp_rank:
+                      self.speculator = init_speculator(self.vllm_config, self.device)
+      
+    --            if self.speculative_config.method in ("eagle3", "dflash"):
+    +             if self.speculative_config.method in ("eagle3", "dflash", "dspark"):
+     -                # EAGLE3 and DFlash may require auxiliary target hidden states.
+    -+            if self.speculative_config.method in ("eagle3", "dflash", "dspark"):
+     +                # EAGLE3, DFlash and DSpark may require auxiliary target hidden states.
+                      self.use_aux_hidden_state_outputs = True
+                      if self.use_pp and self.speculative_config.method == "eagle3":
+    @@ vllm/v1/worker/gpu/model_runner.py: class GPUModelRunner(LoRAModelRunnerMixin):
+     
+      ## vllm/v1/worker/gpu/spec_decode/__init__.py ##
+     @@ vllm/v1/worker/gpu/spec_decode/__init__.py: def init_speculator(vllm_config: VllmConfig, device: torch.device):
+    -         from vllm.v1.worker.gpu.spec_decode.dflash.speculator import DFlashSpeculator
+      
+              return DFlashSpeculator(vllm_config, device)
+    -+    if speculative_config.method == "dspark":
+    -+        from vllm.v1.worker.gpu.spec_decode.dspark.speculator import DSparkSpeculator
+    +     if speculative_config.method == "dspark":
+    +-        from vllm.v1.worker.gpu.spec_decode.dspark import Inkling2DSparkSpeculator
+    +-
+    +-        return Inkling2DSparkSpeculator(vllm_config, device)
+    ++        from vllm.v1.worker.gpu.spec_decode.dspark import (
+    ++            DSparkSpeculator,
+    ++            Inkling2DSparkSpeculator,
+    ++        )
+     +
+    ++        # The Inkling2 drafter has its own speculator; every other DSpark
+    ++        # drafter is a plain parallel block drafter.
+    ++        if vllm_config._is_inkling2_dspark():
+    ++            return Inkling2DSparkSpeculator(vllm_config, device)
+     +        return DSparkSpeculator(vllm_config, device)
+          if speculative_config.use_eagle():
+              from vllm.v1.worker.gpu.spec_decode.eagle.speculator import EagleSpeculator
+    @@ vllm/v1/worker/gpu/spec_decode/dflash/utils.py: def _validate_dflash_shared_weig
+          from vllm.model_executor.models.qwen3_dflash import dflash_has_any_non_causal
+      
+     @@ vllm/v1/worker/gpu/spec_decode/dflash/utils.py: def load_dflash_model(target_model: nn.Module, vllm_config: VllmConfig) -> nn.Mo
+    -             else vllm_config.cache_config
+              ),
+          )
+    +     share_runtime_resources(draft_vllm_config, vllm_config)
+     -    with set_model_tag("dflash_head"):
+     -        dflash_model = get_model(
+     -            vllm_config=draft_vllm_config, model_config=draft_model_config
+    @@ vllm/v1/worker/gpu/spec_decode/dflash/utils.py: def load_dflash_model(target_mod
+          target_language_model = (
+              target_model.get_language_model()
+     
+    - ## vllm/v1/worker/gpu/spec_decode/dspark/__init__.py (new) ##
+    + ## vllm/v1/worker/gpu/spec_decode/dspark/__init__.py ##
+     @@
+    -+# SPDX-License-Identifier: Apache-2.0
+    -+# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+    + # SPDX-License-Identifier: Apache-2.0
+    + # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+    ++from vllm.v1.worker.gpu.spec_decode.dspark.block_drafter import DSparkSpeculator
+    + from vllm.v1.worker.gpu.spec_decode.dspark.speculator import Inkling2DSparkSpeculator
+    + 
+    +-__all__ = ["Inkling2DSparkSpeculator"]
+    ++__all__ = ["DSparkSpeculator", "Inkling2DSparkSpeculator"]
+     
+    - ## vllm/v1/worker/gpu/spec_decode/dspark/speculator.py (new) ##
+    + ## vllm/v1/worker/gpu/spec_decode/dspark/block_drafter.py (new) ##
+     @@
+     +# SPDX-License-Identifier: Apache-2.0
+     +# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+2:  966659632 ! 2:  549ff399a [Perf][MRV2] Compressed-index decode graphs at context buckets
+    @@ tools/pre_commit/layering_baseline.json
+       },
+       "vllm/v1/worker/gpu/cudagraph_utils.py": {
+        "model": 11,
+    --  "platform": 33
+    -+  "platform": 34
+    +-  "platform": 30
+    ++  "platform": 31
+       },
+       "vllm/v1/worker/gpu/mamba_align.py": {
+        "model": 2
+3:  450e65c52 ! 3:  7730427a0 [Test][MRV2] Cover the DSpark speculator and compressed-index context buckets
+    @@ Commit message
+         [Test][MRV2] Cover the DSpark speculator and compressed-index context buckets
+     
+         Context slots per cache layer, greedy Markov step mapping, dummy batches at a
+    -    context bound, and the smallest-covering bucket selection; the long-attention
+    -    graph fakes gain the new manager attribute.
+    +    context bound, the smallest-covering bucket selection, and narrower-width
+    +    target graphs only for the Inkling2 drafter; the long-attention graph fakes
+    +    gain the new manager attribute.
+     
+         Signed-off-by: Peuqui <43776522+Peuqui@users.noreply.github.com>
+         Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+    @@ tests/v1/worker/test_mrv2_dspark_context_buckets.py (new)
+     +    ModelCudaGraphManager,
+     +)
+     +from vllm.v1.worker.gpu.input_batch import InputBatch, InputBuffers
+    -+from vllm.v1.worker.gpu.spec_decode.dspark.speculator import DSparkSpeculator
+    ++from vllm.v1.worker.gpu.spec_decode.dspark.block_drafter import DSparkSpeculator
+     +
+     +
+     +class _RecordingDraft:
+    @@ tests/v1/worker/test_mrv2_dspark_context_buckets.py (new)
+     +    manager, desc, (b2k, b4k) = _manager_with_buckets((2048, 4096))
+     +    del manager.graphs[b2k]
+     +    assert manager.select_attention_graph(desc, torch.tensor([100])) == b4k
+    ++
+    ++
+    ++def _width_graph_manager(inkling2_drafter: bool):
+    ++    manager = object.__new__(ModelCudaGraphManager)
+    ++    manager.vllm_config = SimpleNamespace(
+    ++        speculative_config=SimpleNamespace(method="dspark"),
+    ++        _is_inkling2_dspark=lambda: inkling2_drafter,
+    ++    )
+    ++    manager.decode_query_len = 4
+    ++    manager.decode_query_lens = (4,)
+    ++    manager.max_num_reqs = 1
+    ++    manager._capture_sizes = [1, 4]
+    ++    return manager
+    ++
+    ++
+    ++def test_narrower_width_graphs_only_for_the_drafter_that_narrows():
+    ++    # This speculator drafts at one width: no graphs for narrower verify shapes.
+    ++    fixed = _width_graph_manager(inkling2_drafter=False)
+    ++    fixed._add_dspark_width_graphs()
+    ++    assert fixed.decode_query_lens == (4,)
+    ++    assert fixed._capture_sizes == [1, 4]
+    ++
+    ++    narrowing = _width_graph_manager(inkling2_drafter=True)
+    ++    narrowing._add_dspark_width_graphs()
+    ++    assert narrowing.decode_query_lens == (4, 1, 2, 3)
+    ++    assert narrowing._capture_sizes == [1, 2, 3, 4]
+     
+      ## tests/v1/worker/test_sm70_long_attention_graphs.py ##
+     @@ tests/v1/worker/test_sm70_long_attention_graphs.py: def graph_pair():

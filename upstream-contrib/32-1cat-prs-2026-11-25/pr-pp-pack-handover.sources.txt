@@ -1,0 +1,239 @@
+Source of every number and claim in pr-pp-pack-handover.txt (rewritten 2026-11-26 for branch pr-pp-pack-handover at 5b3f76805 on 1Cat main 73da3445d).
+GLM = ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log (arms T1 P2 T3 P4, T = fork commit df927238c with pp_pack_handover, P = production entry; the P4 chain was cut at 14:01:35 by the end of the hold: GLM lines 146-152); GLMJ = ab_ppk_glm_2026-11-23a/journal-1-T.txt; DSV = ab_ppk_dsv4_2026-11-23a.log; DSVJ = ab_ppk_dsv4_2026-11-23a/journal-1-T.txt. Entries: ppk_entry_glm_2026-10-31.yaml (lines 4, 12-14, 32: fp8_e4m3, capture size 5, num_speculative_tokens 4, kernel-config triton_sm7x_tensor_cores + pp_pack_handover, PYTHONPATH with the patched Triton), ppk_entry_dsv4_2026-10-31.yaml (lines 5, 11, 13, 32: fp8 KV, dspark 5, pp_pack_handover). Test counts: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/<tree>/<cpu|v100|rtx>/summary.log, the line of the file named; tree pr-pp-pack, main = prmain2 / prmain2-indep; name-for-name comparison cmp5_result.txt (pr-pp-pack: cpu 0 new, v100 0, rtx 0). Percentages are computed here from the logged values (mean of T arms against mean of P arms).
+Numbers of the text with their lines:
+
+tests/v1/worker/test_pp_pack.py CPU [21 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:18
+tests/v1/worker/test_pp_pack.py V100 [21 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:18
+tests/v1/worker/test_pp_pack.py RTX [21 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:18
+tests/v1/worker/test_gpu_worker_pp_overlap.py CPU [1 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:15
+tests/v1/worker/test_gpu_worker_pp_overlap.py V100 [1 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:15
+tests/v1/worker/test_gpu_worker_pp_overlap.py RTX [1 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:15
+tests/v1/worker/test_gpu_worker_static_pp.py CPU [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:16
+tests/v1/worker/test_gpu_worker_static_pp.py V100 [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:16
+tests/v1/worker/test_gpu_worker_static_pp.py RTX [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:16
+tests/v1/worker/test_pp_keep_batch_runner.py CPU [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:17
+tests/v1/worker/test_pp_keep_batch_runner.py V100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:17
+tests/v1/worker/test_pp_keep_batch_runner.py RTX [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:17
+tests/v1/worker/test_pp_spec_decode_history.py CPU [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:19
+tests/v1/worker/test_pp_spec_decode_history.py V100 [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:19
+tests/v1/worker/test_pp_spec_decode_history.py RTX [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:19
+tests/v1/worker/test_gpu_model_runner_v2_eplb.py CPU [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:10
+tests/v1/worker/test_gpu_model_runner_v2_eplb.py V100 [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:10
+tests/v1/worker/test_gpu_model_runner_v2_eplb.py RTX [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:10
+tests/v1/worker/test_gpu_model_runner_v2.py CPU [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:14
+tests/v1/worker/test_gpu_model_runner_v2.py V100 [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:14
+tests/v1/worker/test_gpu_model_runner_v2.py RTX [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:14
+tests/v1/worker/test_target_sampling.py CPU [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:23
+tests/v1/worker/test_target_sampling.py V100 [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:23
+tests/v1/worker/test_target_sampling.py RTX [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:23
+tests/v1/worker/test_dummy_connector_restore.py CPU [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:6
+tests/v1/worker/test_dummy_connector_restore.py V100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:6
+tests/v1/worker/test_dummy_connector_restore.py RTX [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:6
+tests/config/test_unused_kernel_policy_hash.py CPU [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:2
+tests/config/test_unused_kernel_policy_hash.py V100 [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:2
+tests/config/test_unused_kernel_policy_hash.py RTX [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:2
+tests/v1/cudagraph/test_cudagraph_dispatch.py CPU [54 passed; 2 failed; 3 errors]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:5
+tests/v1/cudagraph/test_cudagraph_dispatch.py V100 [59 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:5
+tests/v1/cudagraph/test_cudagraph_dispatch.py RTX [59 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:5
+tests/v1/worker/test_gpu_model_runner_pp.py CPU [7 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:7
+tests/v1/worker/test_gpu_model_runner_pp.py V100 [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:7
+tests/v1/worker/test_gpu_model_runner_pp.py RTX [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:7
+tests/v1/worker/test_gpu_model_runner.py CPU [17 passed; 9 failed; 17 errors]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:9
+tests/v1/worker/test_gpu_model_runner.py V100 [38 passed; 3 failed; 2 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:9
+tests/v1/worker/test_gpu_model_runner.py RTX [40 passed; 3 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:9
+tests/v1/worker/test_sm70_long_attention_graphs.py CPU [284 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:21
+tests/v1/worker/test_sm70_long_attention_graphs.py V100 [283 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:21
+tests/v1/worker/test_sm70_long_attention_graphs.py RTX [284 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:21
+tests/v1/worker/test_gpu_model_runner_pp_spec.py CPU [1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:8
+tests/v1/worker/test_gpu_model_runner_pp_spec.py V100 [1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:8
+tests/v1/worker/test_gpu_model_runner_pp_spec.py RTX [1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:8
+tests/v1/worker/test_gpu_model_runner_v2_greedy.py CPU [15 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:11
+tests/v1/worker/test_gpu_model_runner_v2_greedy.py V100 [15 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:11
+tests/v1/worker/test_gpu_model_runner_v2_greedy.py RTX [15 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:11
+tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py CPU [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:12
+tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py V100 [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:12
+tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py RTX [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:12
+tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py CPU [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:13
+tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py V100 [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:13
+tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py RTX [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:13
+tests/v1/worker/test_pp_token_check.py CPU [2 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:20
+tests/v1/worker/test_pp_token_check.py V100 [2 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:20
+tests/v1/worker/test_pp_token_check.py RTX [2 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:20
+tests/v1/worker/test_spec_decode_query_rows.py CPU [8 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:22
+tests/v1/worker/test_spec_decode_query_rows.py V100 [8 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:22
+tests/v1/worker/test_spec_decode_query_rows.py RTX [8 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:22
+tests/v1/core/test_scheduler.py CPU [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:4
+tests/v1/core/test_scheduler.py V100 [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:4
+tests/v1/core/test_scheduler.py RTX [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:4
+tests/tools/test_architecture_reference.py CPU [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/cpu/summary.log:3
+tests/tools/test_architecture_reference.py V100 [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/v100/summary.log:3
+tests/tools/test_architecture_reference.py RTX [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-pp-pack/rtx/summary.log:3
+main 73da3445d tests/v1/worker/test_gpu_worker_pp_overlap.py cpu [1 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:73
+main 73da3445d tests/v1/worker/test_gpu_worker_pp_overlap.py v100 [1 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:73
+main 73da3445d tests/v1/worker/test_gpu_worker_pp_overlap.py rtx [1 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:73
+main 73da3445d tests/v1/worker/test_gpu_worker_static_pp.py cpu [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:74
+main 73da3445d tests/v1/worker/test_gpu_worker_static_pp.py v100 [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:74
+main 73da3445d tests/v1/worker/test_gpu_worker_static_pp.py rtx [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:74
+main 73da3445d tests/v1/worker/test_pp_keep_batch_runner.py cpu [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:75
+main 73da3445d tests/v1/worker/test_pp_keep_batch_runner.py v100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:75
+main 73da3445d tests/v1/worker/test_pp_keep_batch_runner.py rtx [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:75
+main 73da3445d tests/v1/worker/test_pp_spec_decode_history.py cpu [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:76
+main 73da3445d tests/v1/worker/test_pp_spec_decode_history.py v100 [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:76
+main 73da3445d tests/v1/worker/test_pp_spec_decode_history.py rtx [9 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:76
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_eplb.py cpu [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:68
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_eplb.py v100 [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:68
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_eplb.py rtx [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:68
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2.py cpu [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:72
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2.py v100 [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:72
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2.py rtx [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:72
+main 73da3445d tests/v1/worker/test_target_sampling.py cpu [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:82
+main 73da3445d tests/v1/worker/test_target_sampling.py v100 [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:82
+main 73da3445d tests/v1/worker/test_target_sampling.py rtx [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:82
+main 73da3445d tests/v1/worker/test_dummy_connector_restore.py cpu [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:63
+main 73da3445d tests/v1/worker/test_dummy_connector_restore.py v100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:63
+main 73da3445d tests/v1/worker/test_dummy_connector_restore.py rtx [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:63
+main 73da3445d tests/config/test_unused_kernel_policy_hash.py cpu [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:7
+main 73da3445d tests/config/test_unused_kernel_policy_hash.py v100 [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:7
+main 73da3445d tests/config/test_unused_kernel_policy_hash.py rtx [6 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:7
+main 73da3445d tests/v1/cudagraph/test_cudagraph_dispatch.py cpu [54 passed; 2 failed; 3 errors]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:56
+main 73da3445d tests/v1/cudagraph/test_cudagraph_dispatch.py v100 [59 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:56
+main 73da3445d tests/v1/cudagraph/test_cudagraph_dispatch.py rtx [59 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:56
+main 73da3445d tests/v1/worker/test_gpu_model_runner_pp.py cpu [7 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:65
+main 73da3445d tests/v1/worker/test_gpu_model_runner_pp.py v100 [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:65
+main 73da3445d tests/v1/worker/test_gpu_model_runner_pp.py rtx [8 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:65
+main 73da3445d tests/v1/worker/test_gpu_model_runner.py cpu [17 passed; 9 failed; 17 errors]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:67
+main 73da3445d tests/v1/worker/test_gpu_model_runner.py v100 [38 passed; 3 failed; 2 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:67
+main 73da3445d tests/v1/worker/test_gpu_model_runner.py rtx [40 passed; 3 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:67
+main 73da3445d tests/v1/worker/test_sm70_long_attention_graphs.py cpu [284 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:80
+main 73da3445d tests/v1/worker/test_sm70_long_attention_graphs.py v100 [283 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:80
+main 73da3445d tests/v1/worker/test_sm70_long_attention_graphs.py rtx [284 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:80
+main 73da3445d tests/v1/worker/test_gpu_model_runner_pp_spec.py cpu [1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:66
+main 73da3445d tests/v1/worker/test_gpu_model_runner_pp_spec.py v100 [1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:66
+main 73da3445d tests/v1/worker/test_gpu_model_runner_pp_spec.py rtx [1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:66
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_greedy.py cpu [15 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:69
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_greedy.py v100 [15 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:69
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_greedy.py rtx [15 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:69
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py cpu [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:70
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py v100 [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:70
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py rtx [3 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:70
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py cpu [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:71
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py v100 [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:71
+main 73da3445d tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py rtx [38 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:71
+main 73da3445d tests/v1/worker/test_pp_token_check.py cpu [2 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:77
+main 73da3445d tests/v1/worker/test_pp_token_check.py v100 [2 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:77
+main 73da3445d tests/v1/worker/test_pp_token_check.py rtx [2 passed; 15 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:77
+main 73da3445d tests/v1/worker/test_spec_decode_query_rows.py cpu [8 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:81
+main 73da3445d tests/v1/worker/test_spec_decode_query_rows.py v100 [8 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:81
+main 73da3445d tests/v1/worker/test_spec_decode_query_rows.py rtx [8 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:81
+main 73da3445d tests/v1/core/test_scheduler.py cpu [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:55
+main 73da3445d tests/v1/core/test_scheduler.py v100 [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:55
+main 73da3445d tests/v1/core/test_scheduler.py rtx [115 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:55
+main 73da3445d tests/tools/test_architecture_reference.py cpu [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:48
+main 73da3445d tests/tools/test_architecture_reference.py v100 [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:48
+main 73da3445d tests/tools/test_architecture_reference.py rtx [12 passed; 1 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:48
+T1 decode short [47.77]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:14
+T3 decode short [47.74]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:104
+P2 decode short [47.39]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:62
+P4 decode short [47.31]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:146
+T1 greedy round ms [56.5 ms]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:16
+T3 greedy round ms [56.6 ms]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:106
+P2 greedy round ms [56.9 ms]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:64
+T1 sampling all [41.42]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:21
+T3 sampling all [41.42]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:111
+P2 sampling all [41.07]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:69
+T1 prose [34.74]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:17
+T3 prose [34.71]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:107
+P2 prose [34.47]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:65
+T1 code [58.99]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:19
+T3 code [58.93]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:109
+P2 code [58.57]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:67
+T1 arithmetic [58.80]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:20
+T3 arithmetic [58.75]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:110
+P2 arithmetic [58.34]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:68
+T1 prefill [3.85 s]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:14
+T3 prefill [3.84 s]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:104
+P2 prefill [3.85 s]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:62
+P4 prefill [3.85 s]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:146
+T3 long ctx ms/round 150k [65.1; 169693]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:116
+T3 250k [66.7; 283230]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:117
+T3 516k [68.7; 516196]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:118
+P2 long ctx 150k [65.4; 169693]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:74
+P2 250k [66.9; 283230]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:75
+P2 516k [68.5; 516196]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:76
+T1 decode after 8687 [59.09]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:14
+T3 decode after 8687 [59.97]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:104
+P2 decode after 8687 [59.85]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:62
+P4 decode after 8687 [63.18]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:146
+quality text vs production control, line 28 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:28
+quality text vs production control, line 29 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:29
+quality text vs production control, line 30 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:30
+quality text vs production control, line 31 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:31
+quality text vs production control, line 32 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:32
+quality text vs production control, line 33 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:33
+quality text vs production control, line 34 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:34
+quality text vs production control, line 35 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:35
+T1 gsm8k 29 ["correct": 29]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:22
+P2 gsm8k 29 ["correct": 29]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:70
+T3 gsm8k 29 ["correct": 29]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:112
+T1 acceptance per position [0.72 0.50 0.34 0.24]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:16
+P2 acceptance [0.72 0.50 0.34 0.24]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:64
+T3 acceptance [0.72 0.50 0.34 0.24]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:106
+T1 peak memory MiB [0=47299 1=30006 2=45977 3=31100 4=30440]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:36
+P2 peak memory MiB [0=47863 1=30428 2=46593 3=31100 4=30448]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:78
+T1 KV pool [655,360]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:38
+P2 KV pool [655,360]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:80
+T3 KV pool [655,360]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:122
+P4 cut by end of hold [Ende des Holds]: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a.log:151
+computed here: mean decode short T (47.77+47.74)/2 = 47.755 against P (47.39+47.31)/2 = 47.35: +0.86 % (ratio 1.0086)
+computed here: sampling all texts 41.42 / 41.07: +0.85 % (ratio 1.0085)
+computed here: prose 34.725/34.47 +0.74 % (ratio 1.0074)
+computed here: code (58.99+58.93)/2/58.57 +0.67 % (ratio 1.0067)
+computed here: arithmetic (58.80+58.75)/2/58.34 +0.75 % (ratio 1.0075)
+computed here: P4/P2 after 8687 tokens 63.18/59.85 +5.56 % (ratio 1.0556)
+layout rank 0: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a/journal-1-T.txt:980
+layout rank 1: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a/journal-1-T.txt:977
+layout rank 2: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a/journal-1-T.txt:978
+layout rank 3: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a/journal-1-T.txt:976
+layout rank 4: ~/.cache/bench-scripts/ab_ppk_glm_2026-11-23a/journal-1-T.txt:994
+tensor counts 5 (rank 1 recv) and 8 (rank 4 recv): counted in the signature tuples of the lines above
+DSV T1 decode short [61.09]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:14
+DSV T3 [61.14]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:101
+DSV P2 [61.12]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:51
+DSV P4 [61.17]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:140
+DSV text T/P line 62 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:62
+DSV text T/P line 63 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:63
+DSV text T/P line 64 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:64
+DSV text T/P line 65 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:65
+DSV text T/P line 66 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:66
+DSV text T/P line 67 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:67
+DSV text T/P line 68 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:68
+DSV text T/P line 69 [gleich: True]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:69
+DSV gsm8k T1 ["correct": 28]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:19
+DSV gsm8k P2 ["correct": 28]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:56
+DSV gsm8k T3 ["correct": 28]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:106
+DSV gsm8k P4 ["correct": 28]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:145
+DSV KV pool T1 [509,292]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:27
+DSV KV pool P2 [509,292]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:77
+DSV KV pool T3 [509,292]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:116
+DSV KV pool P4 [509,292]: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a.log:150
+DSV one tensor per handover (hidden_states, row shape (4, 4096)) ['hidden_states']: ~/.cache/bench-scripts/ab_ppk_dsv4_2026-11-23a/journal-1-T.txt:870
+pre-commit head 5b3f76805 [5b3f76805]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_pp-pack.log:1
+branch: mypy-local Failed (1 error try_sample_target model_runner.py:1446) [try_sample_target]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_pp-pack.log:18
+branch: check-architecture-reference Failed [Failed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_pp-pack.log:35
+branch: check-layering Failed [Failed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_pp-pack.log:69
+branch: markdownlint Passed [Passed]: ~/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc6_pp-pack.log:6
+main: try_sample_target model_runner.py:1423 (mypy 1 error in 1 file) [try_sample_target]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:77
+main: Found 1 error in 1 file [Found 1 error in 1 file]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:80
+main: Found 46 errors in 15 files [Found 46 errors in 15 files]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:78
+layering list of the branch equals main (33 lines): belege/lay_pp-pack.txt against belege/lay_MAIN3b.txt, diff empty (2026-11-26)
+runtime_reference.md: tools.generate_architecture_reference --write run in the branch tree on 2026-11-26 (then git checkout of the file, git status empty): changes exactly the two lines SpeculativeConfig (L449->L458 compute_hash, post_init) and VllmConfig (post_init L1118->L1132 style) lines, the same two lines as on main (scratchpad w/ref_main_regen.diff, copied as belege/ref_main_regen.diff)
+Duplicate check (gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "<term>" --limit 30, 2026-11-26): raw output belege/dup_pp.tsv (13 searches, 115 distinct PRs). States read with gh pr view, 2026-11-26: #1294 MERGED (2026-11-10), #662 MERGED, #1373 MERGED, #1537 MERGED (2026-11-25), #1371 OPEN, #1584 OPEN, #1586 OPEN.
+Open PRs touching the same files: gh pr list --state open --json files (72 open PRs, full file lists via gh api .../pulls/<n>/files for the five PRs with 100 or more files), 2026-11-26; merge probes belege/probe.py -> belege/probe_result.txt (pp-pack section: #1551 added conflict vllm/v1/worker/gpu_worker.py; #1282/#1347/#1286/#1348 rebased (local branches pr-triton-sm7x-r1125, pr-dsv4-longctx-decode-r1125, pr-glm53-r1125, pr-glm53-prefill-head-r1125) added vllm/config/kernel.py and docs/design/architecture/runtime_reference.md). Hunks read: kernel.py (pp_pack_handover field against triton_sm7x_tensor_cores field; ignored-factor entry against tp_prefill_overlap_min_tokens), gpu_worker.py (import functools against import ctypes).
+Relation to adaptive-verify: git merge-tree --write-tree pr-adaptive-verify pr-pp-pack-handover, 2026-11-26: conflicts only in tests/v1/worker/test_sm70_long_attention_graphs.py (import line) and docs/design/architecture/runtime_reference.md.
+Code facts read on branch 5b3f76805: pp_pack.py (SEGMENT_ALIGNMENT_BYTES 256, sorted names, packs_handover, pp_pack_enabled, verify_handover_layouts), kernel.py (field, ignored factor), gpu_worker.py (Worker.__init__ calls pp_pack_enabled; _pp_pack_recv None unless admitted; no receive-time check), tests/v1/worker/test_pp_pack.py (23 test cases at 5b3f76805, 21 at 88707c696).
+Test runs: runs5/pr-pp-pack on 88707c696 (22 files); final head 5b3f76805 differs by two tests in test_pp_pack.py, the KernelConfig.pp_pack_handover docstring and the generated KernelConfig line of runtime_reference.md (git diff 88707c696 5b3f76805 --stat); runs5/pr-pp-pack-final/{cpu,v100,rtx}/summary.log: test_pp_pack.py 23 passed on each, test_architecture_reference.py 1 failed 12 passed (the stale main lines).
+Arms: T = fork df927238c (LOG line 1), P = production tree 1Cat-vLLM-v14 = 6b1cd5c2c (journal-2-P.txt paths); git diff --stat 6b1cd5c2c df927238c: the files of this change plus tests/v1/worker/test_gpu_warmup_blocks.py (commit 5dc3cdf99, test only). Entry environment: ppk_entry_glm_2026-10-31.yaml lines 23, 26, 29, 30 (NCCL_P2P_DISABLE=1, VLLM_DISABLE_SHARED_EXPERTS_STREAM=1, VLLM_PP_LAYER_PARTITION=14,7,7,7,10, VLLM_USE_V2_MODEL_RUNNER=1). Text reference: AB_QUALITY_REF = validate_v14k4_glm_2026-10-31/quality.json (chain_ppack_2026-11-23.sh QREF). Paired decode differences: LOG lines 9-11 against 57-59 (T1 - P2: 0.36, 0.38, 0.36) and 99-101 against 141-143 (T3 - P4: 0.55, 0.43, 0.41).
+Merge probe of all 74 open PR heads (2026-11-26): belege/probe_all_open_2026-11-26.json, pr-pp-pack-handover: added conflict only with #1551 (gpu_worker.py); repeated for the final head 5b3f76805 after the six updates and #1627-#1629 were sent: belege/probe_all_open_2026-11-26b.json (the same, plus kernel.py and runtime_reference.md with the now pushed #1282, #1347, #1286, #1348). Main conflicts of #1379 (runtime_reference.md, model_runner.py), #1260 (runtime_reference.md, kernel.py, model_runner.py, gpu_worker.py), #1243 and #1031 (gpu_worker.py): git merge-tree 73da3445d refs/probe/pr<n>.
+CPU failure reasons in test_gpu_model_runner.py of this run: runs5/pr-pp-pack/cpu/tests_v1_worker_test_gpu_model_runner.py.log, E lines counted 2026-11-26: 16 No CUDA GPUs are available, 6 ProcessGroupNCCL is only supported with GPUs, 3 get_vocab_size, 1 DistNetworkError (server socket failed to listen); failing test names equal main (cmp_fail5.py).
+Base: git merge-tree of the branch with origin/main 44708bdb9 is clean (2026-11-26).
+Notation and rounding of the text: 246,528 / 287,488 / 328,448 / 369,408 = nbytes 246528 / 287488 / 328448 / 369408 of the layout lines above; 8,687 = 8687 prompt tokens (GLM lines 6-14); 169,693 / 283,230 / 516,196 = prompt_tokens of ctx150k / ctx250k / ctxmax (GLM lines 74-76 and 116-118); 192 = tokens of the short decode (GLM lines 9-11); +0.9 = 0.86 percent (computed above); 0.1 = the min_p of the probe; 5.6 = 5.56 percent (computed above); 8000 = name Quadro RTX 8000.

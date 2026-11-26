@@ -1,0 +1,116 @@
+Source of every number and claim in pr-glm5next-kda-decode-glue.txt (rewritten 2026-11-26 for branch pr-glm5next-kda-decode-glue at d2a0ff732 on 1Cat main 73da3445d; d2a0ff732 has the same tree as e05e84b10, on which the layer test and pre-commit ran (git rev-parse HEAD^{tree} equal; only the commit message was corrected); the 8-file run is on 7f9ae424e, whose tree differs only by the layer test (git diff 7f9ae424e e05e84b10: tests/models/glm5next/test_kda_glue.py, 28 insertions); replaces the earlier source file; the benchmark numbers now come from the final logs written with tee).
+K = ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/: kdanorm_v2_final_v100.log and kdanorm_v2_final_rtx.log (script kdanorm_prefill_bench_2026-11-25_v2.py; "old fused" is the first version, kept as kda_glue_old_2e4e44a80.py), pkg_kdaglue_final_v100.log and pkg_kdaglue_final_rtx.log (script pkg_kdaglue_bench_2026-11-25.py). Test counts: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/<tree>/<cpu|v100|rtx>/summary.log, the line of the file named; tree pr-glm5next-kda-glue, main = prmain2 / prmain2-indep; name-for-name comparison cmp5_result.txt (pr-glm5next-kda-glue: cpu 0 new, v100 0, rtx 0).
+Numbers of the text with their lines:
+
+tests/models/glm5next/test_kda_glue.py CPU [124 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:5
+tests/models/glm5next/test_kda_glue.py V100 [124 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:5
+tests/models/glm5next/test_kda_glue.py RTX [124 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:5
+tests/models/glm5next/test_kda_norm_fused_dispatch.py CPU [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:7
+tests/models/glm5next/test_kda_norm_fused_dispatch.py V100 [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:7
+tests/models/glm5next/test_kda_norm_fused_dispatch.py RTX [7 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:7
+tests/models/glm5next/test_kda_norm_dispatch.py CPU [2 passed; 2 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:6
+tests/models/glm5next/test_kda_norm_dispatch.py V100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:6
+tests/models/glm5next/test_kda_norm_dispatch.py RTX [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:6
+tests/models/glm5next/test_sm70_kda.py CPU [17 passed; 25 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:9
+tests/models/glm5next/test_sm70_kda.py V100 [42 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:9
+tests/models/glm5next/test_sm70_kda.py RTX [17 passed; 25 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:9
+tests/kernels/core/test_fused_rms_norm_gated.py CPU [25 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:3
+tests/kernels/core/test_fused_rms_norm_gated.py V100 [25 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:3
+tests/kernels/core/test_fused_rms_norm_gated.py RTX [25 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:3
+tests/kernels/test_kda.py CPU [10 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:4
+tests/kernels/test_kda.py V100 [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:4
+tests/kernels/test_kda.py RTX [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:4
+tests/config/test_fla_schedule_lifecycle.py CPU [3 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:2
+tests/config/test_fla_schedule_lifecycle.py V100 [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:2
+tests/config/test_fla_schedule_lifecycle.py RTX [3 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:2
+tests/models/glm5next/test_pp.py CPU [6 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/cpu/summary.log:8
+tests/models/glm5next/test_pp.py V100 [6 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/v100/summary.log:8
+tests/models/glm5next/test_pp.py RTX [6 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue/rtx/summary.log:8
+e05e84b10 run header v100 [e05e84b10]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue-e05e84b10/v100/summary.log:1
+e05e84b10 test_kda_glue.py v100: 128 passed [tests/models/glm5next/test_kda_glue.py; 128 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue-e05e84b10/v100/summary.log:2
+e05e84b10 run header rtx [e05e84b10]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue-e05e84b10/rtx/summary.log:1
+e05e84b10 test_kda_glue.py rtx: 128 passed [tests/models/glm5next/test_kda_glue.py; 128 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-glm5next-kda-glue-e05e84b10/rtx/summary.log:2
+Related kernels, read on the branch 2026-11-26: vllm/model_executor/kernels/norm/sm70.py:19-39 (_sm70_gated_norm_max_rows default 768 unless torch.ops._C.sm70_rmsnorm_gated_exact_max_rows exists; _sm70_gated_norm_shape_supported: x.ndim == 2, 128 columns, x, z and weight fp16, contiguous); vllm/model_executor/layers/layernorm.py:296 class RMSNormGated, 335 kernel_config.sm70_rmsnorm_gated_exact, 404-418 forward_native uses it only on is_device_capability(70) for sigmoid/silu/swish; fla/ops/kda.py:504 class FusedRMSNormGated. #928 "[Kernel] Read row-strided QKV in fused MTP recurrence", MERGED 2026-10-04, files include vllm/model_executor/layers/fla/ops/fused_sigmoid_gating.py and qwen_gdn_linear_attn.py (gh pr view 928 --json title,state,mergedAt,files, 2026-11-26).
+tests/kernels/core/test_fused_rms_norm_gated.py, read 2026-11-26: DTYPES [torch.bfloat16], HIDDEN_SIZES [128, 512], ACTIVATIONS swish and sigmoid, ELEMENTWISE_AFFINE True and False, assert_close atol 1e-3 rtol 1e-2 (lines 13-58, 103); fp32 x with fp16 gate, sigmoid, 128, out_dtype fp16, atol 2e-3 rtol 1e-2 (lines 111-128).
+venv of the test runs: pytest_1cat.sh runs /home/mp/vllm/venv/bin/python; torch.__version__ 2.10.0+cu128, triton.__version__ 3.6.0 (read 2026-11-26)
+main 73da3445d tests/models/glm5next/test_kda_norm_dispatch.py cpu [2 passed; 2 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:19
+main 73da3445d tests/models/glm5next/test_kda_norm_dispatch.py v100 [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:19
+main 73da3445d tests/models/glm5next/test_kda_norm_dispatch.py rtx [4 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:19
+main 73da3445d tests/models/glm5next/test_sm70_kda.py cpu [17 passed; 25 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:23
+main 73da3445d tests/models/glm5next/test_sm70_kda.py v100 [42 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:23
+main 73da3445d tests/models/glm5next/test_sm70_kda.py rtx [17 passed; 25 skipped]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:23
+main 73da3445d tests/kernels/core/test_fused_rms_norm_gated.py cpu [25 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:10
+main 73da3445d tests/kernels/core/test_fused_rms_norm_gated.py v100 [25 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:10
+main 73da3445d tests/kernels/core/test_fused_rms_norm_gated.py rtx [25 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:10
+main 73da3445d tests/kernels/test_kda.py cpu [10 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:16
+main 73da3445d tests/kernels/test_kda.py v100 [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:16
+main 73da3445d tests/kernels/test_kda.py rtx [10 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:16
+main 73da3445d tests/config/test_fla_schedule_lifecycle.py cpu [3 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:4
+main 73da3445d tests/config/test_fla_schedule_lifecycle.py v100 [5 passed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:4
+main 73da3445d tests/config/test_fla_schedule_lifecycle.py rtx [3 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:4
+main 73da3445d tests/models/glm5next/test_pp.py cpu [6 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/cpu/summary.log:22
+main 73da3445d tests/models/glm5next/test_pp.py v100 [6 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/v100/summary.log:22
+main 73da3445d tests/models/glm5next/test_pp.py rtx [6 passed; 2 failed]: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/prmain2/rtx/summary.log:22
+V100 float32 1 tokens [x=float32 tokens=1:; new 2.2 us; rms_norm_gated 4.5 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:1
+V100 float16 1 tokens [x=float16 tokens=1:; new 2.0 us; rms_norm_gated 3.7 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:8
+V100 float32 8 tokens [x=float32 tokens=8:; new 2.7 us; rms_norm_gated 4.8 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:2
+V100 float16 8 tokens [x=float16 tokens=8:; new 2.5 us; rms_norm_gated 3.8 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:9
+V100 float32 64 tokens [x=float32 tokens=64:; new 5.3 us; rms_norm_gated 6.0 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:4
+V100 float16 64 tokens [x=float16 tokens=64:; new 4.6 us; rms_norm_gated 4.9 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:11
+V100 float32 512 tokens [x=float32 tokens=512:; new 48.2 us; rms_norm_gated 47.9 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:6
+V100 float16 512 tokens [x=float16 tokens=512:; new 36.4 us; rms_norm_gated 36.7 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:13
+V100 float32 4096 tokens [x=float32 tokens=4096:; new 340.7 us; rms_norm_gated 345.0 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:7
+V100 float16 4096 tokens [x=float16 tokens=4096:; new 250.2 us; rms_norm_gated 250.3 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:14
+RTX float32 1 tokens [x=float32 tokens=1:; new 2.2 us; rms_norm_gated 4.2 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:1
+RTX float16 1 tokens [x=float16 tokens=1:; new 1.7 us; rms_norm_gated 2.9 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:8
+RTX float32 8 tokens [x=float32 tokens=8:; new 2.8 us; rms_norm_gated 4.4 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:2
+RTX float16 8 tokens [x=float16 tokens=8:; new 2.1 us; rms_norm_gated 3.0 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:9
+RTX float32 64 tokens [x=float32 tokens=64:; new 6.3 us; rms_norm_gated 6.4 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:4
+RTX float16 64 tokens [x=float16 tokens=64:; new 4.3 us; rms_norm_gated 4.1 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:11
+RTX float32 512 tokens [x=float32 tokens=512:; new 61.0 us; rms_norm_gated 62.1 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:6
+RTX float16 512 tokens [x=float16 tokens=512:; new 47.6 us; rms_norm_gated 45.7 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:13
+RTX float32 4096 tokens [x=float32 tokens=4096:; new 458.5 us; rms_norm_gated 466.1 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:7
+RTX float16 4096 tokens [x=float16 tokens=4096:; new 353.9 us; rms_norm_gated 356.9 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:14
+RTX bf16 64 tokens 4.3 against 4.1 [x=bfloat16 tokens=64:; new 4.3 us; rms_norm_gated 4.1 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:18
+RTX bf16 512 tokens 47.5 against 45.8 [x=bfloat16 tokens=512:; new 47.5 us; rms_norm_gated 45.8 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log:20
+first version V100 fp16 512 tokens 54.8 against 36.7 [x=float16 tokens=512:; old fused 54.8 us; rms_norm_gated 36.7 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:13
+first version V100 fp16 4096 tokens 414.3 against 250.3 [x=float16 tokens=4096:; old fused 414.3 us; rms_norm_gated 250.3 us]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log:14
+computed here: ratio new / rms_norm_gated over all 12 cases of 64 tokens and more (3 dtypes x 4 sizes) in ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_v100.log: 0.883 to 1.031; in ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/kdanorm_v2_final_rtx.log: 0.982 to 1.049
+V100 float32 1 rows glue [torch.float32 |    1 |; | 0.8854 |; | 0.1116 |; | 22.76 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:2
+V100 float32 5 rows glue [torch.float32 |    5 |; | 1.6191 |; | 0.1745 |; | 42.49 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:3
+V100 float32 6 rows glue [torch.float32 |    6 |; | 1.6359 |; | 0.1826 |; | 42.74 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:4
+V100 float32 8 rows glue [torch.float32 |    8 |; | 1.6838 |; | 0.1969 |; | 43.73 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:5
+V100 float16 1 rows glue [torch.float16 |    1 |; | 0.9286 |; | 0.1114 |; | 24.03 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:6
+V100 float16 5 rows glue [torch.float16 |    5 |; | 1.7496 |; | 0.1715 |; | 46.41 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:7
+V100 float16 6 rows glue [torch.float16 |    6 |; | 1.7700 |; | 0.1778 |; | 46.83 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:8
+V100 float16 8 rows glue [torch.float16 |    8 |; | 1.8139 |; | 0.1890 |; | 47.79 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_v100.log:9
+RTX float32 1 rows glue [torch.float32 |    1 |; | 0.8546 |; | 0.1061 |; | 22.01 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:2
+RTX float32 5 rows glue [torch.float32 |    5 |; | 1.4231 |; | 0.1676 |; | 36.93 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:3
+RTX float32 6 rows glue [torch.float32 |    6 |; | 1.4374 |; | 0.1916 |; | 36.64 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:4
+RTX float32 8 rows glue [torch.float32 |    8 |; | 1.4711 |; | 0.2114 |; | 37.05 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:5
+RTX float16 1 rows glue [torch.float16 |    1 |; | 0.8291 |; | 0.1041 |; | 21.32 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:6
+RTX float16 5 rows glue [torch.float16 |    5 |; | 1.5273 |; | 0.1820 |; | 39.57 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:7
+RTX float16 6 rows glue [torch.float16 |    6 |; | 1.5412 |; | 0.1897 |; | 39.75 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:8
+RTX float16 8 rows glue [torch.float16 |    8 |; | 1.5842 |; | 0.2071 |; | 40.50 |]: ~/.cache/bench-scripts/kdanorm_v2_logs_2026-11-25/pkg_kdaglue_final_rtx.log:9
+34 KDA layers, 64 heads, head_dim 128: /home/mp/models/GLM-5.3-Flash-NVFP4-MTP/config.json linear_attn_config (kda_layers has 34 entries, num_heads 64, head_dim 128); pkg_kdaglue_bench_2026-11-25.py LAYERS = 34
+operator counts 11 (fp32 input) and 12 (fp16 input) of FusedRMSNormGated.forward_native with custom_ops none: CPU dispatch-hook count, own run 2026-11-25 (scratchpad count_ops.py), recorded in kda-dispatch-analyse.md section 4; 15 = 4 + 11; 2 = 1 + 1; 12 = 1 + 11
+timings are CUDA graph replays: kdanorm_prefill_bench_2026-11-25_v2.py (graph_us: 10 replays of a graph of 20 calls, median) and pkg_kdaglue_bench_2026-11-25.py (graph of 34 layers, 200 replays); shapes 64 heads x 128 per token; both scripts check torch.equal against the eager reference (all True in the logs)
+code of the benchmarked commit bb34e7637 against branch head e05e84b10: kda_glue.py, test_kda_norm_fused_dispatch.py and fla/ops/kda.py are byte-identical (git diff --stat, 2026-11-26), test_kda_glue.py differs by the 28 added lines of the layer test; vllm/models/glm5next/nvidia/kda.py differs by the 4 lines of #1549
+pre-commit head e05e84b10 [e05e84b10]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_glm5next-kda-glue.log:1
+layering Failed [Keep generic modules; Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_glm5next-kda-glue.log:29
+manual stage + final rc=0 [rc=0 fertig]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_glm5next-kda-glue.log:88
+main: that error is tests/models/inkling2/test_attention.py:249 [tests/models/inkling2/test_attention.py:249]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:79
+main: model_runner.py:1423 is one of the 46 [vllm/v1/worker/gpu/model_runner.py:1423]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:77
+main: layering Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:129
+main: 46 errors in 15 files [Found 46 errors in 15 files]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:78
+main: 1 error in 1 file [Found 1 error in 1 file]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:80
+main: arch ref Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:95
+main: ruff check Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:2
+main: markdownlint Failed [Failed]: v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/belege/pc3b_MAIN.log:8
+layering list of the branch equals main (33 lines): belege/lay_glm5next-kda-glue.txt against belege/lay_MAIN3b.txt, diff empty (2026-11-26)
+Duplicate check (gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "<term>" --limit 30, 2026-11-26): raw output belege/dup_kda.tsv (10 searches, 27 distinct PRs). States read with gh pr view, 2026-11-26: #1165 MERGED (2026-11-10), #1549 MERGED (2026-11-25), #1159 and #1213 MERGED, #1286 / #1348 / #1260 OPEN. kda.py patches: #1286 +86 -27, #1348 +131 -27, #1260 +4 (bind_kda_kernels import and call, the #1549 content). main contains #1549: bind_kda_kernels present in vllm/models/glm5next/nvidia/kda.py (line 18, 323) on the branch.
+Merge probes: belege/probe.py -> belege/probe_result.txt, kda section: only #1348 (rebased local branch pr-glm53-prefill-head-r1125) adds a conflict, in vllm/models/glm5next/nvidia/kda.py: hunk read, ours _recurrent_inputs against theirs _warmup_prefill_kernels at the same position.
+Code facts read on branch e05e84b10 (code files as at 7f9ae424e): kda_glue.py (rows per program 4, 2 warps from 4096 rows, enable_fp_fusion=False, tl.div_rn, libdevice exp, kda_gated_rmsnorm_supported dtypes), fla/ops/kda.py forward_cuda branch, nvidia/kda.py _recurrent_inputs (T > 1 pack, T == 1 views) and o_norm calls (lines 636, 646) unchanged by the diff; vllm/config/vllm.py lines 1521-1528 (custom_ops "none" / "all"), 2664-2676 (torch.compile warning); custom_op.py enabled() lines 272-289; callers of o_norm: kimi_gdn_linear_attn.py:272, bailing_moe_v3.py:817, nvidia/kda.py:636/646 (all use the return value; olmo_gdn_linear_attn.py:286 calls an o_norm of its own class, not FusedRMSNormGated); rms_norm_gated writes into x when out_dtype is None: fla/ops/kda.py layer_norm_gated_fwd (y = x) and the comment in tests/kernels/core/test_fused_rms_norm_gated.py ("forward_cuda may modify x in-place"); README.txt of the benchmark log directory.
+Test file content: tests/models/glm5next/test_kda_glue.py: 6 row counts x 3 scales x 5 dtype pairs = 90, + 6 row counts x 5 dtype pairs = 30, + 4 pack cases = 124 at 7f9ae424e; e05e84b10 adds 4 layer cases (ROWS 1, 5, 6, 8) = 128 (parametrize lists read in the file); gate and weight of all tests are fp16 (.half(), dtype=torch.float16).
+Base: git merge-tree of the branch with origin/main 44708bdb9 is clean (2026-11-26).
+Notation and rounding of the text: 225 and 747 = line numbers of the FusedRMSNormGated constructions (grep -n, 2026-11-26); 1024, 1000, 4095, 4099 = test parameters in tests/models/glm5next/test_kda_glue.py (NORM_ROWS (1, 5, 6, 8, 64, 1024), scales 1.0, 1000.0, 1e-3, num_rows 1, 3, 7, 4095, 4096, 4099); the us-per-layer values 22.8 / 42.5 / 42.7 / 43.7 / 22.0 / 36.9 / 36.6 / 37.1 / 24.0 / 46.4 / 46.8 / 47.8 / 21.3 / 39.6 / 39.8 / 40.5 are the column saved us/layer rounded to one decimal (22.76 ... 40.50 above), except 37.05 and 39.75, given with two decimals because they lie exactly between two one-decimal values; 1.684 / 0.197 / 1.471 / 0.211 / 1.814 / 0.189 / 1.584 / 0.207 ms are the ms-per-34-layers columns rounded to three decimals; 1.05 = 1.049 (4.3 / 4.1 us); 1.9 us = 47.6 - 45.7 us; 8000 = name Quadro RTX 8000.

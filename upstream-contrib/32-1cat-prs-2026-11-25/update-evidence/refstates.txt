@@ -1,0 +1,50 @@
+#822 OPEN - yangzhuxinyzx [Kernel] Select QPN2 activation packing through per-engine policy
+#828 MERGED 2026-11-10T19:13:28Z Leonccaa Add opt-in grouped page4 attention for SM70 QSA DCP prefill
+#874 MERGED 2026-10-04T18:22:50Z Peuqui [Perf][SM70][DeepSeek-V4] Bucket speculative decode graphs by context so the sparse indexe
+#903 CLOSED - areslp SM70: integrate retained MTP optimizations with upstream runtime owners
+#953 OPEN - yangzhuxinyzx [Model] Extend DFlash2 QPN8 candidate heads to concurrent verification
+#1021 MERGED 2026-11-16T14:22:56Z Mermiges [Kernel][SM70] Keep 32x32 UE8M0 block-FP8 dense weights in FP8 on Volta
+#1030 OPEN - Mermiges [Kernel][SM70] Generalise the MXFP4 MoE geometry and add skinny split-K 4/6/9/12/18
+#1031 OPEN - Mermiges [Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+#1069 MERGED 2026-11-10T07:49:34Z kezboard233 [Kernel][SM70] Chunk block-scaled QPN8 decode through the M<=8 route for M=9..32
+#1092 OPEN - rivetphilbot [Kernel][SM70] GLM-5.3: FP32-softmax sparse MLA for FP8-KV decode/verify
+#1102 OPEN - rivetphilbot [Quantization][SM70] EXL3 routed-expert MoE, loading exllamav3 checkpoints
+#1125 OPEN - rivetphilbot [Perf][SM70] GLM-5.3: FP32 tensor-core sparse MLA for FP8-KV prefill
+#1157 MERGED 2026-11-10T08:27:00Z kezboard233 [Kernel][SM70] Native block-scale QPN8 GEMM for M=17-32 decode: single-pass weight read
+#1159 MERGED 2026-11-10T14:25:11Z rivetphilbot [Perf][SM70] Resolve native mHC verification and KDA projection dispatch
+#1165 MERGED 2026-11-10T14:03:04Z rivetphilbot [Perf][SM70] Dispatch FP32 KDA output norm through its CustomOp owner
+#1166 MERGED 2026-11-10T14:25:11Z rivetphilbot [Perf][SM70] Expand mHC post+dot with resolved policy defaults
+#1182 CLOSED - yangzhuxinyzx [Kernel] Bind engine KV codecs and inventory acceleration gaps
+#1184 CLOSED - yangzhuxinyzx [Kernel] Share byte KV writers and XQA execution plans
+#1187 MERGED 2026-11-10T18:22:35Z Peuqui [SM70] Default the FP8 small-shape runtime tuning to off
+#1197 CLOSED - yangzhuxinyzx [Core] Bind concatenated MLA codecs to shared operators
+#1215 CLOSED - yangzhuxinyzx [Model] Enable native Flash-Next GGUF image input
+#1216 MERGED 2026-11-16T14:22:56Z Peuqui [Kernel] Two-rank FP16 all-reduce through pinned host memory for GPUs without P2P
+#1217 MERGED 2026-11-10T19:54:06Z Peuqui [Perf][Qwen4Exp] Overlap the PLE gather of the next prefill chunk
+#1218 MERGED 2026-11-10T08:27:00Z Peuqui [Spec Decode][MRV2] Reduced draft vocabulary for MTP (backport of vllm#59740)
+#1221 OPEN - Peuqui [Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runne
+#1222 MERGED 2026-10-28T02:28:54Z Peuqui [Perf][SM70][DeepSeek-V4] Keep the cuBLAS decode indexer above 131,072 tokens of context
+#1227 MERGED 2026-10-28T02:29:25Z Peuqui [Perf][Attention] Pack GQA heads for FA2 multi-token decode verification
+#1243 OPEN - rivetphilbot [Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark s
+#1260 OPEN - threhan Serve GLM 5.3 Flash and Qwen3.8 Flash Next GGUF across seven heterogeneous GPUs
+#1261 MERGED 2026-11-10T04:23:45Z pensandoz [Bugfix] Keep LoRA-aware target logits in speculative decoding
+#1271 MERGED 2026-11-16T14:22:56Z Th-Underscore [SM70][Gemma4] V100 support: D=512 attention, transformers heterogeneity, gemma4_unified p
+#1272 MERGED 2026-10-28T02:29:47Z Peuqui [Bugfix][KV] MLA specs carry the codec of their cache dtype
+#1273 MERGED 2026-11-10T16:19:37Z Peuqui [Perf][SM70] One grouped GEMM for DeepSeek-V4 wo_a; opt-in TurboMind tuning freeze after w
+#1274 MERGED 2026-10-28T02:31:02Z Peuqui [Bugfix][Loader] Load index shards in subfolders; read U16 and U32 through direct I/O
+#1275 MERGED 2026-10-28T02:31:13Z Peuqui [Bugfix][MLA] Size the chunked-prefill workspace and the indexer prefill buffer by max_num
+#1278 OPEN - Peuqui [Perf][SM75] Turing tensor-core paths for block-FP8 QPN8 and the grouped skinny MoE; bound
+#1279 CLOSED - Peuqui [Perf][SM75] Turing prefill attention; overlap TP prefill all-reduces on GPUs without P2P
+#1280 CLOSED - Peuqui [Perf][SM70][DeepSeek-V4] Long-prefill indexer and sparse attention: vectorized epilogue, 
+#1282 OPEN - Peuqui [Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and T
+#1284 MERGED 2026-10-28T05:43:02Z yangzhuxinyzx [Bugfix] Keep the pynccl all-reduce out-of-place by default
+#1286 OPEN - Peuqui [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projecti
+#1293 MERGED 2026-11-09T10:25:44Z Peuqui [Misc][PP] Log the KV cache memory of every worker and the SM70 indexer decode route of ev
+#1327 not a PR/none
+#1328 MERGED 2026-11-09T16:26:47Z squibloads [Bugfix][SM70] Indexer: write the cuBLAS prefill score tile in fp32
+#1344 MERGED 2026-11-10T03:07:35Z Peuqui [Perf][SM70][DeepSeek-V4] Bound fused KV compression stack use
+#1347 OPEN - Peuqui [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel,
+#1348 OPEN - Peuqui [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve t
+#1362 MERGED 2026-11-16T14:22:55Z Peuqui [Bugfix][Loader] Skip the embedding, final norm, LM head and encoder towers a pipeline sta
+#1365 MERGED 2026-11-09T17:16:17Z Peuqui [Multimodal][MRV2] Port three upstream fixes for multimodal models under pipeline parallel
+#4699 not a PR/none

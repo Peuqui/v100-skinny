@@ -1,0 +1,9 @@
+Updated this PR: rebased onto main 73da3445d (#1616) together with the stack below it. The head is c7fcf8b50; the PR still adds three commits, now on commit 05ab8a59c of #1286 (#1286 before its three vision commits).
+
+What changed: one line. Main's #1541 makes get_quant_method raise for every unhandled quant_algo and #1286 exempts MXFP8 from that check because it leaves MXFP8 layers to the loader; this PR serves every MXFP8 layer including the LM head as a linear, so its LM head commit goes back to main's line (if quant_algo:). The native sources and the rest of the sources are the same as before, so the kernel numbers and the fork A/B runs in the description still apply; they were not repeated.
+
+Tests: 53 test files, one process per file, on the CPU, a Tesla V100 and a Quadro RTX 8000, with the environment's stock Triton 3.6.0. tests/kernels/test_kda.py and tests/v1/spec_decode/test_dflash2.py, two of the ten files of the Test Plan, ran on the CPU only on this head (test_kda.py fails on the CPU with "No CUDA GPUs are available" on this branch and on main alike; their runs on the two cards were not repeated on this head). The five test files that need the sm7x Triton were also run on the two cards with the sm7x Triton build of #1282: all pass, no failure; main was not run with it, so there is no comparison. No failure that main 73da3445d does not have as well. pre-commit: four hooks fail with main's own findings, mypy-3.10 the same single error as main; no autofix. The per-file numbers are in the updated description.
+
+The description now has the Runtime acceptance section of the template; the qualification that the review of 2026-11-09 asked for (speculative-width, padded-stride, recurrent-state tests and others) is listed there with its status, mostly still open.
+
+AI assistance (Claude Code) was used for this update; I reviewed and tested the changes.

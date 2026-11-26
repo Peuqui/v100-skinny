@@ -1,0 +1,67 @@
+== tests/v1/worker/test_gpu_model_runner.py
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+            # suppress var not used error
+            # suppress var not used error
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+            # This function throws if there's a driver initialization error, no GPUs
+            # are found or any other error occurs
+        # Set the default backend when single backend is passed in.
+        # when multi backend is passed in
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_mamba_align_postprocess_uses_runner_owned_d2h_buffers
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_mamba_align_cpu_postprocess_mirrors_runner_owned_snapshot
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_mamba_all_mode_uses_runner_owned_d2h_buffers
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_init_kv_cache_without_kv_sharing
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_init_kv_cache_with_kv_sharing_valid
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_hybrid_attention_mamba_tensor_shapes
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_hybrid_block_table_initialization
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_input_batch_with_kernel_block_sizes
+FAILED tests/v1/worker/test_gpu_model_runner.py::test_mamba_cache_raises_when_max_num_seqs_exceeds_blocks
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_new_request
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_request_finished
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_request_resumed
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_get_nans_in_logits
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_no_changes
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_request_unscheduled
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_pp_non_async_multi_request_keeps_token_buffers_consistent
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_pp_async_multi_request_keeps_rank_state_consistent
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_states_pp_async_spec_trims_optimistic_tokens_on_every_rank
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_kv_cache_stride_order
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_update_config
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_load_model_weights_inplace
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_reload_weights_before_load_model
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_hybrid_cache_integration
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_non_last_pp_rank_profiles_with_speculative_config[ngram]
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_non_last_pp_rank_profiles_with_speculative_config[draft_model]
+ERROR tests/v1/worker/test_gpu_model_runner.py::test_non_last_pp_rank_profiles_with_speculative_config[extract_hidden_states]
+9 failed, 17 passed, 18 warnings, 17 errors in 31.61s
+== tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py
+FAILED tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py::test_v2_clears_new_cache_blocks_before_zero_token_return
+1 failed, 3 passed, 14 warnings in 2.92s
+== tests/v1/worker/test_host_kv_cache_pool.py
+FAILED tests/v1/worker/test_host_kv_cache_pool.py::test_host_pool_packs_aligned_disjoint_views
+1 failed, 1 passed, 1 skipped, 14 warnings in 1.91s
+== tests/models/qwen4_exp/test_qsa_cache.py
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_qsa_real_cache_specs_keep_only_target_main_sharded[model.layers.3.self_attn-800-True]
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_qsa_real_cache_specs_keep_only_target_main_sharded[mtp.layers.48.self_attn-1600-False]
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_cache_binding_retains_owner_history_policy[False]
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_cache_binding_retains_owner_history_policy[True]
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_qsa_forward_splits_local_flash_cache_layout
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_host_qsa_only_initializes_graph_padding[3]
+FAILED tests/models/qwen4_exp/test_qsa_cache.py::test_host_qsa_only_initializes_graph_padding[5]
+7 failed, 7 passed, 14 warnings in 6.43s
+== tests/v1/worker/test_kv_block_copy.py
+6 skipped, 14 warnings in 1.25s
+== tests/models/qwen4_exp/test_qsa_dcp_packed_cache.py
+2 skipped, 14 warnings in 1.28s

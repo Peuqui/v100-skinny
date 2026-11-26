@@ -1,0 +1,62 @@
+# #1347: changed sentences, old -> new (6 edits to the existing description; the new Update paragraph at the top is listed in the body itself)
+
+## 1. Purpose: base commit and review range
+OLD: This PR is stacked on #1282: it needs that PR's Triton prefill index scorer (_prefill_index_scores_kernel), the triton_tensor_cores argument of the indexer entries and _TC_TOKENS_PER_PASS, and it sits on #1282's commit that keeps the Triton prefill index scores in FP32. Its own diff is the last three commits (git log e9147089c..6968a8b40); the third, the decode score tile, is described in the update above.
+NEW: This PR is stacked on #1282: it needs that PR's Triton prefill index scorer (_prefill_index_scores_kernel), the triton_tensor_cores argument of the indexer entries and _TC_TOKENS_PER_PASS, and it sits on #1282's commit that keeps the Triton prefill index scores in FP32 and on the test commit after it (c6f36a5e4; #1282's last two commits, the wheel page and the mHC layer ops, are not part of this branch). Its own diff is the last three commits (git log c6f36a5e4..f546c6761); the third, the decode score tile, is described in the update of 2026-11-07 below. #1279 and #1280, which the commits below #1282 came from, are closed as superseded by #1282.
+
+## 2. Not a duplicate: states of #1280, #1293, #1328
+OLD: Apart from my own #1280, #1282 and #1293, which this builds on or complements, none changes the decode index scorer or the sparse prefill pass. #1328 changes the precision of the cuBLAS prefill score tile, a route this PR does not touch.
+NEW: Apart from my own #1282 (open, the base of this PR; #1280 was closed as superseded by it) and #1293 (merged), none changes the decode index scorer or the sparse prefill pass. #1328 changed the precision of the cuBLAS prefill score tile and is merged (2026-11-09); it is a route this PR does not touch.
+
+## 3. Not a duplicate: fresh check
+OLD: None of the open PRs from other authors that these searches return changes a file of this PR.
+NEW: At that first check none of the open PRs from other authors that these searches returned changed a file of this PR. Fresh check on 2026-11-26 against main 73da3445d: gh pr list --repo 1CatAI/1Cat-vLLM --state all --search for indexer decode, decode indexer, sparse prefill workspace, fused scorer and index scores; the file lists of all 63 open PRs by other authors (dependabot excluded); and the added and removed lines of the diffs of those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; the merged ones were listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date) for the symbols this change adds (the diffs of #1243, #1260, #1482, #1527 and #1616 exceed GitHub's 20,000-line limit; for these five only the file lists were compared). Result: no PR by another author changes the DeepSeek-V4 decode index scorer or the sparse prefill pass; the only open PR by another author that shares a file with this PR's own files is #1260, in the test file tests/kernels/test_deepseek_v4_sm70_indexer.py. The DeepSeek-V4.1 PRs (vllm/models/deepseek_v41) have their own decode index scorers: #1372 (tiled decode index scoring, merged 2026-11-16), #1386 (merged) and #1587 (tensor-core decode scorer, open) and #1388 (fused prefill scores, open); this PR's fused scorer is in vllm/models/deepseek_v4/sm70/indexer.py. #1454 ("[Draft review queue] DeepSeek-V4 attention and indexing qualification queue") retains this PR's earlier head 6968a8b40 for qualification (review comment of 2026-11-09 on this PR) and contains its distinctive symbols by design; it is the only PR whose diff does. #828, #894, #943 and #963 (merged 2026-11-09 and 2026-11-10, part of main 73da3445d) share no file and no symbol with this PR.
+
+## 4. Test Plan: pre-commit commands and this round's files
+OLD: pre-commit run --from-ref 4d57473db --to-ref HEAD (main below the whole stack, so the range covers #1280 and #1282 as well)
+pre-commit run check-layering --all-files
+pre-commit run mypy-3.10 --all-files --hook-stage manual
+NEW: pre-commit run --from-ref origin/main --to-ref HEAD (main is below the whole stack, so the range covers #1278 and #1282 as well)
+pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+Round of 2026-11-26 (update at the top): the files of this plan except tests/models/glm5next/test_sm70_sparse.py (CPU only, see the update), plus 23 more, 27 files in all (list in the update), one process per file on the CPU, a Tesla V100 and a Quadro RTX 8000, with stock Triton 3.6.0; the five files that need the sm7x Triton were run once more on the two cards with the sm7x Triton build first on PYTHONPATH (results in the update).
+
+## 5. Test Result: old static-check paragraph (main 4d57473db) replaced by a pointer
+OLD: Static checks on this branch: pre-commit run --from-ref 4d57473db --to-ref HEAD passes every hook except check-layering, which reports only vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39), a file this PR does not touch; check-layering --all-files reports the same, exactly as main 4d57473db does. pre-commit run mypy-3.10 --all-files --hook-stage manual: no issues apart from three in vllm/v1/attention/backends/flash_v100/runtime.py that come from a local flash_attn_v100 checkout and that main 4d57473db shows the same way.
+
+
+NEW: Static checks on the current head: see the update of 2026-11-26 at the top (four hooks fail with the findings that main 73da3445d has as well; none is new). The results of the earlier head are in the dated updates and in the paragraphs above.
+
+
+
+## 6. footer: the two closing lines of fakten-runde5.md (session link of this session)
+OLD: 🤖 Generated with Claude Code (https://claude.com/claude-code)
+https://claude.ai/code/session_0172gtUkBtN8FSrthHLCZe8W
+NEW: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUkqNsK9nE7L151CUUE
+
+# Round 2 (2026-11-26, after the independent review): further changes to the text, old -> new, short. The entries above stay as they were; where a sentence of an entry above was changed again, the entry's NEW text was updated to the final wording.
+
+## R2-1. A1
+OLD: 'the file lists of all 72 open PRs; ... 63 open PRs by other authors and of 217 PRs by other authors merged since 2026-10-28 (280 in all)'
+NEW: 'the file lists of all 63 open PRs by other authors (dependabot excluded); ... those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date)'
+
+## R2-2. A3 Runtime acceptance section
+OLD: (section missing)
+NEW: new section '## Runtime acceptance (required for runtime changes)' with the seven bullets of the template; the review of 2026-11-09 answered item by item; TP/DCP layouts, a model run of this head with CUDA graphs and other checkpoints stay open
+
+## R2-3. sm7x Triton runs (Body:5, 7, 9, 12, 13, 14, 44, 94, Comment:5)
+OLD: 'the runs with the sm7x Triton named below were not repeated' / 'stock Triton 3.6.0 only'
+NEW: stock-Triton table kept; the five files that need the sm7x Triton were run again on the V100 and the RTX 8000 with the sm7x Triton build (source build of branch sm7x-tensor-cores, first on PYTHONPATH, not the wheel): all ok, no failure; per-file results added in brackets: sparse_prefill_bmm 35 / 35, skinny_moe_triton 6 passed / 6 skipped, indexer 131 passed 3 skipped / 134 passed, kernel_config 8 / 8, mhc 7 / 7 (V100 / RTX 8000); 'main was not run with it, so no comparison'
+
+## R2-4. Body:20 and failure list, test_mla_backends.py
+OLD: 'CPU ;' (empty cell) and 'fp8e4nv is not supported on sm_75'
+NEW: 'CPU 1152 errors' (same IDs on main) and the literal Triton message
+
+## R2-5. four merged PRs of the first count
+OLD: (not mentioned)
+NEW: sentence: share no file and no symbol with this PR
+
+## R2-6. comment
+OLD: (no mention of the sm7x runs on this head)
+NEW: sm7x runs added; acceptance section referenced

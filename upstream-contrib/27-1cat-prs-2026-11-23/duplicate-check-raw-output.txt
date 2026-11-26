@@ -1,0 +1,266 @@
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "1330 in:body" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "1330 in:body" --limit 50
+1281 MERGED 2026-10-27 Bump actions/setup-python from 6.1.0 to 7.1.0
+110 CLOSED 2026-07-21 Bump actions/setup-python from 6.1.0 to 7.0.0
+1410 MERGED 2026-11-07 [Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded stride, size the tail ring for speculative drafts
+243 MERGED 2026-08-18 Bump packaging from 24.2 to 26.3
+303 CLOSED 2026-08-25 Bump the minor-update group across 1 directory with 171 updates
+264 CLOSED 2026-08-23 Bump the minor-update group across 1 directory with 171 updates
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "zeroer" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "zeroer" --limit 50
+1520 MERGED 2026-11-15 [Test][SM70] Long-attention rows reference, Flash-V100 prefill skips on Turing, cover copy_block_ids
+1230 MERGED 2026-10-18 [Bugfix][KV Cache] Zero packed DCP pages from the page base
+1203 MERGED 2026-10-13 [Perf] Flash-Next 16 GB prefill: expert cache with DMA-staged cold experts, QSA rows kernel, balanced chunks
+1232 MERGED 2026-10-18 [Bugfix][KV Offload] Finish reused-block stores before MRv2 zeroes them
+276 MERGED 2026-08-24 [Bugfix] Zero reused KV blocks in MRV2
+1297 MERGED 2026-10-28 [Perf][Core][SM70] Partial prefix-cache hits for hybrid Mamba models; agent turns resume at the last message
+406 MERGED 2026-08-28 [Bugfix] Avoid KVBlockZeroer H2D staging races
+373 MERGED 2026-08-27 [KV Cache] Zero compressed attention storage pages
+280 MERGED 2026-08-24 [Bugfix] KVBlockZeroer: per-segment block stride for interleaved KV layouts
+374 MERGED 2026-08-28 [Core][SM70] Repair Qwen4Exp PLE integration from #338
+1272 MERGED 2026-10-27 [Bugfix][KV] MLA specs carry the codec of their cache dtype
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "KVBlockZeroer" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "KVBlockZeroer" --limit 50
+1230 MERGED 2026-10-18 [Bugfix][KV Cache] Zero packed DCP pages from the page base
+1525 MERGED 2026-11-15 [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.8 concurrency
+406 MERGED 2026-08-28 [Bugfix] Avoid KVBlockZeroer H2D staging races
+1520 MERGED 2026-11-15 [Test][SM70] Long-attention rows reference, Flash-V100 prefill skips on Turing, cover copy_block_ids
+280 MERGED 2026-08-24 [Bugfix] KVBlockZeroer: per-segment block stride for interleaved KV layouts
+1529 MERGED 2026-11-16 [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming tool parser
+373 MERGED 2026-08-27 [KV Cache] Zero compressed attention storage pages
+276 MERGED 2026-08-24 [Bugfix] Zero reused KV blocks in MRV2
+408 MERGED 2026-08-28 [Bugfix][Model][SM70] Repair Qwen3.8 Flash Next correctness
+1410 MERGED 2026-11-07 [Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded stride, size the tail ring for speculative drafts
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "kv block zero" --limit 50
+1526 OPEN 2026-11-16 [Core] Do not credit negative non-Torch growth to the KV budget
+1589 OPEN 2026-11-21 [Fix][Flash-Next] Support native KV offload with QSA Host-KV
+1598 OPEN 2026-11-22 [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1243 OPEN 2026-10-21 [Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative decoding, 1M context (stacks on #1031)
+1606 OPEN 2026-11-23 [Bugfix][Multimodal] Give back shm cache references of requests that never reach the workers
+1374 OPEN 2026-11-05 [Perf][SM70][DeepSeek-V4] Shard the DSpark main projection output rows
+1286 OPEN 2026-10-28 [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+1543 OPEN 2026-11-17 [Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+241 OPEN 2026-08-18 feat(opt21-25): v1.3.0 重放源码集（NTK/MTP/并发/KV/工具调用/anthropic 增强）
+1031 OPEN 2026-10-07 [Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+1348 OPEN 2026-11-03 [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM head through QPN8
+1282 OPEN 2026-10-27 [Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "kv block zero" --limit 50
+1526 OPEN 2026-11-16 [Core] Do not credit negative non-Torch growth to the KV budget
+1589 OPEN 2026-11-21 [Fix][Flash-Next] Support native KV offload with QSA Host-KV
+1598 OPEN 2026-11-22 [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1243 OPEN 2026-10-21 [Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative decoding, 1M context (stacks on #1031)
+1606 OPEN 2026-11-23 [Bugfix][Multimodal] Give back shm cache references of requests that never reach the workers
+1232 MERGED 2026-10-18 [Bugfix][KV Offload] Finish reused-block stores before MRv2 zeroes them
+1374 OPEN 2026-11-05 [Perf][SM70][DeepSeek-V4] Shard the DSpark main projection output rows
+1286 OPEN 2026-10-28 [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+1543 OPEN 2026-11-17 [Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+241 OPEN 2026-08-18 feat(opt21-25): v1.3.0 重放源码集（NTK/MTP/并发/KV/工具调用/anthropic 增强）
+1031 OPEN 2026-10-07 [Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+1348 OPEN 2026-11-03 [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM head through QPN8
+1594 MERGED 2026-11-22 [Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpark5 & unlimited MM
+1552 MERGED 2026-11-18 [Perf][SM70] Native per-token-head INT8 KV cache for QSA & Flash-V100 as default
+1529 MERGED 2026-11-16 [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming tool parser
+1524 MERGED 2026-11-15 [Perf][SM70] Generalize TP2/TP4 decode, prefill, FP8/W8A16-FP8 fastpaths, and VRAM footprint
+1520 MERGED 2026-11-15 [Test][SM70] Long-attention rows reference, Flash-V100 prefill skips on Turing, cover copy_block_ids
+1601 MERGED 2026-11-22 perf(sm70): accelerate Qwen3.8-Flash-Next mixed prefill+decode for multi-turn agents
+1492 MERGED 2026-11-13 [Bugfix][SM70] Hybrid prefix caching: one prefix grid by default, no crash on an empty pool (#1422, #1483)
+1557 MERGED 2026-11-18 [Feat][Perf][Bugfix] Dynamic Qwen3.8 thinking sampling, relaxed SM70/INT8 paths & audit fixes
+1408 MERGED 2026-11-07 [Bugfix][Core] Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample race, shm reader stalls, new_block_ids leak, PP broadcast, MM block hashing, compile cache
+1573 MERGED 2026-11-20 fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issues
+1595 MERGED 2026-11-22 perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1230 MERGED 2026-10-18 [Bugfix][KV Cache] Zero packed DCP pages from the page base
+1321 MERGED 2026-10-29 flash-v100: Budget FP8 bridge workspace by KV-head group
+1282 OPEN 2026-10-27 [Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1491 MERGED 2026-11-13 [SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+1525 MERGED 2026-11-15 [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.8 concurrency
+1425 MERGED 2026-11-08 [Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+1250 MERGED 2026-10-23 [Bugfix][KV] Repair P2P peer failures and asynchronous KV replay ownership
+1297 MERGED 2026-10-28 [Perf][Core][SM70] Partial prefix-cache hits for hybrid Mamba models; agent turns resume at the last message
+276 MERGED 2026-08-24 [Bugfix] Zero reused KV blocks in MRV2
+1497 MERGED 2026-11-13 fix: recover from cache drift instead of killing the engine (multi-modal P0/P1, partial-prefix hit)
+1203 MERGED 2026-10-13 [Perf] Flash-Next 16 GB prefill: expert cache with DMA-staged cold experts, QSA rows kernel, balanced chunks
+1287 MERGED 2026-10-28 [Perf][SM70] 4096-token prefill chunks: native Q4096 79T attention and reserved long-prefix workspaces
+1280 CLOSED 2026-10-27 [Perf][SM70][DeepSeek-V4] Long-prefill indexer and sparse attention: vectorized epilogue, fused softmax, Turing scorer
+1464 MERGED 2026-11-09 [Bugfix][SM70] Repair runtime state, tool parsing and NVFP4 workspace
+1479 MERGED 2026-11-10 Audit #1020, #1217 and #1445: prefill and collective lifecycles
+1199 MERGED 2026-10-12 [Bugfix][Qwen4Exp] Pin the PLE host share at its exact size
+690 CLOSED 2026-09-25 [Memory] Bound SM70 prefill scratch and compact hybrid cache pages
+956 MERGED 2026-10-05 [Bugfix][Core] Free every superseded Mamba align-mode state block under async scheduling
+665 MERGED 2026-09-20 [Bugfix][KV Offload] Order SimpleCPUOffloadConnector stores behind the compute stream
+1181 CLOSED 2026-10-11 [Kernel] Bind grouped FP32 attention to shared KV codecs
+766 MERGED 2026-10-02 [Core][SM70] Admit Flash-Next acceleration by operator requirements
+1069 MERGED 2026-10-08 [Kernel][SM70] Chunk block-scaled QPN8 decode through the M<=8 route for M=9..32
+781 CLOSED 2026-10-02 [Bugfix][PLE] Defer hybrid cache geometry until cache setup
+647 MERGED 2026-09-17 [Bugfix][SM70] Stop grouped-page4 null-block padding from leaking E4M3 NaN
+696 CLOSED 2026-09-26 [Model][QSA] Target-only DCP2 for Qwen4Exp QSA on TP4 V100
+1507 MERGED 2026-11-14 [Bugfix][SM70] Add the Marlin bias on the SM70 dense and MoE paths
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "storage block virtual page" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "storage block virtual page" --limit 50
+373 MERGED 2026-08-27 [KV Cache] Zero compressed attention storage pages
+381 MERGED 2026-08-28 [Bugfix][QSA] Keep compressed block tables in physical-page units
+693 CLOSED 2026-09-26 [Kernel] Guard numerical range in SM70 long prefill
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "kv_cache_view_page_rows" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "kv_cache_view_page_rows" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "indexer zero block" --limit 50
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+1282 OPEN 2026-10-27 [Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1243 OPEN 2026-10-21 [Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative decoding, 1M context (stacks on #1031)
+1286 OPEN 2026-10-28 [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1348 OPEN 2026-11-03 [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM head through QPN8
+1031 OPEN 2026-10-07 [Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "indexer zero block" --limit 50
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+1282 OPEN 2026-10-27 [Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1243 OPEN 2026-10-21 [Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative decoding, 1M context (stacks on #1031)
+1286 OPEN 2026-10-28 [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1348 OPEN 2026-11-03 [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM head through QPN8
+1594 MERGED 2026-11-22 [Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpark5 & unlimited MM
+1601 MERGED 2026-11-22 perf(sm70): accelerate Qwen3.8-Flash-Next mixed prefill+decode for multi-turn agents
+1280 CLOSED 2026-10-27 [Perf][SM70][DeepSeek-V4] Long-prefill indexer and sparse attention: vectorized epilogue, fused softmax, Turing scorer
+1031 OPEN 2026-10-07 [Model][SM70] DeepSeek-V4.1-Flash on V100: PP3xTP4 (12 GPUs, 256K) and PP2xTP4 (8 GPUs)
+1411 MERGED 2026-11-07 [Bugfix][Kernel] Backport vllm-project/vllm#63475, #62936, #62467, #49139: persistent_topk radix CTA syncs, float4 tail lanes, radix histogram ring
+814 CLOSED 2026-10-03 [Perf][SM70] Select QSA indexer blocks per request in mixed batches
+1595 MERGED 2026-11-22 perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1525 MERGED 2026-11-15 [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.8 concurrency
+665 MERGED 2026-09-20 [Bugfix][KV Offload] Order SimpleCPUOffloadConnector stores behind the compute stream
+362 MERGED 2026-08-27 [Bugfix][SM70] Reconcile GLM-5.3 with latest main
+447 CLOSED 2026-09-02 [Model][SM70][FP8] Add calibrated E4M3 QSA KV cache
+283 MERGED 2026-08-24 [Core][Kernel][SM70] Default validated PP2 TP4 paths
+345 MERGED 2026-08-27 [Model][SM70] Adapt Qwen3.8 Flash Next NVFP4
+755 CLOSED 2026-10-02 Bump the minor-update group across 1 directory with 155 updates
+737 CLOSED 2026-09-29 Bump the minor-update group across 1 directory with 152 updates
+735 CLOSED 2026-09-29 Bump the minor-update group across 1 directory with 153 updates
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "kpool tail" --limit 50
+1286 OPEN 2026-10-28 [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "kpool tail" --limit 50
+1286 OPEN 2026-10-28 [Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1410 MERGED 2026-11-07 [Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded stride, size the tail ring for speculative drafts
+1411 MERGED 2026-11-07 [Bugfix][Kernel] Backport vllm-project/vllm#63475, #62936, #62467, #49139: persistent_topk radix CTA syncs, float4 tail lanes, radix histogram ring
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+362 MERGED 2026-08-27 [Bugfix][SM70] Reconcile GLM-5.3 with latest main
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "warmup block" --limit 50
+1598 OPEN 2026-11-22 [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1348 OPEN 2026-11-03 [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM head through QPN8
+1526 OPEN 2026-11-16 [Core] Do not credit negative non-Torch growth to the KV budget
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "warmup block" --limit 50
+1598 OPEN 2026-11-22 [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1493 MERGED 2026-11-13 [Bugfix][SM70] MRV2 warmup: keep state groups inside a bounded host-KV state pool (#1490)
+1559 MERGED 2026-11-18 feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+1273 MERGED 2026-10-27 [Perf][SM70] One grouped GEMM for DeepSeek-V4 wo_a; opt-in TurboMind tuning freeze after warmup
+1348 OPEN 2026-11-03 [Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM head through QPN8
+1526 OPEN 2026-11-16 [Core] Do not credit negative non-Torch growth to the KV budget
+1427 CLOSED 2026-11-09 [Perf][SM70] Qwen3.8 MTP: MRV2, shared verifier routes, no draft-step sync; 16 GB capacity
+1347 OPEN 2026-11-03 [Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the sparse prefill workspace
+1557 MERGED 2026-11-18 [Feat][Perf][Bugfix] Dynamic Qwen3.8 thinking sampling, relaxed SM70/INT8 paths & audit fixes
+873 MERGED 2026-10-04 [Bugfix][SM70] Start block QPN8 on Volta: warm up the layout it holds, keep the TurboMind copy only when decode can use it
+903 CLOSED 2026-10-04 SM70: integrate retained MTP optimizations with upstream runtime owners
+1529 MERGED 2026-11-16 [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming tool parser
+1573 MERGED 2026-11-20 fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issues
+860 MERGED 2026-10-03 [Core] Bound mixed-prefill latency and preserve hybrid prefix replay
+578 CLOSED 2026-09-09 [Video] Measure H3 workflows with actual denoise schedules
+690 CLOSED 2026-09-25 [Memory] Bound SM70 prefill scratch and compact hybrid cache pages
+850 MERGED 2026-10-03 [Bugfix] Repair missed SM70 prefill prefix maxima
+272 MERGED 2026-08-23 [Core][SM70] Add opt-in MTP concurrency warmup
+817 MERGED 2026-10-03 [Perf] Keep QSA long-request selection stable in mixed batches
+888 MERGED 2026-10-04 [Model] Load DFlash2 GGUF drafts with TP4 context sharding
+677 MERGED 2026-09-22 [Memory] Share SM70 graph scratch and reduce DFlash active peak
+787 MERGED 2026-10-02 [Bugfix][Scheduler] Limit full-chunk Mamba fallback to contention
+1073 MERGED 2026-10-08 [Test] Freeze Flash-V100 GPU route, token and output parity
+566 MERGED 2026-09-08 [Kernel] Finalize the audited TP2 DFlash2 31/29 ms endpoint
+1172 MERGED 2026-10-11 [Kernel] Reduce SM70 mHC projection and output overhead
+816 MERGED 2026-10-03 [Perf] Select sparse indexer and MLA matmuls by capability
+553 CLOSED 2026-09-07 feat: NVIDIA Qwen3.8 Flash-Next MTP loader
+623 CLOSED 2026-09-13 [Feature][SM75] Build and load a Turing FlashAttention-2 library next to the Volta one
+273 MERGED 2026-08-23 [Kernel][SM70] Add opt-in MTP concurrency tuning
+794 MERGED 2026-10-02 [Core] Integrate SM70 serialized FP8 with the linear kernel lifecycle
+119 CLOSED 2026-08-01 [Bench] Establish SM70 concurrency throughput baseline
+766 MERGED 2026-10-02 [Core][SM70] Admit Flash-Next acceleration by operator requirements
+571 MERGED 2026-09-08 [Core] Generalize H3 SM70 execution and weight residency
+1425 MERGED 2026-11-08 [Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+522 MERGED 2026-09-06 [Perf][SM70] Coalesce AWQ QPN W13 compact metadata loads and enable compact metadata by default
+661 CLOSED 2026-09-19 [Bugfix][SM70] Pin decode workspaces allocated during CUDA graph capture
+1225 MERGED 2026-10-17 [Bugfix][MRv2] Bound prompt logprobs memory with small chunks and request limits
+300 MERGED 2026-08-25 [Kernel][SM70] Default exact grouped FP8 WO-A decode
+693 CLOSED 2026-09-26 [Kernel] Guard numerical range in SM70 long prefill
+673 MERGED 2026-09-22 [Kernel][SM70] Reduce persistent prefill score workspace
+1205 MERGED 2026-10-13 [Kernel] Reduce Flash-Next prefill work and temporary memory
+874 MERGED 2026-10-04 [Perf][SM70][DeepSeek-V4] Bucket speculative decode graphs by context so the sparse indexer can take cuBLAS
+469 MERGED 2026-09-03 [Bugfix][Perf][SM70/SM75] Widen QSA sparse launch profile to pre-Ampere
+568 MERGED 2026-09-08 [Core] Shard H3 residual rows and rotate before TP gather
+559 MERGED 2026-09-08 [Test] Record H3 local rotation and 58.19-second development evidence
+366 MERGED 2026-08-27 [Core][SM70] Add adaptive lookup-augmented DFlash2
+228 MERGED 2026-08-16 [SM70][NVFP4] Admit ModelOpt on exact SM70 via proven backends
+520 MERGED 2026-09-06 [Perf][SM70] Narrow Qwen3.8 AWQ active grouped decode
+628 MERGED 2026-09-14 [Kernel] Default to FP32-accumulated 75T SM70 Q8000 prefill
+1417 MERGED 2026-11-07 [Perf][SM70][SM75][DeepSeek-V4] Finer automatic decode context buckets for long contexts
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "KpoolTailSpec" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "KpoolTailSpec" --limit 50
+1410 MERGED 2026-11-07 [Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded stride, size the tail ring for speculative drafts
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "KpoolTailManager" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "KpoolTailManager" --limit 50
+1408 MERGED 2026-11-07 [Bugfix][Core] Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample race, shm reader stalls, new_block_ids leak, PP broadcast, MM block hashing, compile cache
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "warmup illegal memory access" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "warmup illegal memory access" --limit 50
+1340 MERGED 2026-11-01 [Perf][SM70] Qwen3.8 dual-compile lane: hybrid PLE by default when the host can pin it
+445 MERGED 2026-09-01 [Kernel][Bugfix] Validate QUASAR NVFP4 DFlash2 on V100
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state open --search "_reserved_block_count" --limit 50
+-- end
+$ gh pr list --repo 1CatAI/1Cat-vLLM --state all --search "_reserved_block_count" --limit 50
+-- end
+$ gh issue list --state all --search "kpool tail warmup"
+-- end
+$ gh issue list --state all --search "zeroer"
+1330 OPEN [Bug]: [SM70] KVBlockZeroer zeroes one 64-row page instead of the whole block for virtually split compressed caches (GLM-5.x kpool indexer), wiping a live request's index keys
+1337 OPEN [Report] GLM-5.3-Flash EXL3 2.1 bpw on 4× V100-32GB (TP4): fixes, measurements and the configuration we run
+1327 CLOSED [Bug]: [SM70] Indexer prefill scores overflow fp16 in `_prefill_logits_cublas` (inf/NaN), corrupting sparse-attention key selection for prompts > index_topk
+1331 OPEN [Bug]: `top_k_per_row_prefill` fills exactly tied logits at the cut in atomicAdd order, so the selected top-k set changes run to run (same logic on vLLM main)
+1569 OPEN [Bug][SM70][GLM-5.3] NVFP4 on 8x V100-SXM2 (DGX-1): lone short requests decode garbage after other traffic (1.5.2, 1.5.3); 1.5.3 TP8 also hits an illegal memory access
+746 OPEN [Report] Qwen3.8-Flash-Next on 4x V100-32G (200 W cap): contributions since 1.3.0, open PRs, production config and measurements
+-- end
+$ gh pr list --state open --limit 200 (count)
+94
+
+## open PRs (all 94) whose file list contains one of the changed files (gh pr view N --json files)
+#1282 vllm/v1/worker/gpu/attn_utils.py
+#1347 vllm/v1/worker/gpu/attn_utils.py
+#1370 vllm/v1/worker/gpu_model_runner.py
+#1371 vllm/v1/worker/gpu_model_runner.py
+#1376 vllm/v1/worker/gpu_model_runner.py
+#1377 vllm/v1/worker/gpu_model_runner.py
+#1379 vllm/v1/worker/gpu_model_runner.py
+#1388 vllm/v1/worker/gpu_model_runner.py
+#1389 vllm/v1/worker/gpu_model_runner.py
+#1589 vllm/v1/worker/utils.py
+#1598 vllm/v1/worker/gpu_model_runner.py
+#1600 vllm/v1/worker/gpu_model_runner.py
+#1607 vllm/v1/worker/gpu_model_runner.py
+#1608 vllm/v1/worker/gpu_model_runner.py
+#241 vllm/v1/worker/gpu_model_runner.py

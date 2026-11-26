@@ -1,0 +1,9 @@
+Updated this PR: rebased onto main 73da3445d (#1616) together with #1282. The head is f546c6761; it still adds three commits on #1282 without its last two commits (now c6f36a5e4).
+
+What changed: only the test file tests/kernels/test_deepseek_v4_sm70_indexer.py. Main's decode-route test has gained a graph_width parameter, and the first and the third commit follow it (the third commit now covers the 2k, 8k and 20k graph widths). The sources and csrc/ are the same as in the previous head, so the kernel numbers and the model A/B runs in the description still apply; they were not repeated.
+
+Tests: 27 test files, one process per file, on the CPU, a Tesla V100 and a Quadro RTX 8000, with the environment's stock Triton 3.6.0 (the fused-scorer and multi-pass cases skip there by design). The five test files that need the sm7x Triton were also run on the two cards with the sm7x Triton build, where those cases run: all pass, no failure; main was not run with it, so there is no comparison. No failure that main 73da3445d does not have as well. pre-commit: the hooks that fail fail with main's own findings; mypy-3.10 reports the same single error as main. The per-file numbers are in the updated description.
+
+The description now has the Runtime acceptance section of the template; the qualification that the review of 2026-11-09 asked for (TP/DCP layouts, graph replay and target-checkpoint quality on this head, among others) is listed there as still open.
+
+AI assistance (Claude Code) was used for this update; I reviewed and tested the changes.

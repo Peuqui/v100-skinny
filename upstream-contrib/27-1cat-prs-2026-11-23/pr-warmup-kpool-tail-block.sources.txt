@@ -1,0 +1,12 @@
+Number sources, PR pr-warmup-kpool-tail-block (all under /home/mp/Projekte/vllm-research)
+- Ring formula kpool * next_pow2(cdiv(kpool + k, kpool)), 8 slots for k <= 4, 16 for 5 to 8: v100-skinny/STAND.md line 19 (Nachtrag 22.11.) and memory project_glm_draft_length_k5_2026-11-22.md; code of KpoolTailSpec in the branch.
+- Pools of 130/131 blocks, PP3 illegal memory access, k=4 ids up to 162, k=3 up to 155: STAND.md line 19 (production boot journals); re-measured on the CPU with the test layout: upstream-contrib/27-1cat-prs-2026-11-23/warmup-maxids-measurement.py, output 2026-11-23: old warmup.py k=3 155 (pool 131), k=4 162 (130), k=5 103 (130), k=7 115 (126); fixed warmup.py 27, 33, 39, 51.
+- "129 tail blocks of a 130-block pool" appears only in the commit message of the fork commit 6b1cd5c2c and is NOT in the PR text (not re-measured).
+- 24 passed, 6 failed on old warmup.py (5 new + test_kernel_prefill_warmup_runs_default_batch_and_extra_profile): own runs in 1Cat-vLLM-pr-warmup-kpool-tail, 2026-11-23, warmup.py swapped for origin/main:vllm/v1/worker/gpu/warmup.py and restored.
+- Other counts (10 passed/36 skipped, 5/1 skipped, 4, 1, 6): own runs same tree. Memory-profile (10 failed) and sm70_warmup_allocator (8 failed, 4 passed) identical on main: pr-warmup-kpool-tail-block.test-failures-{main,new}.txt.
+- Cause of the test change (corrected by the main session 23.11.): git log -S'num_spec_steps > 0' origin/main -- warmup.py -> dc46b29fc6 (#1562, 16-token prefill); git log -S'prompt_logprobs=None' -> d62f5ec5f5. #1560 is unrelated.
+- KV pools 129-132 blocks: journals ab_mv14k4_glm_2026-11-22a/journal-{1..4}-*.txt ('KV pool: N blocks').
+- #1410 and #1493 merged: duplicate-check-raw-output.txt. 94 open PRs and no open PR touching warmup.py/test_gpu_warmup_blocks.py: file scan over all open PRs, 2026-11-23.
+- base 1Cat main 022349e47: git log origin/main -1, fetched 2026-11-23.
+
+- Second review 23.11.: test-change cause #1562 (16-token cycle) and #1557 (profile sampling params for the smaller request counts, git log -S'profile_sampling_params'); old warmup.py + new test file: 5 failed 19 passed; main's own test file: 1 failed 16 passed; crashing boots (ab_gk4dbg_glm_2026-11-22a, ab_gk4_glm_2026-11-22b, tree v13) 130 blocks on every stage; #1260 touches warmup.py (new functions only).

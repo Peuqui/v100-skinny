@@ -1,0 +1,98 @@
+## dspark
+  #1600 OPEN ON-works - [SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contract
+  #1379 OPEN ProprietaryLegal - [Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+  #1374 OPEN ProprietaryLegal - [Perf][SM70][DeepSeek-V4] Shard the DSpark main projection output rows
+  #1377 OPEN ProprietaryLegal - [Spec Decode][DeepSeek-V4.1] Coupled drafts and keyed verification on vocabulary shards
+  #1376 OPEN ProprietaryLegal - [Perf][DeepSeek-V4.1] Skip layers 21-39 in early prefill chunks (VLLM_V41_PREFILL_SKIP_ROWS)
+  #1370 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1: PP2 x TP4 for the #1277 package (8 V100s)
+  #1583 OPEN ProprietaryLegal - [Docs] README: DeepSeek-V4.1-Flash-1017 on 4x V100 TP4, one slot, 262K context (community result)
+  #1580 OPEN ProprietaryLegal - [Docs] README: DeepSeek-V4.1-Flash-1017 with all routed experts in NVFP4 on 12x V100 PP3 x TP4 (comm
+  #1452 OPEN yangzhuxinyzx - [Draft review queue] DeepSeek-V4.1 model and speculative state queue
+  #1616 MERGED Jozkah 2026-11-25T14:56:14Z [Model][SM70] Port Inkling 2 Mini to Volta: NVFP4/MXFP8 experts, vision, DSpark speculation, fused d
+  #1625 MERGED yangzhuxinyzx 2026-11-25T15:12:54Z perf(inkling2-sm70): optimize DSpark7 concurrency, prefill, and long-context decode with SM70 WMMA
+  #1586 OPEN ProprietaryLegal - [Perf][PP] Engine core: submit spacing steps ahead, no sleep after an answer, loop counters (VLLM_V4
+  #1553 OPEN Maxwells-Ayakashi - [Perf][SM70][DeepSeek-V4.1] Keep a full host copy of routed experts (VLLM_V41_KEEP_HOST, default off
+  #1375 MERGED ProprietaryLegal 2026-11-16T14:22:56Z [Spec Decode][DeepSeek-V4.1] Coupled sampled DSpark drafts with keyed verification
+  #1558 MERGED yangzhuxinyzx 2026-11-18T09:54:07Z [Bugfix][DS-V4.1] PP4 batch: in-vocabulary sampled counts, DSpark draft guard, batch prefix caching,
+  #1608 MERGED yangzhuxinyzx 2026-11-24T16:18:28Z fix(v41): harden V41ProposeGraph capture sync, static DFlash metadata, and coupled key staging ring
+  #1584 OPEN ProprietaryLegal - [Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+  #1380 MERGED ProprietaryLegal 2026-11-09T11:28:11Z [Docs] README: DeepSeek-V4.1-Flash-1017 on 8x V100 PP2 x TP4 (community result)
+  #1581 OPEN ProprietaryLegal - [Perf][SM70][DeepSeek-V4.1] TP4 prefill pair relay: one PCIe store per activation element on two-NVL
+  #1488 MERGED ProprietaryLegal 2026-11-16T14:22:55Z [Docs] README: DeepSeek-V4.1-Flash-1017 NVFP4 hot experts on 8x V100 PP2 x TP4 (community result)
+  #1381 MERGED ProprietaryLegal 2026-11-10T04:00:51Z [Bugfix][DeepSeek-V4.1] Restore packed KV bytes and reserve speculative rewind span
+  #1373 MERGED ProprietaryLegal 2026-11-10T16:19:37Z [Perf][V1][PP] Retain persistent request rows across empty steps
+  #1598 OPEN ON-works - [Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+  #1587 OPEN ProprietaryLegal - [DeepSeek V4.1][SM70] VLLM_V41_INDEX_TC: tensor-core decode index scorer, bitwise the tiled scorer (
+  #1372 MERGED ProprietaryLegal 2026-11-16T14:22:56Z [Perf][SM70][DeepSeek-V4] Tile live packed decode index scoring
+  #1386 MERGED ProprietaryLegal 2026-11-16T14:22:56Z [Perf][SM70][DeepSeek-V4.1] Reduce decode index scores over the live prefix through an IPC bank (VLL
+  #1383 MERGED ProprietaryLegal 2026-11-16T14:22:55Z [Perf][SM70][DeepSeek-V4.1] Build the routed-expert plan inside the q8 quantize launch (VLLM_V41_PLA
+  #1382 MERGED ProprietaryLegal 2026-11-10T07:34:06Z [Perf][SM70] Admit small aligned FP16 sum2 messages to the TP4 push all-reduce (VLLM_V41_SUM2_PUSH_A
+## MRV2
+  #1460 OPEN yangzhuxinyzx - [Draft review queue] Multimodal and MRV2 pipeline qualification queue
+  #1379 OPEN ProprietaryLegal - [Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+  #1584 OPEN ProprietaryLegal - [Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+  #1586 OPEN ProprietaryLegal - [Perf][PP] Engine core: submit spacing steps ahead, no sleep after an answer, loop counters (VLLM_V4
+  #1531 MERGED Leonccaa 2026-11-25T05:04:42Z [Bugfix][MRv2] Restore the KV connector after dummy execution fails
+  #1530 MERGED yangzhuxinyzx 2026-11-16T19:31:54Z [Bugfix][MRV2][SpecDecode] Preserve structured-output draft tokens across interleaved prefill steps
+  #1589 OPEN Maxwell-Lyu - [Feat][Flash-Next] Support native KV offload with QSA Host-KV
+  #1493 MERGED yangzhuxinyzx 2026-11-13T02:51:29Z [Bugfix][SM70] MRV2 warmup: keep state groups inside a bounded host-KV state pool (#1490)
+  #1427 CLOSED yangzhuxinyzx - [Perf][SM70] Qwen3.8 MTP: MRV2, shared verifier routes, no draft-step sync; 16 GB capacity
+  #1402 MERGED yangzhuxinyzx 2026-11-06T15:07:01Z [Perf][Core] MRV2 warmup: cover every request count, mixed steps and a full chunk
+  #1321 MERGED andrewleech 2026-11-10T06:13:40Z flash-v100: Budget FP8 bridge workspace by KV-head group
+  #1537 MERGED squibloads 2026-11-25T05:09:04Z [Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+  #1377 OPEN ProprietaryLegal - [Spec Decode][DeepSeek-V4.1] Coupled drafts and keyed verification on vocabulary shards
+  #1529 MERGED yangzhuxinyzx 2026-11-16T18:49:50Z [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming too
+  #1441 MERGED ChainZeaxion 2026-11-10T03:23:05Z [Bugfix][DFlash] Use the selected NVFP4 provider's projection input dtype
+  #1469 MERGED yangzhuxinyzx 2026-11-10T08:26:58Z fix(sm70): qualify native block FP8 M17-32 integration for #1157
+  #1614 MERGED Maxwell-Lyu 2026-11-25T04:42:57Z [Bugfix][SM70] Profile the full Flash-Next MTP draft before singleton decode
+  #1301 MERGED Leonccaa 2026-11-10T05:45:24Z [Spec Decode] DFlash2: optionally shard the selector codebooks by vocabulary
+  #1375 MERGED ProprietaryLegal 2026-11-16T14:22:56Z [Spec Decode][DeepSeek-V4.1] Coupled sampled DSpark drafts with keyed verification
+  #1482 MERGED yangzhuxinyzx 2026-11-11T07:27:50Z [Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+  #1605 CLOSED hdq66666 - [Bugfix][Multimodal] Stop the shm cache reader from pinning its copies and re-reading resent request
+  #1570 MERGED yangzhuxinyzx 2026-11-19T15:19:23Z [Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 A
+## model runner v2
+  #1379 OPEN ProprietaryLegal - [Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+  #1584 OPEN ProprietaryLegal - [Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+  #1371 OPEN ProprietaryLegal - [Bugfix][V1][PP] Preserve synchronous speculative step ownership
+  #1586 OPEN ProprietaryLegal - [Perf][PP] Engine core: submit spacing steps ahead, no sleep after an answer, loop counters (VLLM_V4
+  #1612 MERGED hdq66666 2026-11-25T04:42:14Z [Bugfix][Core] Reject requests that do not fit the V2 sampler rows
+  #1620 OPEN app/dependabot - Bump the minor-update group across 1 directory with 175 updates
+  #1350 OPEN app/dependabot - Bump the minor-update group with 174 updates
+  #1531 MERGED Leonccaa 2026-11-25T05:04:42Z [Bugfix][MRv2] Restore the KV connector after dummy execution fails
+  #1373 MERGED ProprietaryLegal 2026-11-10T16:19:37Z [Perf][V1][PP] Retain persistent request rows across empty steps
+  #1605 CLOSED hdq66666 - [Bugfix][Multimodal] Stop the shm cache reader from pinning its copies and re-reading resent request
+  #1380 MERGED ProprietaryLegal 2026-11-09T11:28:11Z [Docs] README: DeepSeek-V4.1-Flash-1017 on 8x V100 PP2 x TP4 (community result)
+  #1616 MERGED Jozkah 2026-11-25T14:56:14Z [Model][SM70] Port Inkling 2 Mini to Volta: NVFP4/MXFP8 experts, vision, DSpark speculation, fused d
+  #1537 MERGED squibloads 2026-11-25T05:09:04Z [Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+  #1391 MERGED yangzhuxinyzx 2026-11-05T22:58:58Z [Bugfix][Memory] Profile startup memory under inference mode again
+  #1530 MERGED yangzhuxinyzx 2026-11-16T19:31:54Z [Bugfix][MRV2][SpecDecode] Preserve structured-output draft tokens across interleaved prefill steps
+  #1468 MERGED yangzhuxinyzx 2026-11-10T08:27:00Z fix(mtp): qualify draft token map integration for #1218
+  #1529 MERGED yangzhuxinyzx 2026-11-16T18:49:50Z [Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming too
+  #1474 CLOSED app/dependabot - Bump the minor-update group across 1 directory with 174 updates
+## context bucket
+  #1454 OPEN yangzhuxinyzx - [Draft review queue] DeepSeek-V4 attention and indexing qualification queue
+  #1379 OPEN ProprietaryLegal - [Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+  #1425 MERGED Maxwell-Lyu 2026-11-10T08:33:38Z [Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+  #1321 MERGED andrewleech 2026-11-10T06:13:40Z flash-v100: Budget FP8 bridge workspace by KV-head group
+  #1328 MERGED squibloads 2026-11-09T16:26:47Z [Bugfix][SM70] Indexer: write the cuBLAS prefill score tile in fp32
+  #1325 MERGED squibloads 2026-11-10T01:56:30Z [Perf][SM70] Qualify mHC row staging for large prefill batches
+  #1595 MERGED yangzhuxinyzx 2026-11-22T04:09:09Z perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+  #1525 MERGED yangzhuxinyzx 2026-11-16T00:05:55Z [Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.
+## compressed index
+  #1388 OPEN ProprietaryLegal - [Model][SM70] DeepSeek-V4.1 indexer: fused SM70 prefill index scores (VLLM_V41_INDEX_FUSE, default o
+  #1376 OPEN ProprietaryLegal - [Perf][DeepSeek-V4.1] Skip layers 21-39 in early prefill chunks (VLLM_V41_PREFILL_SKIP_ROWS)
+  #1594 MERGED yangzhuxinyzx 2026-11-22T02:06:37Z [Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpar
+  #1565 MERGED yangzhuxinyzx 2026-11-18T16:43:05Z [Perf][DS-V4.1] Batched SM70 kernels, prefill fusion, zero-cost vision decode & agent prefix cache
+  #1379 OPEN ProprietaryLegal - [Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+  #1524 MERGED yangzhuxinyzx 2026-11-15T19:08:27Z [Perf][SM70] Generalize TP2/TP4 decode, prefill, FP8/W8A16-FP8 fastpaths, and VRAM footprint
+  #1328 MERGED squibloads 2026-11-09T16:26:47Z [Bugfix][SM70] Indexer: write the cuBLAS prefill score tile in fp32
+  #1425 MERGED Maxwell-Lyu 2026-11-10T08:33:38Z [Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+  #1472 MERGED yangzhuxinyzx 2026-11-10T17:25:56Z [Perf][SM70] Share MTP runtime operators and pipeline long-context KV reads
+## speculator
+  #1379 OPEN ProprietaryLegal - [Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+  #1501 MERGED kezboard233 2026-11-16T14:22:55Z [Bugfix][SM70][MTP] Move the HC prefill context out of the compiled MTP forward
+  #1573 MERGED yangzhuxinyzx 2026-11-20T09:14:47Z fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issue
+  #1527 MERGED yangzhuxinyzx 2026-11-16T14:22:53Z [Audit] Merge 34 reviewed PRs with conflict and bug fixes
+  #1427 CLOSED yangzhuxinyzx - [Perf][SM70] Qwen3.8 MTP: MRV2, shared verifier routes, no draft-step sync; 16 GB capacity
+  #1518 MERGED yangzhuxinyzx 2026-11-15T02:39:26Z [Perf][SM70] Approach V100 HBM2/NVLink roofline for MTP decode, concurrency, and compact sampling
+  #1570 MERGED yangzhuxinyzx 2026-11-19T15:19:23Z [Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 A

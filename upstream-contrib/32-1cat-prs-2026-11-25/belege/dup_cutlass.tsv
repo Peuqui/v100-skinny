@@ -1,0 +1,29 @@
+1506	MERGED	2026-11-14	cutlass int8	[Test][SM70] Bring 76 SM70 test files in line with current main
+558	MERGED	2026-09-08	cutlass int8	[Kernel] Reuse native H3 attention operands and fuse FP16 MLP preparation
+565	MERGED	2026-09-08	cutlass int8	[Model] Add native H3 workflows and distilled adapter families
+1506	MERGED	2026-11-14	cutlass_scaled_mm int8	[Test][SM70] Bring 76 SM70 test files in line with current main
+1005	MERGED	2026-10-06	scaled_mm	[Test] Repair twelve SM70 test cases broken by recent main changes
+873	MERGED	2026-10-04	scaled_mm	[Bugfix][SM70] Start block QPN8 on Volta: warm up the layout it holds, keep the TurboMind copy only when 
+96	CLOSED	2026-07-03	scaled_mm	sm70/V100: fail loudly when torch<2.10 skips _C_stable_libtorch; tolerate UUID-form CUDA_VISIBLE_DEVICES;
+1506	MERGED	2026-11-14	int8 w8a8	[Test][SM70] Bring 76 SM70 test files in line with current main
+1552	MERGED	2026-11-18	INT8 kernel selection	[Perf][SM70] Native per-token-head INT8 KV cache for QSA & Flash-V100 as default
+1506	MERGED	2026-11-14	INT8 kernel selection	[Test][SM70] Bring 76 SM70 test files in line with current main
+1180	CLOSED	2026-10-11	INT8 kernel selection	[Kernel] Prefer shared XQA and add INT8 KV bindings
+1182	CLOSED	2026-10-11	INT8 kernel selection	[Kernel] Bind engine KV codecs and inventory acceleration gaps
+1590	MERGED	2026-11-21	INT8 kernel selection	[Bugfix][SM70][GGUF] qwen3_5: honor sm70_gguf.embedding_storage when wiring embed_tokens quant_config
+1384	MERGED	2026-11-05	INT8 kernel selection	[Perf][SM70][DeepSeek-V4.1] Fast routed-expert decode kernels (VLLM_V41_EXPERT_FAST, default off)
+1184	CLOSED	2026-10-11	INT8 kernel selection	[Kernel] Share byte KV writers and XQA execution plans
+1186	CLOSED	2026-10-11	INT8 kernel selection	[Kernel] Share late KV scales across prefix prefill
+1188	CLOSED	2026-10-11	INT8 kernel selection	[Kernel] Bind 79t prefill to shared KV scale operands
+1595	MERGED	2026-11-22	INT8 kernel selection	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1048	CLOSED	2026-10-08	INT8 kernel selection	[Core] Extract SM70 KV tile codecs and shared storage accounting
+1570	MERGED	2026-11-19	INT8 kernel selection	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+582	MERGED	2026-09-09	INT8 kernel selection	[Video] Bound H3 host weight residency on memory-constrained hosts
+565	MERGED	2026-09-08	INT8 kernel selection	[Model] Add native H3 workflows and distilled adapter families
+575	CLOSED	2026-09-08	INT8 kernel selection	Bump the minor-update group across 1 directory with 138 updates
+1506	MERGED	2026-11-14	compute capability int8 kernel	[Test][SM70] Bring 76 SM70 test files in line with current main
+575	CLOSED	2026-09-08	compute capability int8 kernel	Bump the minor-update group across 1 directory with 138 updates
+1506	MERGED	2026-11-14	int8 linear kernel	[Test][SM70] Bring 76 SM70 test files in line with current main
+1507	MERGED	2026-11-14	int8 linear kernel	[Bugfix][SM70] Add the Marlin bias on the SM70 dense and MoE paths
+571	MERGED	2026-09-08	int8 linear kernel	[Core] Generalize H3 SM70 execution and weight residency
+575	CLOSED	2026-09-08	int8 linear kernel	Bump the minor-update group across 1 directory with 138 updates

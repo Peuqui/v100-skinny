@@ -1,0 +1,27 @@
+1:  a4dfcec45 ! 1:  23c6beb2d perf(glm53): tune the chunked KDA prefill kernels in the profile run
+    @@ tests/models/glm5next/test_kda_prefill_warmup.py (new)
+     
+      ## vllm/models/glm5next/nvidia/kda.py ##
+     @@ vllm/models/glm5next/nvidia/kda.py: class Glm5NextLinearAttention(GatedDeltaNetAttention):
+    -         super().__init__(config, vllm_config, prefix)
+    -         vllm_config.quant_config = saved_quant_config
+    +         # The chunked prefill path passes these kernels explicitly; bind them
+    +         # like the other KDA layers (Kimi linear, Bailing MoE v3) do.
+              self.chunk_kernels = bind_kda_kernels(vllm_config)
+     +        self._prefill_kernels_warmed_up = False
+      
+2:  a9da0755f ! 2:  ae088b9c6 perf(glm53): serve the MXFP8 LM head with the QPN8 kernel instead of a dequantized fp16 copy
+    @@ vllm/model_executor/layers/quantization/modelopt.py: class ModelOptMixedPrecisio
+     +                # dequantize_mxfp8_weight_pairs).
+                      assert self.mxfp8_config is not None
+                      return ModelOptMxFp8LinearMethod(self.mxfp8_config)
+    +-            if quant_algo and quant_algo != "MXFP8":
+    ++            if quant_algo:
+    +                 raise ValueError(
+    +                     f"Unsupported quant_algo {quant_algo!r} for layer {prefix!r} "
+    +                     "in ModelOpt mixed precision config."
+    +                 )
+     -            # Layers not in quantized_layers stay unquantized, and so does an
+     -            # MXFP8 LM head: the model loader dequantizes both (see
+     -            # dequantize_mxfp8_weight_pairs). An LM head keeps its own
+3:  ceceb328e = 3:  c7fcf8b50 fix(mxfp8): pad an MXFP8 LM head's scale rows with the unit scale

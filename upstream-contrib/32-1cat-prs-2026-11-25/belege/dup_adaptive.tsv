@@ -1,0 +1,287 @@
+1570	MERGED	2026-11-19	adaptive verify	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1584	OPEN	2026-11-20	adaptive verify	[Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+1625	MERGED	2026-11-25	adaptive verify	perf(inkling2-sm70): optimize DSpark7 concurrency, prefill, and long-context decode with SM70 WMMA
+862	MERGED	2026-10-03	adaptive verify	[Scheduler] Apply long_prefill_token_threshold only under contention
+1491	MERGED	2026-11-13	adaptive verify	[SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+1418	MERGED	2026-11-07	adaptive verify	[Bugfix][Spec Decode] Derived drafter configs share the target's runtime resources
+366	MERGED	2026-08-27	adaptive verify	[Core][SM70] Add adaptive lookup-augmented DFlash2
+1519	MERGED	2026-11-15	adaptive verify	[Perf][SM70] Accelerate Qwen4Exp MTP decode, concurrency, and no-sync sampling
+368	MERGED	2026-08-27	adaptive verify	[CI][SM70] Repair adaptive DFlash2 gates
+1245	MERGED	2026-10-21	adaptive verify	[Perf][Distributed] Add topology-aware all-reduce selection and extend to any p2p
+860	MERGED	2026-10-03	adaptive verify	[Core] Bound mixed-prefill latency and preserve hybrid prefix replay
+596	MERGED	2026-09-11	adaptive verify	[Perf] Recover DFlash2 capacity-tail graph execution
+903	CLOSED	2026-10-04	adaptive verify	SM70: integrate retained MTP optimizations with upstream runtime owners
+890	OPEN	2026-10-04	verify length	[Kernel] Preserve FP32 channel-FP8 verification logits
+1448	OPEN	2026-11-09	verify length	[Draft review queue] Native FP8/QPN and SM75 kernel qualification
+1585	OPEN	2026-11-20	verify length	[Frontend][Perf] Tokenize only what a grown chat added, for tokenizers without `<|im_start|>` (VLLM_V41_P
+1278	OPEN	2026-10-27	verify length	[Perf][SM75] Turing tensor-core paths for block-FP8 QPN8 and the grouped skinny MoE; bound the MoE grid
+1600	OPEN	2026-11-22	verify length	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1221	OPEN	2026-10-16	verify length	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1348	OPEN	2026-11-03	verify length	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1603	MERGED	2026-11-22	verify length	[Bugfix][SM70] Keep the committed GDN state when a replay round ends on a Mamba block
+1347	OPEN	2026-11-03	verify length	[Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the spar
+1601	MERGED	2026-11-22	verify length	perf(sm70): accelerate Qwen3.8-Flash-Next mixed prefill+decode for multi-turn agents
+953	OPEN	2026-10-05	verify length	[Model] Extend DFlash2 QPN8 candidate heads to concurrent verification
+1379	OPEN	2026-11-05	verify length	[Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+241	OPEN	2026-08-18	verify length	feat(opt21-25): v1.3.0 重放源码集（NTK/MTP/并发/KV/工具调用/anthropic 增强）
+1271	MERGED	2026-10-26	verify length	[SM70][Gemma4] V100 support: D=512 attention, transformers heterogeneity, gemma4_unified port
+1345	MERGED	2026-11-02	verify length	[Perf][SM70][Spec Decode] Grouped FP16 verify with several KV heads per rank
+778	MERGED	2026-10-02	verify length	[Bugfix][TurboQuant] Keep captured continuation inputs current
+1595	MERGED	2026-11-22	verify length	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1511	MERGED	2026-11-14	verify length	[Bugfix][Tools] Skip the unstreamed-args compensation when the parser already streamed full tool-call arg
+1559	MERGED	2026-11-18	verify length	feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+932	CLOSED	2026-10-04	verify length	[Benchmark] Evaluate SM70 long-context attention splits
+841	MERGED	2026-10-03	verify length	[Perf][SM70] Keep resident decode rows on fast routes inside mixed prefill batches
+1411	MERGED	2026-11-07	verify length	[Bugfix][Kernel] Backport vllm-project/vllm#63475, #62936, #62467, #49139: persistent_topk radix CTA sync
+1022	MERGED	2026-10-07	verify length	[Kernel] Improve FP16 grouped verification at short contexts
+1346	MERGED	2026-11-02	verify length	[Perf][SM75][Build] Pin the Turing FlashAttention library to the split-wave heuristic
+940	MERGED	2026-10-04	verify length	[Benchmark] Record reproducible Flash-Next GGUF MTP4 measurements
+1491	MERGED	2026-11-13	verify length	[SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+905	MERGED	2026-10-04	verify length	[Kernel] Preserve FP32 grouped verification with FP16 KV on SM70
+881	MERGED	2026-10-04	verify length	[Perf] Capture DFlash2 rejection dispatch on SM70
+858	CLOSED	2026-10-03	verify length	[Perf][WIP] Reduce mixed NVFP4 DFlash2 complete-round latency
+1412	MERGED	2026-11-07	verify length	sm70: instantiate the E4M3 GEMM at quantization groups 64 and 32
+1221	OPEN	2026-10-16	verification length	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1600	OPEN	2026-11-22	verification length	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1601	MERGED	2026-11-22	verification length	perf(sm70): accelerate Qwen3.8-Flash-Next mixed prefill+decode for multi-turn agents
+1603	MERGED	2026-11-22	verification length	[Bugfix][SM70] Keep the committed GDN state when a replay round ends on a Mamba block
+1379	OPEN	2026-11-05	verification length	[Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+1345	MERGED	2026-11-02	verification length	[Perf][SM70][Spec Decode] Grouped FP16 verify with several KV heads per rank
+1511	MERGED	2026-11-14	verification length	[Bugfix][Tools] Skip the unstreamed-args compensation when the parser already streamed full tool-call arg
+841	MERGED	2026-10-03	verification length	[Perf][SM70] Keep resident decode rows on fast routes inside mixed prefill batches
+1595	MERGED	2026-11-22	verification length	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+1022	MERGED	2026-10-07	verification length	[Kernel] Improve FP16 grouped verification at short contexts
+940	MERGED	2026-10-04	verification length	[Benchmark] Record reproducible Flash-Next GGUF MTP4 measurements
+881	MERGED	2026-10-04	verification length	[Perf] Capture DFlash2 rejection dispatch on SM70
+896	CLOSED	2026-10-04	verification length	[Core] Load and measure Flash-Next GGUF MTP4
+905	MERGED	2026-10-04	verification length	[Kernel] Preserve FP32 grouped verification with FP16 KV on SM70
+858	CLOSED	2026-10-03	verification length	[Perf][WIP] Reduce mixed NVFP4 DFlash2 complete-round latency
+389	MERGED	2026-08-28	verification length	[Model][SM70] Optimize Qwen3.8 MTP4 on V100
+914	MERGED	2026-10-04	verification length	[Kernel] Fuse small-batch PLE n-gram preprocessing on SM70
+1035	MERGED	2026-10-07	verification length	[Doc] Profile TP4 GGUF DFlash2 verification costs
+954	MERGED	2026-10-05	verification length	[Kernel] Use channel-FP8 DFlash2 M8 projections on SM70
+697	MERGED	2026-09-26	verification length	[Kernel] Extend SM70 DFlash2 long-context and batch decode paths
+586	MERGED	2026-09-09	verification length	[Perf] Audit and recover DFlash2 native prefill routes
+911	CLOSED	2026-10-04	verification length	[Kernel] Group raw GGUF gate and up vectors on SM70
+1286	OPEN	2026-10-28	verification length	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+476	MERGED	2026-09-03	verification length	[SM70][Draft] Extend Qwen3.8 DFlash2 concurrency paths
+554	MERGED	2026-09-07	verification length	[Kernel][SM70] Integrate concurrent QPN and verifier paths (#476)
+1472	MERGED	2026-11-10	verification length	[Perf][SM70] Share MTP runtime operators and pipeline long-context KV reads
+355	MERGED	2026-08-27	verification length	[Core][SM70] Add lookup-augmented DFlash2 drafting
+1182	CLOSED	2026-10-11	verification length	[Kernel] Bind engine KV codecs and inventory acceleration gaps
+1053	MERGED	2026-10-08	verification length	[Arch][Attention] Declare Flash-V100 routes and share XQA admission
+860	MERGED	2026-10-03	verification length	[Core] Bound mixed-prefill latency and preserve hybrid prefix replay
+1570	MERGED	2026-11-19	adaptive MTP	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1418	MERGED	2026-11-07	adaptive MTP	[Bugfix][Spec Decode] Derived drafter configs share the target's runtime resources
+1519	MERGED	2026-11-15	adaptive MTP	[Perf][SM70] Accelerate Qwen4Exp MTP decode, concurrency, and no-sync sampling
+1491	MERGED	2026-11-13	adaptive MTP	[SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+903	CLOSED	2026-10-04	adaptive MTP	SM70: integrate retained MTP optimizations with upstream runtime owners
+1225	MERGED	2026-10-17	adaptive MTP	[Bugfix][MRv2] Bound prompt logprobs memory with small chunks and request limits
+1606	CLOSED	2026-11-23	adaptive MTP	[Bugfix][Multimodal] Give back shm cache references of requests that never reach the workers
+1605	CLOSED	2026-11-23	adaptive MTP	[Bugfix][Multimodal] Stop the shm cache reader from pinning its copies and re-reading resent requests
+446	MERGED	2026-09-02	adaptive MTP	[Doc] Add 1.5.0 release notes
+1613	MERGED	2026-11-23	adaptive MTP	[Bugfix][Multimodal] Count a shm cache reference for every request that sends an item (n>1, beam search)
+596	MERGED	2026-09-11	adaptive MTP	[Perf] Recover DFlash2 capacity-tail graph execution
+523	CLOSED	2026-09-06	adaptive MTP	[Kernel][WIP] Integrate native FlashInfer SM70 batch GDN and QSA probes
+1570	MERGED	2026-11-19	EntMTP	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1463	OPEN	2026-11-09	dflash	[Draft review queue] Repair QPN2 dispatch and graph sampling state
+1462	OPEN	2026-11-09	dflash	[Draft review queue] Repair tool parsing, DeepSeek rendering and usage reporting
+1461	OPEN	2026-11-09	dflash	[Draft review queue] Repair scheduler, cache, loader and pipeline ownership
+1221	OPEN	2026-10-16	dflash	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1600	OPEN	2026-11-22	dflash	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1536	OPEN	2026-11-16	dflash	[Bugfix][Core] Refuse a KV pool that cannot hold one max_model_len request
+1608	MERGED	2026-11-23	dflash	fix(v41): harden V41ProposeGraph capture sync, static DFlash metadata, and coupled key staging ring
+1418	MERGED	2026-11-07	dflash	[Bugfix][Spec Decode] Derived drafter configs share the target's runtime resources
+1441	MERGED	2026-11-09	dflash	[Bugfix][DFlash] Use the selected NVFP4 provider's projection input dtype
+1427	CLOSED	2026-11-09	dflash	[Perf][SM70] Qwen3.8 MTP: MRV2, shared verifier routes, no draft-step sync; 16 GB capacity
+1112	MERGED	2026-10-09	dflash	[Bugfix] Resolve DFlash context slots by layer identity
+1089	CLOSED	2026-10-08	dflash	[Bugfix] Select DFlash context slots by attention layer name
+1573	MERGED	2026-11-20	dflash	fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issues
+1584	OPEN	2026-11-20	dflash	[Bugfix][PP][MRV2] Sync scheduler: space a request's steps by pp_size (three or more stages)
+1024	MERGED	2026-10-07	dflash	[Core] Keep DFlash split windows with E4M3 hybrid pages
+1010	MERGED	2026-10-06	dflash	[Attention] Admit DFlash split windows on 832-token pages
+791	CLOSED	2026-10-02	dflash	[Bugfix][Spec Decode] Copy the DFlash/DSpark draft config with vLLM's pydantic-aware replace
+1425	MERGED	2026-11-08	dflash	[Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+1562	MERGED	2026-11-18	dflash	feat(vision,ttft,sm70): enable default unlimited Qwen3.8 vision & cut multi-turn TTFT
+1025	MERGED	2026-10-07	dflash	[Core] Share DFlash attention and norm boundaries across TP sizes
+1559	MERGED	2026-11-18	dflash	feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+1348	OPEN	2026-11-03	dflash	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1622	MERGED	2026-11-25	dflash	fix(dflash2,sampling): keep draft penalties out of rotating UVA pools and fix sampling defaults/tie-break
+1073	MERGED	2026-10-08	dflash	[Test] Freeze Flash-V100 GPU route, token and output parity
+886	MERGED	2026-10-04	dflash	[Bugfix] Keep Pixtral vision loading compatible with Transformers 5
+795	MERGED	2026-10-02	dflash	[Bugfix] Fix draft configuration copies and settled PLE cache estimates
+1611	MERGED	2026-11-23	dflash	[Bugfix][GLM-5.3] Compute the MoE router GEMM once per layer
+1162	MERGED	2026-10-10	dflash	[Bugfix] Bind startup checks to resolved engine policies
+677	MERGED	2026-09-22	dflash	[Memory] Share SM70 graph scratch and reduce DFlash active peak
+876	MERGED	2026-10-04	dflash	[Model] Add standalone Qwen4Exp GGUF mapping and TP expert storage
+953	OPEN	2026-10-05	DFlash2	[Model] Extend DFlash2 QPN8 candidate heads to concurrent verification
+1348	OPEN	2026-11-03	DFlash2	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1536	OPEN	2026-11-16	DFlash2	[Bugfix][Core] Refuse a KV pool that cannot hold one max_model_len request
+890	OPEN	2026-10-04	DFlash2	[Kernel] Preserve FP32 channel-FP8 verification logits
+897	OPEN	2026-10-04	DFlash2	[Kernel] Add original and equal-byte IQ operators on SM70
+1463	OPEN	2026-11-09	DFlash2	[Draft review queue] Repair QPN2 dispatch and graph sampling state
+1286	OPEN	2026-10-28	DFlash2	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+983	OPEN	2026-10-05	DFlash2	[Core] Publish GDN speculative state from WY factors
+979	OPEN	2026-10-05	DFlash2	[Model] Screen FP8 drafting with a private NVFP4 candidate head
+1505	MERGED	2026-11-14	DFlash2	[Perf][SM70] Keep the 48-row E4M3 kernel for q6-q8 grouped verify
+1421	MERGED	2026-11-08	DFlash2	[Test] Bring seven SM70 tests in line with current main
+1524	MERGED	2026-11-15	DFlash2	[Perf][SM70] Generalize TP2/TP4 decode, prefill, FP8/W8A16-FP8 fastpaths, and VRAM footprint
+1504	MERGED	2026-11-14	DFlash2	[Refactor][SM70] Drop the local compile-safe capability copies now that #1498 covers them; fix the GDN sp
+1442	MERGED	2026-11-09	DFlash2	[Perf][DFlash2] Reuse sampler graphs across live temperatures
+1552	MERGED	2026-11-18	DFlash2	[Perf][SM70] Native per-token-head INT8 KV cache for QSA & Flash-V100 as default
+1398	MERGED	2026-11-06	DFlash2	[Perf][SM70] DFlash2: keep compact target rejection with penalties
+1402	MERGED	2026-11-06	DFlash2	[Perf][Core] MRV2 warmup: cover every request count, mixed steps and a full chunk
+1393	MERGED	2026-11-05	DFlash2	[DFlash2] Run the compact sampler graph for uniform verifier batches
+1431	MERGED	2026-11-09	DFlash2	fix(kv): keep over-allocated mamba blocks when speculation rolls back
+1622	MERGED	2026-11-25	DFlash2	fix(dflash2,sampling): keep draft penalties out of rotating UVA pools and fix sampling defaults/tie-break
+1301	MERGED	2026-10-28	DFlash2	[Spec Decode] DFlash2: optionally shard the selector codebooks by vocabulary
+1573	MERGED	2026-11-20	DFlash2	fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issues
+1289	MERGED	2026-10-28	DFlash2	[Perf][SM70][Spec Decode] Use the DFlash2 draft FP8 projections for 2-4 concurrent requests
+1557	MERGED	2026-11-18	DFlash2	[Feat][Perf][Bugfix] Dynamic Qwen3.8 thinking sampling, relaxed SM70/INT8 paths & audit fixes
+1296	MERGED	2026-10-28	DFlash2	[Perf][SM70] Qwen3.8-27B profile: 2048-token mamba blocks for prefix-cache hits
+1418	MERGED	2026-11-07	DFlash2	[Bugfix][Spec Decode] Derived drafter configs share the target's runtime resources
+1425	MERGED	2026-11-08	DFlash2	[Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+1264	MERGED	2026-10-25	DFlash2	[Perf] Run the fused GDN speculative metadata launch on Turing too
+1295	MERGED	2026-10-28	DFlash2	[Perf][SM70] Qwen3.8-27B profile: prefill beside resident decoders in full chunks
+1338	MERGED	2026-11-01	DFlash2	[Bugfix][Core] Cache output blocks of reasoning requests
+1454	OPEN	2026-11-09	tail graph	[Draft review queue] DeepSeek-V4 attention and indexing qualification queue
+1347	OPEN	2026-11-03	tail graph	[Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the spar
+1282	OPEN	2026-10-27	tail graph	[Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+844	OPEN	2026-10-03	tail graph	[Kernel] Recover finite SM70 prefill score precision and tail peaks
+1125	OPEN	2026-10-09	tail graph	[Perf][SM70] GLM-5.3: FP32 tensor-core sparse MLA for FP8-KV prefill
+1598	OPEN	2026-11-22	tail graph	[Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1543	OPEN	2026-11-17	tail graph	[Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+1621	OPEN	2026-11-25	tail graph	[Model][SM70] Inkling2: load Unsloth GGUF checkpoints (stacked on #1598)
+953	OPEN	2026-10-05	tail graph	[Model] Extend DFlash2 QPN8 candidate heads to concurrent verification
+1619	MERGED	2026-11-24	tail graph	perf(sm70): accelerate Qwen3.8-27B dense prefill (+15% to +35%) with V3 FA2 and P2P/compute kernels
+1573	MERGED	2026-11-20	tail graph	fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issues
+1411	MERGED	2026-11-07	tail graph	[Bugfix][Kernel] Backport vllm-project/vllm#63475, #62936, #62467, #49139: persistent_topk radix CTA sync
+1417	MERGED	2026-11-07	tail graph	[Perf][SM70][SM75][DeepSeek-V4] Finer automatic decode context buckets for long contexts
+1286	OPEN	2026-10-28	tail graph	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+596	MERGED	2026-09-11	tail graph	[Perf] Recover DFlash2 capacity-tail graph execution
+1594	MERGED	2026-11-22	tail graph	[Perf][Serving][DS-V4.1] TP4 KV-sharded DCP4 (GQA-64), Prefill-First phase separation, coupled DSpark5 & 
+1475	MERGED	2026-11-10	tail graph	Audit #828: opt-in grouped page4 attention for SM70 QSA DCP
+1410	MERGED	2026-11-07	tail graph	[Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded 
+1559	MERGED	2026-11-18	tail graph	feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+1425	MERGED	2026-11-08	tail graph	[Kernel][SM70] Extend E4M3 and FP16 grouped attention to the served context window
+1595	MERGED	2026-11-22	tail graph	perf(sm70): accelerate Qwen3.8-Flash-Next NVFP4 prefill to 11.3K tok/s
+936	MERGED	2026-10-04	tail graph	[Model] Reuse GDN tail copies on the default forward path
+618	MERGED	2026-09-13	tail graph	[Bugfix][SM70/SM75] Gate the SM70 graph tunings on the worker's own pre-Ampere device
+1344	MERGED	2026-11-02	tail graph	[Perf][SM70][DeepSeek-V4] Bound fused KV compression stack use
+1321	MERGED	2026-10-29	tail graph	flash-v100: Budget FP8 bridge workspace by KV-head group
+1570	MERGED	2026-11-19	tail graph	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1201	MERGED	2026-10-12	tail graph	[Bugfix][QSA] Clamp the ring's cached RoPE positions before they index cos_sin_cache
+828	MERGED	2026-10-03	tail graph	Add opt-in grouped page4 attention for SM70 QSA DCP prefill
+1198	CLOSED	2026-10-12	tail graph	[Kernel] Preserve weighted MLA tails in shared partials
+1035	MERGED	2026-10-07	tail graph	[Doc] Profile TP4 GGUF DFlash2 verification costs
+1371	OPEN	2026-11-05	spec decode scheduler	[Bugfix][V1][PP] Preserve synchronous speculative step ownership
+1243	OPEN	2026-10-21	spec decode scheduler	[Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative deco
+1589	OPEN	2026-11-21	spec decode scheduler	[Feat][Flash-Next] Support native KV offload with QSA Host-KV
+1379	OPEN	2026-11-05	spec decode scheduler	[Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+1537	MERGED	2026-11-17	spec decode scheduler	[Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+1408	MERGED	2026-11-07	spec decode scheduler	[Bugfix][Core] Backport vllm-project/vllm#66048, #45224, #44490, #54436, #51694, #47911, #52142: resample
+1349	MERGED	2026-11-03	spec decode scheduler	[Test] Fix the V2 MTP profile report test and two PP2 scheduler tests
+1373	MERGED	2026-11-05	spec decode scheduler	[Perf][V1][PP] Retain persistent request rows across empty steps
+1573	MERGED	2026-11-20	spec decode scheduler	fix(v1.5.5): resolve DFlash2 T>0 penalty drift, tool+JSON union, INT8 c=1 tail & scheduler/RAM issues
+1605	CLOSED	2026-11-23	spec decode scheduler	[Bugfix][Multimodal] Stop the shm cache reader from pinning its copies and re-reading resent requests
+1529	MERGED	2026-11-16	spec decode scheduler	[Perf][SM70][Qwen3.8] Decode-output 64-token prefix cache, reasoning history restore & streaming tool par
+1570	MERGED	2026-11-19	spec decode scheduler	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1525	MERGED	2026-11-15	spec decode scheduler	[Perf][SM70][Scheduler] Engine-default pure prefill/decode separation, partial prefix cache & Qwen3.8 con
+1410	MERGED	2026-11-07	spec decode scheduler	[Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded 
+1558	MERGED	2026-11-18	spec decode scheduler	[Bugfix][DS-V4.1] PP4 batch: in-vocabulary sampled counts, DSpark draft guard, batch prefix caching, Engr
+1530	MERGED	2026-11-16	spec decode scheduler	[Bugfix][MRV2][SpecDecode] Preserve structured-output draft tokens across interleaved prefill steps
+1606	CLOSED	2026-11-23	spec decode scheduler	[Bugfix][Multimodal] Give back shm cache references of requests that never reach the workers
+1276	MERGED	2026-10-27	spec decode scheduler	[Core][Spec Decode] Lookahead block hashes for EAGLE/MTP prefix hits (backport of vllm#61589)
+752	CLOSED	2026-10-01	spec decode scheduler	[Bugfix][Spec Decode] Assert enough query rows for each request's drafts
+1506	MERGED	2026-11-14	spec decode scheduler	[Test][SM70] Bring 76 SM70 test files in line with current main
+1297	MERGED	2026-10-28	spec decode scheduler	[Perf][Core][SM70] Partial prefix-cache hits for hybrid Mamba models; agent turns resume at the last mess
+903	CLOSED	2026-10-04	spec decode scheduler	SM70: integrate retained MTP optimizations with upstream runtime owners
+956	MERGED	2026-10-05	spec decode scheduler	[Bugfix][Core] Free every superseded Mamba align-mode state block under async scheduling
+662	MERGED	2026-09-19	spec decode scheduler	[Bugfix][Spec Decode] Ship the speculative round state to non-last PP ranks
+725	CLOSED	2026-09-28	spec decode scheduler	[Bugfix][SM70] Keep the SM70 cudagraph size cap inside max_num_batched_tokens
+616	CLOSED	2026-09-13	spec decode scheduler	[Perf][SM70] Pace chunked prefill and unpin the D256 BM32 page size (#490)
+1613	MERGED	2026-11-23	spec decode scheduler	[Bugfix][Multimodal] Count a shm cache reference for every request that sends an item (n>1, beam search)
+747	CLOSED	2026-10-01	spec decode scheduler	[Feature][DeepSeek-V4] Run the SM70 route on Turing
+574	MERGED	2026-09-08	spec decode scheduler	[Bugfix][Spec Decode] Trim the optimistic spec-decode tokens on every pipeline rank
+235	CLOSED	2026-08-17	spec decode scheduler	feat(opt23 §11.42): 双格式工具调用完整实现（fix=0/1/2/3/4）
+1570	MERGED	2026-11-19	num_speculative_tokens adaptive	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1616	MERGED	2026-11-24	num_speculative_tokens adaptive	[Model][SM70] Port Inkling 2 Mini to Volta: NVFP4/MXFP8 experts, vision, DSpark speculation, fused decode
+1519	MERGED	2026-11-15	num_speculative_tokens adaptive	[Perf][SM70] Accelerate Qwen4Exp MTP decode, concurrency, and no-sync sampling
+890	OPEN	2026-10-04	draft length	[Kernel] Preserve FP32 channel-FP8 verification logits
+1448	OPEN	2026-11-09	draft length	[Draft review queue] Native FP8/QPN and SM75 kernel qualification
+1600	OPEN	2026-11-22	draft length	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1221	OPEN	2026-10-16	draft length	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1278	OPEN	2026-10-27	draft length	[Perf][SM75] Turing tensor-core paths for block-FP8 QPN8 and the grouped skinny MoE; bound the MoE grid
+1379	OPEN	2026-11-05	draft length	[Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+1176	OPEN	2026-10-11	draft length	[Kernel] Share QSA scoring and tile query rows
+953	OPEN	2026-10-05	draft length	[Model] Extend DFlash2 QPN8 candidate heads to concurrent verification
+1348	OPEN	2026-11-03	draft length	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1603	MERGED	2026-11-22	draft length	[Bugfix][SM70] Keep the committed GDN state when a replay round ends on a Mamba block
+241	OPEN	2026-08-18	draft length	feat(opt21-25): v1.3.0 重放源码集（NTK/MTP/并发/KV/工具调用/anthropic 增强）
+1376	OPEN	2026-11-05	draft length	[Perf][DeepSeek-V4.1] Skip layers 21-39 in early prefill chunks (VLLM_V41_PREFILL_SKIP_ROWS)
+1494	MERGED	2026-11-13	draft length	[Bugfix] Keep encoder outputs until their tokens are confirmed under speculation (#1485)
+1537	MERGED	2026-11-17	draft length	[Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+1360	MERGED	2026-11-04	draft length	[Bugfix][KV Offload] Keep external prefix hits on the Mamba page grid
+1286	OPEN	2026-10-28	draft length	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1345	MERGED	2026-11-02	draft length	[Perf][SM70][Spec Decode] Grouped FP16 verify with several KV heads per rank
+1277	MERGED	2026-10-27	draft length	[Model] DeepSeek-V4.1-Flash on 4x V100: 512K packed KV, faster prefill, API launch
+932	CLOSED	2026-10-04	draft length	[Benchmark] Evaluate SM70 long-context attention splits
+1472	MERGED	2026-11-10	draft length	[Perf][SM70] Share MTP runtime operators and pipeline long-context KV reads
+1589	OPEN	2026-11-21	draft length	[Feat][Flash-Next] Support native KV offload with QSA Host-KV
+944	MERGED	2026-10-04	draft length	[Kernel] Parallelize DFlash2 small-query window attention on SM70
+1284	MERGED	2026-10-28	draft length	[Bugfix] Keep the pynccl all-reduce out-of-place by default
+1411	MERGED	2026-11-07	draft length	[Bugfix][Kernel] Backport vllm-project/vllm#63475, #62936, #62467, #49139: persistent_topk radix CTA sync
+1024	MERGED	2026-10-07	draft length	[Core] Keep DFlash split windows with E4M3 hybrid pages
+1346	MERGED	2026-11-02	draft length	[Perf][SM75][Build] Pin the Turing FlashAttention library to the split-wave heuristic
+1025	MERGED	2026-10-07	draft length	[Core] Share DFlash attention and norm boundaries across TP sizes
+1491	MERGED	2026-11-13	draft length	[SM70] Faster Qwen MTP decode across TP2/TP4, NVFP4 and FP8
+389	MERGED	2026-08-28	draft length	[Model][SM70] Optimize Qwen3.8 MTP4 on V100
+940	MERGED	2026-10-04	draft length	[Benchmark] Record reproducible Flash-Next GGUF MTP4 measurements
+1600	OPEN	2026-11-22	speculative length	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1221	OPEN	2026-10-16	speculative length	[Spec Decode][MRV2] DSpark speculator and compressed-index context buckets for Model Runner V2
+1348	OPEN	2026-11-03	speculative length	[Perf][SM70][SM75] GLM-5.3-Flash: tune the KDA prefill kernels in the profile run, serve the MXFP8 LM hea
+1559	MERGED	2026-11-18	speculative length	feat(cache,serving,sm70): 27B decode prefix hits, multi-turn agent cache, API UX & VRAM optimization
+1494	MERGED	2026-11-13	speculative length	[Bugfix] Keep encoder outputs until their tokens are confirmed under speculation (#1485)
+953	OPEN	2026-10-05	speculative length	[Model] Extend DFlash2 QPN8 candidate heads to concurrent verification
+1376	OPEN	2026-11-05	speculative length	[Perf][DeepSeek-V4.1] Skip layers 21-39 in early prefill chunks (VLLM_V41_PREFILL_SKIP_ROWS)
+629	OPEN	2026-09-14	speculative length	[Core][SM70] Beat A800 C32 decode and recover 32K serving
+1347	OPEN	2026-11-03	speculative length	[Perf][SM70][SM75][DeepSeek-V4] Long context: score decode index keys in one fused kernel, halve the spar
+1570	MERGED	2026-11-19	speculative length	[Perf][SM70][Flash-Next] Host-KV DCP=2 (1.54M KV), zero-decay QSA H12/indexer, MoE zero-cat & MTP5 Adapti
+1379	OPEN	2026-11-05	speculative length	[Model][MRV2][DeepSeek-V4.1] DeepSeek-V4.1 and its DSpark drafter on Model Runner V2
+1290	MERGED	2026-10-28	speculative length	[Perf][SM70][Scheduler] Piecewise graphs for short mixed prefills; keep the mixed budget off the graph re
+1603	MERGED	2026-11-22	speculative length	[Bugfix][SM70] Keep the committed GDN state when a replay round ends on a Mamba block
+1543	OPEN	2026-11-17	speculative length	[Feature]: Support BF16 PLE disk offload with FP16 output on SM70
+1264	MERGED	2026-10-25	speculative length	[Perf] Run the fused GDN speculative metadata launch on Turing too
+1589	OPEN	2026-11-21	speculative length	[Feat][Flash-Next] Support native KV offload with QSA Host-KV
+1417	MERGED	2026-11-07	speculative length	[Perf][SM70][SM75][DeepSeek-V4] Finer automatic decode context buckets for long contexts
+874	MERGED	2026-10-04	speculative length	[Perf][SM70][DeepSeek-V4] Bucket speculative decode graphs by context so the sparse indexer can take cuBL
+1286	OPEN	2026-10-28	speculative length	[Model][SM70][SM75] GLM-5.3-Flash-FP4-Local: compressed expert scales, 8-bit QPN8 projections
+1410	MERGED	2026-11-07	speculative length	[Bugfix][GLM-5.3-Flash] Backport vllm-project/vllm#57477, #58454: seed the kpool tail through its padded 
+1028	MERGED	2026-10-07	speculative length	[KV] Stream Flash-Next QSA history from pinned host FP8
+841	MERGED	2026-10-03	speculative length	[Perf][SM70] Keep resident decode rows on fast routes inside mixed prefill batches
+241	OPEN	2026-08-18	speculative length	feat(opt21-25): v1.3.0 重放源码集（NTK/MTP/并发/KV/工具调用/anthropic 增强）
+1537	MERGED	2026-11-17	speculative length	[Bugfix][V1][PP] Drop spec drafts proposed from an intermediate prefill chunk
+603	MERGED	2026-09-12	speculative length	[Bugfix][DeepSeek-V4] Align the SWA decode threshold with the sparse MLA builder
+984	MERGED	2026-10-05	speculative length	[Doc] Record integrated GGUF DFlash2 round measurements
+1282	OPEN	2026-10-27	speculative length	[Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1247	MERGED	2026-10-21	speculative length	[Bugfix][Core] Reserve the null KV block during startup admission
+1284	MERGED	2026-10-28	speculative length	[Bugfix] Keep the pynccl all-reduce out-of-place by default
+1222	MERGED	2026-10-16	speculative length	[Perf][SM70][DeepSeek-V4] Keep the cuBLAS decode indexer above 131,072 tokens of context
+1600	OPEN	2026-11-22	DSpark width	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1243	OPEN	2026-10-21	DSpark width	[Model][SM70] DeepSeek-V4.1-Flash-1017 on 8x V100: EXL3 experts, graph attention, DSpark speculative deco
+1374	OPEN	2026-11-05	DSpark width	[Perf][SM70][DeepSeek-V4] Shard the DSpark main projection output rows
+1616	MERGED	2026-11-24	DSpark width	[Model][SM70] Port Inkling 2 Mini to Volta: NVFP4/MXFP8 experts, vision, DSpark speculation, fused decode
+720	CLOSED	2026-09-28	DSpark width	[Bugfix][DeepSeek-V4] Size the ROCm SWA ragged copy from the actual row width
+1282	OPEN	2026-10-27	DSpark width	[Perf][SM70][SM75] Opt-in tensor-core Triton routes for DeepSeek-V4 prefill on Volta and Turing
+1587	OPEN	2026-11-20	DSpark width	[DeepSeek V4.1][SM70] VLLM_V41_INDEX_TC: tensor-core decode index scorer, bitwise the tiled scorer (defau
+774	MERGED	2026-10-02	DSpark width	[Bugfix] Size SWA ragged graph buffers from actual decode width
+1558	MERGED	2026-11-18	DSpark width	[Bugfix][DS-V4.1] PP4 batch: in-vocabulary sampled counts, DSpark draft guard, batch prefix caching, Engr
+714	CLOSED	2026-09-28	DSpark width	[Perf][SM70] Take the DeepSeek-V4 cuBLAS indexer decode under speculative decoding
+716	CLOSED	2026-09-28	DSpark width	[Perf][SM70] DeepSeek-V4 sparse MLA as gather + batched matmul (opt-in)
+1280	CLOSED	2026-10-27	DSpark width	[Perf][SM70][DeepSeek-V4] Long-prefill indexer and sparse attention: vectorized epilogue, fused softmax, 
+1417	MERGED	2026-11-07	DSpark width	[Perf][SM70][SM75][DeepSeek-V4] Finer automatic decode context buckets for long contexts
+274	MERGED	2026-08-23	DSpark width	[SM70] Add gated DSpark verifier and long-context improvements
+1482	MERGED	2026-11-11	DSpark width	[Model][SM70] DeepSeek-V4.1-Flash native PP4 x TP4 on 16 V100s (C4140)
+1600	OPEN	2026-11-22	Inkling2 DSpark	[SpecDecode][SM70] Enable Inkling2DSparkModel with explicit sidecar loader and typed DSpark contracts
+1598	OPEN	2026-11-22	Inkling2 DSpark	[Model][SM70] Port Inkling2 / Inkling2Loop with Volta FP16, NVFP4, MXFP8, Vision & Mixed FP8 KV
+1616	MERGED	2026-11-24	Inkling2 DSpark	[Model][SM70] Port Inkling 2 Mini to Volta: NVFP4/MXFP8 experts, vision, DSpark speculation, fused decode

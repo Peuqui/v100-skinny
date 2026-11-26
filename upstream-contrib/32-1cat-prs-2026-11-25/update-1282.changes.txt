@@ -1,0 +1,93 @@
+# #1282: changed sentences, old -> new (7 edits to the existing description; the new Update paragraph at the top is listed in the body itself)
+
+## 1. Stacked PR paragraph: stack after #1279/#1280 were closed and #1216 merged; review range
+OLD: Stacked PR. The branch sits on #1280 (DeepSeek-V4 prefill, itself on #1279, which stacks on #1278 and #1216; #1222 and #1227 from that stack are merged). The copies of those PRs are identical to the open ones, except that the copy of #1216 differs from it in the anchors of the generated docs/design/architecture/runtime_reference.md. Only the last nine commits are new here, so please review those (git log 32e4372db..bff037870, where 32e4372db is the head of #1280).
+NEW: Stacked PR. The branch sits on #1278 (open; its eight commits come first). Above them are the 15 commits of #1279 and #1280, which were closed on 2026-11-13 as superseded by this PR (their heads were ancestors of the previous head b9fbe637c; the commits are rebased onto main 73da3445d here; #1216, their first commit, and #1222 and #1227 are merged and no longer part of the stack). The commits of this PR's own Triton routes are the nine described below (git log e623d99aa..70dfebdfa on the current branch) and four added later by the updates below (the FP32 index scores, the sparse policy test layer, the wheel page and the mHC layer ops). The hashes in this description (for example e9dbf58e5 below) are those of our fork builds or of earlier heads of this branch.
+
+## 2. #1280 reference
+OLD: Turing keeps the fused native scorer of #1280 for 32 and 64 heads, since the Triton kernel is 1.0-4.7 % slower there summed over long contexts.
+NEW: Turing keeps the fused native scorer (commit "fused lightning-indexer prefill scores on Turing tensor cores", from the closed #1280) for 32 and 64 heads, since the Triton kernel is 1.0-4.7 % slower there summed over long contexts.
+
+## 3. #1280 reference in the path table
+OLD: Turing with 32/64 heads: fused SM75 scorer of #1280;
+NEW: Turing with 32/64 heads: the fused SM75 scorer of this branch (formerly #1280);
+
+## 4. Not a duplicate paragraph: refreshed on main 73da3445d
+OLD: Not a duplicate. I compared the changed files with those of all 84 open PRs (complete file lists through the API), searched the added and removed lines of every open PR for this PR's symbols (triton_sm7x, tensor_cores, mma_probe, lowers_dot_to_mma, _prefill_index_scores, _mtp_weighted_reduce, weighted_reduce_rows, mhc_prenorm_tensor, _mhc_split_sum, _selected_scores, _selected_pv, sparse_attn_prefill_tensor, skinny_moe_e8m0, TRITON_MIN_ROWS, _TC_TOKENS_PER_PASS: no hits outside this stack), ran a three-way merge with every PR that shares a file, and searched the open PRs for Triton, "tensor core", mma, Volta, Turing, mHC, indexer and "skinny MoE". Findings:
+- #1030 and #1031 (Mermiges) and #1243 (rivetphilbot) change vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py (MXFP4 MoE geometry, skinny split, DeepSeek-V4.1 setups); #1159 and #1166 (rivetphilbot) change the mHC kernels for decode batches of 1 to 8 tokens, this PR the prefill projection above 16 tokens; #1260 changes the DeepSeek-V4 indexer (see #1280) and the kpool indexer; #903 changes vllm/config/sm70_sparse.py; #828 lists the indexer files only because of its old base. None of them adds a tensor-core Triton route, and for each of them the three-way merge with this branch gives the same conflicting files as with #1280.
+- The stacked #1278, #1279 and #1280 share files with this PR by construction.
+
+
+NEW: Not a duplicate. Checked on 2026-11-26 against main 73da3445d: gh pr list --repo 1CatAI/1Cat-vLLM --state all --search for triton tensor core, sm7x, mma, indexer prefill, sparse prefill, mHC, paged prefill, prefill overlap, host reduce, flash dense prefill and epilogue; the file lists of all 63 open PRs by other authors (dependabot excluded); and the added and removed lines of the diffs of those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; the merged ones were listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date) for the symbols this change adds (the diffs of #1243, #1260, #1482, #1527 and #1616 exceed GitHub's 20,000-line limit; for these five only the file lists were compared). Findings:
+- #1030 and #1031 (Mermiges) and #1243 (rivetphilbot) are still open and still change vllm/model_executor/layers/fused_moe/experts/skinny_sm70_moe.py (MXFP4 MoE geometry, skinny split, DeepSeek-V4.1 setups). #1260 (threhan) is still open and changes tests/kernels/test_deepseek_v4_sm70_indexer.py. None of them adds a tensor-core Triton route.
+- mHC: #1159 and #1166 (rivetphilbot; the mHC kernels for decode batches of 1 to 8 tokens), #1325 (squibloads; mHC row staging for large prefill batches) and #1471 (mHC dispatch, policy hashes and verifier kernels) are merged (2026-11-10). They change staging, dispatch and decode kernels; this PR adds the tensor-core projection for prefill above 16 tokens and the route reading in the layer ops. The two mHC commits of this PR are patch-identical on main 73da3445d (git range-diff =).
+- #1328 (squibloads; the cuBLAS prefill score tile in fp32) is merged (2026-11-09) and part of main; this PR's Triton scorer keeps fp32 for the same reason. #1548 (Flash-V100 availability check) is merged and replaces our fix (above). #1216, #1279 and #1280 are covered under Stacked PR.
+- DeepSeek-V4.1 PRs (ProprietaryLegal, vllm/models/deepseek_v41): #1587 (tensor-core decode index scorer, VLLM_V41_INDEX_TC), #1388 (fused prefill index scores) and #1389, #1379, #1377, #1376, #1370 are open; they share vllm/models/deepseek_v41/attention_ops.py with this branch, where this branch only adapts the callers of attend_gathered_keys. The DeepSeek-V4 routes of this PR (vllm/models/deepseek_v4) are not touched by them. #1565, #1594 and #1596 (DS-V4.1) are merged and also touch that file.
+- #1454 ("[Draft review queue] DeepSeek-V4 attention and indexing qualification queue") retains this PR's earlier head b9fbe637c for qualification (review comment of 2026-11-09 on this PR); #1455 ("[Draft review queue] GLM-5.3 model and KDA kernel integration queue") retains the GLM-5.3 PRs stacked on this one (#1286 and #1348). Both contain this PR's distinctive symbols (kernel, function and test names) by design and are the only PRs whose diffs do; other diffs only share generic names such as __init__ or gather_rows.
+- #828, #894, #943 and #963 (merged 2026-11-09 and 2026-11-10) are part of main 73da3445d. Only #894 shares a file with this PR (CMakeLists.txt); the four diffs share only generic names with this PR's symbols (_all_reduce, _prefill, device_capability, requests).
+- #903 is closed and #828 is merged (2026-11-10); #1278 is the open PR below this one.
+
+
+
+## 5. Test Plan: round of 2026-11-26
+OLD: pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+
+One full-model boot
+NEW: Round of 2026-11-26 (update at the top): seven of these eleven files plus twenty more, 27 files in all (list in the update), one process per file on the CPU, a Tesla V100 and a Quadro RTX 8000, with stock Triton 3.6.0. The five files that need the sm7x Triton (test_kernel_config_triton_sm7x.py, test_mhc_prenorm_tensor_cores.py, test_skinny_moe_triton.py, test_deepseek_v4_sm70_indexer.py, test_dsv4_sparse_prefill_bmm.py) were run once more on the two cards with the sm7x Triton build first on PYTHONPATH (results in the update). The four files test_dsv4_sm70_sparse_bmm.py, test_sm70_modelopt_mixed_nvfp4.py, test_mhc_sm70_prenorm_staging.py and test_mhc_sm70_post_schedule.py were run on the CPU only (results in the update); none of the four was run with the sm7x Triton.
+
+pre-commit run --from-ref origin/main --to-ref HEAD; pre-commit run mypy-3.10 --hook-stage manual --from-ref origin/main --to-ref HEAD
+
+One full-model boot
+
+## 6. Test Result: old pre-commit paragraph (main 899e9ed33) replaced by a pointer
+OLD: pre-commit run --from-ref origin/main --to-ref HEAD: every hook passes except check-layering, which reports vllm/model_executor/layers/fused_moe/runner/moe_runner.py (platform coupling 37 -> 39); this PR does not touch that file and main reports the same. pre-commit run mypy-3.10 --hook-stage manual: passed. The pre-commit CI job fails on main's own run at 899e9ed33 (run 40532180681) with mypy errors in vllm/v1/kv_cache_interface.py:156-158 and the same check-layering count; none of these files is touched here.
+
+
+NEW: pre-commit and mypy-3.10 on the current head: see the update of 2026-11-26 at the top (four hooks fail with the findings that main 73da3445d has as well; none is new). The results of the earlier heads are in the dated updates below.
+
+
+
+## 7. footer: the two closing lines of fakten-runde5.md (session link of this session)
+OLD: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+https://claude.ai/code/session_0172gtUiymppDzziDqKfy78Q
+NEW: 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+https://claude.ai/code/session_0172gtUkqNsK9nE7L151CUUE
+
+# Round 2 (2026-11-26, after the independent review): further changes to the text, old -> new, short. The entries above stay as they were; where a sentence of an entry above was changed again, the entry's NEW text was updated to the final wording.
+
+## R2-1. A1
+OLD: 'the file lists of all 72 open PRs; ... 63 open PRs by other authors and of 217 PRs by other authors merged since 2026-10-28 (280 in all)'
+NEW: 'the file lists of all 63 open PRs by other authors (dependabot excluded); ... those 63 open PRs and of the 215 PRs by other authors merged since 2026-10-28 (dependabot excluded; 278 in all; listed with gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000, which selects by merge date)'
+
+## R2-2. A3 Runtime acceptance section
+OLD: (section missing)
+NEW: new section '## Runtime acceptance (required for runtime changes)' with the seven bullets of the template; the review of 2026-11-09 (both card paths, TP/DCP layouts, FP8 KV, graph replay, target-checkpoint quality) answered item by item; TP/DCP, graph replay and quality on this head, other Triton versions and the wheel in a model run stay open
+
+## R2-3. sm7x Triton runs (Body:13, 15, 17, 19, 22, 23, 24, 151, Comment:5)
+OLD: 'The runs with the sm7x Triton named in the updates below were not repeated on this head' / 'stock Triton 3.6.0 only'
+NEW: stock-Triton table kept; the five files that need the sm7x Triton were run again on the V100 and the RTX 8000 with the sm7x Triton build (source build of branch sm7x-tensor-cores, first on PYTHONPATH, not the wheel): all ok, no failure; per-file results added in brackets: sparse_prefill_bmm 35 / 35, skinny_moe_triton 6 passed / 6 skipped, indexer 59 passed 3 skipped / 62 passed, kernel_config 8 / 8, mhc 9 / 9 (V100 / RTX 8000); 'main was not run with it, so no comparison'
+
+## R2-4. Body:30 and failure list, test_mla_backends.py
+OLD: 'CPU ;' (empty cell) and 'Triton CompilationError (fp8e4nv is not supported on sm_75)'
+NEW: 'CPU 1152 errors' with 'ValueError: ProcessGroupNCCL is only supported with GPUs, no GPUs found!' (same 1152 IDs on main) and the literal Triton message 'type fp8e4nv not supported in this architecture'
+
+## R2-5. Body:112 closed #1279 and #1280
+OLD: '(their heads are ancestors of this head;'
+NEW: '(their heads were ancestors of the previous head b9fbe637c; the commits are rebased onto main 73da3445d here;'
+
+## R2-6. Body:129 draft queues
+OLD: '#1454 and #1455 (GLM-5.3) retain this PR's earlier head b9fbe637c and its stack'
+NEW: '#1454 retains this PR's earlier head; #1455 retains the GLM-5.3 PRs stacked on this one (#1286 and #1348)'
+
+## R2-7. four merged PRs of the first count
+OLD: (not mentioned)
+NEW: bullet: #828, #894, #943, #963 are part of main; #894 shares CMakeLists.txt; only generic names in common
+
+## R2-8. Comment:3
+OLD: 'The Triton commits and the native sources are unchanged.'
+NEW: two Triton commits (setting, Triton scorer) differ only in regenerated reference anchors, one comment and one test argument; the others are patch-identical; native sources unchanged except csrc/host_reduce.cu and its two CMake lines, which #1216 put on main
+
+## R2-9. Comment:5
+OLD: 'The runs with the sm7x Triton ... were not repeated on this head.'
+NEW: the five sm7x files were run on both cards, all pass, no comparison with main; reference to the acceptance section

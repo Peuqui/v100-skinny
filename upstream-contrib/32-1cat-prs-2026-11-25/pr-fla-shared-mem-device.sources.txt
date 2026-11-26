@@ -1,0 +1,9 @@
+Source of every number and claim in pr-fla-shared-mem-device.txt
+
+V100 96 KiB, Quadro RTX 8000 64 KiB, "both below the 100 KiB threshold", Ampere-first case: message of fork commit a6d6d3e82 (git log -1 a6d6d3e82). 98,304 bytes (V100) and 65,536 (RTX) after set_device(1), the probe, "3 passed (the latter failed before)", the CUDA-context-at-import cause and the resolve_device_id fix: message of fork commit 969dfdea0.
+Threshold 102,400 bytes: class Backend, DEFAULT = 102400, vllm/model_executor/layers/fla/ops/utils.py lines 180-185 on branch pr-fla-shared-mem-device; BKV_LIST at chunk_o.py line 21 and BS_LIST at cumsum.py line 18 call check_shared_mem() at import.
+Test stub values [166912, 98304] and the assertions: tests/model_executor/test_fla_shared_mem_per_device.py lines 11 and 24-34 (tests/kernels/test_fla_shared_mem_per_device.py on the branch).
+resolve_device_id semantics (selected device once initialized, index 0 before, no context): vllm/platforms/cuda.py lines 255-265 on 7db135fa0.
+"no effect on our rig": v100-skinny/STAND.md lines 3914-3917 ("Auf unserem Rig ohne Wirkung ... greift erst bei Ampere neben Volta"). Earlier judgement "nicht belegbar, nur gebündelt anbieten": STAND.md lines 2506-2508. The second commit: STAND.md line 74 (969dfdea0).
+Import probe and mypy exclusion: own runs 2026-11-25 (python import from outside the tree with CUDA_VISIBLE_DEVICES empty; tools/pre_commit/mypy.py EXCLUDE list contains vllm/model_executor/layers/fla/ops, and tests are not in its directory list).
+Duplicate check: own gh pr list runs 2026-11-25 on 1CatAI/1Cat-vLLM and vllm-project/vllm (vllm PR numbers 63500, 68902, 37700, 43047 from "check_shared_mem" searches; contents read with gh pr view). Open-PR file check: gh pr list -R 1CatAI/1Cat-vLLM --state open --limit 200 --json number,files filtered for fla/ops/utils.py.

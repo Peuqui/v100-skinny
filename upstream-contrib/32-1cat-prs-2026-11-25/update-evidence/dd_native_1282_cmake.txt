@@ -1,0 +1,5 @@
+2,5d1
+< -    list(APPEND VLLM_EXT_SRC "csrc/sm70_ring_collectives.cu")
+< +    list(APPEND VLLM_EXT_SRC "csrc/sm70_ring_collectives.cu" "csrc/host_reduce.cu")
+< -      SRCS "csrc/sm70_ring_collectives.cu"
+< +      SRCS "csrc/sm70_ring_collectives.cu" "csrc/host_reduce.cu"

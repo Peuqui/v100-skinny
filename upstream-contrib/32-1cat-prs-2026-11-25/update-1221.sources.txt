@@ -1,0 +1,140 @@
+# Sources for the numbers in update-1221-body.txt and update-1221-comment.txt (Datei:Zeile).
+# update-evidence/ = /home/mp/Projekte/vllm-research/v100-skinny/upstream-contrib/32-1cat-prs-2026-11-25/update-evidence (copies of the logs); runs5 = ~/.cache/bench-scripts/prtest_2026-11-25/runs5 (per-file logs: runs5/<tree>/<device>/<path_with_underscores>.log).
+# Test tree: 1Cat-vLLM-pr-r-dspark; devices: cpu = CUDA_VISIBLE_DEVICES empty, v100 = Tesla V100-PCIE-32GB (PCI index 1, sm_70), rtx = Quadro RTX 8000 (PCI index 0, sm_75).
+
+  1. head 7730427a0, previous head 450e65c52 on main 6f3557c97; three commits, all three changed
+     source: fakten-runde5.md:24 (#1221 7730427a0, '3 auf main'); gh pr view 1221 (3 commits, 450e65c52); git merge-base fork/pr-mrv2-dspark origin/main = 6f3557c97; update-evidence/rd1221.txt: three header lines, all '!'
+  2. speculator file moved to dspark/block_drafter.py; content byte-identical to the previous head's speculator.py (same sha256)
+     source: update-evidence/dspark_speculator_file_hashes_1221.txt (sha256 d79a07fe5230... for block_drafter.py, fork/pr-mrv2-dspark speculator.py and prod-v16 speculator.py)
+  3. #1616 merged 2026-11-25; added Inkling2DSparkSpeculator in dspark/speculator.py, admitted 'dspark' for Inkling 2, adaptive widths
+     source: gh pr view 1616 (MERGED 2026-11-25T14:56:14Z, Jozkah); rebase3-fragen.md:items 1, 3, 5; git show 73da3445d:vllm/v1/worker/gpu/spec_decode/dspark/speculator.py
+  4. init_speculator selects by vllm_config._is_inkling2_dspark(); __init__ exports both
+     source: update-evidence/dd2_1221.txt (hunks vllm/v1/worker/gpu/spec_decode/__init__.py and dspark/__init__.py); git diff 73da3445d pr-mrv2-dspark-r1125 -- vllm/v1/worker/gpu/spec_decode/__init__.py
+  5. _validate_v2_model_runner: two Inkling 2 exceptions removed
+     source: update-evidence/dd2_1221.txt (hunk vllm/config/vllm.py: removed 'and not self._is_inkling2_dspark()' twice; added "dspark" and parallel_drafting_methods)
+  6. _add_dspark_width_graphs returns early unless Inkling 2; test (4, 1, 2, 3) / [1, 2, 3, 4] vs (4,) / [1, 4]; test fails without the condition
+     source: git diff 73da3445d pr-mrv2-dspark-r1125 -- vllm/v1/worker/gpu/cudagraph_utils.py (hunk at line 330); update-evidence/dd2_1221.txt (test _width_graph_manager and test_narrower_width_graphs_only_for_the_drafter_that_narrows); the 'fails without' statement: PLAN.md 'Nachtrag 25.11. ~16:30' ('Test rot ohne / grün mit'; not re-run in this session)
+  7. layering baseline: cudagraph_utils.py platform 30 -> 31; block_drafter.py model 6
+     source: git diff 73da3445d pr-mrv2-dspark-r1125 -- tools/pre_commit/layering_baseline.json
+  8. main has no compressed-index buckets on MRV2
+     source: git grep -n compressed_buckets 73da3445d -- vllm/v1/worker/gpu (no hit); only attention_context_bucket for QSA short graphs (cudagraph_utils.py:161, 648, 670-698)
+  9. 15 test files; 25 minute limit; no hang
+     source: first line of runs5/pr-r-dspark/<dev>/summary.log ('start: 13 files' = list entries; tests/models/inkling2 is a directory and expands to three files: 15 summary lines); chain5.log '##### pr-r-dspark 7730427a0 13 Dateien'
+ 10. test_mrv2_dspark_context_buckets.py 6 passed, test_dspark.py 16 passed on all three; test_sm70_long_attention_graphs.py 284 passed CPU and RTX, V100 1 failed 283 passed (same on main)
+     source: table below; runs5/prmain2/v100/summary.log (test_sm70_long_attention_graphs.py: '1 failed, 283 passed', same ID test_tail_capture_and_dispatch_from_real_initialization[True-mtp-capability3-True-False-False] in runs5/pr-r-dspark/v100/ and runs5/prmain2/v100/ logs)
+ 11. CPU-only runs of four more files: test_dflash_mrv2_config.py 2 failed 23 passed; test_gpu_model_runner_v2.py 7 passed; test_gpu_model_runner_v2_greedy.py 1 failed 15 passed; test_gpu_cudagraph_memory_reserve.py 3 passed; branch and main equal
+     source: update-evidence/cpu1221_branch/summary.log:2-5 and update-evidence/cpu1221_main/summary.log:2-5; failing IDs and causes: the three FAILED lines and E-lines in update-evidence/cpu1221_branch/tests_*.log (identical IDs in cpu1221_main)
+ 12. pre-commit run 2026-11-26 02:10 on 7730427a0 with --from-ref 73da3445d; 19 hooks pass, 16 no files, four fail; git status empty
+     source: update-evidence/pc4_r-dspark.log: line 1 ('##### pre-commit 73da3445d..HEAD (7730427a0) tree r-dspark 02:10:48') and the last lines; counts of Passed/Skipped/Failed lines before the manual marker (19 / 16 / 4, counted by script)
+ 13. mypy error at model_runner.py:1430 here, :1423 on main
+     source: update-evidence/pc4_r-dspark.log (mypy lines), update-evidence/pc3b_MAIN.log:77
+ 14. check-layering identical to main except cudagraph_utils.py 31 -> 33 here against 30 -> 32 on main
+     source: update-evidence/pc4_r-dspark.log (check-layering block) vs update-evidence/pc3b_MAIN.log:129-161 (sorted entry lists differ in this one entry only)
+ 15. check-architecture-reference text identical to main's
+     source: assertion text of test-architecture-reference in update-evidence/pc4_r-dspark.log vs update-evidence/pc3b_MAIN.log:101-128 (identical, compared after whitespace normalisation)
+ 16. duplicate check method: 74 open PRs on 2026-11-26 (63 by other authors, 9 Peuqui's, 2 dependabot); 63 open PRs by other authors and 215 merged since 2026-10-28 by other authors diffed (278); five diffs over GitHub's 20,000-line limit
+     source: gh pr list --repo 1CatAI/1Cat-vLLM --state open --limit 500 (74 PRs, run 2026-11-26 after the new PRs #1627 and #1628; 9 of them Peuqui's: #1221, #1278, #1282, #1286, #1347, #1348, #1536, #1627, #1628; 2 dependabot: #1350, #1620; 63 others); gh pr list --repo 1CatAI/1Cat-vLLM --state merged --search "merged:>=2026-10-28" --limit 1000 --json number,author,mergedAt (282 PRs: 62 Peuqui's, 5 app/dependabot, 215 others; earliest mergedAt 2026-10-28T02:23:38Z; replaces the earlier gh pr list --state merged --limit 400, which sorts by creation date and missed #828, #894, #943, #963); gh pr diff of the 278 into scratchpad diffs/ (273 read; 211 merged + 62 open; the four missing merged diffs fetched in round 2, see the round 2 item below); update-evidence/pr_diffs_too_large_for_gh.txt (#1243, #1260, #1482, #1527, #1616: HTTP 406 exceeded the maximum number of lines (20000)); search results update-evidence/s_1221.txt
+ 17. symbols of this PR searched in the diffs
+     source: update-evidence/symbol_search_in_275_pr_diffs.txt (section '== #1221'; script update-evidence/symbols.py)
+ 18. file overlap of this PR with open and merged PRs of other authors
+     source: update-evidence/file_overlap_open_and_merged_prs.txt (section '===== 1221'; computed from gh pr list --json files and git diff --name-only 73da3445d <branch>)
+ 19. PR states (open/merged/closed and merge dates) named in the text
+     source: update-evidence/refstates.txt (gh pr view <n> --json state,mergedAt,author,title, run 2026-11-26)
+ 20. #1379 depends on #1221 and carries its three commits unchanged
+     source: gh pr view 1379 (body: 'Depends on #1370, #1375, #1377 and #1221 ... the three commits of #1221 by Peuqui ... included unchanged'); symbols DSparkSpeculator, _RecordingDraft, _manager_with_buckets found in its diff (symbol_search file)
+ 21. #1600, #1598, #1621 share no file; #1374 changes DeepSeek-V4.1 files only
+     source: gh pr view 1600/1598/1621/1374 --json files; open_prs file lists (file_overlap file: ===== 1221 shows no such PR)
+ 22. #1589, #1371, #1551, #1243, #1031, #629, #979 share files vllm/config/vllm.py, model_runner.py, dflash/utils.py
+     source: open_prs file lists intersected with git diff --name-only 73da3445d pr-mrv2-dspark-r1125 (14 own files), computed 2026-11-26 in the session
+ 23. #1182, #1184, #1197, #1215 closed; #1217 merged
+     source: update-evidence/refstates.txt
+ 24. #1452 retains the earlier head 450e65c52
+     source: gh pr view 1221 reviews (2026-11-09T14:03:36Z yangzhuxinyzx: 'retained for qualification in #1452', head 450e65c52...)
+
+# Round 2 corrections after the independent review (2026-11-26); evidence not copied into update-evidence/ stays in the scratchpad of this session (path in the source lines)
+ 25. duplicate check, recount and the four PRs that the first count missed (#828, #894, #943, #963)
+     source: gh pr list --state merged --search "merged:>=2026-10-28" --limit 1000 (run 2026-11-26): 282 PRs = 62 Peuqui + 5 app/dependabot + 215 others (copy: /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/merged.json); gh pr list --state open --limit 500: 74 = 9 Peuqui + 2 dependabot + 63 others (copy: /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/open.json); 215 + 63 = 278
+     source: gh pr diff 828, 894, 943, 963 (568, 414, 98 and 348 lines; merged 2026-11-10T19:13:28Z, 2026-11-10T10:49:36Z, 2026-11-09T17:39:06Z, 2026-11-10T12:52:18Z; copies: /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/four/diffs); the earlier set of downloaded diffs held 211 of the 215 merged ones (gh pr diff of #1260, #1482, #1527, #1616 exceeds 20,000 lines) and all open ones but #1243
+     source: gh pr view N --json mergeCommit and git merge-base --is-ancestor <mergeCommit> 73da3445d for N = 828, 894, 943, 963 (merge commits 6ff089d42, 04787acda, d009f5e90, 677e2df03): all four are ancestors of main 73da3445d
+     source: update-evidence/symbols.py run on the four diffs (python3 symbols.py /tmp/claude-1000/-home-mp-Projekte-vllm-research/d820eb98-aa5b-4b03-9979-706846eee66f/scratchpad/w5/four): #1278 0 hits, #1347 0, #1348 0, #1221 0; #1282 4 generic names (_all_reduce in #963, _prefill in #943, device_capability in #828/#894/#963, requests in #963); #1286 2 generic names (_device_capability in #828/#894/#963, get_device_capability in #963)
+     source: file lists (gh pr view N --json files) against git diff --name-only of the PR's own range: #894 lists CMakeLists.txt, csrc/sm70_turbomind/ops/bf16_weight_sm70.cu, csrc/sm70_turbomind/ops/mtp_moe_fp16_sm70.cu, docs/design/sm70_bf16_checkpoint_reader.md, tests/kernels/linear/test_sm70_bf16_weight.py, tests/kernels/moe/test_sm70_mtp_moe_bf16.py, vllm/_custom_ops.py: common with #1278 and #1282 CMakeLists.txt, with #1286 CMakeLists.txt and vllm/_custom_ops.py, with #1347, #1348, #1221 nothing; #828, #943, #963 share no file with any of the six PRs
+ 26. fp8e4nv message quoted literally, in the V100 column as well
+     source: ~/.cache/bench-scripts/prtest_2026-11-25/runs5/pr-r-dspark/v100/tests_models_inkling2_test_attention.py.log and tests_models_inkling2_test_core_ops.py.log:85 (E ValueError("type fp8e4nv not supported in this architecture. The supported fp8 dtypes are ('fp8e4b15', 'fp8e5')")); grep -c = 11 and 1, on v100 and rtx alike
+ 27. '@benchislett' removed; Test Plan code block turned into plain text
+     source: update-1221-body.txt Purpose item 1 ('vllm#46995 by benchislett'; the credit line names the co-author on the commit as before); the eight files and the three commands are those of the earlier code block (unchanged content, no backticks)
+ 28. four of the eight Test Plan files ran on the CPU only on this head (added to the comment)
+     source: update-1221-body.txt:38 (test_dflash_mrv2_config.py, test_gpu_model_runner_v2.py, test_gpu_model_runner_v2_greedy.py, test_gpu_cudagraph_memory_reserve.py; 'Their runs on the two cards were not repeated on this head') and :67
+ 29. Runtime acceptance, items 1 to 7
+     source: update-1221-body.txt:80-86; basis: Purpose items 1 to 3, update bullets (init_speculator, width graphs, _validate_v2_model_runner), Test Result (V1/V2 numbers, acceptance 3.02 / 4.78 / 5.66-5.68 / 5.64-5.68, greedy prompts identical in all five boots, eight quality prompts), Path coverage table (probabilistic drafting, TP > 1, data parallel, batches of several requests), Acceleration contract (boots V2 cold, V1, V2, V1, V2; V2 arm own compile cache); statement 'the indexer's existing cuBLAS admission decides per captured bucket' and 'MRV2 captured the DeepSeek-V4 decode graph at the maximum model length, where the SM70 indexer stays on its paged kernel'
+     source: gh pr view 1221 --repo 1CatAI/1Cat-vLLM --json reviews: yangzhuxinyzx 2026-11-09T14:03:36Z, head 450e65c52, 'retained for qualification in #1452; this is not runtime approval or a merge'; 'DeepSeek-V4.1 checkpoint, DSpark drafter, stochastic coupling, stateful prefix-hit and session replay require model-level acceptance.' (PR OPEN, head 450e65c52, queried 2026-11-26); #1379 depends on this PR (update-1221-body.txt Not a duplicate)
+
+# Test results per file and device (summary.log line of the Round-5 chain; main = runs5/prmain2 = main 73da3445d):
+  tests/models/inkling2/test_attention.py CPU: runs5/pr-r-dspark/cpu/summary.log:2
+  tests/models/inkling2/test_attention.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:2
+  tests/models/inkling2/test_attention.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:2
+  tests/models/inkling2/test_attention.py CPU main: runs5/prmain2/cpu/summary.log:26; causes: runs5/pr-r-dspark/cpu/tests_models_inkling2_test_attention.py.log
+  tests/models/inkling2/test_attention.py Tesla V100 main: runs5/prmain2/v100/summary.log:26; causes: runs5/pr-r-dspark/v100/tests_models_inkling2_test_attention.py.log
+  tests/models/inkling2/test_attention.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:26; causes: runs5/pr-r-dspark/rtx/tests_models_inkling2_test_attention.py.log
+  tests/models/inkling2/test_core_ops.py CPU: runs5/pr-r-dspark/cpu/summary.log:3
+  tests/models/inkling2/test_core_ops.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:3
+  tests/models/inkling2/test_core_ops.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:3
+  tests/models/inkling2/test_core_ops.py Tesla V100 main: runs5/prmain2/v100/summary.log:27; causes: runs5/pr-r-dspark/v100/tests_models_inkling2_test_core_ops.py.log
+  tests/models/inkling2/test_core_ops.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:27; causes: runs5/pr-r-dspark/rtx/tests_models_inkling2_test_core_ops.py.log
+  tests/models/inkling2/test_parsers.py CPU: runs5/pr-r-dspark/cpu/summary.log:4
+  tests/models/inkling2/test_parsers.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:4
+  tests/models/inkling2/test_parsers.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:4
+  tests/models/test_deepseek_v41_dspark.py CPU: runs5/pr-r-dspark/cpu/summary.log:5
+  tests/models/test_deepseek_v41_dspark.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:5
+  tests/models/test_deepseek_v41_dspark.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:5
+  tests/models/test_deepseek_v41_dspark.py CPU main: runs5/prmain2/cpu/summary.log:29; causes: runs5/pr-r-dspark/cpu/tests_models_test_deepseek_v41_dspark.py.log
+  tests/models/test_deepseek_v41_dspark.py Tesla V100 main: runs5/prmain2/v100/summary.log:29; causes: runs5/pr-r-dspark/v100/tests_models_test_deepseek_v41_dspark.py.log
+  tests/models/test_deepseek_v41_dspark.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:29; causes: runs5/pr-r-dspark/rtx/tests_models_test_deepseek_v41_dspark.py.log
+  tests/v1/cudagraph/test_cudagraph_dispatch.py CPU: runs5/pr-r-dspark/cpu/summary.log:6
+  tests/v1/cudagraph/test_cudagraph_dispatch.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:6
+  tests/v1/cudagraph/test_cudagraph_dispatch.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:6
+  tests/v1/cudagraph/test_cudagraph_dispatch.py CPU main: runs5/prmain2/cpu/summary.log:56; causes: runs5/pr-r-dspark/cpu/tests_v1_cudagraph_test_cudagraph_dispatch.py.log
+  tests/v1/spec_decode/test_dspark.py CPU: runs5/pr-r-dspark/cpu/summary.log:7
+  tests/v1/spec_decode/test_dspark.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:7
+  tests/v1/spec_decode/test_dspark.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:7
+  tests/v1/spec_decode/test_sm70_mtp_safety.py CPU: runs5/pr-r-dspark/cpu/summary.log:8
+  tests/v1/spec_decode/test_sm70_mtp_safety.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:8
+  tests/v1/spec_decode/test_sm70_mtp_safety.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:8
+  tests/v1/spec_decode/test_sm70_mtp_safety.py CPU main: runs5/prmain2/cpu/summary.log:62; causes: runs5/pr-r-dspark/cpu/tests_v1_spec_decode_test_sm70_mtp_safety.py.log
+  tests/v1/worker/test_dummy_connector_restore.py CPU: runs5/pr-r-dspark/cpu/summary.log:9
+  tests/v1/worker/test_dummy_connector_restore.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:9
+  tests/v1/worker/test_dummy_connector_restore.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:9
+  tests/v1/worker/test_gpu_model_runner.py CPU: runs5/pr-r-dspark/cpu/summary.log:12
+  tests/v1/worker/test_gpu_model_runner.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:12
+  tests/v1/worker/test_gpu_model_runner.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:12
+  tests/v1/worker/test_gpu_model_runner.py CPU main: runs5/prmain2/cpu/summary.log:67; causes: runs5/pr-r-dspark/cpu/tests_v1_worker_test_gpu_model_runner.py.log
+  tests/v1/worker/test_gpu_model_runner.py Tesla V100 main: runs5/prmain2/v100/summary.log:67; causes: runs5/pr-r-dspark/v100/tests_v1_worker_test_gpu_model_runner.py.log
+  tests/v1/worker/test_gpu_model_runner.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:67; causes: runs5/pr-r-dspark/rtx/tests_v1_worker_test_gpu_model_runner.py.log
+  tests/v1/worker/test_gpu_model_runner_pp.py CPU: runs5/pr-r-dspark/cpu/summary.log:10
+  tests/v1/worker/test_gpu_model_runner_pp.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:10
+  tests/v1/worker/test_gpu_model_runner_pp.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:10
+  tests/v1/worker/test_gpu_model_runner_pp.py CPU main: runs5/prmain2/cpu/summary.log:65; causes: runs5/pr-r-dspark/cpu/tests_v1_worker_test_gpu_model_runner_pp.py.log
+  tests/v1/worker/test_gpu_model_runner_pp_spec.py CPU: runs5/pr-r-dspark/cpu/summary.log:11
+  tests/v1/worker/test_gpu_model_runner_pp_spec.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:11
+  tests/v1/worker/test_gpu_model_runner_pp_spec.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:11
+  tests/v1/worker/test_gpu_model_runner_pp_spec.py CPU main: runs5/prmain2/cpu/summary.log:66; causes: runs5/pr-r-dspark/cpu/tests_v1_worker_test_gpu_model_runner_pp_spec.py.log
+  tests/v1/worker/test_gpu_model_runner_pp_spec.py Tesla V100 main: runs5/prmain2/v100/summary.log:66; causes: runs5/pr-r-dspark/v100/tests_v1_worker_test_gpu_model_runner_pp_spec.py.log
+  tests/v1/worker/test_gpu_model_runner_pp_spec.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:66; causes: runs5/pr-r-dspark/rtx/tests_v1_worker_test_gpu_model_runner_pp_spec.py.log
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py CPU: runs5/pr-r-dspark/cpu/summary.log:13
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:13
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:13
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py CPU main: runs5/prmain2/cpu/summary.log:70; causes: runs5/pr-r-dspark/cpu/tests_v1_worker_test_gpu_model_runner_v2_kv_zero.py.log
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py Tesla V100 main: runs5/prmain2/v100/summary.log:70; causes: runs5/pr-r-dspark/v100/tests_v1_worker_test_gpu_model_runner_v2_kv_zero.py.log
+  tests/v1/worker/test_gpu_model_runner_v2_kv_zero.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:70; causes: runs5/pr-r-dspark/rtx/tests_v1_worker_test_gpu_model_runner_v2_kv_zero.py.log
+  tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py CPU: runs5/pr-r-dspark/cpu/summary.log:14
+  tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:14
+  tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:14
+  tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py CPU main: runs5/prmain2/cpu/summary.log:71; causes: runs5/pr-r-dspark/cpu/tests_v1_worker_test_gpu_model_runner_v2_prefill_dispatch.py.log
+  tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py Tesla V100 main: runs5/prmain2/v100/summary.log:71; causes: runs5/pr-r-dspark/v100/tests_v1_worker_test_gpu_model_runner_v2_prefill_dispatch.py.log
+  tests/v1/worker/test_gpu_model_runner_v2_prefill_dispatch.py Quadro RTX 8000 main: runs5/prmain2/rtx/summary.log:71; causes: runs5/pr-r-dspark/rtx/tests_v1_worker_test_gpu_model_runner_v2_prefill_dispatch.py.log
+  tests/v1/worker/test_mrv2_dspark_context_buckets.py CPU: runs5/pr-r-dspark/cpu/summary.log:15
+  tests/v1/worker/test_mrv2_dspark_context_buckets.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:15
+  tests/v1/worker/test_mrv2_dspark_context_buckets.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:15
+  tests/v1/worker/test_sm70_long_attention_graphs.py CPU: runs5/pr-r-dspark/cpu/summary.log:16
+  tests/v1/worker/test_sm70_long_attention_graphs.py Tesla V100: runs5/pr-r-dspark/v100/summary.log:16
+  tests/v1/worker/test_sm70_long_attention_graphs.py Quadro RTX 8000: runs5/pr-r-dspark/rtx/summary.log:16
+  tests/v1/worker/test_sm70_long_attention_graphs.py Tesla V100 main: runs5/prmain2/v100/summary.log:80; causes: runs5/pr-r-dspark/v100/tests_v1_worker_test_sm70_long_attention_graphs.py.log
